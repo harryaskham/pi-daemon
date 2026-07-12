@@ -1,0 +1,25 @@
+{
+  "protocolVersion": "1.0",
+  "requestId": "req-open-1",
+  "operation": "open",
+  "sessionId": "agent-a",
+  "generation": 1,
+  "payload": {
+    "cwd": "/workspace/agent-a",
+    "session": { "mode": "new" },
+    "model": {
+      "provider": "github-copilot",
+      "id": "gpt-5-mini",
+      "thinkingLevel": "off"
+    },
+    "resources": {
+      "extensions": "none",
+      "skills": "none",
+      "promptTemplates": "none",
+      "themes": "none",
+      "contextFiles": "none",
+      "tools": "none",
+      "systemPrompt": "Be concise."
+    }
+  }
+}

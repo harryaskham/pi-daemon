@@ -1,0 +1,11 @@
+{
+  "protocolVersion": "1.0",
+  "kind": "event",
+  "event": "messageUpdate",
+  "hostInstanceId": "host-019f",
+  "sessionId": "agent-a",
+  "generation": 1,
+  "sequence": 2,
+  "requestId": "req-wake-1",
+  "data": { "assistantMessageEvent": { "type": "text_delta", "delta": "pong" } }
+}

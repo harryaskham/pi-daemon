@@ -1,0 +1,6 @@
+{
+  "protocolVersion": "1.0",
+  "requestId": "req-handshake-1",
+  "operation": "handshake",
+  "payload": {}
+}

@@ -1,0 +1,12 @@
+{
+  "protocolVersion": "1.0",
+  "requestId": "req-wake-1",
+  "operation": "wake",
+  "sessionId": "agent-a",
+  "generation": 1,
+  "idempotencyKey": "message-019f",
+  "payload": {
+    "prompt": "Reply with only pong",
+    "source": "integration-test"
+  }
+}

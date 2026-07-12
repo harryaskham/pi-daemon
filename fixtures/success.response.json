@@ -1,0 +1,10 @@
+{
+  "protocolVersion": "1.0",
+  "kind": "response",
+  "requestId": "req-open-1",
+  "hostInstanceId": "host-019f",
+  "sessionId": "agent-a",
+  "sequence": 1,
+  "ok": true,
+  "data": { "state": "idle" }
+}

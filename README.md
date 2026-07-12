@@ -43,9 +43,12 @@ pi-daemon request --socket /run/user/1000/pi-daemon.sock --json '{...}'
 pi-daemon version
 ```
 
-The protocol is versioned UTF-8 NDJSON over an owner-only Unix socket. See the
-[protocol design](PLAN.md#6-protocol) and, as implementation lands, the
-published [documentation site](https://harryaskham.github.io/pi-daemon/).
+The protocol is versioned UTF-8 NDJSON over an owner-only Unix socket. The
+language-neutral [`protocol.schema.json`](protocol.schema.json), checked
+fixtures under [`fixtures/`](fixtures/), and exported TypeScript protocol types
+are the compatibility contract. See the [protocol design](PLAN.md#6-protocol)
+and, as implementation lands, the published
+[documentation site](https://harryaskham.github.io/pi-daemon/).
 
 ## Safety defaults
 

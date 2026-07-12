@@ -1,0 +1,13 @@
+{
+  "protocolVersion": "1.0",
+  "kind": "response",
+  "requestId": "req-wake-1",
+  "hostInstanceId": "host-019f",
+  "sessionId": "agent-a",
+  "ok": false,
+  "error": {
+    "code": "session_not_open",
+    "message": "logical session is not open",
+    "retryable": true
+  }
+}
