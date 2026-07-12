@@ -390,7 +390,7 @@ section truthful.
 - [x] `PD-001` Repository standard: AGENTS, license, contributing, security,
   editor/git hygiene, package metadata, strict TypeScript config.
 - [x] `PD-002` Versioned protocol types, validation, JSON schema, fixtures.
-- [ ] `PD-003` Core multiplexer: session factory abstraction, registry,
+- [x] `PD-003` Core multiplexer: session factory abstraction, registry,
   concurrency, serialization, event sequencing, failure isolation.
 - [ ] `PD-004` Durable manifests and idempotency journal with restart semantics.
 - [ ] `PD-005` Unix-socket NDJSON server, bounded framing, client, CLI probe and
