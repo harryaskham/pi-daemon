@@ -402,7 +402,7 @@ section truthful.
 - [x] `PD-008` Observability, metrics/status, structured logs, drain/signals,
   memory/session eviction.
 - [x] `PD-009` Nix flake package/app/check/dev shell and reproducible npm lock.
-- [ ] `PD-010` CI, Dependabot, release workflow, GitHub Pages site.
+- [x] `PD-010` CI, Dependabot, release workflow, GitHub Pages site.
 - [ ] `PD-011` Optional real-SDK concurrent-turn/zero-child-process harness and
   acceptance report.
 - [ ] `PD-012` Final documentation: README, protocol, security, operations,

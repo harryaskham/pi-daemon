@@ -1,0 +1,7 @@
+title: Pi Daemon
+description: One long-lived Pi SDK host for many isolated logical sessions
+theme: minima
+markdown: kramdown
+permalink: pretty
+exclude:
+  - README.md
