@@ -1,12 +1,19 @@
 import { randomUUID } from "node:crypto";
 
+import {
+  DurabilityError,
+  requestFingerprint,
+  type DurabilityStore,
+  type JournalEntry,
+  type RecoverySnapshot,
+} from "./durability.js";
 import type {
   OpenPayload,
   ProtocolCommand,
   SessionTarget,
   WakePayload,
 } from "./protocol.js";
-import { eventEnvelope, type EventEnvelope } from "./protocol.js";
+import { eventEnvelope, parseCommand, type EventEnvelope } from "./protocol.js";
 
 export type SessionState = "opening" | "idle" | "running" | "failed" | "closing";
 
@@ -72,11 +79,20 @@ export interface SessionSnapshot {
 
 export interface HostSnapshot {
   hostInstanceId: string;
+  ready: boolean;
+  durable: boolean;
   draining: boolean;
   limits: MultiplexerLimits;
   activeTurns: number;
   queuedTurns: number;
   sessions: SessionSnapshot[];
+}
+
+export interface RecoveryReport {
+  recovered: RecoverySnapshot;
+  opened: string[];
+  replayed: string[];
+  failures: Array<{ sessionId: string; code: string; message: string }>;
 }
 
 export interface OpenResult {
@@ -128,6 +144,7 @@ interface SessionSlot {
   activeRequestId?: string;
   activeAbort?: AbortController;
   lastErrorCode?: string;
+  inFlight: Map<string, { fingerprint: string; promise: Promise<WakeResult> }>;
 }
 
 interface SemaphoreWaiter {
@@ -210,25 +227,32 @@ export type EventListener = (event: EventEnvelope) => void;
 /**
  * In-process registry and scheduler for independent logical Pi sessions.
  *
- * The class deliberately depends only on SessionFactory. It contains no Pi SDK
- * imports, transport concerns, client-specific orchestration, or durable state.
+ * The class deliberately depends only on SessionFactory and the optional
+ * neutral DurabilityStore. It contains no Pi SDK imports, transport concerns,
+ * or client-specific orchestration.
  */
 export class Multiplexer {
   readonly hostInstanceId: string;
   readonly limits: MultiplexerLimits;
   readonly #factory: SessionFactory;
+  readonly #durability: DurabilityStore | undefined;
   readonly #turns: Semaphore;
   readonly #sessions = new Map<string, SessionSlot>();
   readonly #lifecycleTails = new Map<string, Promise<void>>();
   readonly #listeners = new Set<EventListener>();
   #draining = false;
+  #ready: boolean;
+  #recovered = false;
 
   constructor(options: {
     factory: SessionFactory;
+    durability?: DurabilityStore;
     hostInstanceId?: string;
     limits?: Partial<MultiplexerLimits>;
   }) {
     this.#factory = options.factory;
+    this.#durability = options.durability;
+    this.#ready = options.durability === undefined;
     this.hostInstanceId = options.hostInstanceId ?? randomUUID();
     this.limits = {
       maxSessions: positiveInteger(
@@ -250,6 +274,85 @@ export class Multiplexer {
   subscribe(listener: EventListener): () => void {
     this.#listeners.add(listener);
     return () => this.#listeners.delete(listener);
+  }
+
+  async recover(): Promise<RecoveryReport> {
+    if (this.#durability === undefined) {
+      this.#ready = true;
+      this.#recovered = true;
+      return {
+        recovered: { manifests: [], queued: [], indeterminate: [] },
+        opened: [],
+        replayed: [],
+        failures: [],
+      };
+    }
+    if (this.#recovered) {
+      throw new MultiplexerError("already_recovered", "durable state was already recovered");
+    }
+
+    const recovered = await this.#durability.recover();
+    this.#recovered = true;
+    this.#ready = true;
+    const report: RecoveryReport = { recovered, opened: [], replayed: [], failures: [] };
+
+    for (const manifest of recovered.manifests) {
+      try {
+        const parsed = parseCommand({
+          protocolVersion: "1.0",
+          requestId: `restore-open-${randomUUID()}`,
+          operation: "open",
+          sessionId: manifest.sessionId,
+          generation: manifest.generation,
+          payload: manifest.payload,
+        });
+        if (parsed.operation !== "open") throw new Error("restored command is not open");
+        await this.open(parsed);
+        report.opened.push(manifest.sessionId);
+      } catch (error) {
+        const normalized = asMultiplexerError(
+          error,
+          "restore_open_failed",
+          "failed to restore logical session",
+        );
+        report.failures.push({
+          sessionId: manifest.sessionId,
+          code: normalized.code,
+          message: normalized.message,
+        });
+      }
+    }
+
+    const bySession = new Map<string, JournalEntry[]>();
+    for (const entry of recovered.queued) {
+      const entries = bySession.get(entry.sessionId) ?? [];
+      entries.push(entry);
+      bySession.set(entry.sessionId, entries);
+    }
+    await Promise.all(
+      [...bySession.entries()].map(async ([sessionId, entries]) => {
+        for (const entry of entries) {
+          try {
+            const parsed = parseCommand(entry.command);
+            if (parsed.operation !== "wake") throw new Error("restored command is not wake");
+            await this.wake(parsed);
+            report.replayed.push(entry.idempotencyKey);
+          } catch (error) {
+            const normalized = asMultiplexerError(
+              error,
+              "restore_wake_failed",
+              "failed to replay queued wake",
+            );
+            report.failures.push({
+              sessionId,
+              code: normalized.code,
+              message: normalized.message,
+            });
+          }
+        }
+      }),
+    );
+    return report;
   }
 
   async open(command: Extract<ProtocolCommand, { operation: "open" }>): Promise<OpenResult> {
@@ -299,10 +402,12 @@ export class Multiplexer {
         ...policy,
       };
 
-      let adapter: SessionAdapter;
+      let adapter: SessionAdapter | undefined;
       try {
         adapter = await this.#factory.open(request);
+        await this.#durability?.saveManifest(command);
       } catch (error) {
+        await Promise.resolve(adapter?.dispose()).catch(() => {});
         this.#emitProvisional(
           command.sessionId,
           command.generation,
@@ -323,6 +428,7 @@ export class Multiplexer {
         sequence: 0,
         pendingTurns: 0,
         turnTail: Promise.resolve(),
+        inFlight: new Map(),
       };
       this.#sessions.set(command.sessionId, slot);
       this.#emit(slot, "opened", command.requestId, { state: slot.state });
@@ -333,11 +439,18 @@ export class Multiplexer {
   wake(command: Extract<ProtocolCommand, { operation: "wake" }>): Promise<WakeResult> {
     this.#assertAdmitting("wake");
     const slot = this.#requireSession(command.sessionId, command.generation);
-    if (slot.state === "failed") {
-      throw new MultiplexerError("session_failed", "logical session is failed", {
-        details: { lastErrorCode: slot.lastErrorCode },
-      });
+    const fingerprint = requestFingerprint(command);
+    const existing = slot.inFlight.get(command.idempotencyKey);
+    if (existing !== undefined) {
+      if (existing.fingerprint !== fingerprint) {
+        throw new MultiplexerError(
+          "idempotency_conflict",
+          "idempotency key is active for a different wake request",
+        );
+      }
+      return existing.promise;
     }
+
     // One pending turn is the active slot; the configured depth bounds waiters.
     if (slot.pendingTurns >= this.limits.maxSessionQueueDepth + 1) {
       throw new MultiplexerError("session_queue_full", "logical session turn queue is full", {
@@ -350,24 +463,71 @@ export class Multiplexer {
     const abort = new AbortController();
     slot.pendingTurns += 1;
     if (wasEmpty) {
-      // Install cancellation before the promise microtask starts so an abort
-      // received immediately after promptAccepted still cancels this turn.
+      // Install cancellation before journal I/O/promise microtasks so an abort
+      // received immediately after wake admission still cancels this turn.
       slot.activeAbort = abort;
       slot.activeRequestId = command.requestId;
     }
+
+    const pending = this.#prepareWake(slot, command, abort);
+    const tracked = pending.finally(() => {
+      const current = slot.inFlight.get(command.idempotencyKey);
+      if (current?.promise === tracked) slot.inFlight.delete(command.idempotencyKey);
+    });
+    slot.inFlight.set(command.idempotencyKey, { fingerprint, promise: tracked });
+    return tracked;
+  }
+
+  async #prepareWake(
+    slot: SessionSlot,
+    command: Extract<ProtocolCommand, { operation: "wake" }>,
+    abort: AbortController,
+  ): Promise<WakeResult> {
+    let journal: JournalEntry | undefined;
+    try {
+      journal = await this.#durability?.beginRequest(command);
+    } catch (error) {
+      this.#releaseReservation(slot, abort);
+      throw asMultiplexerError(error, "durability_failed", "failed to persist queued wake");
+    }
+
+    if (journal?.state === "completed") {
+      this.#releaseReservation(slot, abort);
+      return { result: journal.result, session: snapshot(slot) };
+    }
+    if (journal?.state === "failed") {
+      this.#releaseReservation(slot, abort);
+      throw journalFailure(journal);
+    }
+    if (journal?.state === "accepted" || journal?.state === "indeterminate") {
+      this.#releaseReservation(slot, abort);
+      throw new MultiplexerError(
+        "request_indeterminate",
+        "wake may have been submitted before a host interruption; automatic replay is refused",
+        { details: { idempotencyKey: command.idempotencyKey, state: journal.state } },
+      );
+    }
+    if (slot.state === "failed") {
+      const failure = new MultiplexerError("session_failed", "logical session is failed", {
+        details: { lastErrorCode: slot.lastErrorCode },
+      });
+      await this.#durability
+        ?.markFailed(slot.sessionId, command.idempotencyKey, journalError(failure))
+        .catch(() => {});
+      this.#releaseReservation(slot, abort);
+      throw failure;
+    }
+
     this.#emit(slot, "promptAccepted", command.requestId, {
       idempotencyKey: command.idempotencyKey,
       queuedTurns: Math.max(0, slot.pendingTurns - 1),
     });
-
     const task = slot.turnTail.then(async () => this.#runWake(slot, command, abort));
     slot.turnTail = task.then(
       () => undefined,
       () => undefined,
     );
-    return task.finally(() => {
-      slot.pendingTurns -= 1;
-    });
+    return task.finally(() => this.#releaseReservation(slot, abort));
   }
 
   async steer(command: Extract<ProtocolCommand, { operation: "steer" }>): Promise<void> {
@@ -404,12 +564,12 @@ export class Multiplexer {
           retryable: true,
         });
       }
+      const retainArtifacts = command.payload.retainSession ?? true;
       slot.state = "closing";
       await slot.adapter.dispose();
-      this.#emit(slot, "sessionClosed", command.requestId, {
-        retainSession: command.payload.retainSession ?? true,
-      });
+      this.#emit(slot, "sessionClosed", command.requestId, { retainSession: retainArtifacts });
       this.#sessions.delete(command.sessionId);
+      await this.#durability?.closeSession(command.sessionId, retainArtifacts);
       return true;
     });
   }
@@ -424,6 +584,8 @@ export class Multiplexer {
     }
     return {
       hostInstanceId: this.hostInstanceId,
+      ready: this.#ready,
+      durable: this.#durability !== undefined,
       draining: this.#draining,
       limits: { ...this.limits },
       activeTurns: this.#turns.active,
@@ -461,10 +623,15 @@ export class Multiplexer {
       throw new MultiplexerError("stale_generation", "session changed before queued turn started");
     }
     let release: (() => void) | undefined;
+    let journalState: "queued" | "accepted" | "terminal" = "queued";
     slot.activeAbort = abort;
     slot.activeRequestId = command.requestId;
     try {
       release = await this.#turns.acquire(abort.signal);
+      if (this.#durability !== undefined) {
+        await this.#durability.markAccepted(slot.sessionId, command.idempotencyKey);
+        journalState = "accepted";
+      }
       slot.state = "running";
       this.#emit(slot, "agentStart", command.requestId, {});
       const request: PromptRequest = {
@@ -476,6 +643,18 @@ export class Multiplexer {
       };
       if (command.payload.source !== undefined) request.source = command.payload.source;
       const result = await slot.adapter.prompt(request);
+      if (this.#durability !== undefined) {
+        try {
+          await this.#durability.markCompleted(slot.sessionId, command.idempotencyKey, result);
+          journalState = "terminal";
+        } catch (error) {
+          throw new MultiplexerError(
+            "durability_completion_failed",
+            "model turn completed but its terminal result could not be persisted",
+            { details: { cause: safeError(error) } },
+          );
+        }
+      }
       slot.state = "idle";
       delete slot.lastErrorCode;
       this.#emit(slot, "agentEnd", command.requestId, {});
@@ -483,6 +662,15 @@ export class Multiplexer {
       return { result, session: snapshot(slot) };
     } catch (error) {
       const normalized = asMultiplexerError(error, "turn_failed", "logical session turn failed");
+      if (
+        this.#durability !== undefined &&
+        journalState !== "terminal" &&
+        normalized.code !== "durability_completion_failed"
+      ) {
+        await this.#durability
+          .markFailed(slot.sessionId, command.idempotencyKey, journalError(normalized))
+          .catch(() => {});
+      }
       slot.state = normalized.code === "aborted" ? "idle" : "failed";
       slot.lastErrorCode = normalized.code;
       this.#emit(slot, "requestFailed", command.requestId, {
@@ -494,6 +682,14 @@ export class Multiplexer {
       delete slot.activeAbort;
       delete slot.activeRequestId;
       release?.();
+    }
+  }
+
+  #releaseReservation(slot: SessionSlot, abort: AbortController): void {
+    slot.pendingTurns -= 1;
+    if (slot.activeAbort === abort) {
+      delete slot.activeAbort;
+      delete slot.activeRequestId;
     }
   }
 
@@ -525,6 +721,13 @@ export class Multiplexer {
   }
 
   #assertAdmitting(operation: "open" | "wake"): void {
+    if (!this.#ready) {
+      throw new MultiplexerError(
+        "host_not_ready",
+        "durable state must be recovered before admitting requests",
+        { retryable: true },
+      );
+    }
     if (this.#draining) {
       throw new MultiplexerError("host_draining", `host is draining; ${operation} rejected`, {
         retryable: true,
@@ -646,11 +849,34 @@ function safeError(error: unknown): { name: string; message: string } {
 
 function asMultiplexerError(error: unknown, code: string, message: string): MultiplexerError {
   if (error instanceof MultiplexerError) return error;
+  if (error instanceof DurabilityError) {
+    return new MultiplexerError(error.code, error.message, {
+      ...(error.details === undefined ? {} : { details: error.details }),
+    });
+  }
   if (isAbortError(error)) {
     return new MultiplexerError("aborted", "logical session turn was aborted", { retryable: true });
   }
   return new MultiplexerError(code, message, {
     details: { cause: safeError(error) },
+  });
+}
+
+function journalError(error: MultiplexerError): {
+  code: string;
+  message: string;
+  retryable: boolean;
+} {
+  return { code: error.code, message: error.message, retryable: error.retryable };
+}
+
+function journalFailure(entry: JournalEntry): MultiplexerError {
+  if (entry.error === undefined) {
+    return new MultiplexerError("request_failed", "durable wake request previously failed");
+  }
+  return new MultiplexerError(entry.error.code, entry.error.message, {
+    retryable: entry.error.retryable,
+    details: { cached: true, idempotencyKey: entry.idempotencyKey },
   });
 }
 
