@@ -16,21 +16,25 @@ The optional `scripts/live-sdk-smoke.mjs` harness patches
 Daemon adapter**. Any attempted child process throws immediately and is
 recorded.
 
-One `PiSessionFactory` then created two distinct no-tools in-memory sessions
-sharing one `AuthStorage` and `ModelRegistry`. Concurrent prompts requested
-exact `A` and `B` responses.
+The harness starts the full owner-local service path: `FileDurabilityStore`,
+`Multiplexer`, `PiSessionFactory`, `ProtocolServer`, and two independent
+`PiDaemonClient` Unix-socket connections. Two distinct no-tools in-memory SDK
+sessions share one `AuthStorage` and `ModelRegistry`, journal their wakes, and
+run exact `A` and `B` prompts concurrently.
 
 Observed result:
 
 ```json
 {
   "ok": true,
+  "transport": "unix-ndjson",
+  "durableJournal": true,
   "sessions": 2,
   "results": { "a": "A", "b": "B" },
-  "eventCounts": { "a": 11, "b": 11 },
+  "eventCounts": { "a": 15, "b": 15 },
   "childProcessCalls": [],
-  "openDurationMs": 8.78,
-  "concurrentTurnDurationMs": 4042.17
+  "openDurationMs": 32.08,
+  "concurrentTurnDurationMs": 4828.06
 }
 ```
 

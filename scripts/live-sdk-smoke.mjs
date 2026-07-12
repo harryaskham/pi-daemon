@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import childProcess from "node:child_process";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -23,16 +23,22 @@ syncBuiltinESMExports();
 const temporaryRoot = await mkdtemp(join(tmpdir(), "pi-daemon-live-"));
 const cwd = join(temporaryRoot, "work");
 const stateDir = join(temporaryRoot, "state");
-let first;
-let second;
+const socketPath = join(temporaryRoot, "pi-daemon.sock");
+let server;
+let multiplexer;
+let firstClient;
+let secondClient;
 try {
-  const { mkdir } = await import("node:fs/promises");
   await mkdir(cwd, { mode: 0o700 });
   await mkdir(stateDir, { mode: 0o700 });
   const { AuthStorage, getAgentDir, ModelRegistry } = await import(
     "@earendil-works/pi-coding-agent"
   );
+  const { PiDaemonClient } = await import("../dist/client.js");
+  const { FileDurabilityStore } = await import("../dist/durability.js");
+  const { Multiplexer } = await import("../dist/multiplexer.js");
   const { PiSessionFactory } = await import("../dist/pi-adapter.js");
+  const { ProtocolServer } = await import("../dist/server.js");
 
   const agentDir = getAgentDir();
   const authStorage = AuthStorage.create(join(agentDir, "auth.json"));
@@ -63,6 +69,20 @@ try {
     authStorage,
     modelRegistry,
   });
+  const durability = new FileDurabilityStore({ stateDir });
+  multiplexer = new Multiplexer({
+    factory,
+    durability,
+    limits: { maxConcurrentTurns: 2 },
+  });
+  await multiplexer.recover();
+  server = new ProtocolServer({ socketPath, multiplexer });
+  await server.start();
+  [firstClient, secondClient] = await Promise.all([
+    PiDaemonClient.connect({ socketPath }),
+    PiDaemonClient.connect({ socketPath }),
+  ]);
+
   const resources = {
     extensions: "none",
     skills: "none",
@@ -72,35 +92,49 @@ try {
     tools: "none",
     systemPrompt: "Follow the user instruction exactly. Return no extra text.",
   };
-  const open = (sessionId) =>
-    factory.open({
+  const open = (client, sessionId) =>
+    client.request({
+      protocolVersion: "1.0",
+      requestId: `open-${sessionId}`,
+      operation: "open",
       sessionId,
       generation: 1,
-      cwd,
-      session: { mode: "memory" },
-      model: { provider: model.provider, id: model.id, thinkingLevel: "off" },
-      resources,
+      payload: {
+        cwd,
+        session: { mode: "memory" },
+        model: { provider: model.provider, id: model.id, thinkingLevel: "off" },
+        resources,
+      },
     });
 
   const openedAt = performance.now();
-  [first, second] = await Promise.all([open("live-a"), open("live-b")]);
+  await Promise.all([open(firstClient, "live-a"), open(secondClient, "live-b")]);
   const openDurationMs = performance.now() - openedAt;
   const eventCounts = { a: 0, b: 0 };
-  const prompt = (adapter, id, expected) =>
-    adapter.prompt({
-      requestId: `live-${id}`,
+  firstClient.subscribe(() => {
+    eventCounts.a += 1;
+  });
+  secondClient.subscribe(() => {
+    eventCounts.b += 1;
+  });
+  const prompt = (client, id, expected) =>
+    client.request({
+      protocolVersion: "1.0",
+      requestId: `wake-${id}`,
+      operation: "wake",
+      sessionId: `live-${id}`,
+      generation: 1,
       idempotencyKey: `live-${id}`,
-      prompt: `Reply with only ${expected}`,
-      signal: new AbortController().signal,
-      onEvent: () => {
-        eventCounts[id] += 1;
-      },
+      payload: { prompt: `Reply with only ${expected}`, source: "live-acceptance" },
     });
   const turnsAt = performance.now();
-  const [a, b] = await Promise.all([prompt(first, "a", "A"), prompt(second, "b", "B")]);
+  const [a, b] = await Promise.all([
+    prompt(firstClient, "a", "A"),
+    prompt(secondClient, "b", "B"),
+  ]);
   const turnDurationMs = performance.now() - turnsAt;
-  const aText = a?.text?.trim();
-  const bText = b?.text?.trim();
+  const aText = a.data?.result?.text?.trim();
+  const bText = b.data?.result?.text?.trim();
   if (aText !== "A" || bText !== "B") {
     throw new Error(`isolation result mismatch: a=${JSON.stringify(aText)} b=${JSON.stringify(bText)}`);
   }
@@ -110,6 +144,8 @@ try {
     `${JSON.stringify(
       {
         ok: true,
+        transport: "unix-ndjson",
+        durableJournal: true,
         model: `${model.provider}/${model.id}`,
         node: process.version,
         sessions: 2,
@@ -124,8 +160,10 @@ try {
     )}\n`,
   );
 } finally {
-  first?.dispose();
-  second?.dispose();
+  firstClient?.close();
+  secondClient?.close();
+  await server?.stop().catch(() => {});
+  await multiplexer?.dispose(1_000).catch(() => {});
   for (const [name, original] of originals) childProcess[name] = original;
   syncBuiltinESMExports();
   await rm(temporaryRoot, { recursive: true, force: true });
