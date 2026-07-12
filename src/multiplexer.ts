@@ -574,6 +574,8 @@ export class Multiplexer {
     });
   }
 
+  status(): HostSnapshot;
+  status(sessionId: string): SessionSnapshot;
   status(sessionId?: string): HostSnapshot | SessionSnapshot {
     if (sessionId !== undefined) {
       const slot = this.#sessions.get(sessionId);

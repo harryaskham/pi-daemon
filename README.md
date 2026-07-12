@@ -32,7 +32,7 @@ shared `AuthStorage` and `ModelRegistry`, received independent model responses,
 and observed zero `child_process` calls during session creation or no-tool
 turns.
 
-## Planned CLI
+## CLI
 
 ```console
 pi-daemon serve --socket /run/user/1000/pi-daemon.sock \

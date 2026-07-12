@@ -393,7 +393,7 @@ section truthful.
 - [x] `PD-003` Core multiplexer: session factory abstraction, registry,
   concurrency, serialization, event sequencing, failure isolation.
 - [x] `PD-004` Durable manifests and idempotency journal with restart semantics.
-- [ ] `PD-005` Unix-socket NDJSON server, bounded framing, client, CLI probe and
+- [x] `PD-005` Unix-socket NDJSON server, bounded framing, client, CLI probe and
   request commands.
 - [ ] `PD-006` Real Pi SDK adapter: shared auth/model registries, locked-down
   resources, persistent session managers, event mapping.
