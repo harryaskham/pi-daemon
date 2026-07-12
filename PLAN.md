@@ -1,6 +1,6 @@
 # Pi Daemon — implementation plan
 
-Status: active implementation plan  
+Status: initial v0.1.0 implementation complete; release-candidate closeout
 Repository: `git@github.com:harryaskham/pi-daemon.git`  
 Initial owner: `ms-mac-cacophony-caco-dev-msm-2`  
 Architecture decision: Cacophony `decision-019f539c-e3ae-7f82-859d-c2db8eedd21d`
@@ -405,5 +405,5 @@ section truthful.
 - [x] `PD-010` CI, Dependabot, release workflow, GitHub Pages site.
 - [x] `PD-011` Optional real-SDK concurrent-turn/zero-child-process harness and
   acceptance report.
-- [ ] `PD-012` Final documentation: README, protocol, security, operations,
+- [x] `PD-012` Final documentation: README, protocol, security, operations,
   integration guide; all tests/CI green and tagged-ready.

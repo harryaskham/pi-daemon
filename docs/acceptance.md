@@ -62,6 +62,15 @@ The normal `npm test` suite proves:
 - drain timeout abort, idle eviction, metrics, and structured-log redaction
 - language-neutral fixture/schema compatibility
 
+## Release-candidate closeout
+
+On 2026-07-12 the GitHub CI workflow was green across Node 22.19/24 and Linux +
+macOS Nix package/app checks. GitHub Pages deployed successfully; both
+[the site](https://a.skh.am/pi-daemon/) and the published
+[JSON schema](https://a.skh.am/pi-daemon/protocol.schema.json) returned HTTP
+200. The npm pack dry run includes runtime declarations, documentation, and the
+optional live harness.
+
 The project does not claim exactly-once provider execution across a crash in the
 narrow window between provider completion and terminal journal fsync. That
 state is explicitly `indeterminate` and automatic replay is refused.

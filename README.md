@@ -16,8 +16,8 @@ Pi Daemon is not a Cacophony component. Cacophony can deploy and consume it, but
 the service protocol contains no beads, Cacophony agents, messages, profiles,
 or Cacophony credentials.
 
-> **Status:** active initial implementation. The architecture and provisional
-> delivery board are in [`PLAN.md`](PLAN.md).
+> **Status:** v0.1.0 release candidate. PD-001 through PD-012 are complete;
+> the architecture and acceptance board are in [`PLAN.md`](PLAN.md).
 
 ## Why
 
