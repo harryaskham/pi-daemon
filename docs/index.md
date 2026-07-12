@@ -20,6 +20,7 @@ tools. It is a neutral local service, not a Cacophony component.
 - [Operations](operations) — install, serve, probe, status, drain, and recovery
 - [Security](security) — shared-process trust boundary and root policy
 - [Integration](integration) — client and Nix consumer examples
+- [Acceptance](acceptance) — credential-free matrix and live zero-child-process proof
 - [JSON Schema](protocol.schema.json) — language-neutral protocol contract
 - [Source repository](https://github.com/harryaskham/pi-daemon)
 
