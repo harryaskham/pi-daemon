@@ -1,7 +1,7 @@
 # Pi Daemon
 
 [![CI](https://github.com/harryaskham/pi-daemon/actions/workflows/ci.yml/badge.svg)](https://github.com/harryaskham/pi-daemon/actions/workflows/ci.yml)
-[![Pages](https://github.com/harryaskham/pi-daemon/actions/workflows/pages.yml/badge.svg)](https://harryaskham.github.io/pi-daemon/)
+[![Pages](https://github.com/harryaskham/pi-daemon/actions/workflows/pages.yml/badge.svg)](https://a.skh.am/pi-daemon/)
 
 Pi Daemon is a standalone, general-purpose service that multiplexes many
 on-demand [Pi](https://github.com/earendil-works/pi) SDK agent sessions inside
@@ -60,8 +60,7 @@ evicted after 30 minutes by default (`--idle-session-ttl-ms 0` disables it).
 The language-neutral [`protocol.schema.json`](protocol.schema.json), checked
 fixtures under [`fixtures/`](fixtures/), and exported TypeScript protocol types
 are the compatibility contract. See the [protocol design](PLAN.md#6-protocol)
-and, as implementation lands, the published
-[documentation site](https://harryaskham.github.io/pi-daemon/).
+and, as implementation lands, the published [documentation site](https://a.skh.am/pi-daemon/).
 
 ## Safety defaults
 

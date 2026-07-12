@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://harryaskham.github.io/pi-daemon/protocol.schema.json",
+  "$id": "https://a.skh.am/pi-daemon/protocol.schema.json",
   "title": "Pi Daemon protocol v1",
   "description": "Language-neutral command, response, and event records for Pi Daemon's NDJSON protocol.",
   "oneOf": [
