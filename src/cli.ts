@@ -9,6 +9,7 @@ import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { PiDaemonClient, ProtocolResponseError } from "./client.js";
 import { FileDurabilityStore } from "./durability.js";
 import { Multiplexer, type SessionFactory } from "./multiplexer.js";
+import { JsonLineLogger } from "./observability.js";
 import { PiSessionFactory } from "./pi-adapter.js";
 import { parseCommand } from "./protocol.js";
 import { ProtocolServer } from "./server.js";
@@ -121,6 +122,7 @@ async function runServe(
       "max-sessions",
       "max-concurrent-turns",
       "max-session-queue-depth",
+      "idle-session-ttl-ms",
     ]),
   );
   const socketPath = resolve(requiredOption(options, "socket"));
@@ -130,6 +132,10 @@ async function runServe(
   const agentDir = resolve(options.get("agent-dir") ?? getAgentDir());
   const allowedRoot = await realpath(resolve(requiredOption(options, "allow-root")));
   const durability = new FileDurabilityStore({ stateDir });
+  const logger = new JsonLineLogger(io.stderr, { component: "pi-daemon" });
+  const idleSessionTtlMs = options.has("idle-session-ttl-ms")
+    ? integerOption(options, "idle-session-ttl-ms", 0)
+    : 30 * 60 * 1000;
   const multiplexer = new Multiplexer({
     factory:
       dependencies.factory ??
@@ -139,6 +145,8 @@ async function runServe(
         allowedRoots: [allowedRoot],
       }),
     durability,
+    logger,
+    idleSessionTtlMs,
     limits: {
       ...(options.has("max-sessions")
         ? { maxSessions: integerOption(options, "max-sessions", 1) }
@@ -154,27 +162,29 @@ async function runServe(
   const recovery = await multiplexer.recover();
   const server = new ProtocolServer({ socketPath, multiplexer });
   await server.start();
-  io.stderr(
-    `${JSON.stringify({
-      event: "pi_daemon_ready",
-      socketPath,
-      stateDir,
-      agentDir,
-      allowedRoot,
-      hostInstanceId: multiplexer.hostInstanceId,
-      restoredSessions: recovery.opened.length,
-      replayedRequests: recovery.replayed.length,
-      recoveryFailures: recovery.failures.length,
-    })}\n`,
-  );
+  logger.write("info", "pi_daemon_ready", {
+    socketPath,
+    stateDir,
+    agentDir,
+    allowedRoot,
+    hostInstanceId: multiplexer.hostInstanceId,
+    restoredSessions: recovery.opened.length,
+    replayedRequests: recovery.replayed.length,
+    recoveryFailures: recovery.failures.length,
+  });
 
+  const sweepInterval =
+    idleSessionTtlMs === 0
+      ? undefined
+      : setInterval(() => void multiplexer.sweepIdleSessions(), Math.min(60_000, idleSessionTtlMs));
+  sweepInterval?.unref();
   let shuttingDown = false;
-  const shutdown = async (): Promise<void> => {
+  const shutdown = async (timeoutMs = 30_000): Promise<void> => {
     if (shuttingDown) return;
     shuttingDown = true;
-    multiplexer.beginDrain();
+    await multiplexer.drain(timeoutMs);
     await server.stop();
-    await multiplexer.dispose();
+    await multiplexer.dispose(1_000);
   };
   try {
     if (dependencies.waitForShutdown !== undefined) {
@@ -183,6 +193,7 @@ async function runServe(
       await waitForSignal(shutdown);
     }
   } finally {
+    if (sweepInterval !== undefined) clearInterval(sweepInterval);
     await shutdown();
   }
   return 0;
@@ -230,15 +241,20 @@ function integerOption(options: Map<string, string>, name: string, minimum: numb
   return value;
 }
 
-async function waitForSignal(shutdown: () => Promise<void>): Promise<void> {
+async function waitForSignal(shutdown: (timeoutMs?: number) => Promise<void>): Promise<void> {
   await new Promise<void>((resolvePromise, reject) => {
-    const onSignal = (): void => {
-      process.off("SIGTERM", onSignal);
-      process.off("SIGINT", onSignal);
-      void shutdown().then(resolvePromise, reject);
+    const cleanup = (): void => {
+      process.off("SIGTERM", onSigterm);
+      process.off("SIGINT", onSigint);
     };
-    process.once("SIGTERM", onSignal);
-    process.once("SIGINT", onSignal);
+    const run = (timeoutMs: number): void => {
+      cleanup();
+      void shutdown(timeoutMs).then(resolvePromise, reject);
+    };
+    const onSigterm = (): void => run(30_000);
+    const onSigint = (): void => run(5_000);
+    process.once("SIGTERM", onSigterm);
+    process.once("SIGINT", onSigint);
   });
 }
 

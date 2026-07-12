@@ -13,6 +13,12 @@ import type {
   SessionTarget,
   WakePayload,
 } from "./protocol.js";
+import {
+  HostMetrics,
+  NOOP_LOGGER,
+  type MetricsSnapshot,
+  type StructuredLogger,
+} from "./observability.js";
 import { eventEnvelope, parseCommand, type EventEnvelope } from "./protocol.js";
 
 export type SessionState = "opening" | "idle" | "running" | "failed" | "closing";
@@ -53,6 +59,7 @@ export interface SessionAdapter {
 /** Factory seam used by both the real Pi adapter and credential-free tests. */
 export interface SessionFactory {
   open(request: SessionOpenRequest): Promise<SessionAdapter>;
+  readiness?(): unknown;
 }
 
 export interface MultiplexerLimits {
@@ -75,6 +82,8 @@ export interface SessionSnapshot {
   queuedTurns: number;
   activeRequestId?: string;
   lastErrorCode?: string;
+  lastUsedAt: string;
+  idleForMs: number;
 }
 
 export interface HostSnapshot {
@@ -85,6 +94,11 @@ export interface HostSnapshot {
   limits: MultiplexerLimits;
   activeTurns: number;
   queuedTurns: number;
+  startedAt: string;
+  uptimeMs: number;
+  memory: { rss: number; heapUsed: number; heapTotal: number; external: number };
+  adapterReadiness?: unknown;
+  metrics: MetricsSnapshot;
   sessions: SessionSnapshot[];
 }
 
@@ -144,7 +158,11 @@ interface SessionSlot {
   activeRequestId?: string;
   activeAbort?: AbortController;
   lastErrorCode?: string;
-  inFlight: Map<string, { fingerprint: string; promise: Promise<WakeResult> }>;
+  lastUsedAt: number;
+  inFlight: Map<
+    string,
+    { fingerprint: string; promise: Promise<WakeResult>; abort: AbortController }
+  >;
 }
 
 interface SemaphoreWaiter {
@@ -234,12 +252,17 @@ export type EventListener = (event: EventEnvelope) => void;
 export class Multiplexer {
   readonly hostInstanceId: string;
   readonly limits: MultiplexerLimits;
+  readonly metrics: HostMetrics;
+  readonly idleSessionTtlMs: number;
   readonly #factory: SessionFactory;
   readonly #durability: DurabilityStore | undefined;
   readonly #turns: Semaphore;
   readonly #sessions = new Map<string, SessionSlot>();
   readonly #lifecycleTails = new Map<string, Promise<void>>();
   readonly #listeners = new Set<EventListener>();
+  readonly #logger: StructuredLogger;
+  readonly #now: () => number;
+  readonly #startedAt: number;
   #draining = false;
   #ready: boolean;
   #recovered = false;
@@ -249,11 +272,23 @@ export class Multiplexer {
     durability?: DurabilityStore;
     hostInstanceId?: string;
     limits?: Partial<MultiplexerLimits>;
+    metrics?: HostMetrics;
+    logger?: StructuredLogger;
+    idleSessionTtlMs?: number;
+    now?: () => number;
   }) {
     this.#factory = options.factory;
     this.#durability = options.durability;
     this.#ready = options.durability === undefined;
     this.hostInstanceId = options.hostInstanceId ?? randomUUID();
+    this.metrics = options.metrics ?? new HostMetrics();
+    this.#logger = options.logger ?? NOOP_LOGGER;
+    this.#now = options.now ?? Date.now;
+    this.#startedAt = this.#now();
+    this.idleSessionTtlMs = nonNegativeInteger(
+      options.idleSessionTtlMs ?? 30 * 60 * 1000,
+      "idleSessionTtlMs",
+    );
     this.limits = {
       maxSessions: positiveInteger(
         options.limits?.maxSessions ?? DEFAULT_MULTIPLEXER_LIMITS.maxSessions,
@@ -357,6 +392,8 @@ export class Multiplexer {
 
   async open(command: Extract<ProtocolCommand, { operation: "open" }>): Promise<OpenResult> {
     this.#assertAdmitting("open");
+    this.metrics.increment("open_attempts");
+    const openStartedAt = this.#now();
     return this.#withLifecycle(command.sessionId, async () => {
       this.#assertAdmitting("open");
       const existing = this.#sessions.get(command.sessionId);
@@ -377,7 +414,9 @@ export class Multiplexer {
               { details: { generation: existing.generation } },
             );
           }
-          return { created: false, session: snapshot(existing) };
+          existing.lastUsedAt = this.#now();
+          this.metrics.increment("open_reuses");
+          return { created: false, session: snapshot(existing, this.#now()) };
         }
         if (existing.pendingTurns > 0 || existing.state === "running") {
           throw new MultiplexerError(
@@ -408,6 +447,12 @@ export class Multiplexer {
         await this.#durability?.saveManifest(command);
       } catch (error) {
         await Promise.resolve(adapter?.dispose()).catch(() => {});
+        this.metrics.increment("open_failures");
+        this.#logger.write("warn", "session_open_failed", {
+          sessionId: command.sessionId,
+          generation: command.generation,
+          errorCode: errorCode(error),
+        });
         this.#emitProvisional(
           command.sessionId,
           command.generation,
@@ -428,16 +473,24 @@ export class Multiplexer {
         sequence: 0,
         pendingTurns: 0,
         turnTail: Promise.resolve(),
+        lastUsedAt: this.#now(),
         inFlight: new Map(),
       };
       this.#sessions.set(command.sessionId, slot);
+      this.metrics.increment("sessions_opened");
+      this.metrics.observe("open_latency_ms", this.#now() - openStartedAt);
+      this.#logger.write("info", "session_opened", {
+        sessionId: command.sessionId,
+        generation: command.generation,
+      });
       this.#emit(slot, "opened", command.requestId, { state: slot.state });
-      return { created: true, session: snapshot(slot) };
+      return { created: true, session: snapshot(slot, this.#now()) };
     });
   }
 
   wake(command: Extract<ProtocolCommand, { operation: "wake" }>): Promise<WakeResult> {
     this.#assertAdmitting("wake");
+    this.metrics.increment("wake_attempts");
     const slot = this.#requireSession(command.sessionId, command.generation);
     const fingerprint = requestFingerprint(command);
     const existing = slot.inFlight.get(command.idempotencyKey);
@@ -448,11 +501,13 @@ export class Multiplexer {
           "idempotency key is active for a different wake request",
         );
       }
+      this.metrics.increment("wake_dedup_joins");
       return existing.promise;
     }
 
     // One pending turn is the active slot; the configured depth bounds waiters.
     if (slot.pendingTurns >= this.limits.maxSessionQueueDepth + 1) {
+      this.metrics.increment("wake_queue_rejections");
       throw new MultiplexerError("session_queue_full", "logical session turn queue is full", {
         retryable: true,
         details: { maxSessionQueueDepth: this.limits.maxSessionQueueDepth },
@@ -460,6 +515,7 @@ export class Multiplexer {
     }
 
     const wasEmpty = slot.pendingTurns === 0;
+    const queuedAt = this.#now();
     const abort = new AbortController();
     slot.pendingTurns += 1;
     if (wasEmpty) {
@@ -469,12 +525,12 @@ export class Multiplexer {
       slot.activeRequestId = command.requestId;
     }
 
-    const pending = this.#prepareWake(slot, command, abort);
+    const pending = this.#prepareWake(slot, command, abort, queuedAt);
     const tracked = pending.finally(() => {
       const current = slot.inFlight.get(command.idempotencyKey);
       if (current?.promise === tracked) slot.inFlight.delete(command.idempotencyKey);
     });
-    slot.inFlight.set(command.idempotencyKey, { fingerprint, promise: tracked });
+    slot.inFlight.set(command.idempotencyKey, { fingerprint, promise: tracked, abort });
     return tracked;
   }
 
@@ -482,6 +538,7 @@ export class Multiplexer {
     slot: SessionSlot,
     command: Extract<ProtocolCommand, { operation: "wake" }>,
     abort: AbortController,
+    queuedAt: number,
   ): Promise<WakeResult> {
     let journal: JournalEntry | undefined;
     try {
@@ -492,14 +549,17 @@ export class Multiplexer {
     }
 
     if (journal?.state === "completed") {
+      this.metrics.increment("wake_dedup_terminal_hits");
       this.#releaseReservation(slot, abort);
-      return { result: journal.result, session: snapshot(slot) };
+      return { result: journal.result, session: snapshot(slot, this.#now()) };
     }
     if (journal?.state === "failed") {
+      this.metrics.increment("wake_dedup_terminal_hits");
       this.#releaseReservation(slot, abort);
       throw journalFailure(journal);
     }
     if (journal?.state === "accepted" || journal?.state === "indeterminate") {
+      this.metrics.increment("wake_indeterminate_refusals");
       this.#releaseReservation(slot, abort);
       throw new MultiplexerError(
         "request_indeterminate",
@@ -522,7 +582,7 @@ export class Multiplexer {
       idempotencyKey: command.idempotencyKey,
       queuedTurns: Math.max(0, slot.pendingTurns - 1),
     });
-    const task = slot.turnTail.then(async () => this.#runWake(slot, command, abort));
+    const task = slot.turnTail.then(async () => this.#runWake(slot, command, abort, queuedAt));
     slot.turnTail = task.then(
       () => undefined,
       () => undefined,
@@ -536,6 +596,7 @@ export class Multiplexer {
       throw new MultiplexerError("unsupported_operation", "session adapter does not support steer");
     }
     await slot.adapter.steer(command.payload.message);
+    slot.lastUsedAt = this.#now();
   }
 
   async followUp(command: Extract<ProtocolCommand, { operation: "followUp" }>): Promise<void> {
@@ -544,6 +605,7 @@ export class Multiplexer {
       throw new MultiplexerError("unsupported_operation", "session adapter does not support followUp");
     }
     await slot.adapter.followUp(command.payload.message);
+    slot.lastUsedAt = this.#now();
   }
 
   async abort(command: Extract<ProtocolCommand, { operation: "abort" }>): Promise<boolean> {
@@ -570,6 +632,12 @@ export class Multiplexer {
       this.#emit(slot, "sessionClosed", command.requestId, { retainSession: retainArtifacts });
       this.#sessions.delete(command.sessionId);
       await this.#durability?.closeSession(command.sessionId, retainArtifacts);
+      this.metrics.increment("sessions_closed");
+      this.#logger.write("info", "session_closed", {
+        sessionId: command.sessionId,
+        generation: command.generation,
+        retainArtifacts,
+      });
       return true;
     });
   }
@@ -577,14 +645,16 @@ export class Multiplexer {
   status(): HostSnapshot;
   status(sessionId: string): SessionSnapshot;
   status(sessionId?: string): HostSnapshot | SessionSnapshot {
+    const now = this.#now();
     if (sessionId !== undefined) {
       const slot = this.#sessions.get(sessionId);
       if (slot === undefined) {
         throw new MultiplexerError("session_not_found", "logical session is not open");
       }
-      return snapshot(slot);
+      return snapshot(slot, now);
     }
-    return {
+    const memory = process.memoryUsage();
+    const result: HostSnapshot = {
       hostInstanceId: this.hostInstanceId,
       ready: this.#ready,
       durable: this.#durability !== undefined,
@@ -592,26 +662,107 @@ export class Multiplexer {
       limits: { ...this.limits },
       activeTurns: this.#turns.active,
       queuedTurns: this.#turns.queued,
+      startedAt: new Date(this.#startedAt).toISOString(),
+      uptimeMs: Math.max(0, now - this.#startedAt),
+      memory: {
+        rss: memory.rss,
+        heapUsed: memory.heapUsed,
+        heapTotal: memory.heapTotal,
+        external: memory.external,
+      },
+      metrics: this.metrics.snapshot(),
       sessions: [...this.#sessions.values()]
         .sort((a, b) => a.sessionId.localeCompare(b.sessionId))
-        .map(snapshot),
+        .map((slot) => snapshot(slot, now)),
     };
+    const readiness = safeReadiness(this.#factory);
+    if (readiness !== undefined) result.adapterReadiness = readiness;
+    return result;
   }
 
-  /** Stop admitting open/wake requests. Bounded turn draining lands in PD-008. */
   beginDrain(): void {
     if (this.#draining) return;
     this.#draining = true;
+    this.metrics.increment("drains_started");
+    this.#logger.write("info", "host_draining", { residentSessions: this.#sessions.size });
     for (const slot of this.#sessions.values()) {
       this.#emit(slot, "hostDraining", undefined, {});
     }
   }
 
-  async dispose(): Promise<void> {
+  async drain(timeoutMs = 30_000): Promise<{ timedOut: boolean; abortedTurns: number }> {
+    nonNegativeInteger(timeoutMs, "timeoutMs");
     this.beginDrain();
     const slots = [...this.#sessions.values()];
-    for (const slot of slots) slot.activeAbort?.abort();
-    await Promise.allSettled(slots.map(async (slot) => slot.turnTail));
+    const tails = slots.map((slot) => slot.turnTail);
+    if (slots.every((slot) => slot.pendingTurns === 0)) {
+      this.metrics.increment("drains_completed");
+      return { timedOut: false, abortedTurns: 0 };
+    }
+    if (await settlesWithin(Promise.allSettled(tails), timeoutMs)) {
+      this.metrics.increment("drains_completed");
+      return { timedOut: false, abortedTurns: 0 };
+    }
+
+    let abortedTurns = 0;
+    for (const slot of this.#sessions.values()) {
+      for (const entry of slot.inFlight.values()) {
+        if (!entry.abort.signal.aborted) {
+          entry.abort.abort();
+          abortedTurns += 1;
+        }
+      }
+      if (slot.state === "running") void Promise.resolve(slot.adapter.abort?.()).catch(() => {});
+    }
+    this.metrics.increment("drains_timed_out");
+    this.metrics.increment("drain_aborted_turns", abortedTurns);
+    this.#logger.write("warn", "host_drain_timeout", { timeoutMs, abortedTurns });
+    return { timedOut: true, abortedTurns };
+  }
+
+  async sweepIdleSessions(now = this.#now()): Promise<string[]> {
+    if (this.idleSessionTtlMs === 0) return [];
+    const evicted: string[] = [];
+    for (const slot of [...this.#sessions.values()]) {
+      if (
+        slot.state !== "idle" ||
+        slot.pendingTurns > 0 ||
+        now - slot.lastUsedAt < this.idleSessionTtlMs
+      ) {
+        continue;
+      }
+      await this.#withLifecycle(slot.sessionId, async () => {
+        const current = this.#sessions.get(slot.sessionId);
+        if (
+          current !== slot ||
+          current.state !== "idle" ||
+          current.pendingTurns > 0 ||
+          now - current.lastUsedAt < this.idleSessionTtlMs
+        ) {
+          return;
+        }
+        current.state = "closing";
+        await current.adapter.dispose();
+        this.#sessions.delete(current.sessionId);
+        evicted.push(current.sessionId);
+        this.metrics.increment("sessions_evicted");
+        this.#logger.write("info", "session_evicted", {
+          sessionId: current.sessionId,
+          generation: current.generation,
+          idleForMs: now - current.lastUsedAt,
+        });
+      });
+    }
+    return evicted;
+  }
+
+  async dispose(timeoutMs = 5_000): Promise<void> {
+    await this.drain(timeoutMs);
+    const slots = [...this.#sessions.values()];
+    for (const slot of slots) {
+      for (const entry of slot.inFlight.values()) entry.abort.abort();
+    }
+    await settlesWithin(Promise.allSettled(slots.map(async (slot) => slot.turnTail)), timeoutMs);
     await Promise.allSettled(slots.map(async (slot) => slot.adapter.dispose()));
     this.#sessions.clear();
   }
@@ -620,21 +771,32 @@ export class Multiplexer {
     slot: SessionSlot,
     command: Extract<ProtocolCommand, { operation: "wake" }>,
     abort: AbortController,
+    queuedAt: number,
   ): Promise<WakeResult> {
     if (this.#sessions.get(slot.sessionId) !== slot || slot.generation !== command.generation) {
       throw new MultiplexerError("stale_generation", "session changed before queued turn started");
     }
     let release: (() => void) | undefined;
+    let turnStartedAt = 0;
     let journalState: "queued" | "accepted" | "terminal" = "queued";
     slot.activeAbort = abort;
     slot.activeRequestId = command.requestId;
     try {
       release = await this.#turns.acquire(abort.signal);
+      turnStartedAt = this.#now();
+      this.metrics.observe("queue_wait_ms", turnStartedAt - queuedAt);
       if (this.#durability !== undefined) {
         await this.#durability.markAccepted(slot.sessionId, command.idempotencyKey);
         journalState = "accepted";
       }
       slot.state = "running";
+      slot.lastUsedAt = this.#now();
+      this.metrics.increment("turns_started");
+      this.#logger.write("info", "turn_started", {
+        sessionId: slot.sessionId,
+        generation: slot.generation,
+        requestId: command.requestId,
+      });
       this.#emit(slot, "agentStart", command.requestId, {});
       const request: PromptRequest = {
         requestId: command.requestId,
@@ -658,10 +820,18 @@ export class Multiplexer {
         }
       }
       slot.state = "idle";
+      slot.lastUsedAt = this.#now();
       delete slot.lastErrorCode;
+      this.metrics.increment("turns_completed");
+      this.metrics.observe("turn_duration_ms", this.#now() - turnStartedAt);
+      this.#logger.write("info", "turn_completed", {
+        sessionId: slot.sessionId,
+        generation: slot.generation,
+        requestId: command.requestId,
+      });
       this.#emit(slot, "agentEnd", command.requestId, {});
       this.#emit(slot, "sessionIdle", command.requestId, {});
-      return { result, session: snapshot(slot) };
+      return { result, session: snapshot(slot, this.#now()) };
     } catch (error) {
       const normalized = asMultiplexerError(error, "turn_failed", "logical session turn failed");
       if (
@@ -674,7 +844,17 @@ export class Multiplexer {
           .catch(() => {});
       }
       slot.state = normalized.code === "aborted" ? "idle" : "failed";
+      slot.lastUsedAt = this.#now();
       slot.lastErrorCode = normalized.code;
+      this.metrics.increment(normalized.code === "aborted" ? "turns_aborted" : "turns_failed");
+      if (turnStartedAt > 0) this.metrics.observe("turn_duration_ms", this.#now() - turnStartedAt);
+      this.#logger.write(normalized.code === "aborted" ? "info" : "warn", "turn_failed", {
+        sessionId: slot.sessionId,
+        generation: slot.generation,
+        requestId: command.requestId,
+        errorCode: normalized.code,
+        retryable: normalized.retryable,
+      });
       this.#emit(slot, "requestFailed", command.requestId, {
         error: { code: normalized.code, message: normalized.message, retryable: normalized.retryable },
       });
@@ -806,13 +986,15 @@ function normalizeOpenPolicy(payload: OpenPayload): NormalizedOpenPolicy {
   return policy;
 }
 
-function snapshot(slot: SessionSlot): SessionSnapshot {
+function snapshot(slot: SessionSlot, now: number): SessionSnapshot {
   const result: SessionSnapshot = {
     sessionId: slot.sessionId,
     generation: slot.generation,
     state: slot.state,
     sequence: slot.sequence,
     queuedTurns: Math.max(0, slot.pendingTurns - (slot.state === "running" ? 1 : 0)),
+    lastUsedAt: new Date(slot.lastUsedAt).toISOString(),
+    idleForMs: slot.state === "idle" ? Math.max(0, now - slot.lastUsedAt) : 0,
   };
   if (slot.activeRequestId !== undefined) result.activeRequestId = slot.activeRequestId;
   if (slot.lastErrorCode !== undefined) result.lastErrorCode = slot.lastErrorCode;
@@ -828,6 +1010,38 @@ function canonicalJson(value: unknown): string {
       .join(",")}}`;
   }
   return JSON.stringify(value);
+}
+
+function safeReadiness(factory: SessionFactory): unknown {
+  try {
+    return factory.readiness?.();
+  } catch (error) {
+    return { ready: false, errorCode: errorCode(error) };
+  }
+}
+
+async function settlesWithin(promise: Promise<unknown>, timeoutMs: number): Promise<boolean> {
+  if (timeoutMs === 0) return false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise.then(() => true),
+      new Promise<false>((resolve) => {
+        timer = setTimeout(() => resolve(false), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
+function errorCode(error: unknown): string {
+  if (error instanceof MultiplexerError || error instanceof DurabilityError) return error.code;
+  if (error !== null && typeof error === "object" && "code" in error) {
+    const code = (error as { code?: unknown }).code;
+    if (typeof code === "string") return code;
+  }
+  return error instanceof Error ? error.name : "unknown_error";
 }
 
 function positiveInteger(value: number, field: string): number {

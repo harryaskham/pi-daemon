@@ -50,8 +50,14 @@ resource loaders, and event subscriptions per logical session. The initial
 adapter enforces an empty tool/resource profile; project extensions, skills,
 prompt templates, themes, context files, and built-in tools are not loaded.
 
-The protocol is versioned UTF-8 NDJSON over an owner-only Unix socket. The
-language-neutral [`protocol.schema.json`](protocol.schema.json), checked
+The protocol is versioned UTF-8 NDJSON over an owner-only Unix socket. Host
+status and handshake responses include bounded counters, latency summaries,
+resident-session state, adapter readiness, uptime, and process memory. Service
+logs are structured JSON with prompt/output/credential fields redacted. SIGTERM
+performs a 30-second drain, SIGINT a 5-second drain, and idle SDK sessions are
+evicted after 30 minutes by default (`--idle-session-ttl-ms 0` disables it).
+
+The language-neutral [`protocol.schema.json`](protocol.schema.json), checked
 fixtures under [`fixtures/`](fixtures/), and exported TypeScript protocol types
 are the compatibility contract. See the [protocol design](PLAN.md#6-protocol)
 and, as implementation lands, the published

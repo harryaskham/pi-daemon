@@ -379,12 +379,15 @@ export class ProtocolServer {
           sessionId: command.sessionId,
         });
       }
-      case "drain":
-        this.#multiplexer.beginDrain();
+      case "drain": {
+        const timeoutMs = command.payload.timeoutMs ?? 30_000;
+        const result = await this.#multiplexer.drain(timeoutMs);
         return successResponse(command.requestId, this.#multiplexer.hostInstanceId, {
           draining: true,
-          requestedTimeoutMs: command.payload.timeoutMs,
+          timeoutMs,
+          ...result,
         });
+      }
     }
   }
 

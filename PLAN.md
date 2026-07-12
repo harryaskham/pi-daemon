@@ -399,7 +399,7 @@ section truthful.
   resources, persistent session managers, event mapping.
 - [x] `PD-007` Security controls: roots/socket mode/no-tools policy/redaction and
   adversarial tests.
-- [ ] `PD-008` Observability, metrics/status, structured logs, drain/signals,
+- [x] `PD-008` Observability, metrics/status, structured logs, drain/signals,
   memory/session eviction.
 - [x] `PD-009` Nix flake package/app/check/dev shell and reproducible npm lock.
 - [ ] `PD-010` CI, Dependabot, release workflow, GitHub Pages site.

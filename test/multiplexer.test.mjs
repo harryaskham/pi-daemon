@@ -313,3 +313,42 @@ test("draining rejects admission without hiding existing status", async () => {
     (error) => error instanceof MultiplexerError && error.code === "host_draining",
   );
 });
+
+test("bounded drain aborts active turns after its deadline", async () => {
+  const factory = new ControlledFactory();
+  const mux = new Multiplexer({ factory });
+  await mux.open(openCommand("a"));
+  const wake = mux.wake(wakeCommand("a", "one"));
+  await waitFor(() => factory.adapter("a").calls.length === 1);
+  const result = await mux.drain(1);
+  assert.equal(result.timedOut, true);
+  assert.equal(result.abortedTurns, 1);
+  await assert.rejects(
+    wake,
+    (error) => error instanceof MultiplexerError && error.code === "aborted",
+  );
+  assert.equal(mux.status().metrics.counters.drains_timed_out, 1);
+});
+
+test("idle sweep evicts only expired inactive sessions and records metrics", async () => {
+  let now = 0;
+  const factory = new ControlledFactory();
+  factory.readiness = () => ({ ready: true, availableModels: 3 });
+  const mux = new Multiplexer({
+    factory,
+    now: () => now,
+    idleSessionTtlMs: 100,
+  });
+  await mux.open(openCommand("a"));
+  now = 99;
+  assert.deepEqual(await mux.sweepIdleSessions(), []);
+  now = 100;
+  assert.deepEqual(await mux.sweepIdleSessions(), ["a"]);
+  assert.equal(factory.adapter("a").disposed, 1);
+  const status = mux.status();
+  assert.equal(status.sessions.length, 0);
+  assert.equal(status.metrics.counters.sessions_evicted, 1);
+  assert.deepEqual(status.adapterReadiness, { ready: true, availableModels: 3 });
+  assert.equal(status.uptimeMs, 100);
+  assert.ok(status.memory.rss > 0);
+});
