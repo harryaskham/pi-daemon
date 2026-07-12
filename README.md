@@ -43,6 +43,12 @@ pi-daemon request --socket /run/user/1000/pi-daemon.sock --json '{...}'
 pi-daemon version
 ```
 
+`serve` uses one process-global Pi `AuthStorage` and `ModelRegistry` from the
+configured `--agent-dir` while creating isolated session managers, settings,
+resource loaders, and event subscriptions per logical session. The initial
+adapter enforces an empty tool/resource profile; project extensions, skills,
+prompt templates, themes, context files, and built-in tools are not loaded.
+
 The protocol is versioned UTF-8 NDJSON over an owner-only Unix socket. The
 language-neutral [`protocol.schema.json`](protocol.schema.json), checked
 fixtures under [`fixtures/`](fixtures/), and exported TypeScript protocol types

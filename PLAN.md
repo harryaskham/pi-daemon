@@ -395,7 +395,7 @@ section truthful.
 - [x] `PD-004` Durable manifests and idempotency journal with restart semantics.
 - [x] `PD-005` Unix-socket NDJSON server, bounded framing, client, CLI probe and
   request commands.
-- [ ] `PD-006` Real Pi SDK adapter: shared auth/model registries, locked-down
+- [x] `PD-006` Real Pi SDK adapter: shared auth/model registries, locked-down
   resources, persistent session managers, event mapping.
 - [ ] `PD-007` Security controls: roots/socket mode/no-tools policy/redaction and
   adversarial tests.

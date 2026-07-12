@@ -3,9 +3,12 @@ import { homedir } from "node:os";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
+import { getAgentDir } from "@earendil-works/pi-coding-agent";
+
 import { PiDaemonClient, ProtocolResponseError } from "./client.js";
 import { FileDurabilityStore } from "./durability.js";
-import { Multiplexer, type SessionAdapter, type SessionFactory } from "./multiplexer.js";
+import { Multiplexer, type SessionFactory } from "./multiplexer.js";
+import { PiSessionFactory } from "./pi-adapter.js";
 import { parseCommand } from "./protocol.js";
 import { ProtocolServer } from "./server.js";
 import { PI_DAEMON_VERSION } from "./version.js";
@@ -112,6 +115,7 @@ async function runServe(
     new Set([
       "socket",
       "state-dir",
+      "agent-dir",
       "max-sessions",
       "max-concurrent-turns",
       "max-session-queue-depth",
@@ -121,9 +125,15 @@ async function runServe(
   const stateDir = resolve(
     options.get("state-dir") ?? `${homedir()}/.local/state/pi-daemon`,
   );
+  const agentDir = resolve(options.get("agent-dir") ?? getAgentDir());
   const durability = new FileDurabilityStore({ stateDir });
   const multiplexer = new Multiplexer({
-    factory: dependencies.factory ?? new UnavailableSessionFactory(),
+    factory:
+      dependencies.factory ??
+      new PiSessionFactory({
+        stateDir,
+        agentDir,
+      }),
     durability,
     limits: {
       ...(options.has("max-sessions")
@@ -145,6 +155,7 @@ async function runServe(
       event: "pi_daemon_ready",
       socketPath,
       stateDir,
+      agentDir,
       hostInstanceId: multiplexer.hostInstanceId,
       restoredSessions: recovery.opened.length,
       replayedRequests: recovery.replayed.length,
@@ -170,14 +181,6 @@ async function runServe(
     await shutdown();
   }
   return 0;
-}
-
-class UnavailableSessionFactory implements SessionFactory {
-  async open(): Promise<SessionAdapter> {
-    throw new Error(
-      "real Pi SDK session adapter is not available in this build; handshake/status remain available",
-    );
-  }
 }
 
 class CliUsageError extends Error {
@@ -238,7 +241,7 @@ function helpText(): string {
   return `Pi Daemon ${PI_DAEMON_VERSION}
 
 Usage:
-  pi-daemon serve --socket PATH [--state-dir PATH] [limit options]
+  pi-daemon serve --socket PATH [--state-dir PATH] [--agent-dir PATH] [limit options]
   pi-daemon probe --socket PATH
   pi-daemon request --socket PATH --json REQUEST
   pi-daemon version
