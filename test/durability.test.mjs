@@ -116,6 +116,26 @@ test("journal transitions are append-only and terminal duplicates are cached", a
   );
 });
 
+test("journal byte limit bounds prompts and retained terminal results", async () => {
+  const stateDir = await temporaryState();
+  const store = new FileDurabilityStore({ stateDir, maxJournalRecordBytes: 2_048 });
+  await store.recover();
+  const oversizedPrompt = wakeCommand("large-prompt", "x".repeat(4_096));
+  await assert.rejects(
+    store.beginRequest(oversizedPrompt),
+    (error) => error instanceof DurabilityError && error.code === "journal_record_too_large",
+  );
+
+  const command = wakeCommand("large-result");
+  await store.beginRequest(command);
+  await store.markAccepted(command.sessionId, command.idempotencyKey);
+  await assert.rejects(
+    store.markCompleted(command.sessionId, command.idempotencyKey, { text: "x".repeat(4_096) }),
+    (error) => error instanceof DurabilityError && error.code === "journal_record_too_large",
+  );
+  assert.equal((await store.beginRequest(command)).state, "accepted");
+});
+
 test("recovery leaves queued requests replayable and makes accepted requests indeterminate", async () => {
   const stateDir = await temporaryState();
   const first = new FileDurabilityStore({ stateDir });

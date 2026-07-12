@@ -76,11 +76,13 @@ export interface FileDurabilityOptions {
   stateDir: string;
   maxTerminalEntriesPerSession?: number;
   terminalRetentionMs?: number;
+  maxJournalRecordBytes?: number;
   now?: () => Date;
 }
 
 const DEFAULT_MAX_TERMINAL_ENTRIES = 256;
 const DEFAULT_TERMINAL_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+const DEFAULT_MAX_JOURNAL_RECORD_BYTES = 1024 * 1024;
 
 /**
  * Owner-local append-only request journal plus atomic logical-session manifests.
@@ -95,6 +97,7 @@ export class FileDurabilityStore implements DurabilityStore {
   readonly #journalDir: string;
   readonly #maxTerminalEntries: number;
   readonly #terminalRetentionMs: number;
+  readonly #maxJournalRecordBytes: number;
   readonly #now: () => Date;
   readonly #entries = new Map<string, Map<string, JournalEntry>>();
   readonly #loadedSessions = new Set<string>();
@@ -113,6 +116,10 @@ export class FileDurabilityStore implements DurabilityStore {
     this.#terminalRetentionMs = nonNegativeInteger(
       options.terminalRetentionMs ?? DEFAULT_TERMINAL_RETENTION_MS,
       "terminalRetentionMs",
+    );
+    this.#maxJournalRecordBytes = positiveInteger(
+      options.maxJournalRecordBytes ?? DEFAULT_MAX_JOURNAL_RECORD_BYTES,
+      "maxJournalRecordBytes",
     );
     this.#now = options.now ?? (() => new Date());
   }
@@ -412,6 +419,13 @@ export class FileDurabilityStore implements DurabilityStore {
       });
     }
     await validatePrivateFileIfExists(path, "request journal");
+    const recordBytes = Buffer.byteLength(line, "utf8");
+    if (recordBytes > this.#maxJournalRecordBytes) {
+      throw new DurabilityError("journal_record_too_large", "request journal record exceeds byte limit", {
+        maxJournalRecordBytes: this.#maxJournalRecordBytes,
+        recordBytes,
+      });
+    }
     const handle = await open(path, "a", 0o600);
     try {
       await handle.writeFile(line, "utf8");

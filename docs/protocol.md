@@ -69,5 +69,8 @@ record.
 
 The server bounds connections, in-flight commands, input lines, and outbound
 bytes. The multiplexer bounds resident sessions, global concurrent turns, and
-per-session queued turns. Slow readers are disconnected rather than allowed to
-grow process memory without limit.
+per-session queued turns. Each durable journal record is capped at 1 MiB, so an
+oversized prompt is rejected before acceptance and an oversized terminal result
+leaves the accepted request safely indeterminate instead of growing retained
+state without limit. Slow readers are disconnected rather than allowed to grow
+process memory without limit.
