@@ -24,6 +24,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/configure-pages@v5
+        with:
+          enablement: true
       - name: Stage generated protocol contract
         run: cp protocol.schema.json docs/protocol.schema.json
       - uses: actions/jekyll-build-pages@v1
