@@ -401,7 +401,7 @@ section truthful.
   adversarial tests.
 - [ ] `PD-008` Observability, metrics/status, structured logs, drain/signals,
   memory/session eviction.
-- [ ] `PD-009` Nix flake package/app/check/dev shell and reproducible npm lock.
+- [x] `PD-009` Nix flake package/app/check/dev shell and reproducible npm lock.
 - [ ] `PD-010` CI, Dependabot, release workflow, GitHub Pages site.
 - [ ] `PD-011` Optional real-SDK concurrent-turn/zero-child-process harness and
   acceptance report.

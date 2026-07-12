@@ -87,15 +87,18 @@ source language; built JavaScript and declarations are emitted under `dist/`.
 
 ## Nix consumer contract
 
-The flake will expose:
+The checked-in flake exposes `packages.default`, `packages.pi-daemon`,
+`apps.default`, `checks.package`, and `devShells.default` on Linux and macOS:
 
 ```nix
 inputs.pi-daemon.url = "github:harryaskham/pi-daemon";
+inputs.pi-daemon.inputs.nixpkgs.follows = "nixpkgs";
 ```
 
-with `packages.default`, `packages.pi-daemon`, and `apps.default`. A Cacophony
-node can therefore consume a reproducible Pi Daemon package as a normal flake
-dependency without copying service source into Cacophony.
+The standalone lock follows the fleet's warm nixpkgs baseline; consumers should
+use `nixpkgs.follows` so Pi Daemon shares their own evaluated package set. A
+Cacophony node can therefore consume the reproducible package without copying
+service source into Cacophony.
 
 ## Documentation
 
