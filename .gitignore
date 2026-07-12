@@ -1,0 +1,10 @@
+node_modules/
+dist/
+result
+result-*
+.npm/
+.DS_Store
+*.log
+*.tgz
+coverage/
+.pi-daemon-state/

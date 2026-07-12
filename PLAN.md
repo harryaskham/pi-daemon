@@ -387,7 +387,7 @@ process appears per wake.
 Use these lines as the local board. Mark each complete in commits and keep this
 section truthful.
 
-- [ ] `PD-001` Repository standard: AGENTS, license, contributing, security,
+- [x] `PD-001` Repository standard: AGENTS, license, contributing, security,
   editor/git hygiene, package metadata, strict TypeScript config.
 - [ ] `PD-002` Versioned protocol types, validation, JSON schema, fixtures.
 - [ ] `PD-003` Core multiplexer: session factory abstraction, registry,

@@ -1,0 +1,7 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://harryaskham.github.io/pi-daemon/protocol.schema.json",
+  "title": "Pi Daemon protocol placeholder",
+  "description": "Replaced by PD-002 with the complete versioned command/event schema.",
+  "type": "object"
+}

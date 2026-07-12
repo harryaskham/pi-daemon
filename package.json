@@ -1,0 +1,62 @@
+{
+  "name": "@harryaskham/pi-daemon",
+  "version": "0.1.0",
+  "description": "General-purpose daemon that multiplexes on-demand Pi SDK agent sessions in one Node process",
+  "type": "module",
+  "license": "MIT",
+  "private": false,
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "bin": {
+    "pi-daemon": "dist/cli.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./protocol": {
+      "types": "./dist/protocol.d.ts",
+      "import": "./dist/protocol.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "clean": "node scripts/clean.mjs",
+    "build": "npm run clean && tsc -p tsconfig.json && node scripts/postbuild.mjs",
+    "check": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run build && node --test test/*.test.mjs",
+    "test:unit": "node --test test/*.test.mjs",
+    "test:live": "npm run build && node scripts/live-sdk-smoke.mjs",
+    "pack:check": "npm pack --dry-run"
+  },
+  "dependencies": {
+    "@earendil-works/pi-coding-agent": "0.80.3"
+  },
+  "devDependencies": {
+    "@types/node": "24.10.1",
+    "typescript": "5.9.3"
+  },
+  "keywords": [
+    "pi",
+    "agent",
+    "multiplexer",
+    "daemon",
+    "sdk"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/harryaskham/pi-daemon.git"
+  },
+  "bugs": {
+    "url": "https://github.com/harryaskham/pi-daemon/issues"
+  },
+  "homepage": "https://harryaskham.github.io/pi-daemon/"
+}
