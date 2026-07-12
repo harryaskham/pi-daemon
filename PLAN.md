@@ -397,7 +397,7 @@ section truthful.
   request commands.
 - [x] `PD-006` Real Pi SDK adapter: shared auth/model registries, locked-down
   resources, persistent session managers, event mapping.
-- [ ] `PD-007` Security controls: roots/socket mode/no-tools policy/redaction and
+- [x] `PD-007` Security controls: roots/socket mode/no-tools policy/redaction and
   adversarial tests.
 - [ ] `PD-008` Observability, metrics/status, structured logs, drain/signals,
   memory/session eviction.

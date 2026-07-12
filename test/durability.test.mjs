@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, stat } from "node:fs/promises";
+import { chmod, mkdtemp, readFile, symlink, writeFile, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -41,6 +41,29 @@ const wakeCommand = (idempotencyKey, prompt = `prompt-${idempotencyKey}`, sessio
   generation: 1,
   idempotencyKey,
   payload: { prompt },
+});
+
+test("state storage refuses permissive directories and symlinked files", async () => {
+  const permissive = await temporaryState();
+  await chmod(permissive, 0o755);
+  await assert.rejects(
+    new FileDurabilityStore({ stateDir: permissive }).recover(),
+    (error) => error instanceof DurabilityError && error.code === "insecure_state_path",
+  );
+
+  const stateDir = await temporaryState();
+  const store = new FileDurabilityStore({ stateDir });
+  await store.recover();
+  const outside = join(await temporaryState(), "outside.jsonl");
+  await writeFile(outside, "{}\n", { mode: 0o600 });
+  await symlink(
+    outside,
+    join(stateDir, "journal", `${encodedSessionId("agent/a")}.jsonl`),
+  );
+  await assert.rejects(
+    store.beginRequest(wakeCommand("symlink")),
+    (error) => error instanceof DurabilityError && error.code === "insecure_state_path",
+  );
 });
 
 test("manifests use traversal-safe paths and owner-only atomic files", async () => {

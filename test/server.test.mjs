@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { lstat, mkdtemp } from "node:fs/promises";
+import { chmod, lstat, mkdtemp } from "node:fs/promises";
 import { createConnection } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -147,6 +147,17 @@ test("malformed and oversized NDJSON receive an error then close", async (t) => 
     assert.equal(response.ok, false);
     assert.ok(["invalid_json", "line_too_large"].includes(response.error.code));
   }
+});
+
+test("server refuses a group/world-writable socket directory", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "pi-daemon-insecure-socket-"));
+  await chmod(directory, 0o777);
+  const multiplexer = new Multiplexer({ factory: new EventFactory() });
+  const server = new ProtocolServer({
+    socketPath: join(directory, "daemon.sock"),
+    multiplexer,
+  });
+  await assert.rejects(server.start(), /must not be group\/world writable/);
 });
 
 test("active socket path is never replaced by a second server", async (t) => {

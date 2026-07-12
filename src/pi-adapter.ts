@@ -1,4 +1,5 @@
-import { mkdir, realpath } from "node:fs/promises";
+import { lstatSync } from "node:fs";
+import { realpath, stat } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve } from "node:path";
 
 import {
@@ -16,7 +17,7 @@ import {
   type ResourceLoader,
 } from "@earendil-works/pi-coding-agent";
 
-import { encodedSessionId } from "./durability.js";
+import { encodedSessionId, ensurePrivateDirectory } from "./durability.js";
 import type {
   AdapterEvent,
   PromptRequest,
@@ -28,6 +29,7 @@ import type {
 export interface PiSessionFactoryOptions {
   stateDir: string;
   agentDir?: string;
+  allowedRoots: string[];
   authStorage?: AuthStorage;
   modelRegistry?: ModelRegistry;
   createSession?: (options: CreateAgentSessionOptions) => Promise<CreateAgentSessionResult>;
@@ -50,6 +52,7 @@ export class PiSessionFactory implements SessionFactory {
   readonly authStorage: AuthStorage;
   readonly modelRegistry: ModelRegistry;
   readonly #stateDir: string;
+  readonly #allowedRoots: string[];
   readonly #createSession: (
     options: CreateAgentSessionOptions,
   ) => Promise<CreateAgentSessionResult>;
@@ -57,8 +60,14 @@ export class PiSessionFactory implements SessionFactory {
   constructor(options: PiSessionFactoryOptions) {
     if (options.stateDir.length === 0) throw new Error("stateDir must not be empty");
     this.#stateDir = resolve(options.stateDir);
+    if (options.allowedRoots.length === 0) {
+      throw new Error("at least one allowedRoots entry is required");
+    }
+    this.#allowedRoots = options.allowedRoots.map((root) => resolve(root));
     this.agentDir = resolve(options.agentDir ?? getAgentDir());
-    this.authStorage = options.authStorage ?? AuthStorage.create(join(this.agentDir, "auth.json"));
+    const authPath = join(this.agentDir, "auth.json");
+    if (options.authStorage === undefined) validatePrivateAuthFile(authPath);
+    this.authStorage = options.authStorage ?? AuthStorage.create(authPath);
     this.modelRegistry =
       options.modelRegistry ??
       ModelRegistry.create(this.authStorage, join(this.agentDir, "models.json"));
@@ -78,7 +87,29 @@ export class PiSessionFactory implements SessionFactory {
   }
 
   async open(request: SessionOpenRequest): Promise<SessionAdapter> {
-    const cwd = await realpath(request.cwd);
+    const [cwd, stateRoot, agentRoot, ...allowedRoots] = await Promise.all([
+      realpath(request.cwd),
+      realpath(this.#stateDir),
+      realpath(this.agentDir),
+      ...this.#allowedRoots.map(async (root) => realpath(root)),
+    ]);
+    if (!(await stat(cwd)).isDirectory()) {
+      throw new PiAdapterError("cwd_not_directory", "logical session cwd must be a directory");
+    }
+    if (!allowedRoots.some((root) => isWithin(root, cwd))) {
+      throw new PiAdapterError("cwd_not_allowed", "logical session cwd is outside allowed roots");
+    }
+    if (
+      isWithin(cwd, stateRoot) ||
+      isWithin(stateRoot, cwd) ||
+      isWithin(cwd, agentRoot) ||
+      isWithin(agentRoot, cwd)
+    ) {
+      throw new PiAdapterError(
+        "authority_root_overlap",
+        "logical session cwd must not overlap daemon state or Pi credential roots",
+      );
+    }
     if (request.agentDir !== undefined && resolve(request.agentDir) !== this.agentDir) {
       throw new PiAdapterError(
         "agent_dir_mismatch",
@@ -86,13 +117,13 @@ export class PiSessionFactory implements SessionFactory {
       );
     }
 
-    const sessionDir = join(
-      this.#stateDir,
-      "sessions",
-      encodedSessionId(request.sessionId),
-      "pi",
-    );
-    await mkdir(sessionDir, { recursive: true, mode: 0o700 });
+    const sessionsRoot = join(this.#stateDir, "sessions");
+    const logicalSessionRoot = join(sessionsRoot, encodedSessionId(request.sessionId));
+    const sessionDir = join(logicalSessionRoot, "pi");
+    await ensurePrivateDirectory(this.#stateDir, "state directory");
+    await ensurePrivateDirectory(sessionsRoot, "sessions directory");
+    await ensurePrivateDirectory(logicalSessionRoot, "logical session directory");
+    await ensurePrivateDirectory(sessionDir, "Pi session directory");
     const sessionManager = await createSessionManager(request, cwd, sessionDir);
     const settingsManager = SettingsManager.inMemory();
     const resourceLoader = new LockedResourceLoader(request.resources?.systemPrompt);
@@ -307,9 +338,33 @@ async function createSessionManager(
   }
 }
 
+function validatePrivateAuthFile(path: string): void {
+  let info;
+  try {
+    info = lstatSync(path);
+  } catch (error) {
+    if (isNodeError(error) && error.code === "ENOENT") return;
+    throw error;
+  }
+  if (info.isSymbolicLink() || !info.isFile()) {
+    throw new PiAdapterError("insecure_auth_path", "Pi auth storage must be a regular file");
+  }
+  const getuid = process.getuid;
+  if (getuid !== undefined && info.uid !== getuid()) {
+    throw new PiAdapterError("insecure_auth_path", "Pi auth storage must be owned by current user");
+  }
+  if ((info.mode & 0o077) !== 0) {
+    throw new PiAdapterError("insecure_auth_path", "Pi auth storage must be owner-only");
+  }
+}
+
 function isWithin(root: string, path: string): boolean {
   const child = relative(resolve(root), resolve(path));
   return child === "" || (!child.startsWith("..") && !isAbsolute(child));
+}
+
+function isNodeError(error: unknown): error is NodeJS.ErrnoException {
+  return error instanceof Error && "code" in error;
 }
 
 function mapPiEvent(event: AgentSessionEvent): AdapterEvent | undefined {

@@ -36,7 +36,8 @@ turns.
 
 ```console
 pi-daemon serve --socket /run/user/1000/pi-daemon.sock \
-  --state-dir ~/.local/state/pi-daemon
+  --state-dir ~/.local/state/pi-daemon \
+  --allow-root ~/work
 
 pi-daemon probe --socket /run/user/1000/pi-daemon.sock
 pi-daemon request --socket /run/user/1000/pi-daemon.sock --json '{...}'

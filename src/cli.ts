@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { realpath } from "node:fs/promises";
 import { homedir } from "node:os";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -116,6 +117,7 @@ async function runServe(
       "socket",
       "state-dir",
       "agent-dir",
+      "allow-root",
       "max-sessions",
       "max-concurrent-turns",
       "max-session-queue-depth",
@@ -126,6 +128,7 @@ async function runServe(
     options.get("state-dir") ?? `${homedir()}/.local/state/pi-daemon`,
   );
   const agentDir = resolve(options.get("agent-dir") ?? getAgentDir());
+  const allowedRoot = await realpath(resolve(requiredOption(options, "allow-root")));
   const durability = new FileDurabilityStore({ stateDir });
   const multiplexer = new Multiplexer({
     factory:
@@ -133,6 +136,7 @@ async function runServe(
       new PiSessionFactory({
         stateDir,
         agentDir,
+        allowedRoots: [allowedRoot],
       }),
     durability,
     limits: {
@@ -156,6 +160,7 @@ async function runServe(
       socketPath,
       stateDir,
       agentDir,
+      allowedRoot,
       hostInstanceId: multiplexer.hostInstanceId,
       restoredSessions: recovery.opened.length,
       replayedRequests: recovery.replayed.length,
@@ -241,7 +246,7 @@ function helpText(): string {
   return `Pi Daemon ${PI_DAEMON_VERSION}
 
 Usage:
-  pi-daemon serve --socket PATH [--state-dir PATH] [--agent-dir PATH] [limit options]
+  pi-daemon serve --socket PATH --allow-root PATH [--state-dir PATH] [--agent-dir PATH] [limit options]
   pi-daemon probe --socket PATH
   pi-daemon request --socket PATH --json REQUEST
   pi-daemon version

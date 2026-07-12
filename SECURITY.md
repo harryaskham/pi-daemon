@@ -27,5 +27,12 @@ The initial release:
 - does not automatically replay an accepted request whose crash outcome is
   indeterminate.
 
+`serve` requires an explicit canonical `--allow-root`; a logical cwd must be
+under that root and must not overlap the daemon state or Pi credential roots.
+The socket directory, socket, state directories, manifests, and journals are
+owner-only, real paths; permissive directories and symlinked state files are
+refused rather than silently followed. Session files opened by path must stay
+inside that logical session's private state directory.
+
 A client needing arbitrary code execution or unreviewed extensions must use a
 separate process/security domain.

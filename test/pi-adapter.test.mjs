@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
-import { mkdtemp } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
 import { AuthStorage, ModelRegistry } from "@earendil-works/pi-coding-agent";
 
-import { PiSessionAdapter, PiSessionFactory } from "../dist/pi-adapter.js";
+import { PiAdapterError, PiSessionAdapter, PiSessionFactory } from "../dist/pi-adapter.js";
 
 const temporaryDirectory = () => mkdtemp(join(tmpdir(), "pi-daemon-adapter-"));
 
@@ -117,6 +117,7 @@ test("factory shares auth/models while isolating session, settings, and locked r
   const factory = new PiSessionFactory({
     stateDir,
     agentDir,
+    allowedRoots: [cwd],
     authStorage,
     modelRegistry,
     async createSession(options) {
@@ -145,6 +146,10 @@ test("factory shares auth/models while isolating session, settings, and locked r
   assert.deepEqual(captures[0].resourceLoader.getAgentsFiles(), { agentsFiles: [] });
   assert.equal(captures[0].resourceLoader.getSystemPrompt(), "Reply tersely.");
   assert.deepEqual(captures[0].resourceLoader.getAppendSystemPrompt(), []);
+  assert.throws(
+    () => captures[0].resourceLoader.extendResources({ skillPaths: [{}] }),
+    (error) => error instanceof PiAdapterError && error.code === "resource_extension_refused",
+  );
 
   first.dispose();
   second.dispose();
@@ -193,6 +198,61 @@ test("adapter maps Pi events, prompt result, queue controls, abort, and prefligh
   adapter.dispose();
 });
 
+test("factory refuses permissive default auth storage", async () => {
+  const stateDir = await temporaryDirectory();
+  const agentDir = await temporaryDirectory();
+  const cwd = await temporaryDirectory();
+  const authPath = join(agentDir, "auth.json");
+  await writeFile(authPath, "{}\n");
+  await chmod(authPath, 0o644);
+  assert.throws(
+    () => new PiSessionFactory({ stateDir, agentDir, allowedRoots: [cwd] }),
+    (error) => error instanceof PiAdapterError && error.code === "insecure_auth_path",
+  );
+});
+
+test("factory refuses cwd authority overlap, out-of-root cwd, and external session paths", async () => {
+  const allowedRoot = await temporaryDirectory();
+  const outsideCwd = await temporaryDirectory();
+  const agentDir = await temporaryDirectory();
+  const { authStorage, modelRegistry, model } = modelHarness();
+
+  const stateDir = join(allowedRoot, "state");
+  await mkdir(stateDir, { mode: 0o700 });
+  const overlapping = new PiSessionFactory({
+    stateDir,
+    agentDir,
+    allowedRoots: [allowedRoot],
+    authStorage,
+    modelRegistry,
+  });
+  await assert.rejects(
+    overlapping.open(openRequest(allowedRoot, model)),
+    (error) => error instanceof PiAdapterError && error.code === "authority_root_overlap",
+  );
+  await assert.rejects(
+    overlapping.open(openRequest(outsideCwd, model)),
+    (error) => error instanceof PiAdapterError && error.code === "cwd_not_allowed",
+  );
+
+  const safeState = await temporaryDirectory();
+  const factory = new PiSessionFactory({
+    stateDir: safeState,
+    agentDir,
+    allowedRoots: [allowedRoot],
+    authStorage,
+    modelRegistry,
+  });
+  const outsideSession = join(outsideCwd, "session.jsonl");
+  await writeFile(outsideSession, "{}\n");
+  const request = openRequest(allowedRoot, model);
+  request.session = { mode: "open", path: outsideSession };
+  await assert.rejects(
+    factory.open(request),
+    (error) => error instanceof PiAdapterError && error.code === "session_path_outside_state",
+  );
+});
+
 test("real Pi SDK opens an isolated no-tools in-memory session without a model turn", async () => {
   const stateDir = await temporaryDirectory();
   const agentDir = await temporaryDirectory();
@@ -201,6 +261,7 @@ test("real Pi SDK opens an isolated no-tools in-memory session without a model t
   const factory = new PiSessionFactory({
     stateDir,
     agentDir,
+    allowedRoots: [cwd],
     authStorage,
     modelRegistry,
   });

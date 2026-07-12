@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import {
   chmod,
+  lstat,
   mkdir,
   open,
   readFile,
@@ -155,6 +156,7 @@ export class FileDurabilityStore implements DurabilityStore {
   async saveManifest(command: DurableOpenCommand): Promise<SessionManifest> {
     await this.#initialize();
     return this.#serialize(command.sessionId, async () => {
+      await ensurePrivateDirectory(this.#sessionDir(command.sessionId), "logical session directory");
       const path = this.#manifestPath(command.sessionId);
       const previous = await readJsonIfExists<SessionManifest>(path);
       if (previous !== undefined) validateManifest(previous, path);
@@ -334,7 +336,9 @@ export class FileDurabilityStore implements DurabilityStore {
   async #loadManifests(): Promise<SessionManifest[]> {
     const manifests: SessionManifest[] = [];
     for (const name of (await readdir(this.#sessionsDir)).sort()) {
-      const path = join(this.#sessionsDir, name, "manifest.json");
+      const sessionDirectory = join(this.#sessionsDir, name);
+      await ensurePrivateDirectory(sessionDirectory, "logical session directory");
+      const path = join(sessionDirectory, "manifest.json");
       const value = await readJsonIfExists<unknown>(path);
       if (value === undefined) continue;
       validateManifest(value, path);
@@ -357,6 +361,7 @@ export class FileDurabilityStore implements DurabilityStore {
   async #loadJournalFile(path: string, expectedSessionId?: string): Promise<void> {
     let content: string;
     try {
+      await validatePrivateFileIfExists(path, "request journal");
       content = await readFile(path, "utf8");
     } catch (error) {
       if (isNodeError(error) && error.code === "ENOENT") return;
@@ -406,6 +411,7 @@ export class FileDurabilityStore implements DurabilityStore {
         cause: error instanceof Error ? error.message : "unknown error",
       });
     }
+    await validatePrivateFileIfExists(path, "request journal");
     const handle = await open(path, "a", 0o600);
     try {
       await handle.writeFile(line, "utf8");
@@ -418,12 +424,9 @@ export class FileDurabilityStore implements DurabilityStore {
 
   async #initialize(): Promise<void> {
     if (this.#initialized) return;
-    await mkdir(this.stateDir, { recursive: true, mode: 0o700 });
-    await mkdir(this.#sessionsDir, { recursive: true, mode: 0o700 });
-    await mkdir(this.#journalDir, { recursive: true, mode: 0o700 });
-    await chmod(this.stateDir, 0o700);
-    await chmod(this.#sessionsDir, 0o700);
-    await chmod(this.#journalDir, 0o700);
+    await ensurePrivateDirectory(this.stateDir, "state directory");
+    await ensurePrivateDirectory(this.#sessionsDir, "sessions directory");
+    await ensurePrivateDirectory(this.#journalDir, "journal directory");
     this.#initialized = true;
   }
 
@@ -562,8 +565,61 @@ function corrupt(message: string, path: string, line?: number): DurabilityError 
   });
 }
 
+export async function ensurePrivateDirectory(path: string, label: string): Promise<void> {
+  try {
+    await mkdir(path, { recursive: true, mode: 0o700 });
+    const info = await lstat(path);
+    if (info.isSymbolicLink() || !info.isDirectory()) {
+      throw new DurabilityError("insecure_state_path", `${label} must be a real directory`, {
+        path,
+      });
+    }
+    const getuid = process.getuid;
+    if (getuid !== undefined && info.uid !== getuid()) {
+      throw new DurabilityError("insecure_state_path", `${label} must be owned by current user`, {
+        path,
+      });
+    }
+    if ((info.mode & 0o077) !== 0) {
+      throw new DurabilityError("insecure_state_path", `${label} must be owner-only`, {
+        path,
+        mode: info.mode & 0o777,
+      });
+    }
+  } catch (error) {
+    if (error instanceof DurabilityError) throw error;
+    throw error;
+  }
+}
+
+async function validatePrivateFileIfExists(path: string, label: string): Promise<void> {
+  let info;
+  try {
+    info = await lstat(path);
+  } catch (error) {
+    if (isNodeError(error) && error.code === "ENOENT") return;
+    throw error;
+  }
+  if (info.isSymbolicLink() || !info.isFile()) {
+    throw new DurabilityError("insecure_state_path", `${label} must be a regular file`, { path });
+  }
+  const getuid = process.getuid;
+  if (getuid !== undefined && info.uid !== getuid()) {
+    throw new DurabilityError("insecure_state_path", `${label} must be owned by current user`, {
+      path,
+    });
+  }
+  if ((info.mode & 0o077) !== 0) {
+    throw new DurabilityError("insecure_state_path", `${label} must be owner-only`, {
+      path,
+      mode: info.mode & 0o777,
+    });
+  }
+}
+
 async function readJsonIfExists<T>(path: string): Promise<T | undefined> {
   try {
+    await validatePrivateFileIfExists(path, "state file");
     return JSON.parse(await readFile(path, "utf8")) as T;
   } catch (error) {
     if (isNodeError(error) && error.code === "ENOENT") return undefined;

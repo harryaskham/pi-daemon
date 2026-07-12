@@ -172,7 +172,9 @@ export class ProtocolServer {
 
   async start(): Promise<void> {
     if (this.#started) throw new Error("protocol server is already started");
-    await mkdir(dirname(this.socketPath), { recursive: true, mode: 0o700 });
+    const socketDirectory = dirname(this.socketPath);
+    await mkdir(socketDirectory, { recursive: true, mode: 0o700 });
+    await validatePrivateDirectory(socketDirectory, "socket directory");
     await prepareSocketPath(this.socketPath);
     await new Promise<void>((resolve, reject) => {
       const onError = (error: Error): void => {
@@ -461,6 +463,20 @@ function extractRequestId(value: unknown): string | undefined {
 
 function fallbackRequestId(requestId: string | undefined): string {
   return requestId ?? `invalid-${randomUUID()}`;
+}
+
+async function validatePrivateDirectory(path: string, label: string): Promise<void> {
+  const info = await lstat(path);
+  if (info.isSymbolicLink() || !info.isDirectory()) {
+    throw new Error(`${label} must be a real directory: ${path}`);
+  }
+  const getuid = process.getuid;
+  if (getuid !== undefined && info.uid !== getuid()) {
+    throw new Error(`${label} must be owned by the current user: ${path}`);
+  }
+  if ((info.mode & 0o022) !== 0) {
+    throw new Error(`${label} must not be group/world writable: ${path}`);
+  }
 }
 
 async function prepareSocketPath(path: string): Promise<void> {
