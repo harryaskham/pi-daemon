@@ -118,7 +118,9 @@ service source into Cacophony.
 - [`PLAN.md`](PLAN.md) — architecture, protocol, rollout, and provisional beads
 - [`SECURITY.md`](SECURITY.md) — trust boundary and vulnerability reporting
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — development workflow
+- [`CHANGELOG.md`](CHANGELOG.md) — release history
 - [`docs/acceptance.md`](docs/acceptance.md) — live multiplex/zero-child-process proof
+- [`docs/release.md`](docs/release.md) — release and rollback checklist
 - `docs/` — published protocol, operations, security, and integration guides
 
 ## License
