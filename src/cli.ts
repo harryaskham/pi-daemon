@@ -71,27 +71,47 @@ export async function runCli(
       );
       return error.retryable ? 75 : 1;
     }
-    io.stderr(`${error instanceof Error ? error.message : "unknown error"}\n`);
-    if (error instanceof CliUsageError) io.stderr("Run 'pi-daemon help' for usage.\n");
-    return error instanceof CliUsageError ? 2 : 1;
+    if (error instanceof CliUsageError) {
+      io.stderr(`${error.message}\nRun 'pi-daemon help' for usage.\n`);
+      return 2;
+    }
+    const errorCode = safeCliErrorCode(error);
+    const safeMessage = safeCliErrorMessage(error, errorCode);
+    io.stderr(
+      `${JSON.stringify({
+        timestamp: new Date().toISOString(),
+        level: "error",
+        event: "pi_daemon_fatal",
+        errorCode,
+        message: safeMessage,
+      })}\n`,
+    );
+    return 1;
   }
 }
 
 async function runProbe(args: string[], io: CliIo): Promise<number> {
-  const options = parseOptions(args, new Set(["socket"]));
+  const options = parseOptions(args, new Set(["socket", "timeout-ms"]));
   const socketPath = requiredOption(options, "socket");
-  const client = await PiDaemonClient.connect({ socketPath });
+  const timeoutMs = options.has("timeout-ms")
+    ? integerOption(options, "timeout-ms", 1)
+    : 5_000;
+  const client = await PiDaemonClient.connect({
+    socketPath,
+    connectTimeoutMs: timeoutMs,
+    requestTimeoutMs: timeoutMs,
+  });
   try {
     const response = await client.handshake(`probe-${process.pid}`);
     io.stdout(`${JSON.stringify(response.data, null, 2)}\n`);
-    return 0;
+    return probeDataReady(response.data) ? 0 : 75;
   } finally {
     client.close();
   }
 }
 
 async function runRequest(args: string[], io: CliIo): Promise<number> {
-  const options = parseOptions(args, new Set(["socket", "json"]));
+  const options = parseOptions(args, new Set(["socket", "json", "timeout-ms"]));
   const socketPath = requiredOption(options, "socket");
   const raw = requiredOption(options, "json");
   let value: unknown;
@@ -101,7 +121,14 @@ async function runRequest(args: string[], io: CliIo): Promise<number> {
     throw new CliUsageError("--json must contain one valid JSON command object");
   }
   const command = parseCommand(value);
-  const client = await PiDaemonClient.connect({ socketPath });
+  const timeoutMs = options.has("timeout-ms")
+    ? integerOption(options, "timeout-ms", 1)
+    : 30_000;
+  const client = await PiDaemonClient.connect({
+    socketPath,
+    connectTimeoutMs: Math.min(timeoutMs, 5_000),
+    requestTimeoutMs: timeoutMs,
+  });
   try {
     const response = await client.request(command);
     io.stdout(`${JSON.stringify(response, null, 2)}\n`);
@@ -127,6 +154,8 @@ async function runServe(
       "max-concurrent-turns",
       "max-session-queue-depth",
       "idle-session-ttl-ms",
+      "recovery-open-timeout-ms",
+      "recovery-total-timeout-ms",
       "max-connections",
       "max-in-flight-requests-per-connection",
       "max-line-bytes",
@@ -186,7 +215,27 @@ async function runServe(
         : {}),
     },
   });
-  const recovery = await multiplexer.recover();
+  const recovery = await multiplexer.recover({
+    queuedReplay: "background",
+    ...(options.has("recovery-open-timeout-ms")
+      ? {
+          openTimeoutMs: integerOption(
+            options,
+            "recovery-open-timeout-ms",
+            1,
+          ),
+        }
+      : {}),
+    ...(options.has("recovery-total-timeout-ms")
+      ? {
+          totalOpenTimeoutMs: integerOption(
+            options,
+            "recovery-total-timeout-ms",
+            1,
+          ),
+        }
+      : {}),
+  });
   const server = new ProtocolServer({
     socketPath,
     multiplexer,
@@ -254,16 +303,13 @@ async function runServe(
     await multiplexer.dispose(1_000).catch(() => {});
     throw error;
   }
-  logger.write("info", "pi_daemon_ready", {
-    socketPath,
-    stateDir,
-    agentDir,
-    allowedRoot,
+  const lifecycleFields = () => ({
     hostInstanceId: multiplexer.hostInstanceId,
     retainedSessions: recovery.catalog.length,
     restoredSessions: recovery.opened.length,
     replayedRequests: recovery.replayed.length,
     recoveryFailures: recovery.failures.length,
+    recovery: multiplexer.status().recovery,
     queuedMutationTickets: apiServer?.ticketRecovery?.queued.length ?? 0,
     indeterminateMutationTickets: apiServer?.ticketRecovery?.indeterminate.length ?? 0,
     prunedMutationTickets: apiServer?.ticketRecovery?.pruned ?? 0,
@@ -272,20 +318,75 @@ async function runServe(
         ? { enabled: false }
         : { enabled: true, host: apiAddress.host, port: apiAddress.port },
   });
+  const initialStatus = multiplexer.status();
+  logger.write(
+    initialStatus.ready ? "info" : "warn",
+    initialStatus.ready ? "pi_daemon_ready" : "pi_daemon_listening_degraded",
+    lifecycleFields(),
+  );
+  if (!initialStatus.ready && initialStatus.recovery.phase === "recovering") {
+    void Promise.allSettled([multiplexer.recoverySettled(), tickets.settled()]).then(() => {
+      const settled = multiplexer.status();
+      logger.write(
+        settled.ready ? "info" : "warn",
+        settled.ready ? "pi_daemon_ready" : "pi_daemon_recovery_degraded",
+        lifecycleFields(),
+      );
+    });
+  }
 
+  let sweepRunning = false;
   const sweepInterval =
     idleSessionTtlMs === 0
       ? undefined
-      : setInterval(() => void multiplexer.sweepIdleSessions(), Math.min(60_000, idleSessionTtlMs));
+      : setInterval(() => {
+          if (sweepRunning) {
+            multiplexer.metrics.increment("idle_sweep_skipped_overlap");
+            return;
+          }
+          sweepRunning = true;
+          void multiplexer
+            .sweepIdleSessions()
+            .catch((error: unknown) => {
+              multiplexer.metrics.increment("idle_sweep_failures");
+              logger.write("warn", "idle_sweep_failed", {
+                errorCode:
+                  error !== null && typeof error === "object" && "code" in error
+                    ? String((error as { code?: unknown }).code)
+                    : error instanceof Error
+                      ? error.name
+                      : "unknown_error",
+              });
+            })
+            .finally(() => {
+              sweepRunning = false;
+            });
+        }, Math.min(60_000, idleSessionTtlMs));
   sweepInterval?.unref();
-  let shuttingDown = false;
-  const shutdown = async (timeoutMs = 30_000): Promise<void> => {
-    if (shuttingDown) return;
-    shuttingDown = true;
-    await multiplexer.drain(timeoutMs);
-    await apiServer?.stop();
-    await server.stop();
-    await multiplexer.dispose(1_000);
+  let shutdownPromise: Promise<void> | undefined;
+  const shutdown = (timeoutMs = 30_000): Promise<void> => {
+    if (shutdownPromise !== undefined) return shutdownPromise;
+    shutdownPromise = (async () => {
+      const deadline = Date.now() + timeoutMs;
+      multiplexer.beginDrain();
+      const transportBudget = Math.max(0, deadline - Date.now());
+      const transportsStopped = await completesWithin(
+        Promise.allSettled([apiServer?.stop(), server.stop()]),
+        transportBudget,
+      );
+      if (!transportsStopped) {
+        logger.write("warn", "transport_shutdown_timeout", { timeoutMs });
+      }
+      const disposeBudget = Math.max(0, deadline - Date.now());
+      const disposed = await completesWithin(
+        multiplexer.dispose(disposeBudget),
+        disposeBudget,
+      );
+      if (!disposed) {
+        logger.write("warn", "host_shutdown_timeout", { timeoutMs });
+      }
+    })();
+    return shutdownPromise;
   };
   try {
     if (dependencies.waitForShutdown !== undefined) {
@@ -298,6 +399,44 @@ async function runServe(
     await shutdown();
   }
   return 0;
+}
+
+function safeCliErrorCode(error: unknown): string {
+  if (error !== null && typeof error === "object" && "code" in error) {
+    const code = (error as { code?: unknown }).code;
+    if (typeof code === "string" && code.length > 0 && code.length <= 128) return code;
+  }
+  return error instanceof Error && error.name.length > 0
+    ? error.name.slice(0, 128)
+    : "unknown_error";
+}
+
+function safeCliErrorMessage(error: unknown, code: string): string {
+  if (
+    error instanceof Error &&
+    (error.message.includes("bearer source") ||
+      error.message.startsWith("API listener requires exactly one bearer"))
+  ) {
+    return error.message;
+  }
+  if (
+    error instanceof Error &&
+    /^(insecure_state_path|corrupt_state|catalog_|recovery_|credentials_required)/.test(code)
+  ) {
+    return error.message;
+  }
+  return "pi-daemon command failed";
+}
+
+function probeDataReady(value: unknown): boolean {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
+  const host = (value as Record<string, unknown>).host;
+  return (
+    host !== null &&
+    typeof host === "object" &&
+    !Array.isArray(host) &&
+    (host as Record<string, unknown>).ready === true
+  );
 }
 
 class CliUsageError extends Error {
@@ -349,6 +488,24 @@ function integerOption(options: Map<string, string>, name: string, minimum: numb
   return value;
 }
 
+async function completesWithin(
+  promise: Promise<unknown>,
+  timeoutMs: number,
+): Promise<boolean> {
+  if (timeoutMs <= 0) return false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise.then(() => true),
+      new Promise<false>((resolve) => {
+        timer = setTimeout(() => resolve(false), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
 async function waitForSignal(shutdown: (timeoutMs?: number) => Promise<void>): Promise<void> {
   await new Promise<void>((resolvePromise, reject) => {
     const cleanup = (): void => {
@@ -357,6 +514,8 @@ async function waitForSignal(shutdown: (timeoutMs?: number) => Promise<void>): P
     };
     const run = (timeoutMs: number): void => {
       cleanup();
+      const hardExit = setTimeout(() => process.exit(1), timeoutMs + 250);
+      hardExit.unref();
       void shutdown(timeoutMs).then(resolvePromise, reject);
     };
     const onSigterm = (): void => run(30_000);
@@ -374,8 +533,8 @@ Usage:
                   [--api-port PORT] [--api-bind HOST]
                   [--api-token-file PATH | --api-token-fd FD]
                   [--api-allow-insecure-http true|false]
-  pi-daemon probe --socket PATH
-  pi-daemon request --socket PATH --json REQUEST
+  pi-daemon probe --socket PATH [--timeout-ms N]
+  pi-daemon request --socket PATH --json REQUEST [--timeout-ms N]
   pi-daemon version
 
 Commands:
@@ -383,6 +542,10 @@ Commands:
   probe    Perform a version/capability handshake.
   request  Send one low-level protocol command and print its response.
   version  Print the package version.
+
+Recovery limits:
+  --recovery-open-timeout-ms N
+  --recovery-total-timeout-ms N
 
 Protocol transport limits:
   --max-connections N

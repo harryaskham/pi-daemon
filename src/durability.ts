@@ -94,12 +94,20 @@ export interface FileDurabilityOptions {
   maxTerminalEntriesPerSession?: number;
   terminalRetentionMs?: number;
   maxJournalRecordBytes?: number;
+  maxJournalFileBytes?: number;
+  maxManifestBytes?: number;
+  maxRecoveredSessions?: number;
+  maxRecoveryBytes?: number;
   now?: () => Date;
 }
 
 const DEFAULT_MAX_TERMINAL_ENTRIES = 256;
 const DEFAULT_TERMINAL_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 const DEFAULT_MAX_JOURNAL_RECORD_BYTES = 1024 * 1024;
+const DEFAULT_MAX_JOURNAL_FILE_BYTES = 64 * 1024 * 1024;
+const DEFAULT_MAX_MANIFEST_BYTES = 1024 * 1024;
+const DEFAULT_MAX_RECOVERED_SESSIONS = 4096;
+const DEFAULT_MAX_RECOVERY_BYTES = 256 * 1024 * 1024;
 
 /**
  * Owner-local append-only request journal plus atomic logical-session manifests.
@@ -115,6 +123,10 @@ export class FileDurabilityStore implements DurabilityStore {
   readonly #maxTerminalEntries: number;
   readonly #terminalRetentionMs: number;
   readonly #maxJournalRecordBytes: number;
+  readonly #maxJournalFileBytes: number;
+  readonly #maxManifestBytes: number;
+  readonly #maxRecoveredSessions: number;
+  readonly #maxRecoveryBytes: number;
   readonly #now: () => Date;
   readonly #entries = new Map<string, Map<string, JournalEntry>>();
   readonly #ticketIndex = new Map<
@@ -125,6 +137,7 @@ export class FileDurabilityStore implements DurabilityStore {
   readonly #sessionTails = new Map<string, Promise<void>>();
   #initialized = false;
   #journalsScanned = false;
+  #recoveryBytes = 0;
 
   constructor(options: FileDurabilityOptions) {
     if (options.stateDir.length === 0) throw new Error("stateDir must not be empty");
@@ -142,6 +155,22 @@ export class FileDurabilityStore implements DurabilityStore {
     this.#maxJournalRecordBytes = positiveInteger(
       options.maxJournalRecordBytes ?? DEFAULT_MAX_JOURNAL_RECORD_BYTES,
       "maxJournalRecordBytes",
+    );
+    this.#maxJournalFileBytes = positiveInteger(
+      options.maxJournalFileBytes ?? DEFAULT_MAX_JOURNAL_FILE_BYTES,
+      "maxJournalFileBytes",
+    );
+    this.#maxManifestBytes = positiveInteger(
+      options.maxManifestBytes ?? DEFAULT_MAX_MANIFEST_BYTES,
+      "maxManifestBytes",
+    );
+    this.#maxRecoveredSessions = positiveInteger(
+      options.maxRecoveredSessions ?? DEFAULT_MAX_RECOVERED_SESSIONS,
+      "maxRecoveredSessions",
+    );
+    this.#maxRecoveryBytes = positiveInteger(
+      options.maxRecoveryBytes ?? DEFAULT_MAX_RECOVERY_BYTES,
+      "maxRecoveryBytes",
     );
     this.#now = options.now ?? (() => new Date());
   }
@@ -205,6 +234,13 @@ export class FileDurabilityStore implements DurabilityStore {
         updatedAt: now,
       };
       validateManifest(manifest, path);
+      const manifestBytes = Buffer.byteLength(JSON.stringify(manifest), "utf8");
+      if (manifestBytes > this.#maxManifestBytes) {
+        throw new DurabilityError("manifest_too_large", "session manifest exceeds byte limit", {
+          maxManifestBytes: this.#maxManifestBytes,
+          manifestBytes,
+        });
+      }
       await atomicWritePrivateJson(path, manifest);
       return structuredClone(manifest);
     });
@@ -436,10 +472,26 @@ export class FileDurabilityStore implements DurabilityStore {
 
   async #loadManifests(): Promise<SessionManifest[]> {
     const manifests: SessionManifest[] = [];
-    for (const name of (await readdir(this.#sessionsDir)).sort()) {
+    const names = (await readdir(this.#sessionsDir)).sort();
+    if (names.length > this.#maxRecoveredSessions) {
+      throw new DurabilityError(
+        "recovery_session_capacity",
+        "retained session manifest count exceeds recovery limit",
+        { maxRecoveredSessions: this.#maxRecoveredSessions, entries: names.length },
+      );
+    }
+    for (const name of names) {
       const sessionDirectory = join(this.#sessionsDir, name);
       await ensurePrivateDirectory(sessionDirectory, "logical session directory");
       const path = join(sessionDirectory, "manifest.json");
+      const manifestBytes = await stateFileSize(path);
+      if (manifestBytes !== undefined && manifestBytes > this.#maxManifestBytes) {
+        throw new DurabilityError("manifest_too_large", "session manifest exceeds byte limit", {
+          maxManifestBytes: this.#maxManifestBytes,
+          manifestBytes,
+        });
+      }
+      this.#claimRecoveryBytes(manifestBytes ?? 0);
       const value = await readPrivateJsonIfExists<unknown>(path);
       if (value === undefined) continue;
       validateManifest(value, path);
@@ -453,10 +505,18 @@ export class FileDurabilityStore implements DurabilityStore {
 
   async #scanJournalFiles(): Promise<void> {
     if (this.#journalsScanned) return;
-    const journalNames = await readdir(this.#journalDir);
-    for (const name of journalNames.sort()) {
-      if (!name.endsWith(".jsonl")) continue;
-      await this.#loadJournalFile(join(this.#journalDir, name));
+    const journalNames = (await readdir(this.#journalDir))
+      .filter((name) => name.endsWith(".jsonl"))
+      .sort();
+    if (journalNames.length > this.#maxRecoveredSessions) {
+      throw new DurabilityError(
+        "recovery_session_capacity",
+        "request journal count exceeds recovery limit",
+        { maxRecoveredSessions: this.#maxRecoveredSessions, entries: journalNames.length },
+      );
+    }
+    for (const name of journalNames) {
+      await this.#loadJournalFile(join(this.#journalDir, name), undefined, true);
     }
     this.#journalsScanned = true;
   }
@@ -469,10 +529,22 @@ export class FileDurabilityStore implements DurabilityStore {
     this.#loadedSessions.add(sessionId);
   }
 
-  async #loadJournalFile(path: string, expectedSessionId?: string): Promise<void> {
+  async #loadJournalFile(
+    path: string,
+    expectedSessionId?: string,
+    recoveryScan = false,
+  ): Promise<void> {
     let content: string;
     try {
       await validatePrivateFileIfExists(path, "request journal");
+      const journalBytes = await stateFileSize(path);
+      if (journalBytes !== undefined && journalBytes > this.#maxJournalFileBytes) {
+        throw new DurabilityError("journal_too_large", "request journal exceeds byte limit", {
+          maxJournalFileBytes: this.#maxJournalFileBytes,
+          journalBytes,
+        });
+      }
+      if (recoveryScan) this.#claimRecoveryBytes(journalBytes ?? 0);
       content = await readFile(path, "utf8");
     } catch (error) {
       if (isNodeError(error) && error.code === "ENOENT") return;
@@ -549,6 +621,13 @@ export class FileDurabilityStore implements DurabilityStore {
         recordBytes,
       });
     }
+    const currentBytes = (await stateFileSize(path)) ?? 0;
+    if (currentBytes + recordBytes > this.#maxJournalFileBytes) {
+      throw new DurabilityError("journal_too_large", "request journal exceeds byte limit", {
+        maxJournalFileBytes: this.#maxJournalFileBytes,
+        journalBytes: currentBytes + recordBytes,
+      });
+    }
     const handle = await open(path, "a", 0o600);
     try {
       await handle.writeFile(line, "utf8");
@@ -577,6 +656,17 @@ export class FileDurabilityStore implements DurabilityStore {
 
   #journalPath(sessionId: string): string {
     return join(this.#journalDir, `${encodedSessionId(sessionId)}.jsonl`);
+  }
+
+  #claimRecoveryBytes(bytes: number): void {
+    this.#recoveryBytes += bytes;
+    if (this.#recoveryBytes > this.#maxRecoveryBytes) {
+      throw new DurabilityError(
+        "recovery_bytes_exceeded",
+        "durable recovery input exceeds aggregate byte limit",
+        { maxRecoveryBytes: this.#maxRecoveryBytes },
+      );
+    }
   }
 
   #timestamp(): string {

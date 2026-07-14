@@ -24,6 +24,7 @@ import type {
 export const SESSION_CATALOG_FORMAT_VERSION = 1 as const;
 export const DEFAULT_MAX_CATALOG_SESSIONS = 4096;
 export const DEFAULT_MAX_CATALOG_RECORD_BYTES = 1024 * 1024;
+export const DEFAULT_MAX_CATALOG_RECOVERY_BYTES = 256 * 1024 * 1024;
 export const DEFAULT_CATALOG_PAGE_SIZE = 50;
 export const MAX_CATALOG_PAGE_SIZE = 100;
 
@@ -52,6 +53,7 @@ export interface SessionCatalogRecord {
   spec: PersistedSessionSpec;
   environment: SessionEnvironmentSummary;
   policyDigest: string;
+  configuration?: "legacy" | "prepared";
   conversation?: SessionConversationIdentity;
   lastTerminal?: SessionTerminalRecord;
 }
@@ -71,6 +73,7 @@ export interface SessionCatalogCreateInput {
   state?: SessionApiState;
   conversation?: SessionConversationIdentity;
   policyDigest?: string;
+  configuration?: "legacy" | "prepared";
 }
 
 type SessionCatalogPatch = Omit<
@@ -92,6 +95,7 @@ export interface SessionCatalogReplaceInput {
   state: SessionApiState;
   conversation?: SessionConversationIdentity | null;
   policyDigest?: string;
+  configuration?: "legacy" | "prepared";
 }
 
 export interface SessionCatalogStore {
@@ -138,6 +142,7 @@ export class FileSessionCatalog implements SessionCatalogStore {
   readonly #catalogDir: string;
   readonly #maxSessions: number;
   readonly #maxRecordBytes: number;
+  readonly #maxRecoveryBytes: number;
   readonly #now: () => Date;
   readonly #records = new Map<string, SessionCatalogRecord>();
   readonly #names = new Map<string, string>();
@@ -150,6 +155,7 @@ export class FileSessionCatalog implements SessionCatalogStore {
     stateDir: string;
     maxSessions?: number;
     maxRecordBytes?: number;
+    maxRecoveryBytes?: number;
     now?: () => Date;
   }) {
     if (options.stateDir.length === 0) throw new Error("stateDir must not be empty");
@@ -162,6 +168,10 @@ export class FileSessionCatalog implements SessionCatalogStore {
     this.#maxRecordBytes = positiveInteger(
       options.maxRecordBytes ?? DEFAULT_MAX_CATALOG_RECORD_BYTES,
       "maxRecordBytes",
+    );
+    this.#maxRecoveryBytes = positiveInteger(
+      options.maxRecoveryBytes ?? DEFAULT_MAX_CATALOG_RECOVERY_BYTES,
+      "maxRecoveryBytes",
     );
     this.#now = options.now ?? (() => new Date());
   }
@@ -211,6 +221,9 @@ export class FileSessionCatalog implements SessionCatalogStore {
         spec: structuredClone(input.spec),
         environment: structuredClone(input.environment ?? emptyEnvironment()),
         policyDigest: input.policyDigest ?? sessionSpecDigest(input.spec),
+        ...(input.configuration === undefined
+          ? {}
+          : { configuration: input.configuration }),
         ...(input.name === undefined ? {} : { name: input.name }),
         ...(input.conversation === undefined
           ? {}
@@ -248,6 +261,9 @@ export class FileSessionCatalog implements SessionCatalogStore {
         spec: structuredClone(input.spec),
         environment: structuredClone(input.environment),
         policyDigest: input.policyDigest ?? sessionSpecDigest(input.spec),
+        ...(input.configuration === undefined
+          ? {}
+          : { configuration: input.configuration }),
         ...(nextName === undefined ? { name: undefined } : { name: nextName }),
         ...(input.conversation === null
           ? { conversation: undefined }
@@ -483,8 +499,18 @@ export class FileSessionCatalog implements SessionCatalogStore {
 
   async #load(): Promise<void> {
     await this.#initialize();
-    for (const name of (await readdir(this.#catalogDir)).sort()) {
-      if (!name.endsWith(".json")) continue;
+    const names = (await readdir(this.#catalogDir))
+      .filter((name) => name.endsWith(".json"))
+      .sort();
+    if (names.length > this.#maxSessions) {
+      throw new SessionCatalogError(
+        "catalog_capacity",
+        "retained session catalog exceeds configured capacity",
+        { details: { maxSessions: this.#maxSessions, actual: names.length } },
+      );
+    }
+    let recoveryBytes = 0;
+    for (const name of names) {
       const path = join(this.#catalogDir, name);
       const bytes = await stateFileSize(path);
       if (bytes !== undefined && bytes > this.#maxRecordBytes) {
@@ -492,6 +518,14 @@ export class FileSessionCatalog implements SessionCatalogStore {
           "catalog_record_too_large",
           "session catalog record exceeds byte limit",
           { details: { path, maxRecordBytes: this.#maxRecordBytes, recordBytes: bytes } },
+        );
+      }
+      recoveryBytes += bytes ?? 0;
+      if (recoveryBytes > this.#maxRecoveryBytes) {
+        throw new SessionCatalogError(
+          "catalog_recovery_too_large",
+          "retained session catalog exceeds aggregate recovery byte limit",
+          { details: { maxRecoveryBytes: this.#maxRecoveryBytes } },
         );
       }
       const value = await readPrivateJsonIfExists<unknown>(path);
@@ -614,6 +648,13 @@ function validateCatalogRecord(
     if (typeof value[field] !== "string" || value[field].length === 0) {
       throw corrupt(`catalog ${field} is invalid`, path);
     }
+  }
+  if (
+    value.configuration !== undefined &&
+    value.configuration !== "legacy" &&
+    value.configuration !== "prepared"
+  ) {
+    throw corrupt("catalog configuration mode is invalid", path);
   }
   validatePersistedSpecField(value.spec, path);
   validateEnvironment(value.environment, path);

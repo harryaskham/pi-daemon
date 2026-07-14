@@ -9,7 +9,7 @@ import {
   type JournalEntry,
   type RecoverySnapshot,
 } from "./durability.js";
-import type { TicketResource } from "./session-api.js";
+import type { SessionEnvironmentSummary, TicketResource } from "./session-api.js";
 import { wakeTicketResource } from "./tickets.js";
 import type {
   OpenPayload,
@@ -25,7 +25,11 @@ import {
 } from "./observability.js";
 import { eventEnvelope, parseCommand, type EventEnvelope } from "./protocol.js";
 import type { PiRpcController } from "./pi-rpc-controller.js";
-import type { PreparedSessionRuntimeOptions } from "./session-config.js";
+import {
+  SessionConfigurationError,
+  requireProvisionedEnvironment,
+  type PreparedSessionRuntimeOptions,
+} from "./session-config.js";
 import {
   SessionCatalogError,
   sessionSpecDigest,
@@ -50,6 +54,7 @@ export interface SessionOpenRequest {
   model?: OpenPayload["model"];
   resources?: OpenPayload["resources"];
   runtimeOptions?: PreparedSessionRuntimeOptions;
+  signal?: AbortSignal;
 }
 
 export interface AdapterEvent {
@@ -111,6 +116,21 @@ export interface SessionSnapshot {
   idleForMs: number;
 }
 
+export interface RecoveryHealthSnapshot {
+  phase: "not_started" | "recovering" | "ready" | "degraded";
+  pendingReplays: number;
+  pendingMutationTickets: number;
+  indeterminateMutationTickets: number;
+  mutationRecoveryFailures: number;
+  openedSessions: number;
+  replayedRequests: number;
+  indeterminateRequests: number;
+  failureCount: number;
+  failureCodes: Record<string, number>;
+  startedAt?: string;
+  completedAt?: string;
+}
+
 export interface HostSnapshot {
   hostInstanceId: string;
   ready: boolean;
@@ -124,6 +144,7 @@ export interface HostSnapshot {
   memory: { rss: number; heapUsed: number; heapTotal: number; external: number };
   adapterReadiness?: unknown;
   metrics: MetricsSnapshot;
+  recovery: RecoveryHealthSnapshot;
   retainedSessions?: number;
   dormantSessions?: number;
   sessions: SessionSnapshot[];
@@ -134,7 +155,14 @@ export interface RecoveryReport {
   catalog: SessionCatalogRecord[];
   opened: string[];
   replayed: string[];
+  pendingReplays: number;
   failures: Array<{ sessionId: string; code: string; message: string }>;
+}
+
+export interface RecoveryOptions {
+  queuedReplay?: "wait" | "background";
+  openTimeoutMs?: number;
+  totalOpenTimeoutMs?: number;
 }
 
 export interface OpenResult {
@@ -290,6 +318,7 @@ export class Multiplexer {
   readonly limits: MultiplexerLimits;
   readonly metrics: HostMetrics;
   readonly idleSessionTtlMs: number;
+  readonly adapterDisposeTimeoutMs: number;
   readonly #factory: SessionFactory;
   readonly #durability: DurabilityStore | undefined;
   readonly #catalog: SessionCatalogStore | undefined;
@@ -297,6 +326,7 @@ export class Multiplexer {
   readonly #sessions = new Map<string, SessionSlot>();
   readonly #catalogRecords = new Map<string, SessionCatalogRecord>();
   readonly #lifecycleTails = new Map<string, Promise<void>>();
+  readonly #recoveryBlockedSessions = new Set<string>();
   readonly #listeners = new Set<EventListener>();
   readonly #logger: StructuredLogger;
   readonly #now: () => number;
@@ -304,6 +334,19 @@ export class Multiplexer {
   #draining = false;
   #ready: boolean;
   #recovered = false;
+  #backgroundRecovery: Promise<void> | undefined;
+  #recoveryHealth: RecoveryHealthSnapshot = {
+    phase: "not_started",
+    pendingReplays: 0,
+    pendingMutationTickets: 0,
+    indeterminateMutationTickets: 0,
+    mutationRecoveryFailures: 0,
+    openedSessions: 0,
+    replayedRequests: 0,
+    indeterminateRequests: 0,
+    failureCount: 0,
+    failureCodes: {},
+  };
 
   constructor(options: {
     factory: SessionFactory;
@@ -314,12 +357,22 @@ export class Multiplexer {
     metrics?: HostMetrics;
     logger?: StructuredLogger;
     idleSessionTtlMs?: number;
+    adapterDisposeTimeoutMs?: number;
     now?: () => number;
   }) {
     this.#factory = options.factory;
     this.#durability = options.durability;
     this.#catalog = options.catalog;
     this.#ready = options.durability === undefined && options.catalog === undefined;
+    if (this.#ready) {
+      const now = (options.now ?? Date.now)();
+      this.#recoveryHealth = {
+        ...this.#recoveryHealth,
+        phase: "ready",
+        startedAt: new Date(now).toISOString(),
+        completedAt: new Date(now).toISOString(),
+      };
+    }
     this.hostInstanceId = options.hostInstanceId ?? randomUUID();
     this.metrics = options.metrics ?? new HostMetrics();
     this.#logger = options.logger ?? NOOP_LOGGER;
@@ -328,6 +381,10 @@ export class Multiplexer {
     this.idleSessionTtlMs = nonNegativeInteger(
       options.idleSessionTtlMs ?? 30 * 60 * 1000,
       "idleSessionTtlMs",
+    );
+    this.adapterDisposeTimeoutMs = positiveInteger(
+      options.adapterDisposeTimeoutMs ?? 5_000,
+      "adapterDisposeTimeoutMs",
     );
     this.limits = {
       maxSessions: positiveInteger(
@@ -351,10 +408,32 @@ export class Multiplexer {
     return () => this.#listeners.delete(listener);
   }
 
-  async recover(): Promise<RecoveryReport> {
+  async recover(options: RecoveryOptions = {}): Promise<RecoveryReport> {
     if (this.#recovered) {
       throw new MultiplexerError("already_recovered", "durable state was already recovered");
     }
+
+    const queuedReplay = options.queuedReplay ?? "wait";
+    const openTimeoutMs = positiveInteger(options.openTimeoutMs ?? 30_000, "openTimeoutMs");
+    const totalOpenTimeoutMs = positiveInteger(
+      options.totalOpenTimeoutMs ?? 120_000,
+      "totalOpenTimeoutMs",
+    );
+    const recoveryStartedAt = this.#now();
+    const openDeadline = recoveryStartedAt + totalOpenTimeoutMs;
+    this.#recoveryHealth = {
+      phase: "recovering",
+      pendingReplays: 0,
+      pendingMutationTickets: this.#recoveryHealth.pendingMutationTickets,
+      indeterminateMutationTickets: this.#recoveryHealth.indeterminateMutationTickets,
+      mutationRecoveryFailures: this.#recoveryHealth.mutationRecoveryFailures,
+      openedSessions: 0,
+      replayedRequests: 0,
+      indeterminateRequests: 0,
+      failureCount: 0,
+      failureCodes: {},
+      startedAt: new Date(recoveryStartedAt).toISOString(),
+    };
 
     const catalog = (await this.#catalog?.recover()) ?? [];
     this.#catalogRecords.clear();
@@ -363,14 +442,20 @@ export class Multiplexer {
       (await this.#durability?.recover()) ??
       ({ manifests: [], queued: [], indeterminate: [] } satisfies RecoverySnapshot);
     this.#recovered = true;
+    // Recovery opens use the same generation/lifecycle path as live admission.
+    // Public readiness remains false while recoveryHealth.phase is recovering.
     this.#ready = true;
     const report: RecoveryReport = {
       recovered,
       catalog,
       opened: [],
       replayed: [],
+      pendingReplays: recovered.queued.length,
       failures: [],
     };
+
+    this.#recoveryHealth.indeterminateRequests = recovered.indeterminate.length;
+    this.metrics.increment("recovery_indeterminate_requests", recovered.indeterminate.length);
 
     const manifests = new Map(
       recovered.manifests.map((manifest) => [manifest.sessionId, manifest]),
@@ -380,6 +465,11 @@ export class Multiplexer {
       sessionId: string,
       generation: number,
       payload: OpenPayload,
+      openOptions: {
+        runtimeOptions?: PreparedSessionRuntimeOptions;
+        catalogSpec?: PersistedSessionSpec;
+        environmentSummary?: SessionEnvironmentSummary;
+      } = {},
     ): Promise<void> => {
       try {
         const parsed = parseCommand({
@@ -391,7 +481,20 @@ export class Multiplexer {
           payload,
         });
         if (parsed.operation !== "open") throw new Error("restored command is not open");
-        await this.open(parsed);
+        const remainingMs = openDeadline - this.#now();
+        if (remainingMs <= 0) {
+          throw new MultiplexerError(
+            "recovery_deadline_exceeded",
+            "session recovery exceeded its total deadline",
+            { retryable: true },
+          );
+        }
+        await runWithAbortTimeout(
+          (signal) => this.open(parsed, { signal, ...openOptions }),
+          Math.min(openTimeoutMs, remainingMs),
+          "recovery_open_timeout",
+          "timed out restoring logical session",
+        );
         report.opened.push(sessionId);
       } catch (error) {
         const normalized = asMultiplexerError(
@@ -400,6 +503,9 @@ export class Multiplexer {
           "failed to restore logical session",
         );
         report.failures.push({ sessionId, code: normalized.code, message: normalized.message });
+        if (normalized.code === "recovery_open_timeout") {
+          this.#recoveryBlockedSessions.add(sessionId);
+        }
       }
     };
 
@@ -456,7 +562,40 @@ export class Multiplexer {
         continue;
       }
       restoredIds.add(record.sessionId);
-      await restore(record.sessionId, record.generation, payload);
+      if (record.configuration !== "prepared") {
+        await restore(record.sessionId, record.generation, payload);
+        continue;
+      }
+      try {
+        requireProvisionedEnvironment(record.environment, undefined);
+        const sessionFile = conversation?.sessionFile ?? payload.session.path;
+        const runtimeOptions: PreparedSessionRuntimeOptions = {
+          persistedSpec: {
+            ...record.spec,
+            target:
+              sessionFile === undefined
+                ? record.spec.target
+                : { mode: "open", path: sessionFile },
+          },
+          environmentOverlay: Object.freeze({}),
+        };
+        await restore(record.sessionId, record.generation, payload, {
+          runtimeOptions,
+          catalogSpec: record.spec,
+          environmentSummary: record.environment,
+        });
+      } catch (error) {
+        const normalized = asMultiplexerError(
+          error,
+          "restore_open_failed",
+          "failed to restore configured logical session",
+        );
+        report.failures.push({
+          sessionId: record.sessionId,
+          code: normalized.code,
+          message: normalized.message,
+        });
+      }
     }
 
     for (const manifest of recovered.manifests) {
@@ -481,49 +620,155 @@ export class Multiplexer {
       await restore(manifest.sessionId, manifest.generation, payload);
     }
 
+    this.#ready = true;
+    const refreshHealth = (completed: boolean): void => {
+      const failureCodes: Record<string, number> = {};
+      for (const failure of report.failures) {
+        failureCodes[failure.code] = (failureCodes[failure.code] ?? 0) + 1;
+      }
+      this.#recoveryHealth = {
+        ...this.#recoveryHealth,
+        phase:
+          !completed || this.#recoveryHealth.pendingMutationTickets > 0
+            ? "recovering"
+            : report.failures.length === 0 &&
+                recovered.indeterminate.length === 0 &&
+                this.#recoveryHealth.indeterminateMutationTickets === 0 &&
+                this.#recoveryHealth.mutationRecoveryFailures === 0
+              ? "ready"
+              : "degraded",
+        pendingReplays: report.pendingReplays,
+        openedSessions: report.opened.length,
+        replayedRequests: report.replayed.length,
+        indeterminateRequests: recovered.indeterminate.length,
+        failureCount: report.failures.length,
+        failureCodes,
+        ...(completed ? { completedAt: new Date(this.#now()).toISOString() } : {}),
+      };
+    };
+    refreshHealth(false);
+
     const bySession = new Map<string, JournalEntry[]>();
     for (const entry of recovered.queued) {
       const entries = bySession.get(entry.sessionId) ?? [];
       entries.push(entry);
       bySession.set(entry.sessionId, entries);
     }
-    await Promise.all(
-      [...bySession.entries()].map(async ([sessionId, entries]) => {
-        for (const entry of entries) {
-          try {
-            const parsed = parseCommand(entry.command);
-            if (parsed.operation !== "wake") throw new Error("restored command is not wake");
-            await this.wake(parsed);
-            report.replayed.push(entry.idempotencyKey);
-          } catch (error) {
-            const normalized = asMultiplexerError(
-              error,
-              "restore_wake_failed",
-              "failed to replay queued wake",
-            );
-            report.failures.push({
-              sessionId,
-              code: normalized.code,
-              message: normalized.message,
-            });
+    const replayQueued = async (): Promise<void> => {
+      await Promise.all(
+        [...bySession.entries()].map(async ([sessionId, entries]) => {
+          for (const entry of entries) {
+            try {
+              const parsed = parseCommand(entry.command);
+              if (parsed.operation !== "wake") throw new Error("restored command is not wake");
+              await this.wake(parsed);
+              report.replayed.push(entry.idempotencyKey);
+            } catch (error) {
+              const normalized = asMultiplexerError(
+                error,
+                "restore_wake_failed",
+                "failed to replay queued wake",
+              );
+              report.failures.push({
+                sessionId,
+                code: normalized.code,
+                message: normalized.message,
+              });
+            } finally {
+              report.pendingReplays = Math.max(0, report.pendingReplays - 1);
+              refreshHealth(false);
+            }
           }
-        }
-      }),
-    );
+        }),
+      );
+      refreshHealth(true);
+      this.metrics.increment("recovery_completed");
+      this.metrics.increment("recovery_failures", report.failures.length);
+    };
+
+    if (queuedReplay === "background" && recovered.queued.length > 0) {
+      this.#backgroundRecovery = replayQueued().finally(() => {
+        this.#backgroundRecovery = undefined;
+      });
+      void this.#backgroundRecovery.catch((error) => {
+        this.#logger.write("error", "background_recovery_failed", {
+          errorCode: errorCode(error),
+        });
+      });
+      return report;
+    }
+    await replayQueued();
     return report;
   }
 
-  async open(command: Extract<ProtocolCommand, { operation: "open" }>): Promise<OpenResult> {
+  async waitForBackgroundRecovery(timeoutMs = 30_000): Promise<boolean> {
+    const recovery = this.#backgroundRecovery;
+    if (recovery === undefined) return true;
+    return settlesWithin(recovery, nonNegativeInteger(timeoutMs, "timeoutMs"));
+  }
+
+  recoverySettled(): Promise<void> {
+    return this.#backgroundRecovery ?? Promise.resolve();
+  }
+
+  setMutationRecoveryHealth(
+    pending: number,
+    indeterminate: number,
+    failures = this.#recoveryHealth.mutationRecoveryFailures,
+  ): void {
+    nonNegativeInteger(pending, "pendingMutationTickets");
+    nonNegativeInteger(indeterminate, "indeterminateMutationTickets");
+    nonNegativeInteger(failures, "mutationRecoveryFailures");
+    const recovering = pending > 0 || this.#recoveryHealth.pendingReplays > 0;
+    const degraded =
+      indeterminate > 0 ||
+      this.#recoveryHealth.indeterminateRequests > 0 ||
+      this.#recoveryHealth.failureCount > 0 ||
+      failures > 0;
+    this.#recoveryHealth = {
+      ...this.#recoveryHealth,
+      phase: recovering ? "recovering" : degraded ? "degraded" : "ready",
+      pendingMutationTickets: pending,
+      indeterminateMutationTickets: indeterminate,
+      mutationRecoveryFailures: failures,
+      ...(!recovering && this.#recoveryHealth.completedAt === undefined
+        ? { completedAt: new Date(this.#now()).toISOString() }
+        : {}),
+    };
+  }
+
+  async open(
+    command: Extract<ProtocolCommand, { operation: "open" }>,
+    options: {
+      signal?: AbortSignal;
+      runtimeOptions?: PreparedSessionRuntimeOptions;
+      environmentSummary?: SessionEnvironmentSummary;
+      catalogSpec?: PersistedSessionSpec;
+    } = {},
+  ): Promise<OpenResult> {
     this.#assertAdmitting("open");
+    if (this.#recoveryBlockedSessions.has(command.sessionId) && options.signal === undefined) {
+      throw new MultiplexerError(
+        "recovery_open_timeout",
+        "session recovery is blocked by a timed-out runtime open; restart required",
+        { retryable: true },
+      );
+    }
+    throwIfAborted(options.signal);
     this.metrics.increment("open_attempts");
     const openStartedAt = this.#now();
     return this.#withLifecycle(command.sessionId, async () => {
       this.#assertAdmitting("open");
+      throwIfAborted(options.signal);
       const existing = this.#sessions.get(command.sessionId);
       const policy = normalizeOpenPolicy(command.payload);
-      const policyKey = canonicalJson(policy);
-      const catalogSpec = persistedSpecFromOpen(command.payload);
+      const catalogSpec =
+        options.catalogSpec ??
+        options.runtimeOptions?.persistedSpec ??
+        persistedSpecFromOpen(command.payload);
       const catalogDigest = sessionSpecDigest(catalogSpec);
+      const policyKey =
+        options.runtimeOptions === undefined ? canonicalJson(policy) : catalogDigest;
       if (this.#catalog !== undefined) validateCatalogSessionId(command.sessionId);
       const retained = await this.#catalog?.get(command.sessionId);
 
@@ -592,15 +837,27 @@ export class Multiplexer {
         sessionId: command.sessionId,
         generation: command.generation,
         ...runtimePolicy,
+        ...(options.runtimeOptions === undefined
+          ? {}
+          : { runtimeOptions: options.runtimeOptions }),
       };
+      if (options.signal !== undefined) {
+        Object.defineProperty(request, "signal", {
+          value: options.signal,
+          enumerable: false,
+          configurable: false,
+          writable: false,
+        });
+      }
 
       let adapter: SessionAdapter | undefined;
       let conversation: SessionConversationIdentity | undefined;
       try {
         adapter = await this.#factory.open(request);
+        throwIfAborted(options.signal);
         conversation = validateOpenedConversation(
           adapter.identity?.(),
-          command.payload.session.mode,
+          options.runtimeOptions?.persistedSpec.target.mode ?? command.payload.session.mode,
           this.#durability !== undefined || this.#catalog !== undefined,
         );
         if (this.#catalog !== undefined) {
@@ -611,10 +868,15 @@ export class Multiplexer {
                   ...(catalogSpec.name === undefined ? {} : { name: catalogSpec.name }),
                   generation: command.generation,
                   spec: catalogSpec,
+                  ...(options.environmentSummary === undefined
+                    ? {}
+                    : { environment: options.environmentSummary }),
                   residency: "resident",
                   state: "idle",
                   ...(conversation === undefined ? {} : { conversation }),
                   policyDigest: catalogDigest,
+                  configuration:
+                    options.runtimeOptions === undefined ? "legacy" : "prepared",
                 })
               : await this.#catalog.replace(command.sessionId, {
                   expectedGeneration: retained.generation,
@@ -626,11 +888,15 @@ export class Multiplexer {
                       : { name: retained.name }
                     : { name: catalogSpec.name }),
                   spec: catalogSpec,
-                  environment: retained.environment,
+                  environment: options.environmentSummary ?? retained.environment,
                   residency: "resident",
                   state: "idle",
                   ...(conversation === undefined ? {} : { conversation }),
                   policyDigest: catalogDigest,
+                  configuration:
+                    options.runtimeOptions === undefined
+                      ? (retained.configuration ?? "legacy")
+                      : "prepared",
                 });
           this.#catalogRecords.set(catalogRecord.sessionId, catalogRecord);
         }
@@ -755,7 +1021,18 @@ export class Multiplexer {
       );
     }
     try {
-      return wakeTicketResource(await this.#durability.reconcileRequest(ticketId, outcome));
+      const resource = wakeTicketResource(
+        await this.#durability.reconcileRequest(ticketId, outcome),
+      );
+      this.#recoveryHealth.indeterminateRequests = Math.max(
+        0,
+        this.#recoveryHealth.indeterminateRequests - 1,
+      );
+      this.setMutationRecoveryHealth(
+        this.#recoveryHealth.pendingMutationTickets,
+        this.#recoveryHealth.indeterminateMutationTickets,
+      );
+      return resource;
     } catch (error) {
       throw asMultiplexerError(error, "reconciliation_failed", "wake reconciliation failed");
     }
@@ -1152,9 +1429,15 @@ export class Multiplexer {
       return snapshot(slot, now);
     }
     const memory = process.memoryUsage();
+    const readiness = safeReadiness(this.#factory);
+    const recovery = structuredClone(this.#recoveryHealth);
     const result: HostSnapshot = {
       hostInstanceId: this.hostInstanceId,
-      ready: this.#ready,
+      ready:
+        this.#ready &&
+        !this.#draining &&
+        recovery.phase === "ready" &&
+        adapterReadinessReady(readiness),
       durable: this.#durability !== undefined || this.#catalog !== undefined,
       draining: this.#draining,
       limits: { ...this.limits },
@@ -1169,6 +1452,7 @@ export class Multiplexer {
         external: memory.external,
       },
       metrics: this.metrics.snapshot(),
+      recovery,
       ...(this.#catalog === undefined
         ? {}
         : {
@@ -1181,7 +1465,6 @@ export class Multiplexer {
         .sort((a, b) => a.sessionId.localeCompare(b.sessionId))
         .map((slot) => snapshot(slot, now)),
     };
-    const readiness = safeReadiness(this.#factory);
     if (readiness !== undefined) result.adapterReadiness = readiness;
     return result;
   }
@@ -1237,52 +1520,100 @@ export class Multiplexer {
       ) {
         continue;
       }
-      await this.#withLifecycle(slot.sessionId, async () => {
-        const current = this.#sessions.get(slot.sessionId);
-        if (
-          current !== slot ||
-          current.state !== "idle" ||
-          current.pendingTurns > 0 ||
-          now - current.lastUsedAt < this.idleSessionTtlMs
-        ) {
-          return;
-        }
-        current.state = "closing";
-        await current.adapter.dispose();
-        if (this.#catalog !== undefined) {
-          const dormant = await this.#catalog.markDormant(
-            current.sessionId,
-            current.generation,
+      try {
+        await this.#withLifecycle(slot.sessionId, async () => {
+          const current = this.#sessions.get(slot.sessionId);
+          if (
+            current !== slot ||
+            current.state !== "idle" ||
+            current.pendingTurns > 0 ||
+            now - current.lastUsedAt < this.idleSessionTtlMs
+          ) {
+            return;
+          }
+          current.state = "closing";
+          const disposal = await settleOutcomeWithin(
+            Promise.resolve().then(async () => current.adapter.dispose()),
+            this.adapterDisposeTimeoutMs,
           );
-          this.#catalogRecords.set(dormant.sessionId, dormant);
-          this.#emit(current, "sessionDormant", undefined, { reason: "idle_eviction" });
+          if (disposal === "timeout") {
+            throw new MultiplexerError(
+              "adapter_dispose_timeout",
+              "session adapter disposal exceeded its deadline",
+              { retryable: true },
+            );
+          }
+          if (disposal instanceof Error) throw disposal;
+          if (this.#catalog !== undefined) {
+            const dormant = await this.#catalog.markDormant(
+              current.sessionId,
+              current.generation,
+            );
+            this.#catalogRecords.set(dormant.sessionId, dormant);
+            this.#emit(current, "sessionDormant", undefined, { reason: "idle_eviction" });
+          }
+          this.#emit(current, "sessionEvicted", undefined, {
+            idleForMs: now - current.lastUsedAt,
+          });
+          this.#sessions.delete(current.sessionId);
+          evicted.push(current.sessionId);
+          this.metrics.increment("sessions_evicted");
+          this.#logger.write("info", "session_evicted", {
+            sessionId: current.sessionId,
+            generation: current.generation,
+            idleForMs: now - current.lastUsedAt,
+          });
+        });
+      } catch (error) {
+        const current = this.#sessions.get(slot.sessionId);
+        if (current === slot) {
+          current.state = "failed";
+          current.lastErrorCode = errorCode(error);
         }
-        this.#emit(current, "sessionEvicted", undefined, {
-          idleForMs: now - current.lastUsedAt,
+        this.metrics.increment("idle_sweep_failures");
+        this.#logger.write("warn", "session_eviction_failed", {
+          sessionId: slot.sessionId,
+          generation: slot.generation,
+          errorCode: errorCode(error),
         });
-        this.#sessions.delete(current.sessionId);
-        evicted.push(current.sessionId);
-        this.metrics.increment("sessions_evicted");
-        this.#logger.write("info", "session_evicted", {
-          sessionId: current.sessionId,
-          generation: current.generation,
-          idleForMs: now - current.lastUsedAt,
-        });
-      });
+      }
     }
     return evicted;
   }
 
   async dispose(timeoutMs = 5_000): Promise<void> {
+    nonNegativeInteger(timeoutMs, "timeoutMs");
     await this.drain(timeoutMs);
     const slots = [...this.#sessions.values()];
     for (const slot of slots) {
       for (const entry of slot.inFlight.values()) entry.abort.abort();
     }
     await settlesWithin(Promise.allSettled(slots.map(async (slot) => slot.turnTail)), timeoutMs);
+    const disposalTimeout = Math.min(timeoutMs, this.adapterDisposeTimeoutMs);
     await Promise.allSettled(
       slots.map(async (slot) => {
-        await slot.adapter.dispose();
+        const disposal = await settleOutcomeWithin(
+          Promise.resolve().then(async () => slot.adapter.dispose()),
+          disposalTimeout,
+        );
+        if (disposal === "timeout") {
+          this.metrics.increment("adapter_dispose_timeouts");
+          this.#logger.write("warn", "adapter_dispose_timeout", {
+            sessionId: slot.sessionId,
+            generation: slot.generation,
+            timeoutMs: disposalTimeout,
+          });
+          return;
+        }
+        if (disposal instanceof Error) {
+          this.metrics.increment("adapter_dispose_failures");
+          this.#logger.write("warn", "adapter_dispose_failed", {
+            sessionId: slot.sessionId,
+            generation: slot.generation,
+            errorCode: errorCode(disposal),
+          });
+          return;
+        }
         if (this.#catalog !== undefined) {
           const dormant = await this.#catalog.markDormant(slot.sessionId, slot.generation);
           this.#catalogRecords.set(dormant.sessionId, dormant);
@@ -1652,7 +1983,7 @@ function resolvedRuntimePolicy(
 
 function validateOpenedConversation(
   identity: SessionConversationIdentity | undefined,
-  targetMode: SessionTarget["mode"],
+  targetMode: PersistedSessionSpec["target"]["mode"],
   required: boolean,
 ): SessionConversationIdentity | undefined {
   if (identity === undefined) {
@@ -1772,6 +2103,63 @@ function safeReadiness(factory: SessionFactory): unknown {
   }
 }
 
+function adapterReadinessReady(value: unknown): boolean {
+  if (value === undefined) return true;
+  if (value !== null && typeof value === "object" && "ready" in value) {
+    return (value as { ready?: unknown }).ready !== false;
+  }
+  return true;
+}
+
+function throwIfAborted(signal: AbortSignal | undefined): void {
+  signal?.throwIfAborted();
+}
+
+async function runWithAbortTimeout<T>(
+  operation: (signal: AbortSignal) => Promise<T>,
+  timeoutMs: number,
+  code: string,
+  message: string,
+): Promise<T> {
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      operation(controller.signal),
+      new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(() => {
+          controller.abort();
+          reject(new MultiplexerError(code, message, { retryable: true }));
+        }, timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
+async function settleOutcomeWithin(
+  promise: Promise<unknown>,
+  timeoutMs: number,
+): Promise<"settled" | "timeout" | Error> {
+  if (timeoutMs === 0) return "timeout";
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise.then(
+        () => "settled" as const,
+        (error: unknown) =>
+          error instanceof Error ? error : new Error("adapter operation failed"),
+      ),
+      new Promise<"timeout">((resolve) => {
+        timer = setTimeout(() => resolve("timeout"), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
 async function settlesWithin(promise: Promise<unknown>, timeoutMs: number): Promise<boolean> {
   if (timeoutMs === 0) return false;
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -1823,7 +2211,11 @@ function safeError(error: unknown): { name: string; message: string } {
 
 function asMultiplexerError(error: unknown, code: string, message: string): MultiplexerError {
   if (error instanceof MultiplexerError) return error;
-  if (error instanceof DurabilityError || error instanceof SessionCatalogError) {
+  if (
+    error instanceof DurabilityError ||
+    error instanceof SessionCatalogError ||
+    error instanceof SessionConfigurationError
+  ) {
     return new MultiplexerError(error.code, error.message, {
       retryable: error instanceof SessionCatalogError ? error.retryable : false,
       ...(error.details === undefined ? {} : { details: error.details }),

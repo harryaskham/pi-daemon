@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -39,6 +39,11 @@ const createInput = (key = "create-key", overrides = {}) => ({
     sessionId: `session-${key}`,
     generation: 1,
     spec: spec(),
+    environmentSummary: {
+      keys: [],
+      persistence: "memory-only",
+      provisioned: true,
+    },
   },
   ...overrides,
 });
@@ -99,6 +104,27 @@ test("mutation tickets durably deduplicate, execute once, and retain safe termin
     ),
     (error) => error instanceof TicketStoreError && error.code === "idempotency_conflict",
   );
+});
+
+test("legacy mutation tickets migrate to an empty provisioned environment summary", async () => {
+  const stateDir = await temporaryState();
+  const first = new FileMutationTicketStore({ stateDir });
+  await first.recover();
+  const ticket = await first.begin(createInput("legacy-environment"));
+  const path = join(stateDir, "tickets", `${ticket.ticketId}.json`);
+  const persisted = JSON.parse(await readFile(path, "utf8"));
+  delete persisted.command.environmentSummary;
+  persisted.fingerprint = "legacy-fingerprint";
+  await writeFile(path, `${JSON.stringify(persisted)}\n`, { mode: 0o600 });
+
+  const restarted = new FileMutationTicketStore({ stateDir });
+  const recovery = await restarted.recover();
+  assert.equal(recovery.queued.length, 1);
+  assert.deepEqual(recovery.queued[0].command.environmentSummary, {
+    keys: [],
+    persistence: "memory-only",
+    provisioned: true,
+  });
 });
 
 test("restart replays queued tickets, makes running tickets indeterminate, and permits explicit reconciliation", async () => {
@@ -164,6 +190,15 @@ test("ticket records enforce count, byte, and terminal age retention bounds", as
   const second = await store.begin(createInput("two"));
   assert.equal(second.state, "queued");
   assert.equal(await store.get(first.ticketId), undefined);
+  await assert.rejects(
+    new FileMutationTicketStore({
+      stateDir,
+      maxRecoveryBytes: 128,
+    }).recover(),
+    (error) =>
+      error instanceof TicketStoreError &&
+      error.code === "ticket_recovery_too_large",
+  );
 
   const bounded = new FileMutationTicketStore({
     stateDir: await temporaryState(),

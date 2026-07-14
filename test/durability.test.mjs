@@ -139,6 +139,55 @@ test("journal transitions are append-only and terminal duplicates are cached", a
   );
 });
 
+test("recovery bounds manifest bytes, journal totals, and retained session counts", async () => {
+  const manifestState = await temporaryState();
+  const manifestStore = new FileDurabilityStore({
+    stateDir: manifestState,
+    maxManifestBytes: 256,
+  });
+  await manifestStore.recover();
+  await assert.rejects(
+    manifestStore.saveManifest({
+      ...persistentOpenCommand("manifest-large"),
+      payload: {
+        ...persistentOpenCommand("manifest-large").payload,
+        resources: {
+          extensions: "none",
+          skills: "none",
+          promptTemplates: "none",
+          themes: "none",
+          contextFiles: "none",
+          tools: "none",
+          systemPrompt: "x".repeat(512),
+        },
+      },
+    }),
+    (error) => error instanceof DurabilityError && error.code === "manifest_too_large",
+  );
+
+  const journalState = await temporaryState();
+  const journalStore = new FileDurabilityStore({
+    stateDir: journalState,
+    maxJournalFileBytes: 512,
+  });
+  await journalStore.recover();
+  await assert.rejects(
+    journalStore.beginRequest(wakeCommand("journal-total", "x".repeat(512))),
+    (error) => error instanceof DurabilityError && error.code === "journal_too_large",
+  );
+
+  const countState = await temporaryState();
+  const countStore = new FileDurabilityStore({ stateDir: countState });
+  await countStore.recover();
+  await countStore.saveManifest(persistentOpenCommand("count-a"), conversationIdentity("count-a"));
+  await countStore.saveManifest(persistentOpenCommand("count-b"), conversationIdentity("count-b"));
+  await assert.rejects(
+    new FileDurabilityStore({ stateDir: countState, maxRecoveredSessions: 1 }).recover(),
+    (error) =>
+      error instanceof DurabilityError && error.code === "recovery_session_capacity",
+  );
+});
+
 test("journal byte limit bounds prompts and retained terminal results", async () => {
   const stateDir = await temporaryState();
   const store = new FileDurabilityStore({ stateDir, maxJournalRecordBytes: 2_048 });
@@ -278,6 +327,36 @@ class ImmediateFactory {
   }
 }
 
+class BlockingReplayAdapter extends ImmediateAdapter {
+  constructor(sessionId, generation) {
+    super(sessionId, generation);
+    this.releaseReplay = undefined;
+    this.replayGate = new Promise((resolve) => (this.releaseReplay = resolve));
+  }
+
+  async prompt(request) {
+    this.calls.push(request);
+    await this.replayGate;
+    return { text: `answer:${request.prompt}` };
+  }
+}
+
+class BlockingReplayFactory extends ImmediateFactory {
+  async open(request) {
+    this.requests.push(structuredClone(request));
+    const adapter = new BlockingReplayAdapter(request.sessionId, request.generation);
+    this.adapters.set(`${request.sessionId}:${request.generation}`, adapter);
+    return adapter;
+  }
+}
+
+class HangingOpenFactory extends ImmediateFactory {
+  async open(request) {
+    this.requests.push(structuredClone(request));
+    return new Promise(() => {});
+  }
+}
+
 class MemoryFactory extends ImmediateFactory {
   async open(request) {
     const adapter = await super.open(request);
@@ -349,6 +428,62 @@ test("legacy new manifests without resolved identity never admit queued replay",
   assert.equal(factory.requests.length, 0);
 });
 
+test("session recovery open is deadline bounded and records degraded health", async () => {
+  const stateDir = await temporaryState();
+  const first = new FileDurabilityStore({ stateDir });
+  await first.recover();
+  await first.saveManifest(persistentOpenCommand(), conversationIdentity());
+  const mux = new Multiplexer({
+    factory: new HangingOpenFactory(),
+    durability: new FileDurabilityStore({ stateDir }),
+  });
+  const started = Date.now();
+  const report = await mux.recover({ openTimeoutMs: 10, totalOpenTimeoutMs: 20 });
+  assert.ok(Date.now() - started < 500);
+  assert.ok(
+    report.failures.some((failure) => failure.code === "recovery_open_timeout"),
+    JSON.stringify(report.failures),
+  );
+  assert.equal(mux.status().recovery.phase, "degraded");
+  assert.equal(mux.status().ready, false);
+  await assert.rejects(
+    mux.open(persistentOpenCommand()),
+    (error) =>
+      error instanceof MultiplexerError && error.code === "recovery_open_timeout",
+  );
+});
+
+test("background recovery listens without waiting for queued model completion and reports truthful health", async () => {
+  const stateDir = await temporaryState();
+  const first = new FileDurabilityStore({ stateDir });
+  await first.recover();
+  await first.saveManifest(persistentOpenCommand(), conversationIdentity());
+  await first.beginRequest(wakeCommand("background"));
+
+  const factory = new BlockingReplayFactory();
+  const mux = new Multiplexer({
+    factory,
+    durability: new FileDurabilityStore({ stateDir }),
+  });
+  const report = await mux.recover({ queuedReplay: "background" });
+  assert.deepEqual(report.opened, ["agent/a"], JSON.stringify(report.failures));
+  assert.equal(report.pendingReplays, 1);
+  assert.equal(mux.status().ready, false);
+  assert.equal(mux.status().recovery.phase, "recovering");
+  const adapter = factory.adapter();
+  for (let attempt = 0; attempt < 100 && adapter.calls.length === 0; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 2));
+  }
+  assert.equal(adapter.calls.length, 1);
+
+  adapter.releaseReplay();
+  assert.equal(await mux.waitForBackgroundRecovery(1_000), true);
+  assert.equal(mux.status().ready, true);
+  assert.equal(mux.status().recovery.phase, "ready");
+  assert.equal(mux.status().recovery.pendingReplays, 0);
+  assert.equal(mux.status().recovery.replayedRequests, 1);
+});
+
 test("multiplexer restart reopens exact resolved identity, replays queued only, and refuses accepted replay", async () => {
   const stateDir = await temporaryState();
   const first = new FileDurabilityStore({ stateDir });
@@ -368,8 +503,11 @@ test("multiplexer restart reopens exact resolved identity, replays queued only, 
     (error) => error instanceof MultiplexerError && error.code === "host_not_ready",
   );
   const report = await mux.recover();
-  assert.deepEqual(report.opened, ["agent/a"]);
+  assert.deepEqual(report.opened, ["agent/a"], JSON.stringify(report.failures));
   assert.deepEqual(report.replayed, ["queued"]);
+  assert.equal(mux.status().ready, false);
+  assert.equal(mux.status().recovery.phase, "degraded");
+  assert.equal(mux.status().recovery.indeterminateRequests, 1);
   assert.equal(factory.adapter().calls.length, 1);
   assert.equal(factory.adapter().calls[0].idempotencyKey, "queued");
   assert.deepEqual(factory.requests[0].session, {

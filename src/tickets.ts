@@ -10,13 +10,19 @@ import {
   wakeTicketId,
   type JournalEntry,
 } from "./durability.js";
-import type { ApiErrorBody, TicketResource } from "./session-api.js";
+import type {
+  ApiErrorBody,
+  SessionEnvironmentSummary,
+  TicketResource,
+} from "./session-api.js";
+import type { PreparedSessionRuntimeOptions } from "./session-config.js";
 import type { PersistedSessionSpec } from "./session-catalog.js";
 
 export const TICKET_FORMAT_VERSION = 1 as const;
 export const DEFAULT_MAX_TICKETS = 4096;
 export const DEFAULT_MAX_TICKET_RECORD_BYTES = 1024 * 1024;
 export const DEFAULT_TICKET_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+export const DEFAULT_MAX_TICKET_RECOVERY_BYTES = 256 * 1024 * 1024;
 
 export type MutationTicketState =
   | "queued"
@@ -32,6 +38,7 @@ export type MutationTicketCommand =
       sessionId: string;
       generation: number;
       spec: PersistedSessionSpec;
+      environmentSummary: SessionEnvironmentSummary;
     }
   | {
       operation: "update";
@@ -41,6 +48,7 @@ export type MutationTicketCommand =
       expectedRevision: number;
       generation: number;
       spec: PersistedSessionSpec;
+      environmentSummary: SessionEnvironmentSummary;
     }
   | {
       operation: "delete";
@@ -108,6 +116,7 @@ export interface FileMutationTicketStoreOptions {
   stateDir: string;
   maxTickets?: number;
   maxRecordBytes?: number;
+  maxRecoveryBytes?: number;
   retentionMs?: number;
   now?: () => Date;
 }
@@ -122,6 +131,7 @@ export class FileMutationTicketStore implements MutationTicketStore {
   readonly #ticketsDir: string;
   readonly #maxTickets: number;
   readonly #maxRecordBytes: number;
+  readonly #maxRecoveryBytes: number;
   readonly #retentionMs: number;
   readonly #now: () => Date;
   readonly #tickets = new Map<string, MutationTicketRecord>();
@@ -137,6 +147,10 @@ export class FileMutationTicketStore implements MutationTicketStore {
     this.#maxRecordBytes = positiveInteger(
       options.maxRecordBytes ?? DEFAULT_MAX_TICKET_RECORD_BYTES,
       "maxRecordBytes",
+    );
+    this.#maxRecoveryBytes = positiveInteger(
+      options.maxRecoveryBytes ?? DEFAULT_MAX_TICKET_RECOVERY_BYTES,
+      "maxRecoveryBytes",
     );
     this.#retentionMs = nonNegativeInteger(
       options.retentionMs ?? DEFAULT_TICKET_RETENTION_MS,
@@ -275,8 +289,17 @@ export class FileMutationTicketStore implements MutationTicketStore {
     await ensurePrivateDirectory(this.#ticketsDir, "ticket directory");
     this.#tickets.clear();
     this.#scopes.clear();
-    for (const name of (await readdir(this.#ticketsDir)).sort()) {
-      if (!name.endsWith(".json")) continue;
+    const names = (await readdir(this.#ticketsDir))
+      .filter((name) => name.endsWith(".json"))
+      .sort();
+    if (names.length > this.#maxTickets) {
+      throw new TicketStoreError("ticket_capacity", "retained ticket capacity exceeded", {
+        maxTickets: this.#maxTickets,
+        tickets: names.length,
+      });
+    }
+    let recoveryBytes = 0;
+    for (const name of names) {
       const path = join(this.#ticketsDir, name);
       const bytes = await stateFileSize(path);
       if (bytes !== undefined && bytes > this.#maxRecordBytes) {
@@ -286,12 +309,22 @@ export class FileMutationTicketStore implements MutationTicketStore {
           recordBytes: bytes,
         });
       }
-      const value = await readPrivateJsonIfExists<unknown>(path);
-      if (value === undefined) continue;
+      recoveryBytes += bytes ?? 0;
+      if (recoveryBytes > this.#maxRecoveryBytes) {
+        throw new TicketStoreError(
+          "ticket_recovery_too_large",
+          "retained ticket state exceeds aggregate recovery byte limit",
+          { maxRecoveryBytes: this.#maxRecoveryBytes },
+        );
+      }
+      const loaded = await readPrivateJsonIfExists<unknown>(path);
+      if (loaded === undefined) continue;
+      const { value, migrated } = migrateLegacyRecord(loaded);
       validateRecord(value, path);
       if (name !== `${value.ticketId}.json`) {
         throw corrupt("ticket ID does not match path", path);
       }
+      if (migrated) await this.#write(value);
       this.#register(value, path);
     }
 
@@ -426,14 +459,23 @@ export class FileMutationTicketStore implements MutationTicketStore {
   }
 }
 
-export type MutationExecutor = (command: MutationTicketCommand) => Promise<unknown>;
+export interface MutationExecutionContext {
+  runtimeOptions?: PreparedSessionRuntimeOptions;
+}
+
+export type MutationExecutor = (
+  command: MutationTicketCommand,
+  context: MutationExecutionContext | undefined,
+) => Promise<unknown>;
 
 /** Executes queued tickets once, joins duplicates, and retains terminal state. */
 export class MutationTicketController {
   readonly #store: MutationTicketStore;
   readonly #runs = new Map<string, Promise<MutationTicketRecord>>();
+  readonly #contexts = new Map<string, MutationExecutionContext>();
   #executor: MutationExecutor | undefined;
   #recovered = false;
+  #draining = false;
 
   constructor(store: MutationTicketStore) {
     this.#store = store;
@@ -450,13 +492,41 @@ export class MutationTicketController {
     return recovery;
   }
 
-  async submit(input: MutationTicketBeginInput): Promise<MutationTicketRecord> {
+  async submit(
+    input: MutationTicketBeginInput,
+    context?: MutationExecutionContext,
+  ): Promise<MutationTicketRecord> {
+    if (this.#draining) {
+      throw new TicketStoreError(
+        "tickets_draining",
+        "mutation ticket admission is draining",
+        undefined,
+        true,
+      );
+    }
     if (!this.#recovered || this.#executor === undefined) {
       throw new TicketStoreError("tickets_not_ready", "ticket controller is not ready");
     }
     const record = await this.#store.begin(input);
-    if (record.state === "queued") this.#launch(record);
+    if (record.state === "queued") {
+      if (context !== undefined) this.#contexts.set(record.ticketId, context);
+      this.#launch(record);
+    }
     return record;
+  }
+
+  beginDrain(): void {
+    this.#draining = true;
+  }
+
+  get pendingRuns(): number {
+    return this.#runs.size;
+  }
+
+  async settled(): Promise<void> {
+    while (this.#runs.size > 0) {
+      await Promise.allSettled([...this.#runs.values()]);
+    }
   }
 
   get(ticketId: string): Promise<MutationTicketRecord | undefined> {
@@ -491,7 +561,10 @@ export class MutationTicketController {
     const run = Promise.resolve().then(async () => {
       const running = await this.#store.markRunning(record.ticketId);
       try {
-        const result = await this.#executor!(running.command);
+        const result = await this.#executor!(
+          running.command,
+          this.#contexts.get(record.ticketId),
+        );
         return await this.#store.markSucceeded(record.ticketId, result);
       } catch (error) {
         const normalized = safeTicketError(error);
@@ -513,7 +586,12 @@ export class MutationTicketController {
       }
     });
     this.#runs.set(record.ticketId, run);
-    void run.finally(() => this.#runs.delete(record.ticketId)).catch(() => {});
+    void run
+      .finally(() => {
+        this.#runs.delete(record.ticketId);
+        this.#contexts.delete(record.ticketId);
+      })
+      .catch(() => {});
   }
 }
 
@@ -628,6 +706,29 @@ function validateBeginInput(input: MutationTicketBeginInput): void {
   }
 }
 
+function migrateLegacyRecord(loaded: unknown): {
+  value: unknown;
+  migrated: boolean;
+} {
+  if (
+    !isRecord(loaded) ||
+    loaded.formatVersion !== TICKET_FORMAT_VERSION ||
+    !isRecord(loaded.command) ||
+    (loaded.command.operation !== "create" && loaded.command.operation !== "update") ||
+    loaded.command.environmentSummary !== undefined
+  ) {
+    return { value: loaded, migrated: false };
+  }
+  const value = structuredClone(loaded);
+  (value.command as Record<string, unknown>).environmentSummary = {
+    keys: [],
+    persistence: "memory-only",
+    provisioned: true,
+  };
+  value.fingerprint = commandFingerprint(value.command as MutationTicketCommand);
+  return { value, migrated: true };
+}
+
 function validateRecord(value: unknown, path: string): asserts value is MutationTicketRecord {
   if (!isRecord(value)) throw corrupt("ticket is not an object", path);
   if (value.formatVersion !== TICKET_FORMAT_VERSION) {
@@ -714,6 +815,7 @@ function isMutationCommand(value: unknown): value is MutationTicketCommand {
   }
   if (!Number.isSafeInteger(value.generation) || (value.generation as number) < 0) return false;
   if (!isRecord(value.spec) || "env" in value.spec) return false;
+  if (!isEnvironmentSummary(value.environmentSummary)) return false;
   if (value.operation === "update") {
     return (
       Number.isSafeInteger(value.expectedGeneration) &&
@@ -723,6 +825,27 @@ function isMutationCommand(value: unknown): value is MutationTicketCommand {
     );
   }
   return true;
+}
+
+function isEnvironmentSummary(value: unknown): value is SessionEnvironmentSummary {
+  if (!isRecord(value) || !Array.isArray(value.keys)) return false;
+  if (
+    !value.keys.every(
+      (key) => typeof key === "string" && key.length > 0 && key.length <= 256,
+    ) ||
+    new Set(value.keys).size !== value.keys.length
+  ) {
+    return false;
+  }
+  const keys = value.keys as string[];
+  if ([...keys].sort((a, b) => a.localeCompare(b)).some((key, index) => key !== keys[index])) {
+    return false;
+  }
+  return (
+    (value.persistence === "memory-only" || value.persistence === "reference") &&
+    typeof value.provisioned === "boolean" &&
+    (value.digest === undefined || typeof value.digest === "string")
+  );
 }
 
 function isApiError(value: unknown): value is ApiErrorBody {

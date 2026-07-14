@@ -58,11 +58,13 @@ export interface PiSessionFactoryOptions {
 }
 
 export interface PiFactoryReadiness {
-  agentDir: string;
-  configuredProviders: string[];
+  ready: boolean;
+  configuredProviderCount: number;
   availableModels: number;
-  modelRegistryError?: string;
-  authErrors: string[];
+  authenticatedModels: number;
+  modelRegistryErrorCode?: string;
+  authErrorCount: number;
+  authErrorCodes: string[];
 }
 
 /**
@@ -79,6 +81,7 @@ export class PiSessionFactory implements SessionFactory {
     options: CreateAgentSessionOptions,
   ) => Promise<CreateAgentSessionResult>;
   readonly #rpcControllerOptions: PiRpcControllerOptions;
+  readonly #authErrorCodes: string[] = [];
 
   constructor(options: PiSessionFactoryOptions) {
     if (options.stateDir.length === 0) throw new Error("stateDir must not be empty");
@@ -99,18 +102,31 @@ export class PiSessionFactory implements SessionFactory {
   }
 
   readiness(): PiFactoryReadiness {
+    for (const error of this.authStorage.drainErrors()) {
+      const code = safeReadinessErrorCode(error);
+      if (!this.#authErrorCodes.includes(code)) this.#authErrorCodes.push(code);
+    }
     const registryError = this.modelRegistry.getError();
+    const available = this.modelRegistry.getAvailable();
+    const authenticatedModels = available.filter((model) =>
+      this.modelRegistry.hasConfiguredAuth(model),
+    ).length;
     const result: PiFactoryReadiness = {
-      agentDir: this.agentDir,
-      configuredProviders: this.authStorage.list().sort(),
-      availableModels: this.modelRegistry.getAvailable().length,
-      authErrors: this.authStorage.drainErrors().map((error) => error.message),
+      ready: registryError === undefined && authenticatedModels > 0,
+      configuredProviderCount: this.authStorage.list().length,
+      availableModels: available.length,
+      authenticatedModels,
+      authErrorCount: this.#authErrorCodes.length,
+      authErrorCodes: [...this.#authErrorCodes],
     };
-    if (registryError !== undefined) result.modelRegistryError = registryError;
+    if (registryError !== undefined) {
+      result.modelRegistryErrorCode = safeReadinessErrorCode(registryError);
+    }
     return result;
   }
 
   async open(request: SessionOpenRequest): Promise<SessionAdapter> {
+    request.signal?.throwIfAborted();
     const runtimeOptions = request.runtimeOptions;
     const configuredSpec = runtimeOptions?.persistedSpec;
     const selectedAgentDir = resolve(configuredSpec?.agentDir ?? request.agentDir ?? this.agentDir);
@@ -216,6 +232,7 @@ export class PiSessionFactory implements SessionFactory {
       sessionManager: runtimeSessionManager,
       sessionStartEvent,
     }) => {
+      request.signal?.throwIfAborted();
       const canonicalCwd = await validateCwd(runtimeCwd);
       if (resolve(runtimeAgentDir) !== selectedAgentDir) {
         throw new PiAdapterError(
@@ -271,6 +288,7 @@ export class PiSessionFactory implements SessionFactory {
               runtimeOptions.environmentOverlay,
               runtimeOptions.persistedSpec,
             );
+      request.signal?.throwIfAborted();
       const result = await this.#createSession({
         cwd: canonicalCwd,
         agentDir: selectedAgentDir,
@@ -290,6 +308,10 @@ export class PiSessionFactory implements SessionFactory {
         settingsManager,
         ...(sessionStartEvent === undefined ? {} : { sessionStartEvent }),
       });
+      if (request.signal?.aborted) {
+        result.session.dispose();
+        throw new DOMException("operation aborted", "AbortError");
+      }
       if (runtimeOptions === undefined && result.session.getActiveToolNames().length !== 0) {
         result.session.dispose();
         throw new PiAdapterError(
@@ -962,6 +984,16 @@ function isWithin(root: string, path: string): boolean {
 
 function isNodeError(error: unknown): error is NodeJS.ErrnoException {
   return error instanceof Error && "code" in error;
+}
+
+function safeReadinessErrorCode(error: unknown): string {
+  if (error !== null && typeof error === "object" && "code" in error) {
+    const code = (error as { code?: unknown }).code;
+    if (typeof code === "string" && code.length > 0 && code.length <= 128) return code;
+  }
+  return error instanceof Error && error.name.length > 0
+    ? error.name.slice(0, 128)
+    : "unknown_error";
 }
 
 function mapPiEvent(event: AgentSessionEvent): AdapterEvent | undefined {

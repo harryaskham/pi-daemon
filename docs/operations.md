@@ -47,12 +47,10 @@ loopback address `127.0.0.1`. A non-loopback plaintext bind is refused unless
 `--api-allow-insecure-http true` explicitly acknowledges trusted-network or TLS
 reverse-proxy handling.
 
-`GET /v1/capabilities` is implemented by the transport foundation. It advertises
-HTTP but does not advertise WebSocket or RPC subprotocol support until stream
-dispatch lands. Session CRUD and `/rpc`/`/apc` upgrades are reserved by the
-published contract and return a typed not-implemented response until their
-dependent implementation slices land; they never fall back to unauthenticated
-behavior.
+`GET /v1/capabilities`, durable session CRUD, and ticket lookup/reconciliation
+are implemented. WebSocket RPC/ACP upgrades remain reserved until stream
+dispatch lands and return typed not-implemented responses; no route ever falls
+back to unauthenticated behavior.
 
 Optional limits:
 
@@ -61,6 +59,8 @@ Optional limits:
 --max-concurrent-turns N
 --max-session-queue-depth N
 --idle-session-ttl-ms N
+--recovery-open-timeout-ms N
+--recovery-total-timeout-ms N
 --max-connections N
 --max-in-flight-requests-per-connection N
 --max-line-bytes N
@@ -75,13 +75,15 @@ byte limit. Oversized/non-serializable events become bounded `eventDropped`
 records; oversized/non-serializable responses become typed errors.
 
 The service emits structured JSON lifecycle logs to stderr. It never logs
-prompts or model output. A `pi_daemon_ready` record includes the socket, host
-instance, and bounded recovery counts.
+prompts, model output, credentials, or private state/agent/workload paths.
+`pi_daemon_listening_degraded` means the transport is available but recovery or
+provider readiness is incomplete/degraded; `pi_daemon_ready` is emitted only
+when all bounded recovery work settles without an indeterminate/failure state.
 
 ## Probe and status
 
 ```console
-pi-daemon probe --socket "$XDG_RUNTIME_DIR/pi-daemon.sock"
+pi-daemon probe --socket "$XDG_RUNTIME_DIR/pi-daemon.sock" --timeout-ms 5000
 
 pi-daemon request --socket "$XDG_RUNTIME_DIR/pi-daemon.sock" --json \
   '{"protocolVersion":"1.0","requestId":"status-1","operation":"status","payload":{}}'
@@ -90,22 +92,31 @@ pi-daemon request --socket "$XDG_RUNTIME_DIR/pi-daemon.sock" --json \
   '{"protocolVersion":"1.0","requestId":"attach-1","operation":"attach","sessionId":"agent-a","generation":1,"payload":{}}'
 ```
 
-Readiness distinguishes protocol availability from Pi model/auth availability.
-Status includes counters, latency summaries, memory, resident sessions,
-retained/dormant catalog counts, active and queued turns, and draining state; it
-excludes prompts, results, and secrets.
+Readiness distinguishes protocol availability from Pi model/auth and recovery
+availability. Probe exits `0` only for `host.ready: true`, `75` for a successful
+but recovering/degraded handshake, and nonzero for transport/protocol failure.
+Both connect and handshake are deadline bounded. Status retains safe recovery
+phase, pending replay/mutation counts, indeterminate counts, failure-code counts,
+metrics, memory, resident/retained sessions, turns, and draining state; it
+excludes prompts, results, credentials, error text, and private paths.
 
 ## Shutdown
 
-SIGTERM starts a 30-second drain. SIGINT uses five seconds. A protocol `drain`
-command accepts `payload.timeoutMs`. New open/wake requests are rejected once
-drain starts; after the deadline, queued and active turns are aborted.
+SIGTERM starts a 30-second whole-process shutdown deadline. SIGINT uses five
+seconds. Transports stop admission first, active/queued turns are drained or
+aborted, and adapter/extension disposal is raced against the remaining deadline.
+A hung adapter is reported and abandoned rather than blocking process exit. In
+direct CLI signal mode, an unreferenced hard-exit watchdog terminates only if
+abandoned extension/runtime handles survive beyond the whole deadline. A
+protocol `drain` command still accepts `payload.timeoutMs`.
 
 Idle SDK sessions are evicted after 30 minutes by default while their durable
 catalog and Pi session artifacts remain. Eviction emits `sessionDormant` and
 `sessionEvicted`; re-open the same generation and policy to load the exact
 resolved Pi session file again. A retained close removes the runtime manifest,
-so it stays dormant across restart until explicitly reopened. Set
+so it stays dormant across restart until explicitly reopened. Sweeps are
+non-overlapping; disposal failure/timeout marks only that session failed and is
+retained as a safe metric/code rather than becoming an unhandled rejection. Set
 `--idle-session-ttl-ms 0` to disable eviction.
 
 ## Durable session catalog
@@ -117,8 +128,8 @@ nonsecret normalized session spec, environment key/digest summary, current Pi
 conversation identity, last-use timestamps, and the latest terminal outcome.
 Raw environment values are rejected rather than serialized.
 
-Catalog records are individually capped at 1 MiB and the retained record count
-is bounded. Listing is stable by canonical session ID, defaults to 50 entries,
+Catalog records are individually capped at 1 MiB, aggregate startup input is
+capped at 256 MiB, and the retained record count is bounded. Listing is stable by canonical session ID, defaults to 50 entries,
 caps at 100, and uses opaque cursors. A dormant record can be inspected, renamed or
 replaced with optimistic generation/revision checks, reopened, or deleted with
 its retained manifest/journal/Pi files without first creating an SDK runtime.
@@ -128,9 +139,12 @@ resources.
 ## Durable command tickets
 
 Owner-private atomic mutation tickets live under `state/tickets/`. They are
-bounded to 4096 records, 1 MiB each, and seven days for terminal or
-indeterminate retention by default. Ticket commands contain only the secret-free
-persisted session spec; raw environment values are rejected before admission.
+bounded to 4096 records, 1 MiB each, 256 MiB aggregate recovery input, and seven
+days for terminal or indeterminate retention by default. Ticket commands contain
+only the persisted session spec plus environment key/digest summary; raw values
+stay in the first host's volatile prepared runtime context. A queued
+environment-dependent ticket found after restart fails `credentials_required`
+rather than replaying with missing or host-global credentials.
 The wake path continues to use the bounded per-session journal and derives an
 opaque ticket ID from session/idempotency scope. Authenticated API responses are
 preflighted against a 2 MiB structural JSON bound; an oversized list/result
@@ -138,11 +152,13 @@ becomes a typed `outbound_record_too_large` error before JSON/Buffer allocation.
 
 ## Restart recovery
 
-At startup, manifests reopen the resolved Pi session file recorded after the
-original create/continue/open operation; the requested target is never rerun as
-though it were still unresolved. Durable `queued` wakes replay only after that
-exact conversation opens, while queued mutation tickets replay through their
-secret-free commands. `accepted` wakes and `running` mutations become
+At startup, manifest/catalog/journal counts, individual records, aggregate
+bytes, per-session opens, and the total open phase are bounded. Manifests reopen
+the resolved Pi session file recorded after the original create/continue/open
+operation; the requested target is never rerun as though it were still
+unresolved. Full secret-free runtime configuration is reconstructed. Durable
+`queued` wakes then replay in the background while the transport listens, and
+queued mutation tickets replay through their secret-free commands. `accepted` wakes and `running` mutations become
 `indeterminate` and require client reconciliation. Readiness logs expose only
 queued/indeterminate/pruned counts, never ticket commands or results.
 

@@ -36,7 +36,12 @@ Responses have `kind: "response"`, the request ID, host instance ID, and either
 `ok: true` with `data` or `ok: false` with a typed error. Events have
 `kind: "event"`, logical session/generation, and a monotonic per-session
 sequence. A client must discard events from stale host instances or session
-generations.
+generations. Handshake `host.ready` is true only after bounded background wake
+and mutation replay has settled without recovery failures/indeterminate work and
+the adapter reports usable authenticated models. `host.recovery` exposes only
+safe phase/count/code summaries. A listening but recovering/degraded host still
+serves status/reconciliation and may admit unaffected sessions, but probe returns
+temporary failure.
 
 ## Operations
 

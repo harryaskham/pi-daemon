@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
   createServer,
   type IncomingMessage,
@@ -19,9 +19,16 @@ import {
 import {
   SESSION_API_VERSION,
   type ApiErrorBody,
-  type SessionSpec,
+  type SessionEnvironmentSummary,
   type TicketResource,
 } from "./session-api.js";
+import {
+  SessionConfigurationError,
+  parseSessionConfiguration,
+  requireProvisionedEnvironment,
+  type PreparedSessionConfiguration,
+  type PreparedSessionRuntimeOptions,
+} from "./session-config.js";
 import {
   catalogRecordToSessionResource,
   type PersistedSessionSpec,
@@ -106,6 +113,7 @@ export class ApiServer {
   readonly #server: Server;
   #started = false;
   #ticketRecovery: MutationTicketRecovery | undefined;
+  #indeterminateMutationTickets = 0;
 
   constructor(options: ApiServerOptions) {
     this.host = options.host ?? "127.0.0.1";
@@ -160,9 +168,30 @@ export class ApiServer {
 
   async start(): Promise<ApiServerAddress> {
     if (this.#started) throw new Error("API server is already started");
-    this.#ticketRecovery = await this.#tickets?.recover(async (command) =>
-      this.#executeMutation(command),
+    this.#ticketRecovery = await this.#tickets?.recover(async (command, context) =>
+      this.#executeMutation(command, context?.runtimeOptions),
     );
+    if (this.#tickets !== undefined) {
+      this.#indeterminateMutationTickets =
+        this.#ticketRecovery?.indeterminate.length ?? 0;
+      this.#multiplexer.setMutationRecoveryHealth(
+        this.#tickets.pendingRuns,
+        this.#indeterminateMutationTickets,
+      );
+      const recoveredQueuedIds =
+        this.#ticketRecovery?.queued.map((ticket) => ticket.ticketId) ?? [];
+      void this.#tickets.settled().then(async () => {
+        const recovered = await Promise.all(
+          recoveredQueuedIds.map(async (ticketId) => this.#tickets!.get(ticketId)),
+        );
+        const failures = recovered.filter((ticket) => ticket?.state === "failed").length;
+        this.#multiplexer.setMutationRecoveryHealth(
+          0,
+          this.#indeterminateMutationTickets,
+          failures,
+        );
+      });
+    }
     await new Promise<void>((resolve, reject) => {
       const onError = (error: Error): void => {
         this.#server.off("listening", onListening);
@@ -181,6 +210,7 @@ export class ApiServer {
   }
 
   async stop(): Promise<void> {
+    this.#tickets?.beginDrain();
     if (!this.#started) return;
     this.#started = false;
     this.#server.closeAllConnections();
@@ -457,15 +487,19 @@ export class ApiServer {
       requestId: body.requestId || responseRequestId,
       sessionId,
       generation: 1,
-      spec: body.spec,
+      spec: body.configuration.persistedSpec,
+      environmentSummary: environmentSummary(body.configuration),
     };
     return {
-      ticket: await this.#tickets!.submit({
-        method: "POST",
-        canonicalTarget: "/v1/session",
-        idempotencyKey,
-        command,
-      }),
+      ticket: await this.#tickets!.submit(
+        {
+          method: "POST",
+          canonicalTarget: "/v1/session",
+          idempotencyKey,
+          command,
+        },
+        { runtimeOptions: body.configuration.runtimeOptions },
+      ),
       responseRequestId: body.requestId,
     };
   }
@@ -502,15 +536,19 @@ export class ApiServer {
         expectedGeneration: body.expectedGeneration,
         expectedRevision: body.expectedRevision,
         generation: body.expectedGeneration + 1,
-        spec: body.spec,
+        spec: body.configuration.persistedSpec,
+        environmentSummary: environmentSummary(body.configuration),
       };
       return {
-        ticket: await this.#tickets!.submit({
-          method: "PUT",
-          canonicalTarget: directTarget,
-          idempotencyKey,
-          command,
-        }),
+        ticket: await this.#tickets!.submit(
+          {
+            method: "PUT",
+            canonicalTarget: directTarget,
+            idempotencyKey,
+            command,
+          },
+          { runtimeOptions: body.configuration.runtimeOptions },
+        ),
         responseRequestId: body.requestId,
       };
     }
@@ -536,15 +574,19 @@ export class ApiServer {
       expectedGeneration: body.expectedGeneration,
       expectedRevision: body.expectedRevision,
       generation: body.expectedGeneration + 1,
-      spec: body.spec,
+      spec: body.configuration.persistedSpec,
+      environmentSummary: environmentSummary(body.configuration),
     };
     return {
-      ticket: await this.#tickets!.submit({
-        method: "PUT",
-        canonicalTarget: `/v1/session/${encodeURIComponent(current.sessionId)}`,
-        idempotencyKey,
-        command,
-      }),
+      ticket: await this.#tickets!.submit(
+        {
+          method: "PUT",
+          canonicalTarget: `/v1/session/${encodeURIComponent(current.sessionId)}`,
+          idempotencyKey,
+          command,
+        },
+        { runtimeOptions: body.configuration.runtimeOptions },
+      ),
       responseRequestId: body.requestId,
     };
   }
@@ -630,6 +672,14 @@ export class ApiServer {
           ? { state: "succeeded", result: body.result }
           : { state: "failed", error: body.error },
       );
+      this.#indeterminateMutationTickets = Math.max(
+        0,
+        this.#indeterminateMutationTickets - 1,
+      );
+      this.#multiplexer.setMutationRecoveryHealth(
+        this.#tickets!.pendingRuns,
+        this.#indeterminateMutationTickets,
+      );
       return {
         resource: mutationTicketResource(reconciled),
         responseRequestId: body.requestId,
@@ -656,12 +706,23 @@ export class ApiServer {
     }
   }
 
-  async #executeMutation(command: MutationTicketCommand): Promise<unknown> {
+  async #executeMutation(
+    command: MutationTicketCommand,
+    suppliedRuntimeOptions?: PreparedSessionRuntimeOptions,
+  ): Promise<unknown> {
+    const runtimeOptions =
+      command.operation === "delete"
+        ? undefined
+        : await this.#runtimeOptionsForMutation(command, suppliedRuntimeOptions);
     if (command.operation === "create") {
       if ((await this.#multiplexer.retainedSession(command.sessionId)) !== undefined) {
         throw new MultiplexerError("session_exists", "session ID already exists");
       }
-      await this.#multiplexer.open(openCommandFromTicket(command));
+      await this.#multiplexer.open(openCommandFromTicket(command), {
+        runtimeOptions: runtimeOptions!,
+        environmentSummary: command.environmentSummary,
+        catalogSpec: command.spec,
+      });
       return this.#currentSessionResource(command.sessionId);
     }
 
@@ -687,7 +748,11 @@ export class ApiServer {
           payload: { retainSession: true },
         });
       }
-      await this.#multiplexer.open(openCommandFromTicket(command));
+      await this.#multiplexer.open(openCommandFromTicket(command), {
+        runtimeOptions: runtimeOptions!,
+        environmentSummary: command.environmentSummary,
+        catalogSpec: command.spec,
+      });
       return this.#currentSessionResource(command.sessionId);
     }
 
@@ -711,6 +776,39 @@ export class ApiServer {
       retained: command.retainArtifacts,
       deleted: !command.retainArtifacts,
     };
+  }
+
+  async #runtimeOptionsForMutation(
+    command: Extract<MutationTicketCommand, { operation: "create" | "update" }>,
+    supplied: PreparedSessionRuntimeOptions | undefined,
+  ): Promise<PreparedSessionRuntimeOptions> {
+    requireProvisionedEnvironment(
+      command.environmentSummary,
+      supplied?.environmentOverlay,
+    );
+    let runtimeOptions: PreparedSessionRuntimeOptions =
+      supplied ?? {
+        persistedSpec: command.spec,
+        environmentOverlay: Object.freeze({}),
+      };
+    if (command.spec.target.mode === "fork") {
+      const sourceRef = command.spec.target.sourceSession;
+      const source =
+        sourceRef === undefined
+          ? undefined
+          : await this.#multiplexer.retainedSession(sourceRef);
+      if (source?.conversation?.sessionFile === undefined) {
+        throw new MultiplexerError(
+          "fork_source_unavailable",
+          "fork source has no retained Pi conversation",
+        );
+      }
+      runtimeOptions = {
+        ...runtimeOptions,
+        resolvedSourceSessionPath: source.conversation.sessionFile,
+      };
+    }
+    return runtimeOptions;
   }
 
   async #currentSessionResource(sessionId: string): Promise<unknown> {
@@ -999,175 +1097,51 @@ function booleanQuery(value: string | null, defaultValue: boolean): boolean {
   throw new ApiRequestError(400, "invalid_boolean", "query boolean must be true or false");
 }
 
+function environmentSummary(
+  configuration: PreparedSessionConfiguration,
+): SessionEnvironmentSummary {
+  if (configuration.environmentSummary.keys.length === 0) {
+    return { ...configuration.environmentSummary };
+  }
+  const semantic = configuration.environmentSummary.keys.map((key) => [
+    key,
+    configuration.environmentOverlay[key],
+  ]);
+  const digest = createHash("sha256")
+    .update(JSON.stringify(semantic), "utf8")
+    .digest("hex");
+  return { ...configuration.environmentSummary, digest: `sha256:${digest}` };
+}
+
 function parseSessionCreateRequest(value: unknown): {
   requestId: string;
   sessionId?: string;
-  spec: PersistedSessionSpec;
+  configuration: PreparedSessionConfiguration;
 } {
   const input = apiRecord(value, "session create request");
   const requestId = apiString(input.requestId, "requestId", 128);
   const sessionId = apiOptionalString(input.sessionId, "sessionId", 256);
-  const spec = parseSupportedSessionSpec(input.spec);
-  return { requestId, ...(sessionId === undefined ? {} : { sessionId }), spec };
+  const configuration = parseSessionConfiguration(input.spec);
+  return {
+    requestId,
+    ...(sessionId === undefined ? {} : { sessionId }),
+    configuration,
+  };
 }
 
 function parseSessionUpdateRequest(value: unknown): {
   requestId: string;
   expectedGeneration: number;
   expectedRevision: number;
-  spec: PersistedSessionSpec;
+  configuration: PreparedSessionConfiguration;
 } {
   const input = apiRecord(value, "session update request");
   return {
     requestId: apiString(input.requestId, "requestId", 128),
     expectedGeneration: apiInteger(input.expectedGeneration, "expectedGeneration", 0),
     expectedRevision: apiInteger(input.expectedRevision, "expectedRevision", 1),
-    spec: parseSupportedSessionSpec(input.spec),
+    configuration: parseSessionConfiguration(input.spec),
   };
-}
-
-function parseSupportedSessionSpec(value: unknown): PersistedSessionSpec {
-  const input = apiRecord(value, "session spec");
-  const cwd = apiString(input.cwd, "spec.cwd", 4096);
-  const targetInput = apiRecord(input.target, "spec.target");
-  const mode = apiString(targetInput.mode, "spec.target.mode", 16);
-  if (!["new", "continue", "open", "memory"].includes(mode)) {
-    throw unsupported("session target mode is not supported by the current runtime");
-  }
-  const path = apiOptionalString(targetInput.path, "spec.target.path", 4096);
-  if (mode === "open" && path === undefined) {
-    throw new ApiRequestError(400, "invalid_session_spec", "open target requires spec.target.path");
-  }
-  if (
-    targetInput.sourceSession !== undefined ||
-    targetInput.entryId !== undefined ||
-    targetInput.sessionDir !== undefined
-  ) {
-    throw unsupported("fork and custom session directory targets are not yet supported");
-  }
-  const target: PersistedSessionSpec["target"] = {
-    mode: mode as "new" | "continue" | "open" | "memory",
-    ...(path === undefined ? {} : { path }),
-  };
-  const spec: PersistedSessionSpec = { cwd, target, isolation: { mode: "unisolated" } };
-
-  const name = apiOptionalString(input.name, "spec.name", 128);
-  if (name !== undefined) spec.name = name;
-  const agentDir = apiOptionalString(input.agentDir, "spec.agentDir", 4096);
-  if (agentDir !== undefined) spec.agentDir = agentDir;
-
-  if (input.model !== undefined) {
-    const modelInput = apiRecord(input.model, "spec.model");
-    const provider = apiOptionalString(modelInput.provider, "spec.model.provider", 128);
-    const id = apiOptionalString(modelInput.id, "spec.model.id", 256);
-    if ((provider === undefined) !== (id === undefined)) {
-      throw new ApiRequestError(
-        400,
-        "invalid_session_spec",
-        "model provider and id must be supplied together",
-      );
-    }
-    if (modelInput.scopedModels !== undefined) {
-      const scopedModels = apiStringArray(
-        modelInput.scopedModels,
-        "spec.model.scopedModels",
-        128,
-        512,
-      );
-      if (scopedModels.length > 0) {
-        throw unsupported("scoped model lists are not yet supported");
-      }
-    }
-    const thinkingLevel = apiOptionalString(
-      modelInput.thinkingLevel,
-      "spec.model.thinkingLevel",
-      16,
-    );
-    if (
-      thinkingLevel !== undefined &&
-      !["off", "minimal", "low", "medium", "high", "xhigh", "max"].includes(
-        thinkingLevel,
-      )
-    ) {
-      throw new ApiRequestError(400, "invalid_session_spec", "thinking level is invalid");
-    }
-    spec.model = {
-      ...(provider === undefined ? {} : { provider, id: id! }),
-      ...(thinkingLevel === undefined
-        ? {}
-        : {
-            thinkingLevel: thinkingLevel as NonNullable<
-              NonNullable<SessionSpec["model"]>["thinkingLevel"]
-            >,
-          }),
-    };
-  }
-
-  if (input.tools !== undefined) {
-    const tools = apiRecord(input.tools, "spec.tools");
-    const mode = apiOptionalString(tools.mode, "spec.tools.mode", 32) ?? "none";
-    const include =
-      tools.include === undefined
-        ? []
-        : apiStringArray(tools.include, "spec.tools.include", 256, 128);
-    const exclude =
-      tools.exclude === undefined
-        ? []
-        : apiStringArray(tools.exclude, "spec.tools.exclude", 256, 128);
-    if (mode !== "none" || include.length > 0 || exclude.length > 0) {
-      throw unsupported("only the no-tools session policy is currently supported");
-    }
-    spec.tools = { mode: "none", include: [], exclude: [] };
-  }
-
-  if (input.resources !== undefined) {
-    const resources = apiRecord(input.resources, "spec.resources");
-    for (const field of ["extensions", "skills", "promptTemplates", "themes", "appendSystemPrompt"]) {
-      const selected = resources[field];
-      if (selected !== undefined) {
-        const values = apiStringArray(selected, `spec.resources.${field}`, 256, 4096);
-        if (values.length > 0) {
-          throw unsupported(`${field} resources are not yet supported`);
-        }
-      }
-    }
-    if (
-      resources.extensionFlags !== undefined ||
-      (resources.projectTrust !== undefined &&
-        resources.projectTrust !== "deny" &&
-        resources.projectTrust !== "default")
-    ) {
-      throw unsupported("extension flags or project approval are not yet supported");
-    }
-    const systemPrompt = apiOptionalString(
-      resources.systemPrompt,
-      "spec.resources.systemPrompt",
-      256 * 1024,
-      true,
-    );
-    spec.resources = {
-      noExtensions: true,
-      noSkills: true,
-      noPromptTemplates: true,
-      noThemes: true,
-      noContextFiles: true,
-      ...(systemPrompt === undefined ? {} : { systemPrompt }),
-    };
-  }
-
-  if (input.settings !== undefined && Object.keys(apiRecord(input.settings, "spec.settings")).length > 0) {
-    throw unsupported("per-session settings overrides are not yet supported");
-  }
-  if (input.env !== undefined && Object.keys(apiRecord(input.env, "spec.env")).length > 0) {
-    throw unsupported("per-session environment overlays are not yet supported");
-  }
-  if (input.isolation !== undefined) {
-    const isolation = apiRecord(input.isolation, "spec.isolation");
-    if (isolation.mode !== "unisolated") {
-      throw unsupported("only unisolated in-process sessions are supported");
-    }
-  }
-  return spec;
 }
 
 function openCommandFromTicket(
@@ -1185,7 +1159,10 @@ function openCommandFromTicket(
 
 function openPayloadFromSpec(spec: PersistedSessionSpec): OpenPayload {
   const session: OpenPayload["session"] = {
-    mode: spec.target.mode as OpenPayload["session"]["mode"],
+    mode:
+      spec.target.mode === "fork"
+        ? "new"
+        : (spec.target.mode as OpenPayload["session"]["mode"]),
     ...(spec.target.path === undefined ? {} : { path: spec.target.path }),
   };
   const resources: OpenPayload["resources"] = {
@@ -1251,37 +1228,11 @@ function apiOptionalString(
   return value === undefined ? undefined : apiString(value, field, max, allowEmpty);
 }
 
-function apiStringArray(
-  value: unknown,
-  field: string,
-  maxItems: number,
-  maxItemLength: number,
-): string[] {
-  if (
-    !Array.isArray(value) ||
-    value.length > maxItems ||
-    !value.every(
-      (item) =>
-        typeof item === "string" &&
-        item.length > 0 &&
-        item.length <= maxItemLength &&
-        !/[\u0000]/.test(item),
-    )
-  ) {
-    throw new ApiRequestError(400, "invalid_session_spec", `${field} is invalid`);
-  }
-  return [...value] as string[];
-}
-
 function apiInteger(value: unknown, field: string, minimum: number): number {
   if (!Number.isSafeInteger(value) || (value as number) < minimum) {
     throw new ApiRequestError(400, "invalid_session_spec", `${field} is invalid`);
   }
   return value as number;
-}
-
-function unsupported(message: string): ApiRequestError {
-  return new ApiRequestError(422, "unsupported_session_option", message);
 }
 
 function sessionEtag(sessionId: string, revision: number): string {
@@ -1341,6 +1292,19 @@ function normalizeApiError(error: unknown): { status: number; body: ApiErrorBody
       },
     };
   }
+  if (error instanceof SessionConfigurationError) {
+    const status =
+      error.statusClass === "too_large"
+        ? 413
+        : error.statusClass === "unsupported" ||
+            error.statusClass === "credentials_required"
+          ? 422
+          : 400;
+    return {
+      status,
+      body: { code: error.code, message: error.message, retryable: false },
+    };
+  }
   if (error instanceof ApiRequestError) {
     return {
       status: error.status,
@@ -1359,7 +1323,7 @@ function normalizeApiError(error: unknown): { status: number; body: ApiErrorBody
             ? 429
             : error.code === "ticket_record_too_large"
               ? 413
-              : error.code === "tickets_not_ready"
+              : error.code === "tickets_not_ready" || error.code === "tickets_draining"
                 ? 503
                 : 400;
     return {

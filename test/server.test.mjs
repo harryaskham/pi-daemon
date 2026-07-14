@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { chmod, lstat, mkdtemp } from "node:fs/promises";
+import { chmod, lstat, mkdir, mkdtemp, rm } from "node:fs/promises";
 import { createConnection } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -415,6 +415,118 @@ test("active socket path is never replaced by a second server", async (t) => {
   const client = await PiDaemonClient.connect({ socketPath: first.socketPath });
   t.after(() => client.close());
   assert.equal((await client.handshake()).ok, true);
+});
+
+test("probe returns temporary failure for degraded provider readiness", async (t) => {
+  const factory = new EventFactory();
+  factory.readiness = () => ({
+    ready: false,
+    availableModels: 3,
+    authenticatedModels: 0,
+    authErrorCount: 1,
+    authErrorCodes: ["auth_unavailable"],
+  });
+  const harness = await startServer(undefined, factory);
+  t.after(async () => harness.server.stop());
+  const output = [];
+  const errors = [];
+  const code = await runCli(
+    ["probe", "--socket", harness.socketPath, "--timeout-ms", "500"],
+    { stdout: (text) => output.push(text), stderr: (text) => errors.push(text) },
+  );
+  assert.equal(code, 75);
+  assert.match(output.join(""), /"ready": false/);
+  assert.equal(output.join("").includes("auth.json"), false);
+  assert.deepEqual(errors, []);
+});
+
+test("client request timeout rejects a hung command without an unbounded waiter", async (t) => {
+  const factory = {
+    async open() {
+      return {
+        async prompt() {
+          return new Promise(() => {});
+        },
+        dispose() {},
+      };
+    },
+  };
+  const harness = await startServer(undefined, factory);
+  t.after(async () => harness.server.stop());
+  const client = await PiDaemonClient.connect({
+    socketPath: harness.socketPath,
+    requestTimeoutMs: 20,
+  });
+  t.after(() => client.close());
+  await client.request(openCommand("hung-client"));
+  await assert.rejects(client.request(wakeCommand("hung-client")), /timed out waiting/);
+});
+
+test("serve shutdown honors one whole deadline when adapter disposal hangs", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "pi-daemon-shutdown-deadline-"));
+  t.after(async () => rm(root, { recursive: true, force: true }));
+  const stateDir = join(root, "state");
+  const work = join(root, "work");
+  const socketPath = join(root, "daemon.sock");
+  await Promise.all([
+    mkdir(stateDir, { mode: 0o700 }),
+    mkdir(work, { mode: 0o700 }),
+  ]);
+  const factory = {
+    async open(request) {
+      return {
+        identity() {
+          return { sessionId: `pi-${request.sessionId}` };
+        },
+        async prompt() {
+          return { text: "unused" };
+        },
+        async dispose() {
+          return new Promise(() => {});
+        },
+      };
+    },
+  };
+  const errors = [];
+  const started = Date.now();
+  const code = await runCli(
+    [
+      "serve",
+      "--socket",
+      socketPath,
+      "--state-dir",
+      stateDir,
+      "--allow-root",
+      work,
+      "--idle-session-ttl-ms",
+      "0",
+    ],
+    { stdout: () => {}, stderr: (text) => errors.push(text) },
+    {
+      factory,
+      waitForShutdown: async (shutdown) => {
+        const client = await PiDaemonClient.connect({ socketPath });
+        try {
+          await client.request({
+            ...openCommand("shutdown"),
+            payload: { cwd: work, session: { mode: "memory" } },
+          });
+        } finally {
+          client.close();
+        }
+        await shutdown(20);
+      },
+    },
+  );
+  assert.equal(code, 0);
+  assert.ok(Date.now() - started < 1_000);
+  assert.ok(
+    errors.some((line) =>
+      ["adapter_dispose_timeout", "host_shutdown_timeout"].includes(
+        JSON.parse(line).event,
+      ),
+    ),
+  );
 });
 
 test("CLI version, probe and low-level request use the same protocol client", async (t) => {

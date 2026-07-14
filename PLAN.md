@@ -607,7 +607,7 @@ implementation order. This list is a human-readable crosswalk.
 - [x] `bd-df7ba9` — durable resident/dormant catalog and session CRUD.
 - [x] `bd-7d1407` — asynchronous durable command tickets and reconciliation.
 - [x] `bd-0052e2` — full transport-neutral Pi RPC on `AgentSessionRuntime`.
-- [ ] `bd-ab1b91` — trusted Pi CLI-equivalent per-session configuration and
+- [x] `bd-ab1b91` — trusted Pi CLI-equivalent per-session configuration and
   honest `unisolated` env/isolation policy.
 - [ ] `bd-509428` — explicit multi-reader attach, atomic snapshot/live boundary,
   replay cursor, gap, reconnect, and extension-UI routing.
@@ -618,7 +618,7 @@ implementation order. This list is a human-readable crosswalk.
 - [ ] `bd-d87daa` — Pi-RPC stdio bridge and remote attach client; optional stock
   Pi `/connect` extension after parity is proven.
 - [ ] `bd-07980c` — pre-allocation bounds for events/responses and safe overflow.
-- [ ] `bd-1877d3` — bounded recovery/shutdown and truthful redacted readiness.
+- [x] `bd-1877d3` — bounded recovery/shutdown and truthful redacted readiness.
 - [ ] `bd-a4954f` — full install/CRUD/RPC/restart/security/live acceptance.
 - [ ] `bd-fb3b32` — version/tag/changelog/package/Nix release invariants.
 - [ ] `bd-e53e76` — self-hosted CI runner policy (operational maintenance).

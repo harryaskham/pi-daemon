@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { access, mkdir, mkdtemp, rm } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import { request as httpRequest } from "node:http";
 import { createConnection } from "node:net";
 import { tmpdir } from "node:os";
@@ -313,12 +313,37 @@ test("authenticated CRUD mutations return durable deduplicated tickets and termi
       sessionId: "env-session",
       spec: {
         ...createBody.spec,
+        name: "env-name",
         env: { PROVIDER_TOKEN: "secret-value-must-not-persist" },
       },
     }),
   });
-  assert.equal(unsupportedEnv.status, 422);
-  assert.equal(JSON.stringify(unsupportedEnv.value).includes("secret-value-must-not-persist"), false);
+  assert.equal(unsupportedEnv.status, 202);
+  const environmentTerminal = await waitForTicket(
+    harness.address,
+    unsupportedEnv.value.data.ticketId,
+    auth.Authorization,
+  );
+  assert.equal(
+    environmentTerminal.state,
+    "succeeded",
+    JSON.stringify(environmentTerminal.error),
+  );
+  const environmentSession = await requestJson(harness.address, {
+    path: "/v1/session/env-session",
+    headers: { Authorization: auth.Authorization },
+  });
+  assert.deepEqual(environmentSession.value.data.environment.keys, ["PROVIDER_TOKEN"]);
+  assert.match(environmentSession.value.data.environment.digest, /^sha256:[a-f0-9]{64}$/);
+  assert.equal(environmentSession.value.data.environment.provisioned, true);
+  const ticketFiles = await readdir(join(stateDir, "tickets"));
+  const persistedTickets = await Promise.all(
+    ticketFiles.map((name) => readFile(join(stateDir, "tickets", name), "utf8")),
+  );
+  assert.equal(
+    persistedTickets.join("").includes("secret-value-must-not-persist"),
+    false,
+  );
 
   const fetched = await requestJson(harness.address, {
     path: "/v1/session/created-name",
@@ -414,6 +439,121 @@ test("authenticated CRUD mutations return durable deduplicated tickets and termi
   assert.equal(missing.status, 404);
 });
 
+test("queued environment-dependent mutation fails credentials_required after restart", async (t) => {
+  const stateDir = await mkdtemp(join(tmpdir(), "pi-daemon-api-env-restart-"));
+  t.after(async () => rm(stateDir, { recursive: true, force: true }));
+  const store = new FileMutationTicketStore({ stateDir });
+  await store.recover();
+  const queued = await store.begin({
+    method: "POST",
+    canonicalTarget: "/v1/session",
+    idempotencyKey: "env-restart",
+    command: {
+      operation: "create",
+      requestId: "env-restart-request",
+      sessionId: "env-restart-session",
+      generation: 1,
+      spec: {
+        cwd: "/work/env-restart",
+        target: { mode: "memory" },
+        isolation: { mode: "unisolated" },
+      },
+      environmentSummary: {
+        keys: ["OPENAI_API_KEY"],
+        persistence: "memory-only",
+        provisioned: true,
+      },
+    },
+  });
+  const multiplexer = new Multiplexer({
+    factory: new SessionFactory(),
+    catalog: new FileSessionCatalog({ stateDir }),
+    hostInstanceId: "host-env-restart",
+  });
+  await multiplexer.recover();
+  const tickets = new MutationTicketController(new FileMutationTicketStore({ stateDir }));
+  const harness = await startApi(undefined, multiplexer, tickets);
+  t.after(async () => harness.server.stop());
+  const terminal = await waitForTicket(
+    harness.address,
+    queued.ticketId,
+    `Bearer ${TOKEN}`,
+  );
+  assert.equal(terminal.state, "failed");
+  assert.equal(terminal.error.code, "credentials_required");
+  for (
+    let attempt = 0;
+    attempt < 100 && multiplexer.status().recovery.mutationRecoveryFailures === 0;
+    attempt += 1
+  ) {
+    await new Promise((resolve) => setTimeout(resolve, 2));
+  }
+  assert.equal(multiplexer.status().recovery.mutationRecoveryFailures, 1);
+  assert.equal(multiplexer.status().recovery.phase, "degraded");
+  assert.equal(multiplexer.status().ready, false);
+  assert.equal(await multiplexer.retainedSession("env-restart-session"), undefined);
+});
+
+test("mutation reconciliation clears durable degraded readiness counters", async (t) => {
+  const stateDir = await mkdtemp(join(tmpdir(), "pi-daemon-api-mutation-reconcile-"));
+  t.after(async () => rm(stateDir, { recursive: true, force: true }));
+  const first = new FileMutationTicketStore({ stateDir });
+  await first.recover();
+  const running = await first.begin({
+    method: "POST",
+    canonicalTarget: "/v1/session",
+    idempotencyKey: "mutation-reconcile",
+    command: {
+      operation: "create",
+      requestId: "mutation-reconcile-original",
+      sessionId: "mutation-reconcile-session",
+      generation: 1,
+      spec: {
+        cwd: "/work/mutation-reconcile",
+        target: { mode: "memory" },
+        isolation: { mode: "unisolated" },
+      },
+      environmentSummary: {
+        keys: [],
+        persistence: "memory-only",
+        provisioned: true,
+      },
+    },
+  });
+  await first.markRunning(running.ticketId);
+  const multiplexer = new Multiplexer({
+    factory: new SessionFactory(),
+    catalog: new FileSessionCatalog({ stateDir }),
+    hostInstanceId: "host-mutation-reconcile",
+  });
+  await multiplexer.recover();
+  const tickets = new MutationTicketController(new FileMutationTicketStore({ stateDir }));
+  const harness = await startApi(undefined, multiplexer, tickets);
+  t.after(async () => harness.server.stop());
+  assert.equal(multiplexer.status().recovery.indeterminateMutationTickets, 1);
+  assert.equal(multiplexer.status().ready, false);
+
+  const reconciled = await requestJson(harness.address, {
+    method: "POST",
+    path: `/v1/ticket/${running.ticketId}/reconcile`,
+    headers: {
+      Authorization: `Bearer ${TOKEN}`,
+      "Content-Type": "application/json",
+      "X-Request-Id": "mutation-reconcile-request",
+    },
+    body: JSON.stringify({
+      requestId: "mutation-reconcile-request",
+      state: "succeeded",
+      evidence: { piEntryIds: ["entry-reconciled"] },
+    }),
+  });
+  assert.equal(reconciled.status, 200);
+  assert.equal(reconciled.value.data.state, "succeeded");
+  assert.equal(multiplexer.status().recovery.indeterminateMutationTickets, 0);
+  assert.equal(multiplexer.status().recovery.phase, "ready");
+  assert.equal(multiplexer.status().ready, true);
+});
+
 test("authenticated wake ticket lookup and explicit Pi-entry reconciliation are durable", async (t) => {
   const stateDir = await mkdtemp(join(tmpdir(), "pi-daemon-api-reconcile-"));
   t.after(async () => rm(stateDir, { recursive: true, force: true }));
@@ -480,6 +620,9 @@ test("authenticated wake ticket lookup and explicit Pi-entry reconciliation are 
     reconciled: true,
     piEntryIds: ["entry-user-1", "entry-assistant-2"],
   });
+  assert.equal(multiplexer.status().recovery.indeterminateRequests, 0);
+  assert.equal(multiplexer.status().recovery.phase, "ready");
+  assert.equal(multiplexer.status().ready, true);
 });
 
 test("authenticated JSON bodies are byte bounded before future CRUD dispatch", async (t) => {
@@ -600,6 +743,7 @@ test("serve CLI enables an ephemeral loopback API without logging the bearer", a
   assert.equal(code, 0);
   assert.deepEqual(output, []);
   assert.equal(errors.join("").includes(TOKEN), false);
+  assert.equal(errors.join("").includes(temporaryRoot), false);
 });
 
 test("serve CLI fails closed and removes the Unix socket when no bearer source exists", async (t) => {
@@ -676,7 +820,25 @@ const waitForTicket = async (address, ticketId, token) => {
   }
 };
 
-const requestJson = async (address, options) =>
+const requestJson = async (address, options) => {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return await requestJsonOnce(address, options);
+    } catch (error) {
+      if (
+        attempt >= 4 ||
+        !(error instanceof Error) ||
+        !("code" in error) ||
+        !["EADDRNOTAVAIL", "ECONNREFUSED"].includes(error.code)
+      ) {
+        throw error;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 5 * (attempt + 1)));
+    }
+  }
+};
+
+const requestJsonOnce = async (address, options) =>
   new Promise((resolve, reject) => {
     const request = httpRequest(
       {

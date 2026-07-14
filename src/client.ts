@@ -14,6 +14,7 @@ import {
 export interface PiDaemonClientOptions {
   socketPath: string;
   connectTimeoutMs?: number;
+  requestTimeoutMs?: number;
   maxLineBytes?: number;
 }
 
@@ -41,6 +42,7 @@ export class ProtocolResponseError extends Error {
 interface PendingRequest {
   resolve: (response: ResponseEnvelope) => void;
   reject: (error: Error) => void;
+  timer: ReturnType<typeof setTimeout>;
 }
 
 export type ClientEventListener = (event: EventEnvelope) => void;
@@ -49,14 +51,21 @@ export class PiDaemonClient {
   readonly socketPath: string;
   readonly #socket: Socket;
   readonly #decoder: NdjsonDecoder;
+  readonly #requestTimeoutMs: number;
   readonly #pending = new Map<string, PendingRequest>();
   readonly #listeners = new Set<ClientEventListener>();
   #closed = false;
 
-  private constructor(socket: Socket, socketPath: string, maxLineBytes: number) {
+  private constructor(
+    socket: Socket,
+    socketPath: string,
+    maxLineBytes: number,
+    requestTimeoutMs: number,
+  ) {
     this.#socket = socket;
     this.socketPath = socketPath;
     this.#decoder = new NdjsonDecoder(maxLineBytes);
+    this.#requestTimeoutMs = requestTimeoutMs;
     socket.on("data", (chunk) => this.#onData(chunk));
     socket.on("error", (error) => this.#fail(error));
     socket.on("close", () => this.#fail(new Error("pi-daemon connection closed")));
@@ -66,6 +75,10 @@ export class PiDaemonClient {
     const timeoutMs = options.connectTimeoutMs ?? 5_000;
     if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1) {
       throw new Error("connectTimeoutMs must be a positive safe integer");
+    }
+    const requestTimeoutMs = options.requestTimeoutMs ?? 30_000;
+    if (!Number.isSafeInteger(requestTimeoutMs) || requestTimeoutMs < 1) {
+      throw new Error("requestTimeoutMs must be a positive safe integer");
     }
     const socket = createConnection(options.socketPath);
     await new Promise<void>((resolve, reject) => {
@@ -94,6 +107,7 @@ export class PiDaemonClient {
       socket,
       options.socketPath,
       options.maxLineBytes ?? DEFAULT_MAX_LINE_BYTES,
+      requestTimeoutMs,
     );
   }
 
@@ -119,12 +133,17 @@ export class PiDaemonClient {
     }
 
     const promise = new Promise<ResponseEnvelope>((resolve, reject) => {
-      this.#pending.set(command.requestId, { resolve, reject });
+      const timer = setTimeout(() => {
+        this.#pending.delete(command.requestId);
+        reject(new Error(`timed out waiting for pi-daemon response: ${command.requestId}`));
+      }, this.#requestTimeoutMs);
+      this.#pending.set(command.requestId, { resolve, reject, timer });
     });
     const accepted = this.#socket.write(encodeLine(command), "utf8", (error) => {
       if (error === null || error === undefined) return;
       const pending = this.#pending.get(command.requestId);
       this.#pending.delete(command.requestId);
+      if (pending !== undefined) clearTimeout(pending.timer);
       pending?.reject(error);
     });
     if (!accepted) this.#socket.once("drain", () => {});
@@ -178,6 +197,7 @@ export class PiDaemonClient {
     const pending = this.#pending.get(value.requestId);
     if (pending === undefined) return;
     this.#pending.delete(value.requestId);
+    clearTimeout(pending.timer);
     if (value.ok) pending.resolve(value);
     else pending.reject(new ProtocolResponseError(value));
   }
@@ -189,7 +209,10 @@ export class PiDaemonClient {
   }
 
   #rejectPending(error: Error): void {
-    for (const pending of this.#pending.values()) pending.reject(error);
+    for (const pending of this.#pending.values()) {
+      clearTimeout(pending.timer);
+      pending.reject(error);
+    }
     this.#pending.clear();
   }
 }

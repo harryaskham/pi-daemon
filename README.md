@@ -24,8 +24,9 @@ or Cacophony credentials.
 > asynchronous mutation/prompt tickets, exact Pi conversation recovery, bounded
 > serialization, and installed-package checks are implemented. The 2026-07-14
 > completion program still tracks full Pi RPC attachment, per-session runtime
-> configuration, ACP translation, clients, shutdown/readiness hardening, and
-> end-to-end acceptance in [`PLAN.md`](PLAN.md); no release tag is cut yet.
+> configuration and bounded truthful recovery/shutdown are implemented; the
+> remaining program tracks full Pi RPC attachment, ACP translation, clients, and
+> end-to-end acceptance in [`PLAN.md`](PLAN.md). No release tag is cut yet.
 
 ## Why
 
@@ -62,16 +63,18 @@ pi-daemon version
 `serve` uses one process-global Pi `AuthStorage` and `ModelRegistry` from the
 configured `--agent-dir` while creating one `AgentSessionRuntime` with isolated
 session managers, settings, resource loaders, and rebound event subscriptions
-per logical session. The initial
-adapter enforces an empty tool/resource profile; project extensions, skills,
-prompt templates, themes, context files, and built-in tools are not loaded.
+per logical session. Authenticated creation supports bounded typed Pi-equivalent
+model/tool/resource/settings policy and a memory-only environment overlay.
+Because arbitrary extensions share the process trust domain, they require an
+explicit trusted project/configuration policy; `unisolated` is not a sandbox.
 
 The protocol is versioned UTF-8 NDJSON over an owner-only Unix socket. Host
-status and handshake responses include bounded counters, latency summaries,
-resident-session state, adapter readiness, uptime, and process memory. Service
-logs are structured JSON with prompt/output/credential fields redacted. SIGTERM
-performs a 30-second drain, SIGINT a 5-second drain, and idle SDK sessions are
-evicted after 30 minutes by default (`--idle-session-ttl-ms 0` disables it).
+status and handshake responses include bounded counters, recovery/degraded
+state, resident-session state, nondestructive redacted adapter readiness,
+uptime, and memory. Probe returns temporary failure while recovering/degraded.
+Service logs omit prompts, outputs, credentials, and private paths. SIGTERM uses
+a 30-second whole-shutdown deadline, SIGINT five seconds, and idle SDK sessions
+are evicted after 30 minutes by default (`--idle-session-ttl-ms 0` disables it).
 
 The language-neutral [`protocol.schema.json`](protocol.schema.json), checked
 fixtures under [`fixtures/`](fixtures/), and exported TypeScript protocol types

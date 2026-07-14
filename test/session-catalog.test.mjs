@@ -6,6 +6,7 @@ import test from "node:test";
 
 import { FileDurabilityStore, encodedSessionId } from "../dist/durability.js";
 import { Multiplexer } from "../dist/multiplexer.js";
+import { parseSessionConfiguration } from "../dist/session-config.js";
 import {
   FileSessionCatalog,
   SessionCatalogError,
@@ -336,6 +337,54 @@ test("multiplexer catalogs open, terminal state, eviction, dormant reopen, updat
   assert.ok(events.includes("sessionDeleted"));
 });
 
+test("configured sessions recover full persisted runtime options without environment secrets", async () => {
+  const stateDir = await temporaryState();
+  const configuration = parseSessionConfiguration({
+    cwd: "/work/configured",
+    name: "configured-name",
+    target: { mode: "new" },
+    tools: { mode: "allowlist", include: ["read"], exclude: ["bash"] },
+    resources: { noThemes: true, projectTrust: "deny" },
+    settings: { retry: { enabled: true } },
+    isolation: { mode: "unisolated" },
+  });
+  const firstFactory = new CatalogFactory();
+  const first = new Multiplexer({
+    factory: firstFactory,
+    durability: new FileDurabilityStore({ stateDir }),
+    catalog: new FileSessionCatalog({ stateDir }),
+  });
+  await first.recover();
+  await first.open(openCommand("configured"), {
+    runtimeOptions: configuration.runtimeOptions,
+    environmentSummary: configuration.environmentSummary,
+    catalogSpec: configuration.persistedSpec,
+  });
+
+  const restartedFactory = new CatalogFactory();
+  const restarted = new Multiplexer({
+    factory: restartedFactory,
+    durability: new FileDurabilityStore({ stateDir }),
+    catalog: new FileSessionCatalog({ stateDir }),
+  });
+  const report = await restarted.recover();
+  assert.deepEqual(report.opened, ["configured"]);
+  const request = restartedFactory.requests[0];
+  assert.deepEqual(request.runtimeOptions.persistedSpec.tools, {
+    mode: "allowlist",
+    include: ["read"],
+    exclude: ["bash"],
+  });
+  assert.deepEqual(request.runtimeOptions.persistedSpec.settings, {
+    retry: { enabled: true },
+  });
+  assert.equal(request.runtimeOptions.persistedSpec.target.mode, "open");
+  assert.equal("env" in request.runtimeOptions.persistedSpec, false);
+  const retained = await restarted.retainedSession("configured");
+  assert.equal(retained.spec.target.mode, "new");
+  assert.equal(retained.name, "configured-name");
+});
+
 test("catalog-only dormant and memory sessions remain dormant across restart", async () => {
   const stateDir = await temporaryState();
   const mux = new Multiplexer({
@@ -496,6 +545,12 @@ test("catalog rejects name collisions, unsafe path segments, capacity overflow, 
     (error) => error instanceof SessionCatalogError && error.code === "session_name_conflict",
   );
   await catalog.create({ sessionId: "id-b", name: "beta", generation: 1, spec: spec("/b") });
+  await assert.rejects(
+    new FileSessionCatalog({ stateDir, maxRecoveryBytes: 128 }).recover(),
+    (error) =>
+      error instanceof SessionCatalogError &&
+      error.code === "catalog_recovery_too_large",
+  );
   await assert.rejects(
     catalog.create({ sessionId: "id-c", generation: 1, spec: spec("/c") }),
     (error) => error instanceof SessionCatalogError && error.code === "catalog_capacity",

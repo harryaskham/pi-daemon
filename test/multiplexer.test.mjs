@@ -375,6 +375,35 @@ test("bounded drain aborts active turns after its deadline", async () => {
   assert.equal(mux.status().metrics.counters.drains_timed_out, 1);
 });
 
+test("hung adapter disposal is bounded during idle sweep and shutdown", async () => {
+  const adapter = {
+    async prompt() {
+      return { text: "unused" };
+    },
+    async dispose() {
+      return new Promise(() => {});
+    },
+  };
+  const mux = new Multiplexer({
+    factory: { async open() { return adapter; } },
+    idleSessionTtlMs: 1,
+    adapterDisposeTimeoutMs: 10,
+  });
+  await mux.open(openCommand("hung-dispose"));
+  const sweepStarted = Date.now();
+  assert.deepEqual(await mux.sweepIdleSessions(Date.now() + 10), []);
+  assert.ok(Date.now() - sweepStarted < 500);
+  assert.equal(mux.status("hung-dispose").state, "failed");
+  assert.equal(mux.status("hung-dispose").lastErrorCode, "adapter_dispose_timeout");
+  assert.equal(mux.status().metrics.counters.idle_sweep_failures, 1);
+
+  const disposeStarted = Date.now();
+  await mux.dispose(20);
+  assert.ok(Date.now() - disposeStarted < 500);
+  assert.equal(mux.status().sessions.length, 0);
+  assert.equal(mux.status().metrics.counters.adapter_dispose_timeouts, 1);
+});
+
 test("idle sweep evicts only expired inactive sessions and records metrics", async () => {
   let now = 0;
   const factory = new ControlledFactory();
@@ -391,6 +420,8 @@ test("idle sweep evicts only expired inactive sessions and records metrics", asy
   assert.deepEqual(await mux.sweepIdleSessions(), ["a"]);
   assert.equal(factory.adapter("a").disposed, 1);
   const status = mux.status();
+  assert.equal(status.ready, true);
+  assert.equal(status.recovery.phase, "ready");
   assert.equal(status.sessions.length, 0);
   assert.equal(status.metrics.counters.sessions_evicted, 1);
   assert.deepEqual(status.adapterReadiness, { ready: true, availableModels: 3 });

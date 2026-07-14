@@ -628,6 +628,35 @@ test("real Pi SDK accepts the configured bash override without a model turn", as
   await adapter.dispose();
 });
 
+test("readiness caches redacted auth errors without exposing private paths", async () => {
+  const stateDir = await temporaryDirectory();
+  const agentDir = await temporaryDirectory();
+  const cwd = await temporaryDirectory();
+  const { authStorage, modelRegistry } = modelHarness();
+  let firstDrain = true;
+  authStorage.drainErrors = () => {
+    if (!firstDrain) return [];
+    firstDrain = false;
+    const error = new Error(`${agentDir}/auth.json failed with secret-value`);
+    error.code = "auth_load_failed";
+    return [error];
+  };
+  const factory = new PiSessionFactory({
+    stateDir,
+    agentDir,
+    allowedRoots: [cwd],
+    authStorage,
+    modelRegistry,
+  });
+  const first = factory.readiness();
+  const second = factory.readiness();
+  assert.deepEqual(first.authErrorCodes, ["auth_load_failed"]);
+  assert.deepEqual(second.authErrorCodes, ["auth_load_failed"]);
+  assert.equal(second.authErrorCount, 1);
+  assert.equal(JSON.stringify(second).includes(agentDir), false);
+  assert.equal(JSON.stringify(second).includes("secret-value"), false);
+});
+
 test("real Pi SDK opens an isolated no-tools in-memory session without a model turn", async () => {
   const stateDir = await temporaryDirectory();
   const agentDir = await temporaryDirectory();
@@ -648,6 +677,10 @@ test("real Pi SDK opens an isolated no-tools in-memory session without a model t
   assert.equal(state.data.sessionId, adapter.identity().sessionId);
   await adapter.dispose();
   const readiness = factory.readiness();
+  assert.equal(readiness.ready, true);
   assert.ok(readiness.availableModels > 0);
-  assert.deepEqual(readiness.authErrors, []);
+  assert.ok(readiness.authenticatedModels > 0);
+  assert.equal(readiness.authErrorCount, 0);
+  assert.deepEqual(readiness.authErrorCodes, []);
+  assert.equal("agentDir" in readiness, false);
 });
