@@ -123,8 +123,7 @@ interface ClientConnection {
   writer: ConnectionWriter;
   decoder: NdjsonDecoder;
   requestIds: Set<string>;
-  activeSessions: Map<string, number>;
-  subscribedSessions: Set<string>;
+  subscribedSessions: Map<string, number>;
   closed: boolean;
 }
 
@@ -222,8 +221,7 @@ export class ProtocolServer {
       writer: new ConnectionWriter(socket, this.limits.maxOutboundBytesPerConnection),
       decoder: new NdjsonDecoder(this.limits.maxLineBytes),
       requestIds: new Set(),
-      activeSessions: new Map(),
-      subscribedSessions: new Set(),
+      subscribedSessions: new Map(),
       closed: false,
     };
     this.#connections.add(connection);
@@ -280,30 +278,17 @@ export class ProtocolServer {
       return;
     }
 
-    const sessionId =
-      "sessionId" in command && typeof command.sessionId === "string"
-        ? command.sessionId
-        : undefined;
-    if (sessionId !== undefined) {
-      connection.activeSessions.set(sessionId, (connection.activeSessions.get(sessionId) ?? 0) + 1);
-    }
     connection.requestIds.add(command.requestId);
-    void this.#dispatch(command)
-      .then((response) => {
-        connection.writer.send(response);
-        if (sessionId !== undefined) {
-          if (command.operation === "close") connection.subscribedSessions.delete(sessionId);
-          else connection.subscribedSessions.add(sessionId);
-        }
-      })
+    void this.#dispatch(connection, command)
+      .then((response) => connection.writer.send(response))
       .catch((error) => this.#sendError(connection, command.requestId, error, command))
-      .finally(() => {
-        connection.requestIds.delete(command.requestId);
-        if (sessionId !== undefined) decrementSessionClaim(connection, sessionId);
-      });
+      .finally(() => connection.requestIds.delete(command.requestId));
   }
 
-  async #dispatch(command: ProtocolCommand): Promise<ResponseEnvelope> {
+  async #dispatch(
+    connection: ClientConnection,
+    command: ProtocolCommand,
+  ): Promise<ResponseEnvelope> {
     switch (command.operation) {
       case "handshake":
         return successResponse(command.requestId, this.#multiplexer.hostInstanceId, {
@@ -319,6 +304,8 @@ export class ProtocolServer {
               "followUp",
               "status",
               "abort",
+              "attach",
+              "detach",
               "close",
               "drain",
             ],
@@ -373,8 +360,30 @@ export class ProtocolServer {
           sessionId: command.sessionId,
         });
       }
+      case "attach": {
+        const session = this.#sessionForGeneration(command.sessionId, command.generation);
+        connection.subscribedSessions.set(command.sessionId, command.generation);
+        return successResponse(
+          command.requestId,
+          this.#multiplexer.hostInstanceId,
+          { attached: true, generation: command.generation, sequence: session.sequence },
+          { sessionId: command.sessionId, sequence: session.sequence },
+        );
+      }
+      case "detach": {
+        const session = this.#sessionForGeneration(command.sessionId, command.generation);
+        const detached = connection.subscribedSessions.get(command.sessionId) === command.generation;
+        if (detached) connection.subscribedSessions.delete(command.sessionId);
+        return successResponse(
+          command.requestId,
+          this.#multiplexer.hostInstanceId,
+          { detached, generation: command.generation, sequence: session.sequence },
+          { sessionId: command.sessionId, sequence: session.sequence },
+        );
+      }
       case "close": {
         const closed = await this.#multiplexer.close(command);
+        this.#clearSessionSubscriptions(command.sessionId);
         return successResponse(command.requestId, this.#multiplexer.hostInstanceId, { closed }, {
           sessionId: command.sessionId,
         });
@@ -393,13 +402,24 @@ export class ProtocolServer {
 
   #publishEvent(event: EventEnvelope): void {
     for (const connection of this.#connections) {
-      if (
-        connection.subscribedSessions.has(event.sessionId) ||
-        (connection.activeSessions.get(event.sessionId) ?? 0) > 0
-      ) {
+      if (connection.subscribedSessions.get(event.sessionId) === event.generation) {
         connection.writer.send(event);
       }
     }
+  }
+
+  #clearSessionSubscriptions(sessionId: string): void {
+    for (const current of this.#connections) current.subscribedSessions.delete(sessionId);
+  }
+
+  #sessionForGeneration(sessionId: string, generation: number) {
+    const session = this.#multiplexer.status(sessionId);
+    if (session.generation !== generation) {
+      throw new MultiplexerError("stale_generation", "session generation does not match", {
+        details: { currentGeneration: session.generation, receivedGeneration: generation },
+      });
+    }
+    return session;
   }
 
   #endConnection(connection: ClientConnection): void {
@@ -424,12 +444,6 @@ export class ProtocolServer {
       errorResponse(requestId, this.#multiplexer.hostInstanceId, body, options),
     );
   }
-}
-
-function decrementSessionClaim(connection: ClientConnection, sessionId: string): void {
-  const count = connection.activeSessions.get(sessionId) ?? 0;
-  if (count <= 1) connection.activeSessions.delete(sessionId);
-  else connection.activeSessions.set(sessionId, count - 1);
 }
 
 function protocolError(error: unknown): ProtocolErrorBody {

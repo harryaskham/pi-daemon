@@ -27,6 +27,8 @@ test("language-neutral fixtures validate against protocol.schema.json", async ()
     "handshake.command.json",
     "open.command.json",
     "wake.command.json",
+    "attach.command.json",
+    "detach.command.json",
     "success.response.json",
     "message.event.json",
     "error.response.json",
@@ -36,7 +38,7 @@ test("language-neutral fixtures validate against protocol.schema.json", async ()
   }
 });
 
-test("parses handshake open and wake fixtures", async () => {
+test("parses handshake open wake and attachment fixtures", async () => {
   assert.equal(parseCommand(await fixture("handshake.command.json")).operation, "handshake");
   const openInput = await fixture("open.command.json");
   openInput.payload.model.thinkingLevel = "max";
@@ -47,6 +49,8 @@ test("parses handshake open and wake fixtures", async () => {
   const wake = parseCommand(await fixture("wake.command.json"));
   assert.equal(wake.operation, "wake");
   assert.equal(wake.idempotencyKey, "message-019f");
+  assert.equal(parseCommand(await fixture("attach.command.json")).operation, "attach");
+  assert.equal(parseCommand(await fixture("detach.command.json")).operation, "detach");
 });
 
 test("accepts unknown fields for minor-version forward compatibility", async () => {

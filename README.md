@@ -46,6 +46,13 @@ pi-daemon serve --socket /run/user/1000/pi-daemon.sock \
   --state-dir ~/.local/state/pi-daemon \
   --allow-root ~/work
 
+# Optional authenticated JSON/WebSocket admission boundary.
+# The referenced token file must already exist with mode 0600:
+pi-daemon serve --socket /run/user/1000/pi-daemon.sock \
+  --state-dir ~/.local/state/pi-daemon --allow-root ~/work \
+  --api-bind 127.0.0.1 --api-port 7463 \
+  --api-token-file ~/.config/pi-daemon/api-token
+
 pi-daemon probe --socket /run/user/1000/pi-daemon.sock
 pi-daemon request --socket /run/user/1000/pi-daemon.sock --json '{...}'
 pi-daemon version

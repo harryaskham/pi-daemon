@@ -6,6 +6,8 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 
+import { loadServiceBearer } from "./api-auth.js";
+import { ApiServer } from "./api-server.js";
 import { PiDaemonClient, ProtocolResponseError } from "./client.js";
 import { FileDurabilityStore } from "./durability.js";
 import { Multiplexer, type SessionFactory } from "./multiplexer.js";
@@ -123,6 +125,11 @@ async function runServe(
       "max-concurrent-turns",
       "max-session-queue-depth",
       "idle-session-ttl-ms",
+      "api-bind",
+      "api-port",
+      "api-token-file",
+      "api-token-fd",
+      "api-allow-insecure-http",
     ]),
   );
   const socketPath = resolve(requiredOption(options, "socket"));
@@ -131,6 +138,15 @@ async function runServe(
   );
   const agentDir = resolve(options.get("agent-dir") ?? getAgentDir());
   const allowedRoot = await realpath(resolve(requiredOption(options, "allow-root")));
+  const apiEnabled = options.has("api-port");
+  if (
+    !apiEnabled &&
+    ["api-bind", "api-token-file", "api-token-fd", "api-allow-insecure-http"].some((name) =>
+      options.has(name),
+    )
+  ) {
+    throw new CliUsageError("API listener options require --api-port");
+  }
   const durability = new FileDurabilityStore({ stateDir });
   const logger = new JsonLineLogger(io.stderr, { component: "pi-daemon" });
   const idleSessionTtlMs = options.has("idle-session-ttl-ms")
@@ -161,7 +177,36 @@ async function runServe(
   });
   const recovery = await multiplexer.recover();
   const server = new ProtocolServer({ socketPath, multiplexer });
-  await server.start();
+  let apiServer: ApiServer | undefined;
+  let apiAddress: { host: string; port: number } | undefined;
+  try {
+    await server.start();
+    if (apiEnabled) {
+      const tokenFile = options.get("api-token-file");
+      const tokenFd = options.has("api-token-fd")
+        ? integerOption(options, "api-token-fd", 3)
+        : undefined;
+      const loaded = loadServiceBearer({
+        ...(tokenFile === undefined ? {} : { tokenFile: resolve(tokenFile) }),
+        ...(tokenFd === undefined ? {} : { tokenFd }),
+      });
+      apiServer = new ApiServer({
+        multiplexer,
+        authenticator: loaded.authenticator,
+        host: options.get("api-bind") ?? "127.0.0.1",
+        port: integerOption(options, "api-port", 0),
+        allowInsecureRemote: options.has("api-allow-insecure-http")
+          ? booleanOption(options, "api-allow-insecure-http")
+          : false,
+      });
+      apiAddress = await apiServer.start();
+    }
+  } catch (error) {
+    await apiServer?.stop().catch(() => {});
+    await server.stop().catch(() => {});
+    await multiplexer.dispose(1_000).catch(() => {});
+    throw error;
+  }
   logger.write("info", "pi_daemon_ready", {
     socketPath,
     stateDir,
@@ -171,6 +216,10 @@ async function runServe(
     restoredSessions: recovery.opened.length,
     replayedRequests: recovery.replayed.length,
     recoveryFailures: recovery.failures.length,
+    api:
+      apiAddress === undefined
+        ? { enabled: false }
+        : { enabled: true, host: apiAddress.host, port: apiAddress.port },
   });
 
   const sweepInterval =
@@ -183,6 +232,7 @@ async function runServe(
     if (shuttingDown) return;
     shuttingDown = true;
     await multiplexer.drain(timeoutMs);
+    await apiServer?.stop();
     await server.stop();
     await multiplexer.dispose(1_000);
   };
@@ -221,6 +271,13 @@ function parseOptions(args: string[], allowed: Set<string>): Map<string, string>
     index += 1;
   }
   return options;
+}
+
+function booleanOption(options: Map<string, string>, name: string): boolean {
+  const raw = requiredOption(options, name);
+  if (raw === "true") return true;
+  if (raw === "false") return false;
+  throw new CliUsageError(`--${name} must be true or false`);
 }
 
 function requiredOption(options: Map<string, string>, name: string): string {
@@ -263,6 +320,9 @@ function helpText(): string {
 
 Usage:
   pi-daemon serve --socket PATH --allow-root PATH [--state-dir PATH] [--agent-dir PATH] [limit options]
+                  [--api-port PORT] [--api-bind HOST]
+                  [--api-token-file PATH | --api-token-fd FD]
+                  [--api-allow-insecure-http true|false]
   pi-daemon probe --socket PATH
   pi-daemon request --socket PATH --json REQUEST
   pi-daemon version
@@ -272,6 +332,9 @@ Commands:
   probe    Perform a version/capability handshake.
   request  Send one low-level protocol command and print its response.
   version  Print the package version.
+
+API bearer sources (exactly one when --api-port is set):
+  --api-token-file PATH, --api-token-fd FD, or PI_DAEMON_BEARER_TOKEN.
 `;
 }
 

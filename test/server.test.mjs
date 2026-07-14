@@ -19,6 +19,15 @@ const openCommand = (sessionId) => ({
   payload: { cwd: `/work/${sessionId}`, session: { mode: "memory" } },
 });
 
+const attachCommand = (sessionId, operation = "attach", generation = 1) => ({
+  protocolVersion: "1.0",
+  requestId: `${operation}-${sessionId}-${generation}`,
+  operation,
+  sessionId,
+  generation,
+  payload: {},
+});
+
 const wakeCommand = (sessionId) => ({
   protocolVersion: "1.0",
   requestId: `wake-${sessionId}`,
@@ -76,6 +85,8 @@ test("Unix client/server handshake open wake and status round trip", async (t) =
 
   const opened = await client.request(openCommand("a"));
   assert.equal(opened.data.created, true);
+  const attached = await client.request(attachCommand("a"));
+  assert.equal(attached.data.attached, true);
   const wake = await client.request(wakeCommand("a"));
   assert.deepEqual(wake.data.result, { text: "answer:prompt-a" });
   assert.equal(harness.factory.adapters.get("a").calls, 1);
@@ -108,6 +119,8 @@ test("session events are not broadcast to unrelated client connections", async (
   b.subscribe((event) => bEvents.push(event));
   await a.request(openCommand("a"));
   await b.request(openCommand("b"));
+  await a.request(attachCommand("a"));
+  await b.request(attachCommand("b"));
   aEvents.length = 0;
   bEvents.length = 0;
 
@@ -133,10 +146,88 @@ test("typed server errors reject requests without subscribing the failed client"
     (error) => error instanceof ProtocolResponseError && error.code === "session_not_found",
   );
   await owner.request(openCommand("missing"));
+  await owner.request(attachCommand("missing"));
   leaked.length = 0;
   await owner.request(wakeCommand("missing"));
   await new Promise((resolve) => setTimeout(resolve, 5));
   assert.equal(leaked.length, 0);
+});
+
+test("subscriptions are explicit generation-bound and detachable", async (t) => {
+  const harness = await startServer();
+  t.after(async () => harness.server.stop());
+  const client = await PiDaemonClient.connect({ socketPath: harness.socketPath });
+  t.after(() => client.close());
+  const events = [];
+  client.subscribe((event) => events.push(event));
+
+  await client.request(openCommand("explicit"));
+  await client.request({
+    protocolVersion: "1.0",
+    requestId: "status-explicit",
+    operation: "status",
+    sessionId: "explicit",
+    payload: {},
+  });
+  await client.request(wakeCommand("explicit"));
+  assert.equal(events.length, 0, "open and wake must not create an implicit subscription");
+
+  await assert.rejects(
+    client.request(attachCommand("explicit", "attach", 2)),
+    (error) => error instanceof ProtocolResponseError && error.code === "stale_generation",
+  );
+  const attached = await client.request(attachCommand("explicit"));
+  assert.equal(attached.data.generation, 1);
+  await client.request({
+    ...wakeCommand("explicit"),
+    requestId: "wake-explicit-attached",
+    idempotencyKey: "key-explicit-attached",
+  });
+  assert.ok(events.some((event) => event.event === "messageUpdate"));
+
+  events.length = 0;
+  const detached = await client.request(attachCommand("explicit", "detach"));
+  assert.equal(detached.data.detached, true);
+  await client.request({
+    ...wakeCommand("explicit"),
+    requestId: "wake-explicit-detached",
+    idempotencyKey: "key-explicit-detached",
+  });
+  assert.equal(events.length, 0);
+});
+
+test("closing a session clears every attachment before an ID and generation can be reused", async (t) => {
+  const harness = await startServer();
+  t.after(async () => harness.server.stop());
+  const owner = await PiDaemonClient.connect({ socketPath: harness.socketPath });
+  const observer = await PiDaemonClient.connect({ socketPath: harness.socketPath });
+  t.after(() => {
+    owner.close();
+    observer.close();
+  });
+  const observed = [];
+  observer.subscribe((event) => observed.push(event));
+
+  await owner.request(openCommand("reused"));
+  await observer.request(attachCommand("reused"));
+  await owner.request({
+    protocolVersion: "1.0",
+    requestId: "close-reused",
+    operation: "close",
+    sessionId: "reused",
+    generation: 1,
+    payload: {},
+  });
+  assert.ok(observed.some((event) => event.event === "sessionClosed"));
+
+  observed.length = 0;
+  await owner.request({ ...openCommand("reused"), requestId: "open-reused-again" });
+  await owner.request({
+    ...wakeCommand("reused"),
+    requestId: "wake-reused-again",
+    idempotencyKey: "key-reused-again",
+  });
+  assert.equal(observed.length, 0);
 });
 
 test("malformed and oversized NDJSON receive an error then close", async (t) => {

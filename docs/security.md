@@ -19,6 +19,11 @@ project code or tools.
 
 ## Enforced defaults
 
+- authenticated JSON listener disabled unless `--api-port` is explicit
+- JSON listener defaults to literal loopback and refuses implicit remote plaintext
+- exactly one service bearer source: owner-only non-symlink file, inherited fd, or runtime environment
+- bearer authorization is checked before JSON bodies, route/session disclosure, and stream upgrades
+- bearer material is reduced to a one-way digest after startup loading and never logged or returned
 - owner-only Unix socket in a non-group/world-writable real directory
 - owner-only state directories, manifests, and journals
 - symlink and traversal refusal for durable state/session paths
@@ -31,6 +36,7 @@ project code or tools.
 - no Cacophony node token, CA key, daemon state, or orchestration authority
 - structured logs redact prompts, output/content, environment, and credentials
 - accepted wake requests are never blindly replayed after a crash
+- Unix event subscriptions require explicit generation-bound `attach` and `detach`
 
 Prompts and terminal results are necessarily retained in the private durable
 request journal so a queued request can be replayed and a duplicate terminal

@@ -298,6 +298,8 @@ export const CONTROL_MODE_EQUIVALENCE = {
   steer: { ndjson: "steer", rest: undefined, rpc: "steer" },
   followUp: { ndjson: "followUp", rest: undefined, rpc: "follow_up" },
   abort: { ndjson: "abort", rest: undefined, rpc: "abort" },
+  attach: { ndjson: "attach", rest: "GET /v1/session/{sessionRef}/rpc", rpc: "transport attach" },
+  detach: { ndjson: "detach", rest: "WebSocket close", rpc: "transport detach" },
   replace: { ndjson: "open with next generation", rest: "PUT /v1/session/{sessionRef}", rpc: "switch_session" },
   close: { ndjson: "close", rest: "DELETE /v1/session/{sessionRef}", rpc: undefined },
 } as const;

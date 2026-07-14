@@ -176,6 +176,20 @@
         { "type": "object", "properties": { "operation": { "const": "abort" } } }
       ]
     },
+    "attachCommand": {
+      "allOf": [
+        { "$ref": "#/$defs/baseCommand" },
+        { "$ref": "#/$defs/sessionIdentity" },
+        { "type": "object", "properties": { "operation": { "const": "attach" } } }
+      ]
+    },
+    "detachCommand": {
+      "allOf": [
+        { "$ref": "#/$defs/baseCommand" },
+        { "$ref": "#/$defs/sessionIdentity" },
+        { "type": "object", "properties": { "operation": { "const": "detach" } } }
+      ]
+    },
     "closeCommand": {
       "allOf": [
         { "$ref": "#/$defs/baseCommand" },
@@ -221,6 +235,8 @@
         { "$ref": "#/$defs/queuedMessageCommand" },
         { "$ref": "#/$defs/statusCommand" },
         { "$ref": "#/$defs/abortCommand" },
+        { "$ref": "#/$defs/attachCommand" },
+        { "$ref": "#/$defs/detachCommand" },
         { "$ref": "#/$defs/closeCommand" },
         { "$ref": "#/$defs/drainCommand" }
       ]

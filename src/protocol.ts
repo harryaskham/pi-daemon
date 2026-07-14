@@ -13,6 +13,8 @@ export const OPERATIONS = [
   "followUp",
   "status",
   "abort",
+  "attach",
+  "detach",
   "close",
   "drain",
 ] as const;
@@ -103,6 +105,14 @@ export type AbortCommand = CommandBase<"abort", Record<string, never>> & {
   sessionId: string;
   generation: number;
 };
+export type AttachCommand = CommandBase<"attach", Record<string, never>> & {
+  sessionId: string;
+  generation: number;
+};
+export type DetachCommand = CommandBase<"detach", Record<string, never>> & {
+  sessionId: string;
+  generation: number;
+};
 export type CloseCommand = CommandBase<"close", ClosePayload> & {
   sessionId: string;
   generation: number;
@@ -117,6 +127,8 @@ export type ProtocolCommand =
   | FollowUpCommand
   | StatusCommand
   | AbortCommand
+  | AttachCommand
+  | DetachCommand
   | CloseCommand
   | DrainCommand;
 
@@ -355,6 +367,8 @@ export function parseCommand(value: unknown, limits: ParseLimits = {}): Protocol
       stringField(command, "sessionId", { max: 256, optional: true });
       break;
     case "abort":
+    case "attach":
+    case "detach":
       validateSessionIdentity(command);
       break;
     case "close":

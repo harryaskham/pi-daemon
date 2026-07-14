@@ -346,6 +346,8 @@ capability.
 | steer | `steer` | — | `steer` |
 | follow-up | `followUp` | — | `follow_up` |
 | abort | `abort` | — | `abort` |
+| attach | generation-bound `attach` | WebSocket upgrade | transport attach |
+| detach | generation-bound `detach` | WebSocket close | transport detach |
 | replace | next-generation `open` | `PUT /v1/session/{ref}` | `switch_session`/`new_session` |
 | close | `close` | `DELETE /v1/session/{ref}` | transport disconnect does **not** close |
 

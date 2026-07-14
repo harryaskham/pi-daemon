@@ -27,6 +27,33 @@ pi-daemon serve \
   --allow-root "$HOME/work"
 ```
 
+To enable the additive authenticated JSON listener, choose exactly one bearer
+source. Supplying the token as a CLI value is intentionally unsupported:
+
+```console
+pi-daemon serve \
+  --socket "$XDG_RUNTIME_DIR/pi-daemon.sock" \
+  --state-dir "$HOME/.local/state/pi-daemon" \
+  --allow-root "$HOME/work" \
+  --api-bind 127.0.0.1 \
+  --api-port 7463 \
+  --api-token-file "$HOME/.config/pi-daemon/api-token"
+```
+
+The token file must be an owner-only regular non-symlink file. An inherited
+secret descriptor (`--api-token-fd FD`) or `PI_DAEMON_BEARER_TOKEN` may be used
+instead, but sources are mutually exclusive. The default bind is the literal
+loopback address `127.0.0.1`. A non-loopback plaintext bind is refused unless
+`--api-allow-insecure-http true` explicitly acknowledges trusted-network or TLS
+reverse-proxy handling.
+
+`GET /v1/capabilities` is implemented by the transport foundation. It advertises
+HTTP but does not advertise WebSocket or RPC subprotocol support until stream
+dispatch lands. Session CRUD and `/rpc`/`/apc` upgrades are reserved by the
+published contract and return a typed not-implemented response until their
+dependent implementation slices land; they never fall back to unauthenticated
+behavior.
+
 Optional limits:
 
 ```text
@@ -47,6 +74,9 @@ pi-daemon probe --socket "$XDG_RUNTIME_DIR/pi-daemon.sock"
 
 pi-daemon request --socket "$XDG_RUNTIME_DIR/pi-daemon.sock" --json \
   '{"protocolVersion":"1.0","requestId":"status-1","operation":"status","payload":{}}'
+
+pi-daemon request --socket "$XDG_RUNTIME_DIR/pi-daemon.sock" --json \
+  '{"protocolVersion":"1.0","requestId":"attach-1","operation":"attach","sessionId":"agent-a","generation":1,"payload":{}}'
 ```
 
 Readiness distinguishes protocol availability from Pi model/auth availability.

@@ -125,6 +125,8 @@ test(
     const packageFiles = new Set(metadata[0].files.map((entry) => entry.path));
     for (const required of [
       "dist/cli.js",
+      "dist/api-auth.js",
+      "dist/api-server.js",
       "dist/index.js",
       "dist/index.d.ts",
       "dist/protocol.schema.json",

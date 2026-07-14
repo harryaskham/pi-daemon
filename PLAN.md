@@ -597,7 +597,7 @@ implementation order. This list is a human-readable crosswalk.
   control-mode equivalence.
 - [ ] `bd-3a3104` — clean npm pack plus installed-bin execution correctness.
 - [ ] `bd-12c4ba` — current Pi SDK acquisition and compatibility policy.
-- [ ] `bd-6148e1` — configurable bearer-authenticated API transport and explicit
+- [x] `bd-6148e1` — configurable bearer-authenticated API transport and explicit
   session attachment (depends on the contract).
 - [ ] `bd-143f05` — preserve real Pi conversation identity across restart and
   runtime replacement (depends on current SDK).

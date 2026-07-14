@@ -46,12 +46,21 @@ generations.
 - `steer` / `followUp` — use Pi's streaming queue controls
 - `status` — host aggregate or one resident session
 - `abort` — abort the current turn for a session generation
+- `attach` — explicitly subscribe this connection to one current session generation
+- `detach` — remove that exact generation-bound subscription
 - `close` — dispose a logical session and optionally remove retained artifacts
 - `drain` — stop admission and wait a bounded interval before aborting turns
 
 `open` accepts session modes `memory`, `new`, `continue`, and `open`. The v1
 resource policy is all `none`; an optional explicit system prompt is the only
 loaded content resource.
+
+Event delivery is explicit. `open`, `wake`, `status`, `abort`, successful
+commands, and failed commands never subscribe a connection implicitly. A client
+must send `attach` with the current `sessionId` and `generation` before it
+expects events, and `detach` removes only that exact generation. Replacing a
+session generation makes an older attachment inert until the client attaches to
+the new generation.
 
 ## Durable wake states
 

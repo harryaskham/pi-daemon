@@ -1,3 +1,5 @@
+export * from "./api-auth.js";
+export * from "./api-server.js";
 export * from "./client.js";
 export * from "./durability.js";
 export * from "./multiplexer.js";
