@@ -26,6 +26,7 @@
   },
   "files": [
     "dist",
+    "scripts/check-release.mjs",
     "scripts/live-sdk-smoke.mjs",
     "CHANGELOG.md",
     "README.md",
@@ -40,7 +41,8 @@
     "test": "npm run build && node --test test/*.test.mjs",
     "test:unit": "node --test test/*.test.mjs",
     "test:live": "npm run build && node scripts/live-sdk-smoke.mjs",
-    "pack:check": "npm pack --dry-run"
+    "pack:check": "npm pack --dry-run",
+    "release:check": "node scripts/check-release.mjs"
   },
   "dependencies": {
     "@earendil-works/pi-coding-agent": "0.80.3"

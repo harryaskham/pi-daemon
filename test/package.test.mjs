@@ -18,6 +18,9 @@ import test from "node:test";
 
 const execFileAsync = promisify(execFile);
 const repositoryRoot = fileURLToPath(new URL("..", import.meta.url));
+const packageVersion = JSON.parse(
+  await readFile(join(repositoryRoot, "package.json"), "utf8"),
+).version;
 const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
 
 const run = async (command, args, options = {}) =>
@@ -83,6 +86,7 @@ test(
       "dist/index.js",
       "dist/index.d.ts",
       "dist/protocol.schema.json",
+      "scripts/check-release.mjs",
     ]) {
       assert.equal(packageFiles.has(required), true, `packed artifact omitted ${required}`);
     }
@@ -113,12 +117,12 @@ test(
       process.platform === "win32" ? "pi-daemon.cmd" : "pi-daemon",
     );
     const direct = await run(bin, ["version"], { cwd: consumer });
-    assert.equal(direct.stdout, "0.1.0\n");
+    assert.equal(direct.stdout, `${packageVersion}\n`);
 
     const npmExec = await run(npmCommand, ["exec", "--offline", "--", "pi-daemon", "version"], {
       cwd: consumer,
     });
-    assert.equal(npmExec.stdout, "0.1.0\n");
+    assert.equal(npmExec.stdout, `${packageVersion}\n`);
 
     const importCheck = join(consumer, "package-import-check.mjs");
     await writeFile(
@@ -131,6 +135,6 @@ test(
       ].join("\n"),
     );
     const imported = await run(process.execPath, [basename(importCheck)], { cwd: consumer });
-    assert.equal(imported.stdout, "0.1.0 Pi Daemon protocol v1\n");
+    assert.equal(imported.stdout, `${packageVersion} Pi Daemon protocol v1\n`);
   },
 );

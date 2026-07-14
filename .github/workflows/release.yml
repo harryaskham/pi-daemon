@@ -17,6 +17,8 @@ jobs:
           node-version: "22.19.0"
           cache: npm
       - run: npm ci --ignore-scripts
+      - name: Verify release metadata
+        run: npm run release:check -- --tag "$GITHUB_REF_NAME"
       - run: npm test
       - name: Build npm tarball and checksum
         id: pack
@@ -38,6 +40,23 @@ jobs:
           writeFileSync(`${file}.sha256`, `${digest}  ${file}\n`);
           NODE
           echo "tarball=$tarball" >> "$GITHUB_OUTPUT"
+      - name: Verify packed npm and Nix artifact versions
+        env:
+          TARBALL: ${{ steps.pack.outputs.tarball }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          install_root="$RUNNER_TEMP/pi-daemon-release-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          trap 'rm -rf "$install_root"' EXIT
+          rm -rf "$install_root"
+          mkdir -p "$install_root"
+          npm install --prefix "$install_root" --ignore-scripts --no-audit --no-fund --no-package-lock "$TARBALL"
+          npm_version=$("$install_root/node_modules/.bin/pi-daemon" version)
+          nix_version=$(nix run .#pi-daemon -- version)
+          npm run release:check -- \
+            --tag "$GITHUB_REF_NAME" \
+            --artifact-version "npm=$npm_version" \
+            --artifact-version "nix=$nix_version"
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
