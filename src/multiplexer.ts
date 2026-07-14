@@ -24,6 +24,7 @@ import {
   type StructuredLogger,
 } from "./observability.js";
 import { eventEnvelope, parseCommand, type EventEnvelope } from "./protocol.js";
+import type { PiRpcController } from "./pi-rpc-controller.js";
 import type { PreparedSessionRuntimeOptions } from "./session-config.js";
 import {
   SessionCatalogError,
@@ -72,6 +73,8 @@ export interface SessionAdapter {
   setIdentityChangeHandler?(
     handler: ((identity: SessionConversationIdentity) => Promise<void>) | undefined,
   ): void;
+  setSessionNameChangeHandler?(handler: ((name: string) => Promise<void>) | undefined): void;
+  rpcController?(): Promise<PiRpcController>;
   steer?(message: string): Promise<void> | void;
   followUp?(message: string): Promise<void> | void;
   abort?(): Promise<void> | void;
@@ -681,6 +684,9 @@ export class Multiplexer {
       adapter.setIdentityChangeHandler?.(async (identity) =>
         this.#persistConversationIdentity(slot, identity),
       );
+      adapter.setSessionNameChangeHandler?.(async (name) =>
+        this.#persistSessionName(slot, name),
+      );
       this.metrics.increment("sessions_opened");
       this.metrics.observe("open_latency_ms", this.#now() - openStartedAt);
       this.#logger.write("info", "session_opened", {
@@ -991,6 +997,38 @@ export class Multiplexer {
       });
       return true;
     });
+  }
+
+  async rpcController(
+    sessionRef: string,
+    generation?: number,
+  ): Promise<PiRpcController> {
+    let slot = this.#sessions.get(sessionRef);
+    if (slot === undefined && this.#catalog !== undefined) {
+      const retained = await this.#catalog.get(sessionRef);
+      if (retained === undefined) {
+        throw new MultiplexerError("session_not_found", "retained session does not exist");
+      }
+      slot = this.#sessions.get(retained.sessionId);
+    }
+    if (slot === undefined) {
+      if (this.#catalog === undefined) {
+        throw new MultiplexerError("session_not_found", "logical session is not open");
+      }
+      throw new MultiplexerError(
+        "session_not_resident",
+        "session is dormant and must be explicitly reopened before RPC attach",
+        { retryable: true },
+      );
+    }
+    if (generation !== undefined) this.#assertGeneration(slot, generation);
+    if (slot.adapter.rpcController === undefined) {
+      throw new MultiplexerError(
+        "rpc_unavailable",
+        "session adapter does not provide the Pi RPC runtime surface",
+      );
+    }
+    return slot.adapter.rpcController();
   }
 
   async retainedSession(sessionRef: string): Promise<SessionCatalogRecord | undefined> {
@@ -1365,6 +1403,53 @@ export class Multiplexer {
       delete slot.activeAbort;
       delete slot.activeRequestId;
       release?.();
+    }
+  }
+
+  async #persistSessionName(slot: SessionSlot, name: string): Promise<void> {
+    if (this.#sessions.get(slot.sessionId) !== slot) {
+      throw new MultiplexerError(
+        "stale_generation",
+        "session changed before its Pi RPC name could be persisted",
+      );
+    }
+    const nextCommand: DurableOpenCommand = {
+      ...slot.openCommand,
+      payload: { ...slot.openCommand.payload, name },
+    };
+    try {
+      if (this.#catalog !== undefined) {
+        const current = await this.#catalog.get(slot.sessionId);
+        if (current === undefined) {
+          throw new MultiplexerError("session_not_found", "retained session does not exist");
+        }
+        const spec = { ...current.spec, name };
+        const record = await this.#catalog.replace(slot.sessionId, {
+          expectedGeneration: current.generation,
+          expectedRevision: current.revision,
+          generation: current.generation,
+          name,
+          spec,
+          environment: current.environment,
+          residency: "resident",
+          state: current.state,
+          ...(current.conversation === undefined
+            ? {}
+            : { conversation: current.conversation }),
+          policyDigest: sessionSpecDigest(spec),
+        });
+        this.#catalogRecords.set(record.sessionId, record);
+      }
+      const conversation = slot.adapter.identity?.();
+      await this.#durability?.saveManifest(nextCommand, conversation);
+      slot.openCommand = structuredClone(nextCommand);
+      this.#emit(slot, "sessionNameChanged", undefined, { name });
+    } catch (error) {
+      throw asMultiplexerError(
+        error,
+        "session_name_persist_failed",
+        "failed to persist Pi RPC session name",
+      );
     }
   }
 

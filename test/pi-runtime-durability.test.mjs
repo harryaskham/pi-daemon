@@ -78,7 +78,11 @@ test("real Pi conversation identity survives restart and loss blocks queued repl
   const stateDir = join(root, "state");
   const agentDir = join(root, "agent");
   const cwd = join(root, "work");
-  await Promise.all([mkdir(stateDir, { mode: 0o700 }), mkdir(agentDir), mkdir(cwd)]);
+  await Promise.all([
+    mkdir(stateDir, { mode: 0o700 }),
+    mkdir(agentDir, { mode: 0o700 }),
+    mkdir(cwd),
+  ]);
   const { authStorage, modelRegistry, model } = modelHarness();
   const makeFactory = () =>
     new RecordingFactory(
@@ -101,6 +105,15 @@ test("real Pi conversation identity survives restart and loss blocks queued repl
   const first = makeMux(firstFactory);
   await first.recover();
   await first.open(openCommand(cwd, model));
+  const rpc = await first.rpcController("real-runtime", 1);
+  const state = await rpc.handle({ type: "get_state" });
+  assert.equal(state.success, true);
+  assert.equal(state.data.sessionId, firstFactory.adapters[0].identity().sessionId);
+  assert.equal(
+    (await rpc.handle({ type: "set_session_name", name: "real-runtime-name" })).success,
+    true,
+  );
+  assert.equal((await first.retainedSession("real-runtime-name")).sessionId, "real-runtime");
   const identity = firstFactory.adapters[0].identity();
   assert.ok(identity.sessionFile);
   assert.equal((await stat(identity.sessionFile)).mode & 0o777, 0o600);

@@ -5,6 +5,7 @@ export * from "./durability.js";
 export * from "./multiplexer.js";
 export * from "./observability.js";
 export * from "./pi-adapter.js";
+export * from "./pi-rpc-controller.js";
 export * from "./pi-sdk-contract.js";
 export * from "./protocol.js";
 export * from "./server.js";

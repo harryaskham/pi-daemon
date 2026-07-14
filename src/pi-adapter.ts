@@ -10,6 +10,7 @@ import {
   createAgentSessionServices,
   createBashTool,
   createExtensionRuntime,
+  createLocalBashOperations,
   getAgentDir,
   ModelRegistry,
   resolveCliModel,
@@ -19,6 +20,7 @@ import {
   type AgentSession,
   type AgentSessionEvent,
   type AgentSessionServices,
+  type BashOperations,
   type CreateAgentSessionOptions,
   type CreateAgentSessionResult,
   type CreateAgentSessionRuntimeFactory,
@@ -27,6 +29,10 @@ import {
 } from "@earendil-works/pi-coding-agent";
 
 import { encodedSessionId, ensurePrivateDirectory } from "./durability.js";
+import {
+  PiRpcController,
+  type PiRpcControllerOptions,
+} from "./pi-rpc-controller.js";
 import {
   extensionFlagValues,
   providerApiKeyFromEnvironment,
@@ -48,6 +54,7 @@ export interface PiSessionFactoryOptions {
   authStorage?: AuthStorage;
   modelRegistry?: ModelRegistry;
   createSession?: (options: CreateAgentSessionOptions) => Promise<CreateAgentSessionResult>;
+  rpcControllerOptions?: PiRpcControllerOptions;
 }
 
 export interface PiFactoryReadiness {
@@ -71,6 +78,7 @@ export class PiSessionFactory implements SessionFactory {
   readonly #createSession: (
     options: CreateAgentSessionOptions,
   ) => Promise<CreateAgentSessionResult>;
+  readonly #rpcControllerOptions: PiRpcControllerOptions;
 
   constructor(options: PiSessionFactoryOptions) {
     if (options.stateDir.length === 0) throw new Error("stateDir must not be empty");
@@ -87,6 +95,7 @@ export class PiSessionFactory implements SessionFactory {
       options.modelRegistry ??
       ModelRegistry.create(this.authStorage, join(this.agentDir, "models.json"));
     this.#createSession = options.createSession ?? createAgentSession;
+    this.#rpcControllerOptions = { ...(options.rpcControllerOptions ?? {}) };
   }
 
   readiness(): PiFactoryReadiness {
@@ -297,10 +306,14 @@ export class PiSessionFactory implements SessionFactory {
       sessionManager,
     });
     try {
-      return await PiSessionAdapter.create(runtime, {
+      const adapter = await PiSessionAdapter.create(runtime, {
         sessionRoot: canonicalSessionDir,
         validateCwd,
       });
+      await adapter.rpcController(
+        configuredRpcControllerOptions(this.#rpcControllerOptions, runtimeOptions),
+      );
+      return adapter;
     } catch (error) {
       await runtime.dispose().catch(() => {});
       throw error;
@@ -318,12 +331,18 @@ export interface PiSessionAdapterOptions {
   validateCwd: (cwd: string) => Promise<string>;
 }
 
+type SessionExtensionBindings = Parameters<AgentSession["bindExtensions"]>[0];
+
 export class PiSessionAdapter implements SessionAdapter {
   readonly #runtime: AgentSessionRuntime;
   readonly #sessionRoot: string;
   readonly #validateCwd: (cwd: string) => Promise<string>;
   #unsubscribe: (() => void) | undefined;
   #identityChangeHandler: ((identity: PiSessionIdentity) => Promise<void>) | undefined;
+  #sessionNameChangeHandler: ((name: string) => Promise<void>) | undefined;
+  #extensionBindingsFactory: () => SessionExtensionBindings = () => ({ mode: "rpc" });
+  readonly #rpcEventListeners = new Set<(event: AgentSessionEvent) => void>();
+  #rpcController: Promise<PiRpcController> | undefined;
   #eventSink: ((event: AdapterEvent) => void) | undefined;
   #disposed = false;
   #invalidated = true;
@@ -333,7 +352,7 @@ export class PiSessionAdapter implements SessionAdapter {
     this.#sessionRoot = options.sessionRoot;
     this.#validateCwd = options.validateCwd;
     runtime.setBeforeSessionInvalidate(() => this.#invalidateSession());
-    runtime.setRebindSession(async (session) => this.#bindSession(session, true));
+    runtime.setRebindSession(async (session) => this.#bindSession(session, true, true));
   }
 
   static async create(
@@ -341,7 +360,7 @@ export class PiSessionAdapter implements SessionAdapter {
     options: PiSessionAdapterOptions,
   ): Promise<PiSessionAdapter> {
     const adapter = new PiSessionAdapter(runtime, options);
-    await adapter.#bindSession(runtime.session, false);
+    await adapter.#bindSession(runtime.session, false, false);
     return adapter;
   }
 
@@ -359,6 +378,50 @@ export class PiSessionAdapter implements SessionAdapter {
   ): void {
     this.#assertOpen();
     this.#identityChangeHandler = handler;
+  }
+
+  setSessionNameChangeHandler(
+    handler: ((name: string) => Promise<void>) | undefined,
+  ): void {
+    this.#assertOpen();
+    this.#sessionNameChangeHandler = handler;
+  }
+
+  async setRpcSessionName(name: string): Promise<void> {
+    this.#assertOpen();
+    await this.#sessionNameChangeHandler?.(name);
+    this.#runtime.session.setSessionName(name);
+  }
+
+  rpcSession(): AgentSession {
+    this.#assertOpen();
+    return this.#runtime.session;
+  }
+
+  subscribeRpcEvents(listener: (event: AgentSessionEvent) => void): () => void {
+    this.#assertOpen();
+    this.#rpcEventListeners.add(listener);
+    return () => this.#rpcEventListeners.delete(listener);
+  }
+
+  async setRpcExtensionBindingsFactory(
+    factory: () => SessionExtensionBindings,
+  ): Promise<void> {
+    this.#assertReplaceable();
+    this.#extensionBindingsFactory = factory;
+    await this.#runtime.session.bindExtensions(factory());
+  }
+
+  rpcController(options: PiRpcControllerOptions = {}): Promise<PiRpcController> {
+    this.#assertOpen();
+    if (this.#rpcController === undefined) {
+      const pending = PiRpcController.create(this, options);
+      this.#rpcController = pending;
+      void pending.catch(() => {
+        if (this.#rpcController === pending) this.#rpcController = undefined;
+      });
+    }
+    return this.#rpcController;
   }
 
   async prompt(request: PromptRequest): Promise<unknown> {
@@ -404,9 +467,13 @@ export class PiSessionAdapter implements SessionAdapter {
     await this.#runtime.session.abort();
   }
 
-  async newSession(): Promise<{ cancelled: boolean }> {
+  async newSession(parentSession?: string): Promise<{ cancelled: boolean }> {
     this.#assertReplaceable();
-    return this.#runtime.newSession();
+    const parent =
+      parentSession === undefined ? undefined : await this.#validatedSessionPath(parentSession);
+    return this.#runtime.newSession(
+      parent === undefined ? undefined : { parentSession: parent },
+    );
   }
 
   async switchSession(
@@ -443,15 +510,26 @@ export class PiSessionAdapter implements SessionAdapter {
     if (this.#disposed) return;
     this.#disposed = true;
     this.#identityChangeHandler = undefined;
+    this.#sessionNameChangeHandler = undefined;
+    const rpcController = await this.#rpcController?.catch(() => undefined);
+    rpcController?.dispose();
+    this.#rpcController = undefined;
+    this.#rpcEventListeners.clear();
     this.#invalidateSession();
     await this.#runtime.dispose();
   }
 
-  async #bindSession(session: AgentSession, replacement: boolean): Promise<void> {
+  async #bindSession(
+    session: AgentSession,
+    replacement: boolean,
+    bindExtensions: boolean,
+  ): Promise<void> {
     this.#unsubscribe?.();
     this.#unsubscribe = undefined;
     try {
-      await session.bindExtensions({ mode: "rpc" });
+      if (bindExtensions) {
+        await session.bindExtensions(this.#extensionBindingsFactory());
+      }
       this.#unsubscribe = session.subscribe((event) => this.#onSessionEvent(event));
       this.#invalidated = false;
       if (replacement && this.#identityChangeHandler !== undefined) {
@@ -504,6 +582,7 @@ export class PiSessionAdapter implements SessionAdapter {
   }
 
   #onSessionEvent(event: AgentSessionEvent): void {
+    for (const listener of this.#rpcEventListeners) listener(event);
     const mapped = mapPiEvent(event);
     if (mapped !== undefined) this.#eventSink?.(mapped);
   }
@@ -640,6 +719,40 @@ function scopedAuthStorage(
     });
   }
   return scoped;
+}
+
+function configuredRpcControllerOptions(
+  base: PiRpcControllerOptions,
+  runtimeOptions: PreparedSessionRuntimeOptions | undefined,
+): PiRpcControllerOptions {
+  if (
+    base.executeBash !== undefined ||
+    runtimeOptions === undefined ||
+    !configuredBashEnabled(runtimeOptions.persistedSpec)
+  ) {
+    return { ...base };
+  }
+  const environment = { ...runtimeOptions.environmentOverlay };
+  return {
+    ...base,
+    executeBash: async (session, command, excludeFromContext) => {
+      const shellPath = session.settingsManager.getShellPath();
+      const local = createLocalBashOperations(
+        shellPath === undefined ? undefined : { shellPath },
+      );
+      const operations: BashOperations = {
+        exec: (requestedCommand, cwd, options) =>
+          local.exec(requestedCommand, cwd, {
+            ...options,
+            env: { ...process.env, ...(options.env ?? {}), ...environment },
+          }),
+      };
+      return session.executeBash(command, undefined, {
+        ...(excludeFromContext === undefined ? {} : { excludeFromContext }),
+        operations,
+      });
+    },
+  };
 }
 
 function environmentToolOverrides(

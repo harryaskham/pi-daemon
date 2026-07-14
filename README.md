@@ -140,6 +140,7 @@ service source into Cacophony.
 - [`CHANGELOG.md`](CHANGELOG.md) — release history
 - [`docs/acceptance.md`](docs/acceptance.md) — live multiplex/zero-child-process proof
 - [`docs/pi-sdk-compatibility.md`](docs/pi-sdk-compatibility.md) — exact SDK acquisition, compatibility gates, upgrades, and rollback
+- [`docs/pi-rpc-host.md`](docs/pi-rpc-host.md) — in-process full Pi RPC command/event/UI semantics
 - [`docs/release.md`](docs/release.md) — release and rollback checklist
 - `docs/` — published protocol, operations, security, and integration guides
 

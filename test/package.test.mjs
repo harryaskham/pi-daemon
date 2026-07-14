@@ -129,6 +129,8 @@ test(
       "dist/api-server.js",
       "dist/index.js",
       "dist/index.d.ts",
+      "dist/pi-rpc-controller.js",
+      "dist/pi-rpc-controller.d.ts",
       "dist/protocol.schema.json",
       "scripts/check-release.mjs",
       "dist/session-api.js",

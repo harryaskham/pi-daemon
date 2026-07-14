@@ -165,11 +165,14 @@ class FakePiRuntime {
   }
 }
 
-const adapterForFakeRuntime = async (runtime, sessionRoot) =>
-  PiSessionAdapter.create(runtime, {
+const adapterForFakeRuntime = async (runtime, sessionRoot) => {
+  const adapter = await PiSessionAdapter.create(runtime, {
     sessionRoot,
     validateCwd: async (cwd) => cwd,
   });
+  await adapter.rpcController();
+  return adapter;
+};
 
 test("factory shares auth/models while isolating session, settings, and locked resources", async () => {
   const stateDir = await temporaryDirectory();
@@ -214,6 +217,8 @@ test("factory shares auth/models while isolating session, settings, and locked r
   assert.deepEqual(captures[0].resourceLoader.getAgentsFiles(), { agentsFiles: [] });
   assert.equal(captures[0].resourceLoader.getSystemPrompt(), "Reply tersely.");
   assert.deepEqual(captures[0].resourceLoader.getAppendSystemPrompt(), []);
+  assert.equal(sessions[0].bindings, 1);
+  assert.equal(sessions[1].bindings, 1);
   assert.throws(
     () => captures[0].resourceLoader.extendResources({ skillPaths: [{}] }),
     (error) => error instanceof PiAdapterError && error.code === "resource_extension_refused",
@@ -312,6 +317,7 @@ test("configured factory applies scoped model auth, settings, resources, and too
     assert.deepEqual(options.resourceLoader.getExtensions().errors, []);
     assert.equal(options.resourceLoader.getExtensions().extensions.length, 1);
     assert.equal(process.env.OPENAI_API_KEY, undefined);
+    assert.equal((await adapter.rpcController()).capabilities.policy.bash, true);
 
     const autoExtensions = join(cwd, ".pi", "extensions");
     await mkdir(autoExtensions, { recursive: true });
@@ -339,6 +345,7 @@ test("configured factory applies scoped model auth, settings, resources, and too
       assert.deepEqual(deniedOptions.resourceLoader.getAgentsFiles(), { agentsFiles: [] });
       assert.equal(deniedOptions.noTools, "all");
       assert.deepEqual(deniedOptions.customTools, []);
+      assert.equal((await deniedAdapter.rpcController()).capabilities.policy.bash, false);
     } finally {
       await deniedAdapter.dispose();
     }
@@ -610,6 +617,14 @@ test("real Pi SDK accepts the configured bash override without a model turn", as
     ...prepared.openRequest,
   });
   assert.deepEqual(sessions[0].getActiveToolNames(), ["bash"]);
+  const rpc = await adapter.rpcController();
+  assert.equal(rpc.capabilities.policy.bash, true);
+  const bash = await rpc.handle({
+    type: "bash",
+    command: 'printf %s "$SESSION_MARKER"',
+  });
+  assert.equal(bash.success, true);
+  assert.equal(bash.data.output, "real-sdk");
   await adapter.dispose();
 });
 
@@ -626,6 +641,11 @@ test("real Pi SDK opens an isolated no-tools in-memory session without a model t
     modelRegistry,
   });
   const adapter = await factory.open(openRequest(cwd, model));
+  const controller = await adapter.rpcController();
+  assert.equal(await adapter.rpcController(), controller);
+  const state = await controller.handle({ type: "get_state" });
+  assert.equal(state.success, true);
+  assert.equal(state.data.sessionId, adapter.identity().sessionId);
   await adapter.dispose();
   const readiness = factory.readiness();
   assert.ok(readiness.availableModels > 0);

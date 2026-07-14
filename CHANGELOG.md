@@ -17,6 +17,7 @@ Initial standalone implementation:
 - owner-only Unix socket server and JavaScript client
 - explicit generation-bound Unix event attach/detach operations
 - optional loopback bearer-authenticated JSON and stream-upgrade admission boundary
+- transport-neutral full Pi 0.80.6 RPC controller with raw events, runtime replacement, and bounded extension UI
 - canonical cwd allowlist and state/auth path isolation
 - metrics, readiness, redacted JSON logs, drain, and idle eviction
 - reproducible Nix package/app/dev shell and npm package

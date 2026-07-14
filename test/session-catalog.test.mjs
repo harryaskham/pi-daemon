@@ -159,6 +159,7 @@ class CatalogAdapter {
     this.sessionId = sessionId;
     this.generation = generation;
     this.disposed = 0;
+    this.controller = { sessionId, generation };
     this.conversation = {
       sessionId: `pi-${this.sessionId}-${this.generation}`,
       sessionFile: `/state/sessions/${this.sessionId}-${this.generation}.jsonl`,
@@ -171,6 +172,18 @@ class CatalogAdapter {
 
   setIdentityChangeHandler(handler) {
     this.identityChangeHandler = handler;
+  }
+
+  setSessionNameChangeHandler(handler) {
+    this.sessionNameChangeHandler = handler;
+  }
+
+  async rpcController() {
+    return this.controller;
+  }
+
+  async rename(name) {
+    await this.sessionNameChangeHandler?.(name);
   }
 
   async replaceConversation(conversation) {
@@ -358,6 +371,42 @@ test("catalog-only dormant and memory sessions remain dormant across restart", a
     (await restarted.retainedSessions()).sessions.map((record) => record.residency),
     ["dormant", "dormant"],
   );
+});
+
+test("resident RPC controller resolves exact names/generation and persists Pi-driven names", async () => {
+  const stateDir = await temporaryState();
+  const factory = new CatalogFactory();
+  const mux = new Multiplexer({
+    factory,
+    durability: new FileDurabilityStore({ stateDir }),
+    catalog: new FileSessionCatalog({ stateDir }),
+  });
+  await mux.recover();
+  await mux.open(openCommand("rpc-session"));
+  assert.equal(await mux.rpcController("rpc-session", 1), factory.adapters[0].controller);
+  await assert.rejects(mux.rpcController("rpc-session", 2), (error) => error?.code === "stale_generation");
+
+  await factory.adapters[0].rename("rpc-name");
+  const record = await mux.retainedSession("rpc-name");
+  assert.equal(record.sessionId, "rpc-session");
+  assert.equal(record.spec.name, "rpc-name");
+  const manifestPath = join(
+    stateDir,
+    "sessions",
+    encodedSessionId("rpc-session"),
+    "manifest.json",
+  );
+  assert.equal(JSON.parse(await readFile(manifestPath, "utf8")).payload.name, "rpc-name");
+
+  await mux.close({
+    protocolVersion: "1.0",
+    requestId: "close-rpc-session",
+    operation: "close",
+    sessionId: "rpc-session",
+    generation: 1,
+    payload: { retainSession: true },
+  });
+  await assert.rejects(mux.rpcController("rpc-name"), (error) => error?.code === "session_not_resident");
 });
 
 test("runtime conversation replacement updates catalog and manifest before returning", async () => {

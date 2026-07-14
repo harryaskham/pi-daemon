@@ -606,7 +606,7 @@ implementation order. This list is a human-readable crosswalk.
 
 - [x] `bd-df7ba9` — durable resident/dormant catalog and session CRUD.
 - [x] `bd-7d1407` — asynchronous durable command tickets and reconciliation.
-- [ ] `bd-0052e2` — full transport-neutral Pi RPC on `AgentSessionRuntime`.
+- [x] `bd-0052e2` — full transport-neutral Pi RPC on `AgentSessionRuntime`.
 - [ ] `bd-ab1b91` — trusted Pi CLI-equivalent per-session configuration and
   honest `unisolated` env/isolation policy.
 - [ ] `bd-509428` — explicit multi-reader attach, atomic snapshot/live boundary,
