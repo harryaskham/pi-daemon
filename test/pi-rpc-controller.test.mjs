@@ -304,6 +304,73 @@ test("controller conforms to every pinned Pi RPC command without owning a proces
   controller.dispose();
 });
 
+test("shared prompt scheduler holds capacity through settlement while responding at preflight", async () => {
+  const firstHost = new FakeRpcHost();
+  const secondHost = new FakeRpcHost();
+  const first = await PiRpcController.create(firstHost);
+  const second = await PiRpcController.create(secondHost);
+  let tail = Promise.resolve();
+  let active = 0;
+  let maxActive = 0;
+  const scheduler = (run) => {
+    const scheduled = tail.then(async () => {
+      active += 1;
+      maxActive = Math.max(maxActive, active);
+      try {
+        return await run();
+      } finally {
+        active -= 1;
+      }
+    });
+    tail = scheduled.catch(() => {});
+    return scheduled;
+  };
+  first.setPromptScheduler(scheduler);
+  second.setPromptScheduler(scheduler);
+
+  assert.equal((await first.handle({ id: "first", type: "prompt", message: "one" })).success, true);
+  const secondResponse = second.handle({ id: "second", type: "prompt", message: "two" });
+  const beforeSettlement = await Promise.race([
+    secondResponse.then(() => "resolved"),
+    new Promise((resolve) => setTimeout(() => resolve("queued"), 10)),
+  ]);
+  assert.equal(beforeSettlement, "queued");
+  firstHost.session.finishPrompt();
+  assert.equal((await secondResponse).success, true);
+  secondHost.session.finishPrompt();
+  await tail;
+  assert.equal(maxActive, 1);
+  first.dispose();
+  second.dispose();
+});
+
+test("abort prevents a prompt waiting on shared capacity from starting later", async () => {
+  const firstHost = new FakeRpcHost();
+  const secondHost = new FakeRpcHost();
+  const first = await PiRpcController.create(firstHost);
+  const second = await PiRpcController.create(secondHost);
+  let tail = Promise.resolve();
+  const scheduler = (run, signal) => {
+    const scheduled = tail.then(() => {
+      if (signal?.aborted) throw signal.reason ?? new Error("aborted");
+      return run();
+    });
+    tail = scheduled.catch(() => {});
+    return scheduled;
+  };
+  first.setPromptScheduler(scheduler);
+  second.setPromptScheduler(scheduler);
+  await first.handle({ id: "active", type: "prompt", message: "active" });
+  const queued = second.handle({ id: "queued", type: "prompt", message: "queued" });
+  assert.equal((await second.handle({ id: "abort", type: "abort" })).success, true);
+  firstHost.session.finishPrompt();
+  const queuedResponse = await queued;
+  assert.equal(queuedResponse.success, false);
+  assert.equal(secondHost.session.calls.some((call) => call[0] === "prompt"), false);
+  first.dispose();
+  second.dispose();
+});
+
 test("prompt responds at preflight and raw session events remain transport neutral", async () => {
   const host = new FakeRpcHost();
   const controller = await PiRpcController.create(host, { maxOutputListeners: 2 });

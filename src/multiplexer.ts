@@ -1305,7 +1305,16 @@ export class Multiplexer {
         "session adapter does not provide the Pi RPC runtime surface",
       );
     }
-    return slot.adapter.rpcController();
+    const controller = await slot.adapter.rpcController();
+    controller.setPromptScheduler?.(async (run, signal) => {
+      const release = await this.#turns.acquire(signal);
+      try {
+        return await run();
+      } finally {
+        release();
+      }
+    });
+    return controller;
   }
 
   async retainedSession(sessionRef: string): Promise<SessionCatalogRecord | undefined> {

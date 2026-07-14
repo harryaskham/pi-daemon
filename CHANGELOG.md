@@ -27,4 +27,5 @@ Initial standalone implementation:
 - bounded background recovery, truthful nondestructive readiness/probe status, whole-shutdown deadlines, safe idle sweep, metrics, and path-redacted lifecycle logs
 - reproducible Nix package/app/dev shell and npm package
 - Linux/macOS CI, release automation, Dependabot, and GitHub Pages
-- credential-free tests plus a live two-session zero-child-process acceptance harness
+- credential-free full-host acceptance across installed artifacts, configured CRUD, RPC/ACP/stdio, restart/replay, security, and zero per-session child processes
+- optional live-provider two-session zero-child-process acceptance harness

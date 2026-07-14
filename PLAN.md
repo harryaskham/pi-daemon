@@ -619,7 +619,7 @@ implementation order. This list is a human-readable crosswalk.
   `/connect` extension remains deferred until a real remote-session seam exists.
 - [x] `bd-07980c` — pre-allocation bounds for events/responses and safe overflow.
 - [x] `bd-1877d3` — bounded recovery/shutdown and truthful redacted readiness.
-- [ ] `bd-a4954f` — full install/CRUD/RPC/restart/security/live acceptance.
+- [x] `bd-a4954f` — full install/CRUD/RPC/restart/security/live acceptance.
 - [x] `bd-fb3b32` — version/tag/changelog/package/Nix release invariants.
 - [x] `bd-e53e76` — self-hosted CI runner policy (operational maintenance).
 - [ ] `bd-acf2d3` — draft: make automated npm dependency updates Nix-aware.

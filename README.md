@@ -25,8 +25,8 @@ or Cacophony credentials.
 > serialization, per-session runtime configuration, truthful bounded
 > recovery/shutdown, full multi-reader Pi RPC attachment, the remote
 > `pi-daemon-rpc` stdio bridge, and in-process ACP translation are implemented.
-> The remaining completion program is end-to-end acceptance in [`PLAN.md`](PLAN.md);
-> no release tag is cut yet.
+> Full credential-free install/CRUD/RPC/ACP/restart/security acceptance is green;
+> the repository is a release candidate, but no release tag is cut yet.
 
 ## Why
 

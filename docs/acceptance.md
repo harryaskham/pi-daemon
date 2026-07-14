@@ -3,77 +3,88 @@ layout: default
 title: Acceptance
 ---
 
-# Initial acceptance report
+# Full standalone host acceptance
 
-Validated 2026-07-12 on macOS with Node v26.4.0, Pi SDK 0.80.3, and
-`github-copilot/gpt-5-mini`.
+Validated on 2026-07-14 with Node >=22.19, Pi SDK 0.80.6, ACP SDK 1.2.0,
+and the clean npm/Nix package definitions.
 
-## Live SDK multiplex proof
+## Credential-free end-to-end host
 
-The optional `scripts/live-sdk-smoke.mjs` harness patches
-`child_process.spawn`, `spawnSync`, `exec`, `execSync`, `execFile`,
-`execFileSync`, and `fork` **before dynamically importing the Pi SDK or Pi
-Daemon adapter**. Any attempted child process throws immediately and is
-recorded.
+`test/full-host-acceptance.test.mjs` starts one real in-process Pi Daemon host
+on IPv6 loopback with a bearer-authenticated API and a deterministic local
+OpenAI-compatible streaming model. It uses the production `PiSessionFactory`,
+`AgentSessionRuntime`, durability/catalog/ticket stores, HTTP/WebSocket server,
+Pi RPC controller, ACP adapter, and stdio bridge—not a transport-only fake.
 
-The harness starts the full owner-local service path: `FileDurabilityStore`,
-`Multiplexer`, `PiSessionFactory`, `ProtocolServer`, and two independent
-`PiDaemonClient` Unix-socket connections. Two distinct no-tools in-memory SDK
-sessions share one `AuthStorage` and `ModelRegistry`, journal their wakes, and
-run exact `A` and `B` prompts concurrently.
+The test proves in one lifecycle:
 
-Observed result:
+- unauthorized HTTP is rejected before resource disclosure;
+- two differently configured sessions are created by durable REST tickets;
+- a denied project cannot auto-load an ambient extension and unapproved package
+  configuration is rejected;
+- out-of-root cwd admission fails safely;
+- controller and observer attachments receive scoped event streams with no
+  cross-session implicit subscription;
+- concurrent Pi RPC prompts obey the daemon-wide turn semaphore;
+- Pi new, switch, fork, state, entry, and conversation-identity transitions
+  remain available through the hosted runtime;
+- a disconnected reader reconnects from an opaque replay cursor;
+- ACP initialize/load uses the same resident runtime;
+- the framed remote bridge exposes stock Pi RPC JSONL on bounded streams;
+- a real host restart emits a host-identity replay gap, reopens the exact
+  persistent conversation, replays only queued work, and leaves accepted work
+  indeterminate;
+- an env-dependent memory session becomes dormant/unprovisioned, is explicitly
+  re-provisioned by optimistic update, and can be deleted with retained state
+  removed; and
+- environment values and the service bearer never appear in durable state.
 
-```json
-{
-  "ok": true,
-  "transport": "unix-ndjson",
-  "durableJournal": true,
-  "sessions": 2,
-  "results": { "a": "A", "b": "B" },
-  "eventCounts": { "a": 15, "b": 15 },
-  "childProcessCalls": [],
-  "openDurationMs": 32.08,
-  "concurrentTurnDurationMs": 4828.06
-}
-```
+The test patches every Node child-process entry point before dynamically loading
+Pi or Pi Daemon. Session creation, wakes, RPC, ACP, restart, and bridge work all
+complete with zero child-process calls. (The installed CLI subprocess smoke is a
+separate packaging test and intentionally launches the package executable.)
 
-Run it only in a credentialed operator environment:
+## Adversarial matrix
+
+The normal `npm test` suite additionally proves:
+
+- clean npm pack/install plus both installed binaries;
+- language-neutral NDJSON, REST, Pi RPC, framed replay, ACP, and stdio fixtures;
+- pre-allocation serialization bounds and typed overflow;
+- malformed, unmasked, fragmented/oversized, unauthorized, and stale-generation
+  WebSocket handling;
+- two-reader private response routing, colliding IDs, controller release,
+  observer denial, extension-UI first response, ping/pong, slow-reader isolation,
+  expired/prior-host/prior-generation gaps, and replacement detach;
+- per-session settings/resources/models/auth/env behavior and explicit
+  unisolated trust limits;
+- bounded manifest/catalog/journal/ticket recovery, queued versus accepted crash
+  semantics, health degradation/reconciliation, sweep/disposal, and whole
+  shutdown deadlines;
+- path traversal, symlink, permissive mode, credential-root overlap, secret
+  redaction, extension trust, and API/body/frame capacity failures; and
+- exact Pi SDK/RPC compatibility inventories.
+
+`npm test` is the complete credential-free Node gate. `nix flake check` builds
+the pinned dependency closure, runs that suite in the package check, and verifies
+the package/app/install surface. On the constrained macOS host, acceptance uses
+`::1` for loopback tests to avoid unrelated Tailscale IPv4 `CLOSE_WAIT`
+exhaustion.
+
+## Optional live-provider proof
+
+`scripts/live-sdk-smoke.mjs` remains an optional credentialed parity check. It
+patches child-process entry points before loading Pi, opens two independent
+no-tools sessions, runs exact `A` and `B` prompts concurrently, verifies isolated
+results/events, and reports timing and the empty child-process call list.
 
 ```console
 PI_DAEMON_LIVE_MODEL=github-copilot/gpt-5-mini npm run test:live
 ```
 
-## Credential-free acceptance matrix
+## Crash guarantee
 
-The normal `npm test` suite proves:
-
-- concurrent logical sessions and global turn semaphore behavior
-- per-session serialization and monotonic event sequencing
-- live duplicate wake joining and terminal duplicate cache hits
-- generation/policy conflicts and bounded session/turn capacity
-- one-session failure/abort containment
-- queued restart replay only after exact Pi conversation ID/file restoration
-- missing/corrupt/legacy-ambiguous identity blocks replay; accepted becomes indeterminate
-- memory targets remain catalog-only with no durable wake journal
-- owner-only atomic manifests/journals and terminal retention compaction
-- path traversal, symlink, permissive mode, and authority-root refusal
-- empty Pi tool/resource profile and distinct session/settings/resource state
-- real SDK no-tools runtime construction plus new/switch/fork/import rebinding
-- real SDK restart continuity for an owner-only materialized empty conversation
-- bounded Unix NDJSON framing, connection isolation, and typed errors
-- drain timeout abort, idle eviction, metrics, and structured-log redaction
-- language-neutral fixture/schema compatibility
-
-## Release-candidate closeout
-
-On 2026-07-12 the GitHub CI workflow was green across Node 22.19/24 and Linux +
-macOS Nix package/app checks. GitHub Pages deployed successfully; both
-[the site](https://a.skh.am/pi-daemon/) and the published
-[JSON schema](https://a.skh.am/pi-daemon/protocol.schema.json) returned HTTP
-200. The npm pack dry run includes runtime declarations, documentation, and the
-optional live harness.
-
-The project does not claim exactly-once provider execution across a crash in the
-narrow window between provider completion and terminal journal fsync. That
-state is explicitly `indeterminate` and automatic replay is refused.
+Pi Daemon does not claim exactly-once provider execution across a crash in the
+narrow window between provider completion and terminal journal fsync. That state
+is explicitly `indeterminate`; it is queryable/reconcilable and never blindly
+replayed.

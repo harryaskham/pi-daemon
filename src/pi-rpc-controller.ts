@@ -74,6 +74,11 @@ export const PI_RPC_HOST_CAPABILITIES = {
   policyGatedCommands: ["bash", "abort_bash", "export_html"],
 } as const;
 
+export type PiRpcPromptScheduler = <T>(
+  run: () => Promise<T>,
+  signal?: AbortSignal,
+) => Promise<T>;
+
 export interface PiRpcSnapshot {
   rpcState: Record<string, unknown>;
   leafId: string | null;
@@ -101,6 +106,8 @@ export class PiRpcController {
   readonly #exportHtml: PiRpcControllerOptions["exportHtml"];
   readonly #listeners = new Set<(output: PiRpcControllerOutput) => void>();
   readonly #pendingUi = new Map<string, PendingUiRequest>();
+  readonly #promptAborts = new Set<AbortController>();
+  #promptScheduler: PiRpcPromptScheduler = (run) => run();
   #unsubscribeEvents: (() => void) | undefined;
   #disposed = false;
 
@@ -165,6 +172,12 @@ export class PiRpcController {
     this.#pendingUi.clear();
   }
 
+  /** Apply the daemon-wide turn scheduler without coupling this controller to a transport. */
+  setPromptScheduler(scheduler: PiRpcPromptScheduler): void {
+    this.#assertOpen();
+    this.#promptScheduler = scheduler;
+  }
+
   /** Capture state and leaf synchronously in the controller event-loop boundary. */
   snapshot(): PiRpcSnapshot {
     this.#assertOpen();
@@ -209,6 +222,7 @@ export class PiRpcController {
           await session.followUp(command.message, command.images);
           return success(id, "follow_up");
         case "abort":
+          for (const abort of this.#promptAborts) abort.abort();
           await session.abort();
           return success(id, "abort");
         case "new_session":
@@ -360,6 +374,8 @@ export class PiRpcController {
     this.#unsubscribeEvents = undefined;
     for (const pending of this.#pendingUi.values()) pending.cancel();
     this.#pendingUi.clear();
+    for (const abort of this.#promptAborts) abort.abort();
+    this.#promptAborts.clear();
     this.#listeners.clear();
   }
 
@@ -371,19 +387,28 @@ export class PiRpcController {
         responded = true;
         resolve(response);
       };
-      void session
-        .prompt(command.message, {
-          ...(command.images === undefined ? {} : { images: command.images }),
-          ...(command.streamingBehavior === undefined
-            ? {}
-            : { streamingBehavior: command.streamingBehavior }),
-          source: "rpc",
-          preflightResult: (accepted) => {
-            if (accepted) complete(success(command.id, "prompt"));
-          },
-        })
-        .then(() => complete(success(command.id, "prompt")))
-        .catch((error) => complete(failure(command.id, "prompt", safeRpcError(error))));
+      const abort = new AbortController();
+      this.#promptAborts.add(abort);
+      const run = async (): Promise<void> => {
+        try {
+          await session.prompt(command.message, {
+            ...(command.images === undefined ? {} : { images: command.images }),
+            ...(command.streamingBehavior === undefined
+              ? {}
+              : { streamingBehavior: command.streamingBehavior }),
+            source: "rpc",
+            preflightResult: (accepted) => {
+              if (accepted) complete(success(command.id, "prompt"));
+            },
+          });
+          complete(success(command.id, "prompt"));
+        } catch (error) {
+          complete(failure(command.id, "prompt", safeRpcError(error)));
+        }
+      };
+      void this.#promptScheduler(run, abort.signal)
+        .catch((error) => complete(failure(command.id, "prompt", safeRpcError(error))))
+        .finally(() => this.#promptAborts.delete(abort));
     });
   }
 
