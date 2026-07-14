@@ -20,6 +20,18 @@ import {
   type StructuredLogger,
 } from "./observability.js";
 import { eventEnvelope, parseCommand, type EventEnvelope } from "./protocol.js";
+import {
+  SessionCatalogError,
+  sessionSpecDigest,
+  validateCatalogSessionId,
+  type PersistedSessionSpec,
+  type SessionCatalogPage,
+  type SessionCatalogRecord,
+  type SessionCatalogReplaceInput,
+  type SessionCatalogStore,
+  type SessionConversationIdentity,
+  type SessionTerminalRecord,
+} from "./session-catalog.js";
 
 export type SessionState = "opening" | "idle" | "running" | "failed" | "closing";
 
@@ -50,6 +62,7 @@ export interface PromptRequest {
 /** One isolated SDK session. Implemented by the real Pi adapter in PD-006. */
 export interface SessionAdapter {
   prompt(request: PromptRequest): Promise<unknown>;
+  identity?(): SessionConversationIdentity;
   steer?(message: string): Promise<void> | void;
   followUp?(message: string): Promise<void> | void;
   abort?(): Promise<void> | void;
@@ -99,11 +112,14 @@ export interface HostSnapshot {
   memory: { rss: number; heapUsed: number; heapTotal: number; external: number };
   adapterReadiness?: unknown;
   metrics: MetricsSnapshot;
+  retainedSessions?: number;
+  dormantSessions?: number;
   sessions: SessionSnapshot[];
 }
 
 export interface RecoveryReport {
   recovered: RecoverySnapshot;
+  catalog: SessionCatalogRecord[];
   opened: string[];
   replayed: string[];
   failures: Array<{ sessionId: string; code: string; message: string }>;
@@ -256,8 +272,10 @@ export class Multiplexer {
   readonly idleSessionTtlMs: number;
   readonly #factory: SessionFactory;
   readonly #durability: DurabilityStore | undefined;
+  readonly #catalog: SessionCatalogStore | undefined;
   readonly #turns: Semaphore;
   readonly #sessions = new Map<string, SessionSlot>();
+  readonly #catalogRecords = new Map<string, SessionCatalogRecord>();
   readonly #lifecycleTails = new Map<string, Promise<void>>();
   readonly #listeners = new Set<EventListener>();
   readonly #logger: StructuredLogger;
@@ -270,6 +288,7 @@ export class Multiplexer {
   constructor(options: {
     factory: SessionFactory;
     durability?: DurabilityStore;
+    catalog?: SessionCatalogStore;
     hostInstanceId?: string;
     limits?: Partial<MultiplexerLimits>;
     metrics?: HostMetrics;
@@ -279,7 +298,8 @@ export class Multiplexer {
   }) {
     this.#factory = options.factory;
     this.#durability = options.durability;
-    this.#ready = options.durability === undefined;
+    this.#catalog = options.catalog;
+    this.#ready = options.durability === undefined && options.catalog === undefined;
     this.hostInstanceId = options.hostInstanceId ?? randomUUID();
     this.metrics = options.metrics ?? new HostMetrics();
     this.#logger = options.logger ?? NOOP_LOGGER;
@@ -312,24 +332,25 @@ export class Multiplexer {
   }
 
   async recover(): Promise<RecoveryReport> {
-    if (this.#durability === undefined) {
-      this.#ready = true;
-      this.#recovered = true;
-      return {
-        recovered: { manifests: [], queued: [], indeterminate: [] },
-        opened: [],
-        replayed: [],
-        failures: [],
-      };
-    }
     if (this.#recovered) {
       throw new MultiplexerError("already_recovered", "durable state was already recovered");
     }
 
-    const recovered = await this.#durability.recover();
+    const catalog = (await this.#catalog?.recover()) ?? [];
+    this.#catalogRecords.clear();
+    for (const record of catalog) this.#catalogRecords.set(record.sessionId, record);
+    const recovered =
+      (await this.#durability?.recover()) ??
+      ({ manifests: [], queued: [], indeterminate: [] } satisfies RecoverySnapshot);
     this.#recovered = true;
     this.#ready = true;
-    const report: RecoveryReport = { recovered, opened: [], replayed: [], failures: [] };
+    const report: RecoveryReport = {
+      recovered,
+      catalog,
+      opened: [],
+      replayed: [],
+      failures: [],
+    };
 
     for (const manifest of recovered.manifests) {
       try {
@@ -399,6 +420,31 @@ export class Multiplexer {
       const existing = this.#sessions.get(command.sessionId);
       const policy = normalizeOpenPolicy(command.payload);
       const policyKey = canonicalJson(policy);
+      const catalogSpec = persistedSpecFromOpen(command.payload);
+      const catalogDigest = sessionSpecDigest(catalogSpec);
+      if (this.#catalog !== undefined) validateCatalogSessionId(command.sessionId);
+      const retained = await this.#catalog?.get(command.sessionId);
+
+      if (existing === undefined && retained !== undefined) {
+        if (command.generation < retained.generation) {
+          throw new MultiplexerError("stale_generation", "session generation is stale", {
+            details: {
+              currentGeneration: retained.generation,
+              receivedGeneration: command.generation,
+            },
+          });
+        }
+        if (
+          command.generation === retained.generation &&
+          catalogDigest !== retained.policyDigest
+        ) {
+          throw new MultiplexerError(
+            "session_policy_conflict",
+            "open policy differs for the retained generation",
+            { details: { generation: retained.generation } },
+          );
+        }
+      }
 
       if (existing !== undefined) {
         if (command.generation < existing.generation) {
@@ -445,6 +491,33 @@ export class Multiplexer {
       try {
         adapter = await this.#factory.open(request);
         await this.#durability?.saveManifest(command);
+        if (this.#catalog !== undefined) {
+          const conversation = adapter.identity?.();
+          const catalogRecord =
+            retained === undefined
+              ? await this.#catalog.create({
+                  sessionId: command.sessionId,
+                  generation: command.generation,
+                  spec: catalogSpec,
+                  residency: "resident",
+                  state: "idle",
+                  ...(conversation === undefined ? {} : { conversation }),
+                  policyDigest: catalogDigest,
+                })
+              : await this.#catalog.replace(command.sessionId, {
+                  expectedGeneration: retained.generation,
+                  expectedRevision: retained.revision,
+                  generation: command.generation,
+                  ...(retained.name === undefined ? {} : { name: retained.name }),
+                  spec: catalogSpec,
+                  environment: retained.environment,
+                  residency: "resident",
+                  state: "idle",
+                  ...(conversation === undefined ? {} : { conversation }),
+                  policyDigest: catalogDigest,
+                });
+          this.#catalogRecords.set(catalogRecord.sessionId, catalogRecord);
+        }
       } catch (error) {
         await Promise.resolve(adapter?.dispose()).catch(() => {});
         this.metrics.increment("open_failures");
@@ -619,7 +692,42 @@ export class Multiplexer {
   async close(command: Extract<ProtocolCommand, { operation: "close" }>): Promise<boolean> {
     return this.#withLifecycle(command.sessionId, async () => {
       const slot = this.#sessions.get(command.sessionId);
-      if (slot === undefined) return false;
+      const retained =
+        this.#catalogRecords.get(command.sessionId) ??
+        (await this.#catalog?.get(command.sessionId));
+      if (slot === undefined) {
+        if (retained === undefined) return false;
+        if (retained.generation !== command.generation) {
+          throw new MultiplexerError("stale_generation", "session generation does not match", {
+            details: {
+              currentGeneration: retained.generation,
+              receivedGeneration: command.generation,
+            },
+          });
+        }
+        const retainArtifacts = command.payload.retainSession ?? true;
+        if (retainArtifacts) {
+          if (retained.residency !== "dormant") {
+            const dormant = await this.#catalog?.markDormant(
+              retained.sessionId,
+              retained.generation,
+            );
+            if (dormant !== undefined) this.#catalogRecords.set(dormant.sessionId, dormant);
+          }
+        } else {
+          await this.#durability?.closeSession(retained.sessionId, false);
+          await this.#catalog?.delete(retained.sessionId);
+          this.#catalogRecords.delete(retained.sessionId);
+          this.#emitProvisional(
+            retained.sessionId,
+            retained.generation,
+            "sessionDeleted",
+            command.requestId,
+            {},
+          );
+        }
+        return true;
+      }
       this.#assertGeneration(slot, command.generation);
       if (slot.pendingTurns > 0 || slot.state === "running") {
         throw new MultiplexerError("session_busy", "cannot close a session with pending turns", {
@@ -629,15 +737,135 @@ export class Multiplexer {
       const retainArtifacts = command.payload.retainSession ?? true;
       slot.state = "closing";
       await slot.adapter.dispose();
+      if (this.#catalog !== undefined) {
+        if (retainArtifacts) {
+          const dormant = await this.#catalog.markDormant(slot.sessionId, slot.generation);
+          this.#catalogRecords.set(dormant.sessionId, dormant);
+          this.#emit(slot, "sessionDormant", command.requestId, {});
+        } else {
+          await this.#catalog.delete(slot.sessionId);
+          this.#catalogRecords.delete(slot.sessionId);
+          this.#emit(slot, "sessionDeleted", command.requestId, {});
+        }
+      }
+      await this.#durability?.closeSession(command.sessionId, retainArtifacts);
       this.#emit(slot, "sessionClosed", command.requestId, { retainSession: retainArtifacts });
       this.#sessions.delete(command.sessionId);
-      await this.#durability?.closeSession(command.sessionId, retainArtifacts);
       this.metrics.increment("sessions_closed");
       this.#logger.write("info", "session_closed", {
         sessionId: command.sessionId,
         generation: command.generation,
         retainArtifacts,
       });
+      return true;
+    });
+  }
+
+  async retainedSession(sessionRef: string): Promise<SessionCatalogRecord | undefined> {
+    try {
+      return await this.#catalog?.get(sessionRef);
+    } catch (error) {
+      throw asMultiplexerError(error, "catalog_read_failed", "failed to read retained session");
+    }
+  }
+
+  async retainedSessions(
+    options: { limit?: number; cursor?: string } = {},
+  ): Promise<SessionCatalogPage> {
+    if (this.#catalog === undefined) return { sessions: [] };
+    try {
+      return await this.#catalog.list(options);
+    } catch (error) {
+      throw asMultiplexerError(error, "catalog_read_failed", "failed to list retained sessions");
+    }
+  }
+
+  async replaceDormantSession(
+    sessionRef: string,
+    input: SessionCatalogReplaceInput,
+  ): Promise<SessionCatalogRecord> {
+    if (this.#catalog === undefined) {
+      throw new MultiplexerError("catalog_unavailable", "durable session catalog is disabled");
+    }
+    const current = await this.#catalog.get(sessionRef);
+    if (current === undefined) {
+      throw new MultiplexerError("session_not_found", "retained session does not exist");
+    }
+    if (this.#sessions.has(current.sessionId)) {
+      throw new MultiplexerError("session_busy", "resident session must be replaced through open", {
+        retryable: true,
+      });
+    }
+    try {
+      const next = await this.#catalog.replace(current.sessionId, input);
+      this.#catalogRecords.set(next.sessionId, next);
+      this.#emitProvisional(
+        next.sessionId,
+        next.generation,
+        "sessionUpdated",
+        undefined,
+        { revision: next.revision, residency: next.residency },
+      );
+      return next;
+    } catch (error) {
+      throw asMultiplexerError(error, "catalog_update_failed", "failed to update retained session");
+    }
+  }
+
+  async deleteRetainedSession(
+    sessionRef: string,
+    options: {
+      requestId: string;
+      expectedGeneration: number;
+      expectedRevision: number;
+    },
+  ): Promise<boolean> {
+    const catalog = this.#catalog;
+    if (catalog === undefined) return false;
+    const current = await catalog.get(sessionRef);
+    if (current === undefined) return false;
+    if (
+      current.generation !== options.expectedGeneration ||
+      current.revision !== options.expectedRevision
+    ) {
+      throw new MultiplexerError("session_precondition_failed", "session version changed", {
+        details: {
+          expectedGeneration: options.expectedGeneration,
+          expectedRevision: options.expectedRevision,
+          currentGeneration: current.generation,
+          currentRevision: current.revision,
+        },
+      });
+    }
+    if (this.#sessions.has(current.sessionId)) {
+      return this.close({
+        protocolVersion: "1.0",
+        requestId: options.requestId,
+        operation: "close",
+        sessionId: current.sessionId,
+        generation: current.generation,
+        payload: { retainSession: false },
+      });
+    }
+    return this.#withLifecycle(current.sessionId, async () => {
+      const latest = await catalog.get(current.sessionId);
+      if (latest === undefined) return false;
+      if (
+        latest.generation !== options.expectedGeneration ||
+        latest.revision !== options.expectedRevision
+      ) {
+        throw new MultiplexerError("session_precondition_failed", "session version changed");
+      }
+      await this.#durability?.closeSession(latest.sessionId, false);
+      await catalog.delete(latest.sessionId);
+      this.#catalogRecords.delete(latest.sessionId);
+      this.#emitProvisional(
+        latest.sessionId,
+        latest.generation,
+        "sessionDeleted",
+        options.requestId,
+        {},
+      );
       return true;
     });
   }
@@ -657,7 +885,7 @@ export class Multiplexer {
     const result: HostSnapshot = {
       hostInstanceId: this.hostInstanceId,
       ready: this.#ready,
-      durable: this.#durability !== undefined,
+      durable: this.#durability !== undefined || this.#catalog !== undefined,
       draining: this.#draining,
       limits: { ...this.limits },
       activeTurns: this.#turns.active,
@@ -671,6 +899,14 @@ export class Multiplexer {
         external: memory.external,
       },
       metrics: this.metrics.snapshot(),
+      ...(this.#catalog === undefined
+        ? {}
+        : {
+            retainedSessions: this.#catalogRecords.size,
+            dormantSessions: [...this.#catalogRecords.values()].filter(
+              (record) => record.residency === "dormant",
+            ).length,
+          }),
       sessions: [...this.#sessions.values()]
         .sort((a, b) => a.sessionId.localeCompare(b.sessionId))
         .map((slot) => snapshot(slot, now)),
@@ -743,6 +979,17 @@ export class Multiplexer {
         }
         current.state = "closing";
         await current.adapter.dispose();
+        if (this.#catalog !== undefined) {
+          const dormant = await this.#catalog.markDormant(
+            current.sessionId,
+            current.generation,
+          );
+          this.#catalogRecords.set(dormant.sessionId, dormant);
+          this.#emit(current, "sessionDormant", undefined, { reason: "idle_eviction" });
+        }
+        this.#emit(current, "sessionEvicted", undefined, {
+          idleForMs: now - current.lastUsedAt,
+        });
         this.#sessions.delete(current.sessionId);
         evicted.push(current.sessionId);
         this.metrics.increment("sessions_evicted");
@@ -763,7 +1010,15 @@ export class Multiplexer {
       for (const entry of slot.inFlight.values()) entry.abort.abort();
     }
     await settlesWithin(Promise.allSettled(slots.map(async (slot) => slot.turnTail)), timeoutMs);
-    await Promise.allSettled(slots.map(async (slot) => slot.adapter.dispose()));
+    await Promise.allSettled(
+      slots.map(async (slot) => {
+        await slot.adapter.dispose();
+        if (this.#catalog !== undefined) {
+          const dormant = await this.#catalog.markDormant(slot.sessionId, slot.generation);
+          this.#catalogRecords.set(dormant.sessionId, dormant);
+        }
+      }),
+    );
     this.#sessions.clear();
   }
 
@@ -791,6 +1046,7 @@ export class Multiplexer {
       }
       slot.state = "running";
       slot.lastUsedAt = this.#now();
+      await this.#syncCatalogState(slot, "running");
       this.metrics.increment("turns_started");
       this.#logger.write("info", "turn_started", {
         sessionId: slot.sessionId,
@@ -821,6 +1077,11 @@ export class Multiplexer {
       }
       slot.state = "idle";
       slot.lastUsedAt = this.#now();
+      await this.#syncCatalogState(slot, "idle", {
+        state: "succeeded",
+        at: new Date(slot.lastUsedAt).toISOString(),
+        requestId: command.requestId,
+      });
       delete slot.lastErrorCode;
       this.metrics.increment("turns_completed");
       this.metrics.observe("turn_duration_ms", this.#now() - turnStartedAt);
@@ -845,6 +1106,13 @@ export class Multiplexer {
       }
       slot.state = normalized.code === "aborted" ? "idle" : "failed";
       slot.lastUsedAt = this.#now();
+      await this.#syncCatalogState(slot, slot.state, {
+        state:
+          normalized.code === "durability_completion_failed" ? "indeterminate" : "failed",
+        at: new Date(slot.lastUsedAt).toISOString(),
+        requestId: command.requestId,
+        errorCode: normalized.code,
+      });
       slot.lastErrorCode = normalized.code;
       this.metrics.increment(normalized.code === "aborted" ? "turns_aborted" : "turns_failed");
       if (turnStartedAt > 0) this.metrics.observe("turn_duration_ms", this.#now() - turnStartedAt);
@@ -864,6 +1132,29 @@ export class Multiplexer {
       delete slot.activeAbort;
       delete slot.activeRequestId;
       release?.();
+    }
+  }
+
+  async #syncCatalogState(
+    slot: SessionSlot,
+    state: SessionState,
+    terminal?: SessionTerminalRecord,
+  ): Promise<void> {
+    if (this.#catalog === undefined) return;
+    try {
+      const record = await this.#catalog.markState(slot.sessionId, slot.generation, state, {
+        lastUsedAt: new Date(slot.lastUsedAt).toISOString(),
+        ...(terminal === undefined ? {} : { terminal }),
+      });
+      this.#catalogRecords.set(record.sessionId, record);
+    } catch (error) {
+      this.metrics.increment("catalog_update_failures");
+      this.#logger.write("warn", "session_catalog_update_failed", {
+        sessionId: slot.sessionId,
+        generation: slot.generation,
+        state,
+        errorCode: errorCode(error),
+      });
     }
   }
 
@@ -986,6 +1277,30 @@ function normalizeOpenPolicy(payload: OpenPayload): NormalizedOpenPolicy {
   return policy;
 }
 
+function persistedSpecFromOpen(payload: OpenPayload): PersistedSessionSpec {
+  const target: PersistedSessionSpec["target"] = { mode: payload.session.mode };
+  if (payload.session.path !== undefined) target.path = payload.session.path;
+  const spec: PersistedSessionSpec = {
+    cwd: payload.cwd,
+    target,
+    tools: { mode: "none", include: [], exclude: [] },
+    resources: {
+      noExtensions: true,
+      noSkills: true,
+      noPromptTemplates: true,
+      noThemes: true,
+      noContextFiles: true,
+      ...(payload.resources?.systemPrompt === undefined
+        ? {}
+        : { systemPrompt: payload.resources.systemPrompt }),
+    },
+    isolation: { mode: "unisolated" },
+  };
+  if (payload.agentDir !== undefined) spec.agentDir = payload.agentDir;
+  if (payload.model !== undefined) spec.model = { ...payload.model };
+  return spec;
+}
+
 function snapshot(slot: SessionSlot, now: number): SessionSnapshot {
   const result: SessionSnapshot = {
     sessionId: slot.sessionId,
@@ -1036,7 +1351,13 @@ async function settlesWithin(promise: Promise<unknown>, timeoutMs: number): Prom
 }
 
 function errorCode(error: unknown): string {
-  if (error instanceof MultiplexerError || error instanceof DurabilityError) return error.code;
+  if (
+    error instanceof MultiplexerError ||
+    error instanceof DurabilityError ||
+    error instanceof SessionCatalogError
+  ) {
+    return error.code;
+  }
   if (error !== null && typeof error === "object" && "code" in error) {
     const code = (error as { code?: unknown }).code;
     if (typeof code === "string") return code;
@@ -1065,8 +1386,9 @@ function safeError(error: unknown): { name: string; message: string } {
 
 function asMultiplexerError(error: unknown, code: string, message: string): MultiplexerError {
   if (error instanceof MultiplexerError) return error;
-  if (error instanceof DurabilityError) {
+  if (error instanceof DurabilityError || error instanceof SessionCatalogError) {
     return new MultiplexerError(error.code, error.message, {
+      retryable: error instanceof SessionCatalogError ? error.retryable : false,
       ...(error.details === undefined ? {} : { details: error.details }),
     });
   }

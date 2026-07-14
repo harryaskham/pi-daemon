@@ -186,6 +186,15 @@ export class PiSessionAdapter implements SessionAdapter {
     this.#unsubscribe = session.subscribe((event) => this.#onSessionEvent(event));
   }
 
+  identity(): { sessionId: string; sessionFile?: string } {
+    return {
+      sessionId: this.#session.sessionId,
+      ...(this.#session.sessionFile === undefined
+        ? {}
+        : { sessionFile: this.#session.sessionFile }),
+    };
+  }
+
   async prompt(request: PromptRequest): Promise<unknown> {
     this.#assertOpen();
     this.#eventSink = request.onEvent;

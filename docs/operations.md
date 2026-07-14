@@ -80,8 +80,9 @@ pi-daemon request --socket "$XDG_RUNTIME_DIR/pi-daemon.sock" --json \
 ```
 
 Readiness distinguishes protocol availability from Pi model/auth availability.
-Status includes counters, latency summaries, memory, resident sessions, active
-and queued turns, and draining state; it excludes prompts, results, and secrets.
+Status includes counters, latency summaries, memory, resident sessions,
+retained/dormant catalog counts, active and queued turns, and draining state; it
+excludes prompts, results, and secrets.
 
 ## Shutdown
 
@@ -90,8 +91,26 @@ command accepts `payload.timeoutMs`. New open/wake requests are rejected once
 drain starts; after the deadline, queued and active turns are aborted.
 
 Idle SDK sessions are evicted after 30 minutes by default while their durable
-manifest/session artifacts remain. Re-open the same generation to load it
-again. Set `--idle-session-ttl-ms 0` to disable eviction.
+catalog and Pi session artifacts remain. Eviction emits `sessionDormant` and
+`sessionEvicted`; re-open the same generation and policy to load it again. Set
+`--idle-session-ttl-ms 0` to disable eviction.
+
+## Durable session catalog
+
+Owner-private atomic catalog records live under
+`state/catalog/<escaped-session-id>.json`. They retain immutable daemon ID,
+optional exact unique name, generation/revision, resident/dormant state,
+nonsecret normalized session spec, environment key/digest summary, current Pi
+conversation identity, last-use timestamps, and the latest terminal outcome.
+Raw environment values are rejected rather than serialized.
+
+Catalog records are individually capped at 1 MiB and the retained record count
+is bounded. Listing is stable by canonical session ID, defaults to 50 entries,
+caps at 100, and uses opaque cursors. A dormant record can be inspected, renamed or
+replaced with optimistic generation/revision checks, reopened, or deleted with
+its retained manifest/journal/Pi files without first creating an SDK runtime.
+Daemon status exposes only counts; the additive session API exposes bounded
+resources.
 
 ## Restart recovery
 

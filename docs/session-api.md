@@ -78,12 +78,18 @@ A session resource has:
 - `sessionId` — immutable canonical identifier;
 - optional `name` — mutable human-readable exact alias;
 - `generation` — identity of the resident Pi runtime;
-- `revision` — optimistic version of the REST resource; and
-- `state` — `opening`, `idle`, `running`, `failed`, or `closing`.
+- `revision` — optimistic version of the REST resource;
+- `residency` — `resident` while an SDK runtime is loaded or `dormant` while
+  only durable catalog/session artifacts remain; and
+- `state` — `opening`, `idle`, `running`, `failed`, or `closing`; and
+- optional `lastTerminal` — safe succeeded/failed/indeterminate outcome,
+  timestamp, request ID, and error code without prompt/result content.
 
-Generation starts at 1. Replacing the `AgentSessionRuntime` increments it.
-Updating metadata or Pi state in place increments revision without necessarily
-incrementing generation. Every successful mutation increments revision.
+JSON API creation starts generation at 1. Legacy NDJSON generations beginning at
+0 remain readable in the catalog for compatibility. Replacing the
+`AgentSessionRuntime` increments generation. Updating metadata or Pi state in
+place increments revision without necessarily incrementing generation. Every
+successful catalog mutation increments revision.
 
 `{sessionRef}` is URL-decoded exactly once and resolves as follows:
 
@@ -160,11 +166,17 @@ never simulate per-session environment by racing `process.env` replacement or
 | `GET /v1/session/{sessionRef}/rpc` | WebSocket Pi RPC attach | `101` |
 | `GET /v1/session/{sessionRef}/apc` | WebSocket upstream ACP attach | `101` |
 
-List ordering is stable by canonical session ID. `limit` defaults to 50 and is
-bounded to 100. `cursor` is opaque and tied to the filter and ordering. Clients
+List ordering is stable by canonical session ID and includes both resident and
+dormant retained sessions. `limit` defaults to 50 and is bounded to 100.
+`cursor` is opaque and tied to the filter and ordering. Clients
 must not parse it. Deleted sessions do not reappear within an existing page
 sequence; a stale page cursor returns a typed conflict or a new first page, as
 advertised by capabilities.
+
+Idle eviction disposes only the SDK runtime, marks the catalog record dormant,
+and preserves its Pi session files. A later create/open with the same generation
+and policy reopens it; DELETE can remove a dormant record and its retained
+artifacts without first making it resident.
 
 `PUT` carries the full desired spec. Cwd, target, agentDir, environment,
 resources, settings, or isolation changes replace the runtime and increment

@@ -138,6 +138,13 @@ export interface SessionUpdateRequest {
   spec: SessionSpec;
 }
 
+export interface SessionTerminalSummary {
+  state: "succeeded" | "failed" | "indeterminate";
+  at: string;
+  requestId?: string;
+  errorCode?: string;
+}
+
 export interface SessionEnvironmentSummary {
   keys: string[];
   digest?: string;
@@ -150,12 +157,14 @@ export interface SessionResource {
   name?: string;
   generation: number;
   revision: number;
+  residency: "resident" | "dormant";
   state: SessionApiState;
   createdAt: string;
   updatedAt: string;
   lastUsedAt: string;
   spec: Omit<SessionSpec, "env">;
   environment: SessionEnvironmentSummary;
+  lastTerminal?: SessionTerminalSummary;
   links: {
     self: string;
     rpc: string;

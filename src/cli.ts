@@ -15,6 +15,7 @@ import { JsonLineLogger } from "./observability.js";
 import { PiSessionFactory } from "./pi-adapter.js";
 import { parseCommand } from "./protocol.js";
 import { ProtocolServer } from "./server.js";
+import { FileSessionCatalog } from "./session-catalog.js";
 import { PI_DAEMON_VERSION } from "./version.js";
 
 export interface CliIo {
@@ -148,6 +149,7 @@ async function runServe(
     throw new CliUsageError("API listener options require --api-port");
   }
   const durability = new FileDurabilityStore({ stateDir });
+  const catalog = new FileSessionCatalog({ stateDir });
   const logger = new JsonLineLogger(io.stderr, { component: "pi-daemon" });
   const idleSessionTtlMs = options.has("idle-session-ttl-ms")
     ? integerOption(options, "idle-session-ttl-ms", 0)
@@ -161,6 +163,7 @@ async function runServe(
         allowedRoots: [allowedRoot],
       }),
     durability,
+    catalog,
     logger,
     idleSessionTtlMs,
     limits: {
@@ -213,6 +216,7 @@ async function runServe(
     agentDir,
     allowedRoot,
     hostInstanceId: multiplexer.hostInstanceId,
+    retainedSessions: recovery.catalog.length,
     restoredSessions: recovery.opened.length,
     replayedRequests: recovery.replayed.length,
     recoveryFailures: recovery.failures.length,

@@ -254,6 +254,7 @@
         "sessionId",
         "generation",
         "revision",
+        "residency",
         "state",
         "createdAt",
         "updatedAt",
@@ -265,14 +266,26 @@
       "properties": {
         "sessionId": { "$ref": "#/$defs/identifier" },
         "name": { "type": "string", "minLength": 1, "maxLength": 128 },
-        "generation": { "type": "integer", "minimum": 1 },
+        "generation": { "type": "integer", "minimum": 0 },
         "revision": { "type": "integer", "minimum": 1 },
+        "residency": { "enum": ["resident", "dormant"] },
         "state": { "enum": ["opening", "idle", "running", "failed", "closing"] },
         "createdAt": { "$ref": "#/$defs/timestamp" },
         "updatedAt": { "$ref": "#/$defs/timestamp" },
         "lastUsedAt": { "$ref": "#/$defs/timestamp" },
         "spec": { "$ref": "#/$defs/sessionSpecOutput" },
         "environment": { "$ref": "#/$defs/environmentSummary" },
+        "lastTerminal": {
+          "type": "object",
+          "required": ["state", "at"],
+          "properties": {
+            "state": { "enum": ["succeeded", "failed", "indeterminate"] },
+            "at": { "$ref": "#/$defs/timestamp" },
+            "requestId": { "$ref": "#/$defs/identifier" },
+            "errorCode": { "type": "string", "minLength": 1, "maxLength": 128 }
+          },
+          "additionalProperties": false
+        },
         "links": { "$ref": "#/$defs/sessionLinks" }
       },
       "additionalProperties": false

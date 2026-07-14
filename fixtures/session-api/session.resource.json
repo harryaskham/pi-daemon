@@ -3,6 +3,7 @@
   "name": "release-audit",
   "generation": 3,
   "revision": 7,
+  "residency": "resident",
   "state": "idle",
   "createdAt": "2026-07-14T08:00:00.000Z",
   "updatedAt": "2026-07-14T08:10:00.000Z",

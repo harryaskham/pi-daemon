@@ -165,7 +165,7 @@ export class FileDurabilityStore implements DurabilityStore {
     return this.#serialize(command.sessionId, async () => {
       await ensurePrivateDirectory(this.#sessionDir(command.sessionId), "logical session directory");
       const path = this.#manifestPath(command.sessionId);
-      const previous = await readJsonIfExists<SessionManifest>(path);
+      const previous = await readPrivateJsonIfExists<SessionManifest>(path);
       if (previous !== undefined) validateManifest(previous, path);
       const now = this.#timestamp();
       const manifest: SessionManifest = {
@@ -177,7 +177,7 @@ export class FileDurabilityStore implements DurabilityStore {
         updatedAt: now,
       };
       validateManifest(manifest, path);
-      await atomicWriteJson(path, manifest);
+      await atomicWritePrivateJson(path, manifest);
       return structuredClone(manifest);
     });
   }
@@ -346,7 +346,7 @@ export class FileDurabilityStore implements DurabilityStore {
       const sessionDirectory = join(this.#sessionsDir, name);
       await ensurePrivateDirectory(sessionDirectory, "logical session directory");
       const path = join(sessionDirectory, "manifest.json");
-      const value = await readJsonIfExists<unknown>(path);
+      const value = await readPrivateJsonIfExists<unknown>(path);
       if (value === undefined) continue;
       validateManifest(value, path);
       if (name !== encodedSessionId(value.sessionId)) {
@@ -606,7 +606,7 @@ export async function ensurePrivateDirectory(path: string, label: string): Promi
   }
 }
 
-async function validatePrivateFileIfExists(path: string, label: string): Promise<void> {
+export async function validatePrivateFileIfExists(path: string, label: string): Promise<void> {
   let info;
   try {
     info = await lstat(path);
@@ -631,7 +631,7 @@ async function validatePrivateFileIfExists(path: string, label: string): Promise
   }
 }
 
-async function readJsonIfExists<T>(path: string): Promise<T | undefined> {
+export async function readPrivateJsonIfExists<T>(path: string): Promise<T | undefined> {
   try {
     await validatePrivateFileIfExists(path, "state file");
     return JSON.parse(await readFile(path, "utf8")) as T;
@@ -642,7 +642,7 @@ async function readJsonIfExists<T>(path: string): Promise<T | undefined> {
   }
 }
 
-async function atomicWriteJson(path: string, value: unknown): Promise<void> {
+export async function atomicWritePrivateJson(path: string, value: unknown): Promise<void> {
   await atomicWrite(path, `${JSON.stringify(value, null, 2)}\n`);
 }
 

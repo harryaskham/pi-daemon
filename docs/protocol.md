@@ -62,6 +62,14 @@ expects events, and `detach` removes only that exact generation. Replacing a
 session generation makes an older attachment inert until the client attaches to
 the new generation.
 
+Successful opens create/update the same durable catalog used by the Session API.
+Idle eviction and retained close produce `sessionDormant`; eviction additionally
+produces `sessionEvicted`. Permanent deletion produces `sessionDeleted`, and a
+dormant optimistic update produces `sessionUpdated`. These events retain daemon
+session ID/generation identity and never expose raw environment values. Legacy
+`status(sessionId)` remains resident-only; bounded retained/dormant discovery is
+the Session API/catalog surface.
+
 ## Durable wake states
 
 A wake is journaled before submission:

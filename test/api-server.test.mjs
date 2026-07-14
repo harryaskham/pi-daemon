@@ -10,6 +10,7 @@ import { SERVICE_BEARER_ENV, ServiceBearerAuthenticator } from "../dist/api-auth
 import { ApiServer } from "../dist/api-server.js";
 import { runCli } from "../dist/cli.js";
 import { Multiplexer } from "../dist/multiplexer.js";
+import { FileSessionCatalog } from "../dist/session-catalog.js";
 
 const TOKEN = "fixture-service-bearer-0123456789";
 
@@ -19,11 +20,13 @@ class EmptyFactory {
   }
 }
 
-const startApi = async (limits) => {
-  const multiplexer = new Multiplexer({
-    factory: new EmptyFactory(),
-    hostInstanceId: "host-api-test",
-  });
+const startApi = async (limits, suppliedMultiplexer) => {
+  const multiplexer =
+    suppliedMultiplexer ??
+    new Multiplexer({
+      factory: new EmptyFactory(),
+      hostInstanceId: "host-api-test",
+    });
   const server = new ApiServer({
     multiplexer,
     authenticator: new ServiceBearerAuthenticator(TOKEN),
@@ -78,6 +81,74 @@ test("all JSON routes authenticate before revealing capabilities or route state"
   assert.deepEqual(allowed.value.data.transports, ["unix-ndjson", "http"]);
   assert.deepEqual(allowed.value.data.rpcSubprotocols, []);
   assert.equal(JSON.stringify(allowed.value).includes(TOKEN), false);
+});
+
+test("authenticated session reads expose bounded resident/dormant catalog resources", async (t) => {
+  const stateDir = await mkdtemp(join(tmpdir(), "pi-daemon-api-catalog-"));
+  t.after(async () => rm(stateDir, { recursive: true, force: true }));
+  const seed = new FileSessionCatalog({ stateDir });
+  await seed.recover();
+  for (const id of ["a", "b"]) {
+    await seed.create({
+      sessionId: id,
+      name: `name-${id}`,
+      generation: 1,
+      residency: "dormant",
+      state: "idle",
+      spec: {
+        cwd: `/work/${id}`,
+        target: { mode: "new" },
+        isolation: { mode: "unisolated" },
+      },
+    });
+  }
+  const multiplexer = new Multiplexer({
+    factory: new EmptyFactory(),
+    catalog: new FileSessionCatalog({ stateDir }),
+    hostInstanceId: "host-api-catalog",
+  });
+  await multiplexer.recover();
+  const harness = await startApi(undefined, multiplexer);
+  t.after(async () => harness.server.stop());
+  const headers = { Authorization: `Bearer ${TOKEN}` };
+
+  const first = await requestJson(harness.address, {
+    path: "/v1/session?limit=1",
+    headers,
+  });
+  assert.equal(first.status, 200);
+  assert.equal(first.value.data.sessions[0].sessionId, "a");
+  assert.equal(first.value.data.sessions[0].residency, "dormant");
+  assert.ok(first.value.data.nextCursor);
+
+  const second = await requestJson(harness.address, {
+    path: `/v1/session?limit=1&cursor=${encodeURIComponent(first.value.data.nextCursor)}`,
+    headers,
+  });
+  assert.deepEqual(second.value.data.sessions.map((session) => session.sessionId), ["b"]);
+
+  const byName = await requestJson(harness.address, {
+    path: "/v1/session/name-a",
+    headers,
+  });
+  assert.equal(byName.status, 200);
+  assert.equal(byName.headers.etag, '"YQ:1"');
+  assert.equal(byName.value.data.sessionId, "a");
+  assert.equal(byName.value.data.links.self, "/v1/session/a");
+
+  const missing = await requestJson(harness.address, {
+    path: "/v1/session/missing",
+    headers,
+  });
+  assert.equal(missing.status, 404);
+  assert.equal(missing.value.error.code, "session_not_found");
+
+  const invalidLimit = await requestJson(harness.address, {
+    path: "/v1/session?limit=101",
+    headers,
+  });
+  assert.equal(invalidLimit.status, 400);
+  assert.equal(invalidLimit.value.error.code, "invalid_limit");
 });
 
 test("authenticated JSON bodies are byte bounded before future CRUD dispatch", async (t) => {

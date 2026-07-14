@@ -11,6 +11,7 @@ import type { Duplex } from "node:stream";
 import { ServiceBearerAuthenticator } from "./api-auth.js";
 import { Multiplexer, MultiplexerError } from "./multiplexer.js";
 import { SESSION_API_VERSION, type ApiErrorBody } from "./session-api.js";
+import { catalogRecordToSessionResource } from "./session-catalog.js";
 
 export interface ApiServerLimits {
   maxConnections: number;
@@ -56,7 +57,8 @@ class ApiRequestError extends Error {
 
 /**
  * Bearer-authenticated HTTP/WebSocket admission boundary for the additive API.
- * CRUD and stream dispatch land in later slices; this class owns the secure
+ * Retained session reads share the durable catalog; asynchronous mutation
+ * tickets and stream dispatch land in later slices. This class owns the secure
  * listener, capability negotiation, bounded bodies, and fail-closed upgrades.
  */
 export class ApiServer {
@@ -176,6 +178,49 @@ export class ApiServer {
         return;
       }
 
+      if (request.method === "GET" && url.pathname === "/v1/session") {
+        const limit = listLimit(url.searchParams.get("limit"));
+        const cursor = url.searchParams.get("cursor") ?? undefined;
+        const page = await this.#multiplexer.retainedSessions({
+          limit,
+          ...(cursor === undefined ? {} : { cursor }),
+        });
+        sendJson(response, 200, {
+          apiVersion: SESSION_API_VERSION,
+          requestId,
+          hostInstanceId: this.#multiplexer.hostInstanceId,
+          ok: true,
+          data: {
+            sessions: page.sessions.map(catalogRecordToSessionResource),
+            ...(page.nextCursor === undefined ? {} : { nextCursor: page.nextCursor }),
+          },
+        });
+        return;
+      }
+
+      if (request.method === "GET") {
+        const sessionRef = sessionRefFromPath(url.pathname);
+        if (sessionRef !== undefined) {
+          const record = await this.#multiplexer.retainedSession(sessionRef);
+          if (record === undefined) {
+            throw new ApiRequestError(404, "session_not_found", "session not found");
+          }
+          sendJson(
+            response,
+            200,
+            {
+              apiVersion: SESSION_API_VERSION,
+              requestId,
+              hostInstanceId: this.#multiplexer.hostInstanceId,
+              ok: true,
+              data: catalogRecordToSessionResource(record),
+            },
+            { ETag: sessionEtag(record.sessionId, record.revision) },
+          );
+          return;
+        }
+      }
+
       if (request.method === "POST" && url.pathname === "/v1/session") {
         await readBoundedJson(request, this.limits.maxBodyBytes);
         throw new ApiRequestError(
@@ -288,6 +333,36 @@ function requestUrl(request: IncomingMessage): URL {
   } catch {
     throw new ApiRequestError(400, "invalid_request_target", "request target is invalid");
   }
+}
+
+function sessionEtag(sessionId: string, revision: number): string {
+  return `"${Buffer.from(sessionId, "utf8").toString("base64url")}:${revision}"`;
+}
+
+function sessionRefFromPath(pathname: string): string | undefined {
+  const match = /^\/v1\/session\/([^/]+)$/.exec(pathname);
+  if (match === null) return undefined;
+  try {
+    const value = decodeURIComponent(match[1]!);
+    if (value.length === 0 || value.length > 256) {
+      throw new Error("invalid session reference");
+    }
+    return value;
+  } catch {
+    throw new ApiRequestError(400, "invalid_session_ref", "session reference is invalid");
+  }
+}
+
+function listLimit(value: string | null): number {
+  if (value === null) return 50;
+  if (!/^\d+$/.test(value)) {
+    throw new ApiRequestError(400, "invalid_limit", "session list limit is invalid");
+  }
+  const limit = Number(value);
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) {
+    throw new ApiRequestError(400, "invalid_limit", "session list limit must be between 1 and 100");
+  }
+  return limit;
 }
 
 function safeRequestId(value: string | string[] | undefined): string {
