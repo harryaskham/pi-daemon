@@ -10,14 +10,21 @@ one long-lived Node process.
 It shares process-global Pi module code, provider authentication storage, and
 model metadata while retaining a separate session tree, settings instance,
 command queue, events, and idempotency state for every logical session. The
-initial no-tools profile creates **no process per session or wake**.
+implemented no-tools scaffold creates **no process per session or wake**. The
+full target retains that unisolated in-process mode while adding durable session
+CRUD by ID/name, an additive authenticated JSON API, multi-reader Pi RPC
+attachment, an ACP adapter, and an attach client. Stronger isolation modes are
+future backends rather than an in-process security claim.
 
 Pi Daemon is not a Cacophony component. Cacophony can deploy and consume it, but
 the service protocol contains no beads, Cacophony agents, messages, profiles,
 or Cacophony credentials.
 
-> **Status:** v0.1.0 release candidate. PD-001 through PD-012 are complete;
-> the architecture and acceptance board are in [`PLAN.md`](PLAN.md).
+> **Status:** the PD-001–PD-012 no-tools scaffold is implemented, but the
+> 2026-07-14 completion audit found the full standalone host is not yet
+> release-ready. Durable session CRUD, bearer-authenticated JSON transport,
+> full Pi RPC attachment, runtime replacement/recovery, ACP translation, and
+> installed-package correctness are tracked in [`PLAN.md`](PLAN.md).
 
 ## Why
 

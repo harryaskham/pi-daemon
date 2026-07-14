@@ -1,6 +1,6 @@
 # Pi Daemon — implementation plan
 
-Status: initial v0.1.0 implementation complete; release-candidate closeout
+Status: v0.1.0 no-tools scaffold implemented; full standalone host audited and not yet release-ready
 Repository: `git@github.com:harryaskham/pi-daemon.git`  
 Initial owner: `ms-mac-cacophony-caco-dev-msm-2`  
 Architecture decision: Cacophony `decision-019f539c-e3ae-7f82-859d-c2db8eedd21d`
@@ -60,31 +60,58 @@ backpressure, packaging, and operational quality.
 
 ## 4. Scope
 
-### Initial release
+### Implemented v0.1 scaffold
 
-- Node 22.19+ standalone executable (`pi-daemon`).
-- Unix-domain socket NDJSON protocol on Linux/macOS.
+PD-001 through PD-012 implemented and tested a deliberately narrow substrate:
+
+- Node 22.19+ standalone executable source (`pi-daemon`).
+- Owner-only Unix-domain socket NDJSON protocol on Linux/macOS.
 - Shared `AuthStorage` and `ModelRegistry`.
-- Persistent or in-memory logical sessions.
-- Operations: handshake, open, wake/prompt, status, abort, close, drain.
+- Persistent or in-memory logical session slots.
+- Operations: handshake, open, wake/prompt, steer, follow-up, status, abort,
+  close, and drain.
 - Streamed Pi lifecycle/message/tool events.
-- Per-session serialization and global turn semaphore.
-- Durable idempotency/result journal.
-- Restart-safe session manifest and explicit indeterminate handling.
-- Prometheus-style metrics snapshot in protocol status output.
-- Nix flake package, app, checks, formatter, and dev shell.
-- GitHub CI, release artefact workflow, and Pages documentation.
-- Neutral JavaScript client helper and protocol JSON schema.
+- Per-session serialization and a global turn semaphore.
+- Durable wake idempotency/result journal with explicit indeterminate handling.
+- Metrics/status snapshots, structured logs, Nix packaging, GitHub workflows,
+  Pages documentation, a JavaScript client, and a protocol JSON schema.
 
-### Deferred
+This is useful evidence, but it is **not** the complete daemon-host product and
+must not be tagged as the full v0.1 release. In particular, the installed npm
+binary and clean tarball are currently broken, durable `new`/`memory` sessions
+do not preserve Pi conversation identity across restart, and the protocol does
+not yet provide durable CRUD or an attachable full Pi runtime.
+
+### Audited full-host target
+
+The completed product adds, without removing the existing NDJSON mode:
+
+- durable session CRUD by immutable ID or unique name, including resident and
+  dormant sessions;
+- an authenticated JSON API on a configurable bind address, initially protected
+  by one server-wide bearer token;
+- `/session/{id-or-name}/rpc`, exposing stock Pi RPC command/event semantics
+  against an in-process `AgentSessionRuntime`, with multiple readers;
+- `/session/{id-or-name}/apc`, preserving the operator-requested route spelling
+  while translating the upstream Agent Client Protocol (ACP / `pi-acp`);
+- durable asynchronous admission tickets and terminal/indeterminate request
+  reconciliation;
+- Pi CLI-equivalent typed session creation: cwd/session target, model/thinking,
+  tools, resources, settings, trust, extensions, prompts, skills, packages,
+  images, and an explicitly bounded environment policy;
+- a Pi-RPC-compatible stdio bridge first, followed by a standalone attach TUI or
+  stock-Pi `/connect <session>` extension where the upstream UI seam permits it;
+- explicit isolation capabilities. `unisolated` in-process execution is the
+  honest default; stronger tool-routing, container, or VM modes are additive.
+
+### Still deferred or downstream
 
 - Windows named-pipe transport.
-- Network/TLS listener.
-- Arbitrary project extensions.
-- Built-in bash/read/write tools.
-- Cross-process tool execution.
+- Built-in TLS termination (non-loopback HTTP may use a documented TLS reverse
+  proxy; plaintext non-loopback binding must require an explicit insecure opt-in).
+- Strong isolation for arbitrary extensions inside the shared Node heap.
 - Cluster-wide host placement.
-- Cacophony deployment and `pico-daemon` lifecycle adapter.
+- Cacophony deployment, agent lifecycle mapping, and its `pico-daemon` adapter.
 - Native Rust agent loop (tracked separately in Cacophony as `bd-5b0910`).
 
 ## 5. Runtime architecture
@@ -241,27 +268,43 @@ a duplicate model turn.
 
 A shared Node process is a shared trust boundary, not a sandbox.
 
-Initial service policy:
+The implemented scaffold policy is no-tools and locked resources:
 
-- `DefaultResourceLoader` runs with extensions, skills, prompt templates,
-  themes, and context-file discovery disabled unless an explicit trusted policy
-  enables an allowlisted resource.
-- `noTools: "all"` is the default and only initial built-in tool profile.
-- No arbitrary project extension import: extension JavaScript can access process
-  memory, environment, AuthStorage, and other session resources.
-- Cwd/root is canonicalized and must be under an allowlisted root.
-- State/auth roots must not be inside a logical session's working root.
-- Socket mode defaults to owner-only (`0600`); parent directory must not be
-  group/world writable unless explicitly allowed.
-- Request payloads, logs, status, and metrics never return API keys or raw auth.
-- The service accepts no Cacophony node bearer, CA key, daemon state, or
-  orchestration object.
-- Client-specific scoped tools are future neutral adapters and must enforce
-  their own capability/root boundaries.
+- `DefaultResourceLoader` discovery is disabled and `noTools: "all"` is enforced.
+- Cwd/root is canonicalized under an allowlisted root and may not overlap daemon
+  state or Pi credential roots.
+- The Unix socket is owner-only (`0600`) and its directory may not be
+  group/world writable.
+- Request payloads, logs, status, and metrics must not expose API keys or raw
+  credentials.
 
-A client requiring arbitrary extensions or bash belongs in a separate
-inhabitant/security domain. Sharing provider auth is acceptable only among
-operator-trusted logical sessions.
+The full-host target broadens capability without pretending that in-process
+configuration is a sandbox:
+
+- the existing owner-only NDJSON socket remains a supported control mode;
+- the additive API defaults to loopback, uses one configured server bearer, and
+  authenticates HTTP and stream upgrades before reading bodies;
+- the bearer comes from an owner-private token file, file descriptor, or runtime
+  secret environment, never a CLI argument, manifest, status response, or log;
+- all authenticated callers initially share one service trust domain. Explicit
+  attach/detach still controls event routing; status or failed commands must
+  never subscribe a connection implicitly;
+- `isolation: "unisolated"` means extensions, SDK code, tools, module globals,
+  `process.env`, and process cwd share one Node trust domain. The daemon never
+  swaps process-wide environment or cwd around concurrent turns;
+- per-session provider credentials/env use scoped SDK auth where supported, and
+  built-in tool env uses scoped operations/spawn hooks. Raw secrets are not
+  written into session manifests or journals; after restart a session may report
+  `credentials-required` until secrets are reprovisioned;
+- arbitrary extensions/packages are loaded only under explicit trusted policy.
+  Shell-grade env/config isolation requires a future process/container/VM or an
+  upstream Pi isolation seam;
+- the service accepts no Cacophony node bearer, CA key, daemon state, bead,
+  profile, or orchestration object.
+
+Sharing provider auth is acceptable only among operator-trusted logical
+sessions. Stronger isolation modes must state which of filesystem, process,
+network, credential, extension, and provider state they actually isolate.
 
 ## 11. Failure containment and supervision
 
@@ -372,38 +415,186 @@ process appears per wake.
 
 ## 17. Delivery sequence
 
+### Completed scaffold sequence
+
 1. Repository contract, protocol types/schema, fake adapter, core multiplexer.
 2. UDS server and CLI probe/request tools.
-3. Real Pi SDK adapter with locked-down ResourceLoader and persistence.
-4. Durable journal/restart/indeterminate handling.
+3. Real Pi SDK adapter with locked-down `ResourceLoader` and persistence.
+4. Durable wake journal/restart/indeterminate handling.
 5. Limits, metrics, structured logs, drain/signal behavior.
-6. Nix packaging and service artefacts.
+6. Nix packaging source and service artefacts.
 7. CI, release automation, Pages site, operator docs.
-8. Live optional multiplex smoke and final acceptance report.
-9. Cacophony consumes the stable protocol/package in its own integration bead.
+8. Live optional multiplex smoke and scaffold acceptance report.
 
-## 18. Beads (provisional until Cacophony registers this friend project)
+### Audited full-host sequence
 
-Use these lines as the local board. Mark each complete in commits and keep this
-section truthful.
+1. Land the additive protocol/API contract and fix clean installed packaging.
+2. Acquire the current supported Pi SDK and make `AgentSessionRuntime` the slot
+   core, preserving real conversation identity across restart/replacement.
+3. Add the durable session catalog, CRUD, and asynchronous request tickets.
+4. Add bearer-authenticated JSON transport while retaining NDJSON equivalence.
+5. Implement transport-neutral full Pi RPC dispatch and explicit multi-reader
+   attach with snapshot/replay/gap semantics.
+6. Add CLI-equivalent trusted runtime configuration and secret-safe env policy.
+7. Add the ACP adapter at `/apc` and a Pi-RPC-compatible stdio bridge/attach
+   client; treat a polished stock-Pi `/connect` extension as a later client UX
+   layer if upstream Pi cannot safely host a remote runtime.
+8. Harden output serialization, recovery, health, and shutdown; then run full
+   install/restart/security/live acceptance.
+9. Only after the standalone contracts are stable does Cacophony implement its
+   own shared-host lifecycle adapter.
+
+## 18. Completed scaffold board (historical PD identifiers)
+
+These items are implemented. “Complete” here means the original no-tools
+scaffold acceptance passed, not that the newly clarified full host is complete.
 
 - [x] `PD-001` Repository standard: AGENTS, license, contributing, security,
   editor/git hygiene, package metadata, strict TypeScript config.
 - [x] `PD-002` Versioned protocol types, validation, JSON schema, fixtures.
 - [x] `PD-003` Core multiplexer: session factory abstraction, registry,
   concurrency, serialization, event sequencing, failure isolation.
-- [x] `PD-004` Durable manifests and idempotency journal with restart semantics.
-- [x] `PD-005` Unix-socket NDJSON server, bounded framing, client, CLI probe and
-  request commands.
-- [x] `PD-006` Real Pi SDK adapter: shared auth/model registries, locked-down
-  resources, persistent session managers, event mapping.
-- [x] `PD-007` Security controls: roots/socket mode/no-tools policy/redaction and
-  adversarial tests.
-- [x] `PD-008` Observability, metrics/status, structured logs, drain/signals,
-  memory/session eviction.
+- [x] `PD-004` Durable manifests and wake idempotency journal.
+- [x] `PD-005` Unix-socket NDJSON server, bounded input framing, client, CLI
+  probe/request source.
+- [x] `PD-006` Narrow real Pi SDK adapter with shared auth/model registries,
+  locked resources, session managers, and event mapping.
+- [x] `PD-007` Scaffold root/socket/no-tools/redaction controls and tests.
+- [x] `PD-008` Scaffold metrics/status, structured logs, drain, and idle eviction.
 - [x] `PD-009` Nix flake package/app/check/dev shell and reproducible npm lock.
-- [x] `PD-010` CI, Dependabot, release workflow, GitHub Pages site.
-- [x] `PD-011` Optional real-SDK concurrent-turn/zero-child-process harness and
-  acceptance report.
-- [x] `PD-012` Final documentation: README, protocol, security, operations,
-  integration guide; all tests/CI green and tagged-ready.
+- [x] `PD-010` CI, Dependabot, release workflow source, GitHub Pages site.
+- [x] `PD-011` Optional concurrent real-SDK zero-child-process harness.
+- [x] `PD-012` Scaffold README/protocol/security/operations/integration docs.
+
+## 19. Completion audit — 2026-07-14
+
+Three coordinated agents reviewed the standalone source, the current Pi 0.80.6
+SDK/RPC/extension contracts, installed package behavior, and Cacophony's current
+consumer code. The evidence changes the release assessment from “tagged-ready”
+to “substantial scaffold, full host incomplete.”
+
+### Release-blocking findings
+
+1. **No complete attach/CRUD product surface.** The current protocol has nine
+   high-level operations, implicitly subscribes connections after successful
+   session requests, and returns `wake` only after the model turn. The target
+   needs durable CRUD, explicit attach, asynchronous admission, request lookup,
+   and the roughly 31-command Pi RPC surface.
+2. **Conversation recovery is not sound.** `new` manifests recreate a new Pi
+   session file after restart and `memory` manifests recreate empty history;
+   queued wakes can therefore replay into the wrong context.
+3. **Durable sessions disappear when evicted.** Host status only lists resident
+   slots, eviction emits no public lifecycle event, and `close` cannot delete an
+   evicted retained session because it returns before touching durability.
+4. **The SDK integration uses the wrong abstraction.** `createAgentSession()`
+   cannot implement Pi's new/resume/switch/fork/clone/import replacement
+   lifecycle. `AgentSessionRuntime` is the supported host seam and requires
+   rebinding subscriptions/extensions after replacement. Stock `runRpcMode()`
+   is not embeddable per session because it owns process stdio, signals, and
+   exit; the daemon needs its own transport-neutral RPC controller using public
+   RPC types.
+5. **Access and streaming are incomplete.** The owner-only UDS has no bearer
+   mode. Handshake reveals resident IDs/generations and status can implicitly
+   subscribe another connection. The clarified first auth boundary is one
+   service bearer, not per-session tokens, but attach must remain explicit.
+6. **Outbound bounds apply too late.** `ConnectionWriter` serializes a complete
+   SDK event/response before checking queued-byte limits, so large model/tool
+   payloads allocate outside the advertised bound.
+7. **Recovery and health can wedge or lie.** Startup awaits all replayed queued
+   model turns before listening, recovery failures are only transient log data,
+   probe does not evaluate model/auth/degraded readiness, idle-sweep rejection
+   is unhandled, readiness drains auth errors, and adapter disposal can outlive
+   shutdown deadlines.
+8. **The npm distribution is not runnable from a clean pack.** The installed
+   bin symlink fails the non-canonical entrypoint equality check and exits with
+   no output; a clean `npm pack` can omit `dist` because no prepack build exists.
+9. **Pi compatibility is behind the required seam.** The exact 0.80.3 pin lacks
+   current `agent_settled`, `entry_appended`, `waitForIdle`, `max` thinking, and
+   mature runtime behavior. A reproducible 0.80.6-or-newer acquisition and
+   compatibility policy is required before full RPC work.
+10. **Per-session shell equivalence has a hard trust limit.** Arbitrary
+    extensions and SDK/provider registries can read or mutate process globals.
+    Concurrent in-process sessions cannot safely emulate independent
+    `process.env`/cwd by swapping globals. The API must expose honest
+    `unisolated` semantics, scoped provider/tool env where supported, and defer
+    shell-grade isolation to a real boundary.
+
+### Cacophony crosswalk and exclusion
+
+Current Cacophony source has configuration/supervision substrate and a low-level
+UDS client, but its agent lifecycle still routes `pico`/`pico-on-demand` through
+per-agent processes and sockets. Cacophony must separately implement shared-host
+session create/open mapping, persist daemon session ID/name/generation/host and
+attach cursor, map profile/model/cwd/resource policy, send messages through
+asynchronous admission, bridge its WebSocket view to daemon RPC, replace
+process/tmux health with session health, and close/delete on lifecycle.
+
+Those changes belong in Cacophony. Pi Daemon may contain neutral compatibility
+fixtures and consumer acceptance only; it must never import Cacophony beads,
+profiles, tokens, PKI, lifecycle state, or Rust client types.
+
+## 20. Target control surfaces
+
+All surfaces call one `SessionRegistry`/runtime controller and must be behaviorally
+equivalent where their concepts overlap:
+
+- **Existing NDJSON control plane:** retained for compatibility; grows explicit
+  attach/detach, durable ticket/status/result, catalog, and capability commands.
+- **JSON CRUD API:** `POST /session`, `GET /session`, and
+  `GET|PUT|DELETE /session/{id-or-name}` on a configurable authenticated bind.
+- **Pi RPC stream:** `/session/{id-or-name}/rpc`; raw Pi prompt responses preserve
+  preflight-acceptance timing while high-level durable wake/send returns a
+  daemon ticket. Events broadcast to bounded readers; responses return only to
+  the issuing attachment. Daemon snapshot/cursor framing supplements raw Pi
+  events, which have no host/generation/sequence identity.
+- **ACP adapter:** `/session/{id-or-name}/apc`, as requested. Documentation must
+  explain that the ecosystem protocol is ACP and the reference `pi-acp` adapter
+  currently spawns `pi --mode rpc`; Pi Daemon ports or bridges that translation
+  without spawning Pi.
+- **Client bridge:** a `pi-daemon-rpc`-style stdio bridge provides stock Pi RPC
+  JSONL to existing pico/ACP-style clients. A stock-Pi `/connect` package is a
+  later UX layer unless an upstream remote-runtime seam can provide transcript
+  and command parity safely.
+
+## 21. Registered remaining board
+
+The Cacophony board is now authoritative; dependencies on each bead encode the
+implementation order. This list is a human-readable crosswalk.
+
+### Foundation / release blockers
+
+- [ ] `bd-55ab9e` — parent epic: full standalone Pi session host API.
+- [ ] `bd-e2e717` — additive CRUD/RPC/ACP contract, schemas, fixtures, and
+  control-mode equivalence.
+- [ ] `bd-3a3104` — clean npm pack plus installed-bin execution correctness.
+- [ ] `bd-12c4ba` — current Pi SDK acquisition and compatibility policy.
+- [ ] `bd-6148e1` — configurable bearer-authenticated API transport and explicit
+  session attachment (depends on the contract).
+- [ ] `bd-143f05` — preserve real Pi conversation identity across restart and
+  runtime replacement (depends on current SDK).
+
+### Core host behavior
+
+- [ ] `bd-df7ba9` — durable resident/dormant catalog and session CRUD.
+- [ ] `bd-7d1407` — asynchronous durable command tickets and reconciliation.
+- [ ] `bd-0052e2` — full transport-neutral Pi RPC on `AgentSessionRuntime`.
+- [ ] `bd-ab1b91` — trusted Pi CLI-equivalent per-session configuration and
+  honest `unisolated` env/isolation policy.
+- [ ] `bd-509428` — explicit multi-reader attach, atomic snapshot/live boundary,
+  replay cursor, gap, reconnect, and extension-UI routing.
+
+### Adapters, clients, and hardening
+
+- [ ] `bd-e27685` — in-process ACP translation at the requested `/apc` path.
+- [ ] `bd-d87daa` — Pi-RPC stdio bridge and remote attach client; optional stock
+  Pi `/connect` extension after parity is proven.
+- [ ] `bd-07980c` — pre-allocation bounds for events/responses and safe overflow.
+- [ ] `bd-1877d3` — bounded recovery/shutdown and truthful redacted readiness.
+- [ ] `bd-a4954f` — full install/CRUD/RPC/restart/security/live acceptance.
+- [ ] `bd-fb3b32` — version/tag/changelog/package/Nix release invariants.
+- [ ] `bd-e53e76` — self-hosted CI runner policy (operational maintenance).
+- [ ] `bd-acf2d3` — draft: make automated npm dependency updates Nix-aware.
+
+No release tag is appropriate until the foundation and full acceptance blockers
+land, or the existing artefact is deliberately renamed and published only as a
+scaffold preview.

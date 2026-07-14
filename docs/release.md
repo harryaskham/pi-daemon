@@ -10,6 +10,12 @@ The release workflow builds the npm tarball, writes a SHA-256 checksum, and
 creates GitHub release notes. Publishing to the npm registry remains an
 explicit operator action.
 
+> **Current hold:** do not cut `v0.1.0` from the no-tools scaffold. The
+> 2026-07-14 completion audit in `PLAN.md` identified release-blocking runtime,
+> durability, API/attach, security, and installed-package work. Tag only after
+> the registered full-host acceptance bead closes, or deliberately publish a
+> differently named scaffold preview.
+
 ## Before tagging
 
 1. Confirm `package.json`, `src/version.ts`, and the intended tag agree.
