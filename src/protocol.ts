@@ -19,7 +19,7 @@ export const OPERATIONS = [
 
 export type Operation = (typeof OPERATIONS)[number];
 export type SessionMode = "new" | "open" | "continue" | "memory";
-export type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
+export type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
 
 export interface ModelPolicy {
   provider: string;
@@ -271,7 +271,7 @@ function validateModel(value: unknown): void {
   const thinking = stringField(model, "thinkingLevel", { max: 16, optional: true });
   if (
     thinking !== undefined &&
-    !["off", "minimal", "low", "medium", "high", "xhigh"].includes(thinking)
+    !["off", "minimal", "low", "medium", "high", "xhigh", "max"].includes(thinking)
   ) {
     throw new ProtocolValidationError("invalid_field", "unsupported thinkingLevel", {
       field: "thinkingLevel",

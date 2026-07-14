@@ -25,6 +25,7 @@ component.
 - [Security](security) — shared-process trust boundary and root policy
 - [Integration](integration) — client and Nix consumer examples
 - [Acceptance](acceptance) — credential-free matrix and live zero-child-process proof
+- [Pi SDK compatibility](pi-sdk-compatibility) — exact acquisition, public API gates, upgrades, and rollback
 - [Release](release) — tag, artifact, and rollback checklist
 - [NDJSON JSON Schema](protocol.schema.json) — language-neutral local protocol contract
 - [Session API JSON Schema](session-api.schema.json) and [OpenAPI](session-api.openapi.json)

@@ -128,6 +128,7 @@ service source into Cacophony.
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — development workflow
 - [`CHANGELOG.md`](CHANGELOG.md) — release history
 - [`docs/acceptance.md`](docs/acceptance.md) — live multiplex/zero-child-process proof
+- [`docs/pi-sdk-compatibility.md`](docs/pi-sdk-compatibility.md) — exact SDK acquisition, compatibility gates, upgrades, and rollback
 - [`docs/release.md`](docs/release.md) — release and rollback checklist
 - `docs/` — published protocol, operations, security, and integration guides
 

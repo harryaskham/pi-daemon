@@ -46,12 +46,13 @@
     "check": "tsc -p tsconfig.json --noEmit",
     "test": "npm run build && node --test test/*.test.mjs",
     "test:unit": "node --test test/*.test.mjs",
+    "test:pi-sdk": "npm run build && node --test test/pi-sdk-compatibility.test.mjs",
     "test:live": "npm run build && node scripts/live-sdk-smoke.mjs",
     "pack:check": "npm pack --dry-run",
     "release:check": "node scripts/check-release.mjs"
   },
   "dependencies": {
-    "@earendil-works/pi-coding-agent": "0.80.3"
+    "@earendil-works/pi-coding-agent": "0.80.6"
   },
   "devDependencies": {
     "@types/node": "24.10.1",

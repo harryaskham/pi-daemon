@@ -117,28 +117,37 @@ The completed product adds, without removing the existing NDJSON mode:
 ## 5. Runtime architecture
 
 ```text
-client(s)
-   │ NDJSON over Unix socket
-   ▼
-ProtocolServer ── validation / auth policy / bounded writes
-   │
-   ▼
-Multiplexer
-   ├── shared AuthStorage
-   ├── shared ModelRegistry
-   ├── global turn semaphore
-   ├── durable RequestJournal
-   └── sessions: Map<logicalSessionId, SessionSlot>
-         ├── AgentSessionRuntime / AgentSession
-         ├── isolated SessionManager
-         ├── isolated SettingsManager
-         ├── serialized command tail
-         ├── per-session event sequence
-         └── bounded completed-result cache
+NDJSON/UDS clients     JSON CRUD clients     RPC readers     ACP clients
+        │                      │                   │              │
+        └──────────── transport/auth/protocol adapters ──────────┘
+                                   │
+                                   ▼
+                    SessionRegistry / RuntimeController
+                      ├── durable catalog + request tickets
+                      ├── global turn semaphore
+                      ├── shared host auth/model defaults
+                      └── sessions: Map<daemonSessionId, SessionSlot>
+                            ├── AgentSessionRuntime / active AgentSession
+                            ├── scoped auth/model/resource/settings bundle
+                            ├── Pi SessionManager + conversation identity
+                            ├── serialized command tail
+                            ├── bounded event replay + attach fan-out
+                            └── terminal result cache
 ```
 
-The service never exposes Pi SDK objects over the wire. Protocol records are
-plain JSON and are stable independently of Pi's internal TypeScript API.
+The service never exposes live Pi SDK objects over the wire. Protocol records
+are plain JSON and remain stable independently of Pi's internal TypeScript API.
+Shared host auth/model defaults are an optimization, not a requirement that all
+sessions use one configuration; a trusted session spec may request its own
+scoped SDK services.
+
+Identity is deliberately not one overloaded string. A session has an immutable
+daemon session ID, an optional mutable unique name, a daemon generation for
+configuration/runtime replacement, a current Pi conversation/session-file ID,
+a host/runtime incarnation, and an attach event sequence cursor. Pi
+new/switch/fork/clone may change conversation identity without silently changing
+the daemon ID; PUT replacement increments daemon generation when policy requires
+it.
 
 ## 6. Protocol
 
@@ -221,7 +230,7 @@ absent -> opening -> idle -> running -> idle -> closing -> absent
 
 ## 8. Durability and idempotency
 
-The state directory contains:
+The scaffold layout is:
 
 ```text
 state/
@@ -230,6 +239,13 @@ state/
   sessions/<escaped-session-id>/pi/*.jsonl
   journal/<escaped-session-id>.jsonl
 ```
+
+The full catalog extends each session with a nonsecret normalized spec, daemon
+ID/name/generation, active Pi conversation identity, resident/dormant state,
+host incarnation, bounded request ticket/result metadata, and attach cursor
+retention. Raw env values, bearer tokens, provider credentials, and API keys are
+never persisted; manifests carry secret references or `credentials-required`
+state instead.
 
 Request journal states:
 
@@ -340,6 +356,8 @@ Status metrics:
 
 ## 13. CLI
 
+Implemented scaffold commands:
+
 ```text
 pi-daemon serve --socket PATH --state-dir PATH [limits]
 pi-daemon probe --socket PATH
@@ -347,9 +365,20 @@ pi-daemon request --socket PATH --json REQUEST
 pi-daemon version
 ```
 
-`serve` is the service entrypoint. `probe` performs handshake/status and exits
-non-zero on incompatibility/unready state. `request` is a low-level integration
-and debugging tool; it never prints secrets.
+Planned additive host/client inputs:
+
+```text
+pi-daemon serve --bind HOST:PORT --bearer-token-file PATH [--socket PATH] ...
+pi-daemon-rpc --endpoint URL --session ID_OR_NAME [--token-file PATH]
+pi-daemon attach --endpoint URL --session ID_OR_NAME
+```
+
+`serve` remains the service entrypoint and may expose both control modes.
+Bearer secrets are never accepted as argv values. `probe` performs
+handshake/status and exits non-zero on incompatibility, unavailable auth/model,
+or degraded recovery. `request` is a low-level integration/debugging tool and
+never prints secrets. `pi-daemon-rpc` is the stock Pi RPC JSONL stdio bridge;
+`attach` is the eventual operator TUI/extension-facing client.
 
 ## 14. Packaging and Nix
 

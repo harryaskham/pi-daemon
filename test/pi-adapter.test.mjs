@@ -80,6 +80,11 @@ class FakePiSession {
       message: { role: "assistant", content: [] },
       toolResults: [],
     });
+    this.emit({
+      type: "entry_appended",
+      entry: { type: "custom", id: "entry-1", parentId: null, customType: "compat" },
+    });
+    this.emit({ type: "agent_settled" });
   }
 
   emit(event) {
@@ -172,7 +177,7 @@ test("adapter maps Pi events, prompt result, queue controls, abort, and prefligh
   assert.equal(result.text, "answer:hello");
   assert.deepEqual(
     events.map((event) => event.event),
-    ["turnStart", "messageUpdate", "turnEnd"],
+    ["turnStart", "messageUpdate", "turnEnd", "entryAppended", "agentSettled"],
   );
 
   await adapter.steer("steer");

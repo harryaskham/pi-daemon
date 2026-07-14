@@ -449,10 +449,14 @@ function mapPiEvent(event: AgentSessionEvent): AdapterEvent | undefined {
           finalError: event.finalError,
         },
       };
+    case "entry_appended":
+      return { event: "entryAppended", data: { entry: event.entry } };
     case "session_info_changed":
       return { event: "sessionInfoChanged", data: { name: event.name } };
     case "thinking_level_changed":
       return { event: "thinkingLevelChanged", data: { level: event.level } };
+    case "agent_settled":
+      return { event: "agentSettled" };
     case "agent_start":
     case "agent_end":
       return undefined;

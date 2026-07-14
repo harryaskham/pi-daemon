@@ -147,7 +147,8 @@ test(
         npmCommand,
         [
           "install",
-          "--offline",
+          "--prefer-offline",
+          "--registry=https://registry.npmjs.org",
           "--ignore-scripts",
           "--no-audit",
           "--no-fund",

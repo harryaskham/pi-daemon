@@ -38,9 +38,12 @@ test("language-neutral fixtures validate against protocol.schema.json", async ()
 
 test("parses handshake open and wake fixtures", async () => {
   assert.equal(parseCommand(await fixture("handshake.command.json")).operation, "handshake");
-  const open = parseCommand(await fixture("open.command.json"));
+  const openInput = await fixture("open.command.json");
+  openInput.payload.model.thinkingLevel = "max";
+  const open = parseCommand(openInput);
   assert.equal(open.operation, "open");
   assert.equal(open.sessionId, "agent-a");
+  assert.equal(open.payload.model.thinkingLevel, "max");
   const wake = parseCommand(await fixture("wake.command.json"));
   assert.equal(wake.operation, "wake");
   assert.equal(wake.idempotencyKey, "message-019f");
