@@ -88,6 +88,7 @@ const copyPackageSource = async (destination) => {
     "CHANGELOG.md",
     "README.md",
     "SECURITY.md",
+    "THIRD_PARTY_NOTICES.md",
     "LICENSE",
   ]) {
     await cp(join(repositoryRoot, file), join(destination, file));
@@ -134,6 +135,8 @@ test(
     const packageFiles = new Set(metadata[0].files.map((entry) => entry.path));
     for (const required of [
       "dist/cli.js",
+      "dist/acp-adapter.js",
+      "dist/acp-adapter.d.ts",
       "dist/api-auth.js",
       "dist/api-server.js",
       "dist/rpc-attachments.js",
@@ -153,6 +156,7 @@ test(
       "dist/session-config.d.ts",
       "dist/session-api.schema.json",
       "dist/session-api.openapi.json",
+      "THIRD_PARTY_NOTICES.md",
     ]) {
       assert.equal(packageFiles.has(required), true, `packed artifact omitted ${required}`);
     }

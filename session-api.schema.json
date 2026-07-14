@@ -467,9 +467,44 @@
       },
       "additionalProperties": false
     },
+    "acpAdapterCapabilities": {
+      "type": "object",
+      "required": ["protocol", "protocolVersion", "sdkVersion", "websocketSubprotocol", "upstreamAdapter", "inProcess", "limits"],
+      "properties": {
+        "protocol": { "const": "ACP" },
+        "protocolVersion": { "type": "integer", "minimum": 1 },
+        "sdkVersion": { "const": "1.2.0" },
+        "websocketSubprotocol": { "const": "agent-client-protocol.v1" },
+        "upstreamAdapter": {
+          "type": "object",
+          "required": ["name", "auditCommit", "license"],
+          "properties": {
+            "name": { "const": "pi-acp" },
+            "auditCommit": { "type": "string", "pattern": "^[a-f0-9]{40}$" },
+            "license": { "const": "MIT" }
+          },
+          "additionalProperties": false
+        },
+        "inProcess": { "const": true },
+        "limits": {
+          "type": "object",
+          "required": ["maxHubs", "maxConnectionsPerHub", "maxMessageBytes", "maxOutboundBytesPerConnection", "keepAliveMs", "maxListSessions"],
+          "properties": {
+            "maxHubs": { "type": "integer", "minimum": 1 },
+            "maxConnectionsPerHub": { "type": "integer", "minimum": 1 },
+            "maxMessageBytes": { "type": "integer", "minimum": 1 },
+            "maxOutboundBytesPerConnection": { "type": "integer", "minimum": 1 },
+            "keepAliveMs": { "type": "integer", "minimum": 1 },
+            "maxListSessions": { "type": "integer", "minimum": 1, "maximum": 100 }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
     "capabilities": {
       "type": "object",
-      "required": ["apiVersion", "transports", "rpcSubprotocols", "rpc", "isolationModes", "authentication"],
+      "required": ["apiVersion", "transports", "rpcSubprotocols", "rpc", "acp", "isolationModes", "authentication"],
       "properties": {
         "apiVersion": { "$ref": "#/$defs/apiVersion" },
         "transports": {
@@ -483,6 +518,7 @@
           "uniqueItems": true
         },
         "rpc": { "$ref": "#/$defs/rpcAttachmentCapabilities" },
+        "acp": { "$ref": "#/$defs/acpAdapterCapabilities" },
         "isolationModes": {
           "type": "array",
           "items": { "const": "unisolated" },

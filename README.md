@@ -23,9 +23,10 @@ or Cacophony credentials.
 > **Status:** durable resident/dormant CRUD, bearer-authenticated JSON admission,
 > asynchronous mutation/prompt tickets, exact Pi conversation recovery, bounded
 > serialization, per-session runtime configuration, truthful bounded
-> recovery/shutdown, full multi-reader Pi RPC attachment, and the remote
-> `pi-daemon-rpc` stdio bridge are implemented. The remaining completion
-> program tracks ACP translation and end-to-end acceptance in [`PLAN.md`](PLAN.md); no release tag is cut yet.
+> recovery/shutdown, full multi-reader Pi RPC attachment, the remote
+> `pi-daemon-rpc` stdio bridge, and in-process ACP translation are implemented.
+> The remaining completion program is end-to-end acceptance in [`PLAN.md`](PLAN.md);
+> no release tag is cut yet.
 
 ## Why
 
@@ -150,6 +151,7 @@ service source into Cacophony.
 - [`docs/pi-sdk-compatibility.md`](docs/pi-sdk-compatibility.md) — exact SDK acquisition, compatibility gates, upgrades, and rollback
 - [`docs/pi-rpc-host.md`](docs/pi-rpc-host.md) — in-process full Pi RPC command/event/UI semantics
 - [`docs/rpc-bridge.md`](docs/rpc-bridge.md) — authenticated stock-RPC stdio client and reconnect semantics
+- [`docs/acp-adapter.md`](docs/acp-adapter.md) — in-process upstream ACP translation at the `/apc` route
 - [`docs/release.md`](docs/release.md) — release and rollback checklist
 - `docs/` — published protocol, operations, security, and integration guides
 

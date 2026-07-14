@@ -20,6 +20,7 @@ Initial standalone implementation:
 - transport-neutral full Pi 0.80.6 RPC controller with raw events, runtime replacement, and bounded extension UI
 - authenticated raw/framed multi-reader Pi RPC WebSockets with private responses, explicit controller ownership, snapshots, replay cursors/gaps, and keepalive
 - installed `pi-daemon-rpc` stock-JSONL stdio bridge with exact ID/name attach, bounded reconnect, gap status, and indeterminate-command protection
+- bounded in-process upstream ACP JSON-RPC translation at the operator-requested `/apc` route
 - typed per-session Pi configuration with scoped settings/resources/models/auth, deny-by-default discovery, and memory-only environment overlays
 - pre-allocation event/response bounds with typed overflow and connection-local slow-reader failure
 - canonical cwd allowlist and state/auth path isolation

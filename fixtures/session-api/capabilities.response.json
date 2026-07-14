@@ -62,6 +62,26 @@
       "roles": ["controller", "observer"],
       "replay": true
     },
+    "acp": {
+      "protocol": "ACP",
+      "protocolVersion": 1,
+      "sdkVersion": "1.2.0",
+      "websocketSubprotocol": "agent-client-protocol.v1",
+      "upstreamAdapter": {
+        "name": "pi-acp",
+        "auditCommit": "49d6ec804d40b52317d873360654054c5d2387a3",
+        "license": "MIT"
+      },
+      "inProcess": true,
+      "limits": {
+        "maxHubs": 32,
+        "maxConnectionsPerHub": 16,
+        "maxMessageBytes": 1048576,
+        "maxOutboundBytesPerConnection": 4194304,
+        "keepAliveMs": 30000,
+        "maxListSessions": 100
+      }
+    },
     "isolationModes": ["unisolated"],
     "authentication": "service-bearer"
   }

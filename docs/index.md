@@ -29,6 +29,7 @@ neutral service—not a Cacophony component.
 - [Pi SDK compatibility](pi-sdk-compatibility) — exact acquisition, public API gates, upgrades, and rollback
 - [Pi RPC runtime host](pi-rpc-host) — full in-process command/event/UI semantics and policy gates
 - [Remote RPC stdio bridge](rpc-bridge) — authentication, stock JSONL translation, reconnect, gap, and terminal semantics
+- [ACP adapter](acp-adapter) — bounded in-process Agent Client Protocol at the `/apc` route
 - [Release](release) — tag, artifact, and rollback checklist
 - [NDJSON JSON Schema](protocol.schema.json) — language-neutral local protocol contract
 - [Session API JSON Schema](session-api.schema.json) and [OpenAPI](session-api.openapi.json)

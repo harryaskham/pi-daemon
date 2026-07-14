@@ -50,9 +50,11 @@ reverse-proxy handling.
 `GET /v1/capabilities` advertises HTTP, WebSocket, both Pi RPC subprotocols,
 the pinned in-process RPC host contract, controller/observer roles, replay, and
 all active attachment limits. Durable session CRUD, ticket lookup/reconciliation,
-and `/rpc` are implemented behind the same bearer boundary. `/apc` remains
-reserved for the downstream ACP adapter and returns a typed not-implemented
-response; it never falls back to an unauthenticated transport.
+and `/rpc` are implemented behind the same bearer boundary. `/apc` serves
+upstream Agent Client Protocol JSON-RPC over the required
+`agent-client-protocol.v1` WebSocket subprotocol. It uses the same resident Pi
+runtime, bearer, generation, and bounded peer transport; it never spawns
+`pi-acp` or `pi --mode rpc`.
 
 Optional limits:
 

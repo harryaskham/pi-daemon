@@ -8,6 +8,12 @@ import {
 import { isIP } from "node:net";
 import type { Duplex } from "node:stream";
 
+import {
+  ACP_WEBSOCKET_SUBPROTOCOL,
+  AcpAdapterError,
+  AcpAdapterManager,
+  type AcpAdapterLimits,
+} from "./acp-adapter.js";
 import { ServiceBearerAuthenticator } from "./api-auth.js";
 import { Multiplexer, MultiplexerError } from "./multiplexer.js";
 import {
@@ -74,6 +80,8 @@ export interface ApiServerOptions {
   limits?: Partial<ApiServerLimits>;
   rpcLimits?: Partial<RpcAttachmentLimits>;
   rpcAttachments?: RpcAttachmentManager;
+  acpLimits?: Partial<AcpAdapterLimits>;
+  acpAdapters?: AcpAdapterManager;
 }
 
 export interface ApiServerAddress {
@@ -120,6 +128,7 @@ export class ApiServer {
   readonly #authenticator: ServiceBearerAuthenticator;
   readonly #tickets: MutationTicketController | undefined;
   readonly #rpcAttachments: RpcAttachmentManager;
+  readonly #acpAdapters: AcpAdapterManager;
   readonly #server: Server;
   readonly #upgradeSockets = new Set<Duplex>();
   #started = false;
@@ -139,6 +148,8 @@ export class ApiServer {
     this.#tickets = options.tickets;
     this.#rpcAttachments =
       options.rpcAttachments ?? new RpcAttachmentManager(this.#multiplexer, options.rpcLimits);
+    this.#acpAdapters =
+      options.acpAdapters ?? new AcpAdapterManager(this.#multiplexer, options.acpLimits);
     this.limits = {
       maxConnections: positiveInteger(
         options.limits?.maxConnections ?? DEFAULT_API_SERVER_LIMITS.maxConnections,
@@ -231,6 +242,7 @@ export class ApiServer {
     if (!this.#started) return;
     this.#started = false;
     this.#rpcAttachments.dispose();
+    this.#acpAdapters.dispose();
     for (const socket of this.#upgradeSockets) socket.destroy();
     this.#upgradeSockets.clear();
     this.#server.closeAllConnections();
@@ -269,6 +281,7 @@ export class ApiServer {
             transports: ["unix-ndjson", "http", "websocket"],
             rpcSubprotocols: [...this.#rpcAttachments.capabilities.subprotocols],
             rpc: this.#rpcAttachments.capabilities,
+            acp: this.#acpAdapters.capabilities,
             isolationModes: ["unisolated"],
             authentication: "service-bearer",
           },
@@ -899,16 +912,32 @@ export class ApiServer {
       }
       return;
     }
-    if (/^\/v1\/session\/[^/]+\/apc$/.test(url.pathname)) {
+    let acpSessionRef: string | undefined;
+    try {
+      acpSessionRef = acpSessionRefFromPath(url.pathname);
+    } catch (error) {
+      const normalized = normalizeAttachmentError(error);
       sendRawHttp(
         socket,
-        501,
-        errorEnvelope(requestId, this.#multiplexer.hostInstanceId, {
-          code: "stream_not_implemented",
-          message: "ACP attachment is not implemented",
-          retryable: false,
-        }),
+        normalized.status,
+        errorEnvelope(requestId, this.#multiplexer.hostInstanceId, normalized.body),
       );
+      return;
+    }
+    if (acpSessionRef !== undefined) {
+      try {
+        await this.#acpAdapters.attach(request, socket, acpSessionRef, url);
+      } catch (error) {
+        const normalized = normalizeAttachmentError(error);
+        sendRawHttp(
+          socket,
+          normalized.status,
+          errorEnvelope(requestId, this.#multiplexer.hostInstanceId, normalized.body),
+          normalized.status === 426
+            ? { "Sec-WebSocket-Protocol": ACP_WEBSOCKET_SUBPROTOCOL }
+            : {},
+        );
+      }
       return;
     }
     sendRawHttp(
@@ -1314,6 +1343,18 @@ function rpcSessionRefFromPath(pathname: string): string | undefined {
   }
 }
 
+function acpSessionRefFromPath(pathname: string): string | undefined {
+  const match = /^\/v1\/session\/([^/]+)\/apc$/.exec(pathname);
+  if (match === null) return undefined;
+  try {
+    const value = decodeURIComponent(match[1]!);
+    if (value.length === 0 || value.length > 256) throw new Error("invalid session reference");
+    return value;
+  } catch {
+    throw new AcpAdapterError(400, "invalid_session_ref", "session reference is invalid");
+  }
+}
+
 function listLimit(value: string | null): number {
   if (value === null) return 50;
   if (!/^\d+$/.test(value)) {
@@ -1343,19 +1384,26 @@ function errorEnvelope(requestId: string, hostInstanceId: string, error: ApiErro
 }
 
 function normalizeAttachmentError(error: unknown): { status: number; body: ApiErrorBody } {
-  if (error instanceof RpcAttachmentError || error instanceof WebSocketHandshakeError) {
+  if (
+    error instanceof RpcAttachmentError ||
+    error instanceof AcpAdapterError ||
+    error instanceof WebSocketHandshakeError
+  ) {
     return {
       status: error.status,
       body: {
         code: error.code,
         message: error.message,
-        retryable: error instanceof RpcAttachmentError ? error.retryable : false,
+        retryable:
+          error instanceof RpcAttachmentError || error instanceof AcpAdapterError
+            ? error.retryable
+            : false,
       },
     };
   }
   return {
     status: 500,
-    body: { code: "rpc_attach_failed", message: "RPC attachment failed", retryable: false },
+    body: { code: "stream_attach_failed", message: "stream attachment failed", retryable: false },
   };
 }
 

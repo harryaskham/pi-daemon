@@ -105,6 +105,10 @@ test("all JSON routes authenticate before revealing capabilities or route state"
   assert.deepEqual(allowed.value.data.rpcSubprotocols, ["pi-rpc.v1", "pi-daemon-rpc.v1"]);
   assert.equal(allowed.value.data.rpc.host.processTransportOwned, false);
   assert.equal(allowed.value.data.rpc.replay, true);
+  assert.equal(allowed.value.data.acp.protocol, "ACP");
+  assert.equal(allowed.value.data.acp.sdkVersion, "1.2.0");
+  assert.equal(allowed.value.data.acp.websocketSubprotocol, "agent-client-protocol.v1");
+  assert.equal(allowed.value.data.acp.inProcess, true);
   assert.equal(JSON.stringify(allowed.value).includes(TOKEN), false);
 });
 
@@ -830,14 +834,14 @@ const requestJson = async (address, options) => {
       return await requestJsonOnce(address, options);
     } catch (error) {
       if (
-        attempt >= 4 ||
+        attempt >= 20 ||
         !(error instanceof Error) ||
         !("code" in error) ||
         !["EADDRNOTAVAIL", "ECONNREFUSED"].includes(error.code)
       ) {
         throw error;
       }
-      await new Promise((resolve) => setTimeout(resolve, 5 * (attempt + 1)));
+      await new Promise((resolve) => setTimeout(resolve, 25 * (attempt + 1)));
     }
   }
 };
@@ -870,13 +874,35 @@ const requestJsonOnce = async (address, options) =>
     request.end();
   });
 
-const rawUpgrade = async (address, path, extraHeaders = "") =>
-  new Promise((resolve, reject) => {
-    const socket = createConnection(address.port, address.host);
+const connectWithRetry = async (address) => {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      const socket = createConnection(address.port, address.host);
+      await new Promise((resolve, reject) => {
+        socket.once("connect", resolve);
+        socket.once("error", reject);
+      });
+      return socket;
+    } catch (error) {
+      if (
+        attempt >= 20 ||
+        !(error instanceof Error) ||
+        !("code" in error) ||
+        !["EADDRNOTAVAIL", "ECONNREFUSED"].includes(error.code)
+      ) {
+        throw error;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 25 * (attempt + 1)));
+    }
+  }
+};
+
+const rawUpgrade = async (address, path, extraHeaders = "") => {
+  const socket = await connectWithRetry(address);
+  return new Promise((resolve, reject) => {
     let response = "";
     socket.setEncoding("utf8");
-    socket.on("connect", () => {
-      socket.write(
+    socket.write(
         `GET ${path} HTTP/1.1\r\n` +
           `Host: ${address.host}:${address.port}\r\n` +
           "Connection: Upgrade\r\n" +
@@ -885,9 +911,9 @@ const rawUpgrade = async (address, path, extraHeaders = "") =>
           "Sec-WebSocket-Key: Zml4dHVyZS1rZXktMTIzNA==\r\n" +
           extraHeaders +
           "\r\n",
-      );
-    });
+    );
     socket.on("data", (chunk) => (response += chunk));
     socket.on("end", () => resolve(response));
     socket.on("error", reject);
   });
+};

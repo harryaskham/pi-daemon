@@ -392,11 +392,12 @@ prompts, cancellation, modes, plans, tool updates, permissions, and session
 notifications translate to the same `AgentSessionRuntime` used by NDJSON and Pi
 RPC. They never spawn `pi --mode rpc`.
 
-The external MIT `pi-acp` adapter is a useful parity oracle and stdio client
-bridge, not a stable daemon core dependency: it is a 0.x adapter that currently
-spawns a Pi RPC subprocess and has documented capability gaps. If reused, its
-version is pinned and ACP conformance fixtures cover every advertised
-capability.
+The external MIT `pi-acp` adapter is the audited parity oracle, not a daemon
+runtime dependency: its translation design is tracked at commit
+`49d6ec804d40b52317d873360654054c5d2387a3`, while its subprocess wrapper is
+excluded. Pi Daemon pins `@agentclientprotocol/sdk`, adapts JSON-RPC directly to
+the resident `PiRpcController`, publishes bounded ACP capabilities, and retains
+the upstream MIT notice. See the [ACP adapter](acp-adapter).
 
 ## Cross-control-plane equivalence
 

@@ -614,7 +614,7 @@ implementation order. This list is a human-readable crosswalk.
 
 ### Adapters, clients, and hardening
 
-- [ ] `bd-e27685` — in-process ACP translation at the requested `/apc` path.
+- [x] `bd-e27685` — in-process ACP translation at the requested `/apc` path.
 - [x] `bd-d87daa` — Pi-RPC stdio bridge and remote attach client; a stock Pi
   `/connect` extension remains deferred until a real remote-session seam exists.
 - [x] `bd-07980c` — pre-allocation bounds for events/responses and safe overflow.

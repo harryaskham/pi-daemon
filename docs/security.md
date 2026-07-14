@@ -22,7 +22,7 @@ project code or tools.
 - authenticated JSON listener disabled unless `--api-port` is explicit
 - JSON listener defaults to literal loopback and refuses implicit remote plaintext
 - exactly one service bearer source: owner-only non-symlink file, inherited fd, or runtime environment
-- bearer authorization is checked before JSON bodies, route/session disclosure, and stream upgrades
+- bearer authorization is checked before JSON bodies, route/session disclosure, and RPC/ACP stream upgrades
 - bearer material is reduced to a one-way digest after startup loading and never logged or returned
 - owner-only Unix socket in a non-group/world-writable real directory
 - owner-only state directories, manifests, and journals
@@ -33,6 +33,7 @@ project code or tools.
 - persistent Pi managers are materialized as owner-only JSONL before durable acceptance
 - restart/eviction replay requires the exact recorded Pi session ID and canonical file
 - memory-only sessions never write replayable wake journals or masquerade as durable
+- ACP is route/cwd/generation scoped, bounded per peer/hub, and never launches an adapter subprocess
 - default Pi auth file must be an owner-only regular file
 - empty built-in/custom tool allowlist
 - empty extensions, skills, templates, themes, context files, and append prompt

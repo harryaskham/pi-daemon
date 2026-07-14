@@ -286,11 +286,7 @@ async function connectWebSocket(address, options = {}) {
   if (options.generation !== undefined) query.set("generation", String(options.generation));
   const suffix = query.size === 0 ? "" : `?${query}`;
   const path = `/v1/session/rpc-session/rpc${suffix}`;
-  const socket = createConnection(address.port, address.host);
-  await new Promise((resolve, reject) => {
-    socket.once("connect", resolve);
-    socket.once("error", reject);
-  });
+  const socket = await connectWithRetry(address);
   const key = randomBytes(16).toString("base64");
   socket.write(
     [
@@ -315,6 +311,29 @@ async function connectWebSocket(address, options = {}) {
     ...response,
     websocket: new TestWebSocket(socket, response.leftover),
   };
+}
+
+async function connectWithRetry(address) {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      const socket = createConnection(address.port, address.host);
+      await new Promise((resolve, reject) => {
+        socket.once("connect", resolve);
+        socket.once("error", reject);
+      });
+      return socket;
+    } catch (error) {
+      if (
+        attempt >= 20 ||
+        !(error instanceof Error) ||
+        !("code" in error) ||
+        !["EADDRNOTAVAIL", "ECONNREFUSED"].includes(error.code)
+      ) {
+        throw error;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 25 * (attempt + 1)));
+    }
+  }
 }
 
 async function readHandshake(socket) {
