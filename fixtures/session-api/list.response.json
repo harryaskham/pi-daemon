@@ -1,0 +1,36 @@
+{
+  "apiVersion": "1.0",
+  "requestId": "req-list",
+  "hostInstanceId": "host-01",
+  "ok": true,
+  "data": {
+    "sessions": [
+      {
+        "sessionId": "agent-a",
+        "name": "release-audit",
+        "generation": 3,
+        "revision": 7,
+        "state": "idle",
+        "createdAt": "2026-07-14T08:00:00.000Z",
+        "updatedAt": "2026-07-14T08:10:00.000Z",
+        "lastUsedAt": "2026-07-14T08:09:59.000Z",
+        "spec": {
+          "cwd": "/srv/work/project-a",
+          "target": { "mode": "new" },
+          "isolation": { "mode": "unisolated" }
+        },
+        "environment": {
+          "keys": ["CI"],
+          "persistence": "memory-only",
+          "provisioned": true
+        },
+        "links": {
+          "self": "/v1/session/agent-a",
+          "rpc": "/v1/session/agent-a/rpc",
+          "apc": "/v1/session/agent-a/apc"
+        }
+      }
+    ],
+    "nextCursor": "page:agent-a"
+  }
+}

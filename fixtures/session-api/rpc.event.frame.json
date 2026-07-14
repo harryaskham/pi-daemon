@@ -1,0 +1,14 @@
+{
+  "kind": "event",
+  "cursor": "host-01:agent-a:3:42",
+  "sequence": 42,
+  "event": {
+    "type": "message_update",
+    "message": { "role": "assistant", "content": [] },
+    "assistantMessageEvent": {
+      "type": "text_delta",
+      "contentIndex": 0,
+      "delta": "Done"
+    }
+  }
+}

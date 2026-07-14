@@ -1,0 +1,15 @@
+{
+  "apiVersion": "1.0",
+  "requestId": "req-update-agent-a",
+  "hostInstanceId": "host-01",
+  "ok": false,
+  "error": {
+    "code": "stale_generation",
+    "message": "session generation does not match",
+    "retryable": false,
+    "details": {
+      "currentGeneration": 3,
+      "receivedGeneration": 2
+    }
+  }
+}

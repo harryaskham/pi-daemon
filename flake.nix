@@ -41,7 +41,8 @@
           npm prune --omit=dev --ignore-scripts
           packageRoot="$out/lib/node_modules/@harryaskham/pi-daemon"
           mkdir -p "$packageRoot" "$out/bin"
-          cp -R dist node_modules package.json CHANGELOG.md README.md SECURITY.md LICENSE protocol.schema.json "$packageRoot/"
+          cp -R dist node_modules package.json CHANGELOG.md README.md SECURITY.md LICENSE \
+            protocol.schema.json session-api.schema.json session-api.openapi.json "$packageRoot/"
           makeWrapper ${pkgs.nodejs_24}/bin/node "$out/bin/pi-daemon" \
             --add-flags "$packageRoot/dist/cli.js"
           runHook postInstall

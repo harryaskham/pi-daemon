@@ -1,0 +1,46 @@
+{
+  "kind": "attach_ready",
+  "connectionId": "connection-4",
+  "role": "observer",
+  "hostInstanceId": "host-01",
+  "sessionId": "agent-a",
+  "generation": 3,
+  "highWaterCursor": "host-01:agent-a:3:41",
+  "oldestAvailableCursor": "host-01:agent-a:3:12",
+  "snapshot": {
+    "session": {
+      "sessionId": "agent-a",
+      "name": "release-audit",
+      "generation": 3,
+      "revision": 7,
+      "state": "running",
+      "createdAt": "2026-07-14T08:00:00.000Z",
+      "updatedAt": "2026-07-14T08:10:00.000Z",
+      "lastUsedAt": "2026-07-14T08:09:59.000Z",
+      "spec": {
+        "cwd": "/srv/work/project-a",
+        "name": "release-audit",
+        "target": { "mode": "new" },
+        "isolation": { "mode": "unisolated" }
+      },
+      "environment": {
+        "keys": ["CI", "PROVIDER_TOKEN"],
+        "persistence": "memory-only",
+        "provisioned": true
+      },
+      "links": {
+        "self": "/v1/session/agent-a",
+        "rpc": "/v1/session/agent-a/rpc",
+        "apc": "/v1/session/agent-a/apc"
+      }
+    },
+    "rpcState": {
+      "sessionId": "pi-session-uuid",
+      "thinkingLevel": "medium",
+      "isStreaming": true,
+      "messageCount": 9,
+      "pendingMessageCount": 0
+    },
+    "leafId": "entry-9"
+  }
+}

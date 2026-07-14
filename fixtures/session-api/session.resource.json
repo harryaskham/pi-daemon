@@ -1,0 +1,55 @@
+{
+  "sessionId": "agent-a",
+  "name": "release-audit",
+  "generation": 3,
+  "revision": 7,
+  "state": "idle",
+  "createdAt": "2026-07-14T08:00:00.000Z",
+  "updatedAt": "2026-07-14T08:10:00.000Z",
+  "lastUsedAt": "2026-07-14T08:09:59.000Z",
+  "spec": {
+    "cwd": "/srv/work/project-a",
+    "name": "release-audit",
+    "agentDir": "/srv/pi-config/agent-a",
+    "target": {
+      "mode": "new",
+      "sessionDir": "/srv/pi-state/agent-a"
+    },
+    "model": {
+      "provider": "github-copilot",
+      "id": "gpt-5-mini",
+      "thinkingLevel": "medium",
+      "scopedModels": ["github-copilot/gpt-5-mini:medium"]
+    },
+    "tools": {
+      "mode": "allowlist",
+      "include": ["read", "bash"],
+      "exclude": ["write"]
+    },
+    "resources": {
+      "extensions": ["/srv/extensions/safe-a.ts"],
+      "skills": ["/srv/skills/release"],
+      "noThemes": true,
+      "projectTrust": "approve",
+      "extensionFlags": {
+        "release-mode": true,
+        "region": "local"
+      }
+    },
+    "settings": {
+      "retry": { "enabled": true, "maxRetries": 3 }
+    },
+    "isolation": { "mode": "unisolated" }
+  },
+  "environment": {
+    "keys": ["CI", "PROVIDER_TOKEN"],
+    "digest": "sha256:fixture-digest",
+    "persistence": "memory-only",
+    "provisioned": true
+  },
+  "links": {
+    "self": "/v1/session/agent-a",
+    "rpc": "/v1/session/agent-a/rpc",
+    "apc": "/v1/session/agent-a/apc"
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "requestId": "req-update-agent-a",
+  "expectedGeneration": 3,
+  "expectedRevision": 7,
+  "spec": {
+    "cwd": "/srv/work/project-a",
+    "name": "release-audit-renamed",
+    "target": {
+      "mode": "continue",
+      "sessionDir": "/srv/pi-state/agent-a"
+    },
+    "model": {
+      "provider": "github-copilot",
+      "id": "gpt-5-mini",
+      "thinkingLevel": "high"
+    },
+    "env": {
+      "CI": "1"
+    },
+    "isolation": { "mode": "unisolated" }
+  }
+}

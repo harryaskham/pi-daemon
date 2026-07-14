@@ -1,0 +1,14 @@
+{
+  "kind": "response",
+  "response": {
+    "id": "rpc-state-1",
+    "type": "response",
+    "command": "get_state",
+    "success": true,
+    "data": {
+      "sessionId": "pi-session-uuid",
+      "isStreaming": false,
+      "thinkingLevel": "medium"
+    }
+  }
+}

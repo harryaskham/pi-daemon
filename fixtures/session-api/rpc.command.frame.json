@@ -1,0 +1,9 @@
+{
+  "kind": "command",
+  "command": {
+    "id": "rpc-17",
+    "type": "prompt",
+    "message": "Continue the release audit",
+    "streamingBehavior": "followUp"
+  }
+}

@@ -1,0 +1,429 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Pi Daemon additive session API",
+    "version": "1.0.0",
+    "description": "Authenticated REST session lifecycle plus WebSocket Pi RPC and upstream Agent Client Protocol attachment. The existing owner-only Unix NDJSON protocol remains additive and equivalent at the logical-session layer."
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:7463/v1",
+      "description": "Default loopback listener; the implementation may also expose the same HTTP routes over a Unix socket."
+    }
+  ],
+  "security": [{ "serviceBearer": [] }],
+  "paths": {
+    "/capabilities": {
+      "get": {
+        "operationId": "getCapabilities",
+        "summary": "Negotiate API, transport, RPC, isolation, and authentication capabilities",
+        "parameters": [{ "$ref": "#/components/parameters/RequestId" }],
+        "responses": {
+          "200": {
+            "description": "Current host capabilities",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "./session-api.schema.json#/$defs/capabilitiesEnvelope" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "503": { "$ref": "#/components/responses/Unavailable" }
+        }
+      }
+    },
+    "/session": {
+      "parameters": [{ "$ref": "#/components/parameters/RequestId" }],
+      "get": {
+        "operationId": "listSessions",
+        "summary": "List logical sessions without secret environment values",
+        "parameters": [
+          { "$ref": "#/components/parameters/PageCursor" },
+          { "$ref": "#/components/parameters/PageLimit" },
+          {
+            "name": "state",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": { "enum": ["opening", "idle", "running", "failed", "closing"] },
+              "maxItems": 5
+            },
+            "style": "form",
+            "explode": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One stable page ordered by session ID",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "./session-api.schema.json#/$defs/sessionListEnvelope" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/InvalidRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      },
+      "post": {
+        "operationId": "createSession",
+        "summary": "Create one logical Pi runtime from a CLI-equivalent session specification",
+        "description": "The server allocates the canonical session ID before returning a bounded retained ticket. Raw env values are memory-only and must never appear in the ticket, logs, metrics, manifests, journals, or session resource.",
+        "parameters": [
+          { "$ref": "#/components/parameters/IdempotencyKey" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "./session-api.schema.json#/$defs/sessionCreateRequest" }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Creation durably admitted or joined by idempotency key",
+            "headers": {
+              "Location": { "$ref": "#/components/headers/Location" }
+            },
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "./session-api.schema.json#/$defs/ticketEnvelope" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/InvalidRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "413": { "$ref": "#/components/responses/TooLarge" },
+          "422": { "$ref": "#/components/responses/Unsupported" },
+          "429": { "$ref": "#/components/responses/Capacity" },
+          "503": { "$ref": "#/components/responses/Unavailable" }
+        }
+      }
+    },
+    "/session/{sessionRef}": {
+      "parameters": [
+        { "$ref": "#/components/parameters/SessionRef" },
+        { "$ref": "#/components/parameters/RequestId" }
+      ],
+      "get": {
+        "operationId": "getSession",
+        "summary": "Get a session by canonical ID or unique exact name",
+        "responses": {
+          "200": {
+            "description": "Current session resource and attach links",
+            "headers": {
+              "ETag": { "$ref": "#/components/headers/ETag" }
+            },
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "./session-api.schema.json#/$defs/sessionEnvelope" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      },
+      "put": {
+        "operationId": "replaceSessionSpec",
+        "summary": "Replace a session specification with optimistic generation and revision checks",
+        "description": "A cwd, target, agentDir, environment, resource, settings, or isolation change replaces the runtime and increments generation. In-place name or supported Pi state changes increment revision only. Busy replacements fail rather than racing a live turn.",
+        "parameters": [
+          { "$ref": "#/components/parameters/IdempotencyKey" },
+          { "$ref": "#/components/parameters/IfMatch" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "./session-api.schema.json#/$defs/sessionUpdateRequest" }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Update admitted or joined",
+            "headers": {
+              "Location": { "$ref": "#/components/headers/Location" }
+            },
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "./session-api.schema.json#/$defs/ticketEnvelope" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/InvalidRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "412": { "$ref": "#/components/responses/PreconditionFailed" },
+          "413": { "$ref": "#/components/responses/TooLarge" },
+          "422": { "$ref": "#/components/responses/Unsupported" },
+          "503": { "$ref": "#/components/responses/Unavailable" }
+        }
+      },
+      "delete": {
+        "operationId": "deleteSession",
+        "summary": "Close a session and optionally delete retained artifacts",
+        "parameters": [
+          { "$ref": "#/components/parameters/IdempotencyKey" },
+          { "$ref": "#/components/parameters/IfMatch" },
+          {
+            "name": "retainArtifacts",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "boolean", "default": true }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Close admitted or joined",
+            "headers": {
+              "Location": { "$ref": "#/components/headers/Location" }
+            },
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "./session-api.schema.json#/$defs/ticketEnvelope" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "412": { "$ref": "#/components/responses/PreconditionFailed" },
+          "503": { "$ref": "#/components/responses/Unavailable" }
+        }
+      }
+    },
+    "/session/{sessionRef}/rpc": {
+      "parameters": [
+        { "$ref": "#/components/parameters/SessionRef" },
+        { "$ref": "#/components/parameters/RequestId" },
+        {
+          "name": "cursor",
+          "in": "query",
+          "required": false,
+          "description": "Opaque framed-stream cursor scoped to host instance, session ID, and generation.",
+          "schema": { "type": "string", "minLength": 1, "maxLength": 1024 }
+        },
+        {
+          "name": "role",
+          "in": "query",
+          "required": false,
+          "description": "Controller is a concurrency lease, not an authorization boundary; every attachment uses the same service bearer.",
+          "schema": { "enum": ["observer", "controller"], "default": "observer" }
+        }
+      ],
+      "get": {
+        "operationId": "attachPiRpc",
+        "summary": "Upgrade to a raw or framed Pi RPC WebSocket attachment",
+        "description": "Offer Sec-WebSocket-Protocol pi-rpc.v1 for live-only upstream Pi message shapes or pi-daemon-rpc.v1 for atomic snapshot, bounded replay, host identity, generation, and cursors. Responses are sent only to the issuing connection; AgentSession events fan out to all readers.",
+        "parameters": [
+          {
+            "name": "Sec-WebSocket-Protocol",
+            "in": "header",
+            "required": true,
+            "schema": { "enum": ["pi-rpc.v1", "pi-daemon-rpc.v1"] }
+          }
+        ],
+        "responses": {
+          "101": { "description": "WebSocket protocol selected and attachment established" },
+          "400": { "$ref": "#/components/responses/InvalidRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "426": { "$ref": "#/components/responses/UpgradeRequired" },
+          "429": { "$ref": "#/components/responses/Capacity" },
+          "503": { "$ref": "#/components/responses/Unavailable" }
+        },
+        "x-websocket-client-message": {
+          "oneOf": [
+            { "$ref": "./session-api.schema.json#/$defs/piRpcCommand" },
+            { "$ref": "./session-api.schema.json#/$defs/rpcCommandFrame" },
+            { "$ref": "./session-api.schema.json#/$defs/rpcControlFrame" }
+          ]
+        },
+        "x-websocket-server-message": {
+          "oneOf": [
+            { "$ref": "./session-api.schema.json#/$defs/piRpcResponse" },
+            { "$ref": "./session-api.schema.json#/$defs/piRpcEvent" },
+            { "$ref": "./session-api.schema.json#/$defs/rpcResponseFrame" },
+            { "$ref": "./session-api.schema.json#/$defs/rpcEventFrame" },
+            { "$ref": "./session-api.schema.json#/$defs/rpcAttachReadyFrame" },
+            { "$ref": "./session-api.schema.json#/$defs/rpcReplayGapFrame" },
+            { "$ref": "./session-api.schema.json#/$defs/rpcControlFrame" }
+          ]
+        }
+      }
+    },
+    "/session/{sessionRef}/apc": {
+      "parameters": [
+        { "$ref": "#/components/parameters/SessionRef" },
+        { "$ref": "#/components/parameters/RequestId" }
+      ],
+      "get": {
+        "operationId": "attachAgentClientProtocol",
+        "summary": "Upgrade to upstream Agent Client Protocol JSON-RPC 2.0",
+        "description": "The v1 route is intentionally spelled /apc to preserve the operator contract, while the payload protocol is upstream ACP (Agent Client Protocol). This is one authenticated WebSocket transport for the existing logical session, not a distinct session owner or token domain.",
+        "parameters": [
+          {
+            "name": "Sec-WebSocket-Protocol",
+            "in": "header",
+            "required": true,
+            "schema": { "const": "agent-client-protocol.v1" }
+          }
+        ],
+        "responses": {
+          "101": { "description": "ACP JSON-RPC WebSocket established" },
+          "400": { "$ref": "#/components/responses/InvalidRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "426": { "$ref": "#/components/responses/UpgradeRequired" },
+          "429": { "$ref": "#/components/responses/Capacity" },
+          "503": { "$ref": "#/components/responses/Unavailable" }
+        },
+        "x-websocket-message": { "$ref": "./session-api.schema.json#/$defs/jsonRpcMessage" },
+        "x-upstream-protocol": "Agent Client Protocol JSON-RPC 2.0"
+      }
+    },
+    "/ticket/{ticketId}": {
+      "get": {
+        "operationId": "getTicket",
+        "summary": "Read a retained mutation ticket",
+        "parameters": [
+          { "$ref": "#/components/parameters/RequestId" },
+          {
+            "name": "ticketId",
+            "in": "path",
+            "required": true,
+            "schema": { "$ref": "./session-api.schema.json#/$defs/identifier" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Current queued, running, terminal, or indeterminate state",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "./session-api.schema.json#/$defs/ticketEnvelope" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "serviceBearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "opaque",
+        "description": "One server-wide bearer for the complete HTTP/WebSocket API trust domain. It is not a per-session credential."
+      }
+    },
+    "parameters": {
+      "RequestId": {
+        "name": "X-Request-Id",
+        "in": "header",
+        "required": false,
+        "description": "Optional caller correlation ID. If a mutating JSON body also carries requestId, the values must match. The server generates one when absent.",
+        "schema": { "type": "string", "minLength": 1, "maxLength": 128 }
+      },
+      "SessionRef": {
+        "name": "sessionRef",
+        "in": "path",
+        "required": true,
+        "description": "URL-encoded canonical ID or unique exact session name. Ambiguity is a conflict, never first-match selection.",
+        "schema": { "type": "string", "minLength": 1, "maxLength": 256 }
+      },
+      "IdempotencyKey": {
+        "name": "Idempotency-Key",
+        "in": "header",
+        "required": true,
+        "schema": { "type": "string", "minLength": 1, "maxLength": 512 }
+      },
+      "IfMatch": {
+        "name": "If-Match",
+        "in": "header",
+        "required": true,
+        "description": "Strong ETag returned by GET, derived from immutable session ID and revision without secret material.",
+        "schema": { "type": "string", "minLength": 1, "maxLength": 256 }
+      },
+      "PageCursor": {
+        "name": "cursor",
+        "in": "query",
+        "required": false,
+        "schema": { "type": "string", "minLength": 1, "maxLength": 1024 }
+      },
+      "PageLimit": {
+        "name": "limit",
+        "in": "query",
+        "required": false,
+        "schema": { "type": "integer", "minimum": 1, "maximum": 100, "default": 50 }
+      }
+    },
+    "headers": {
+      "Location": {
+        "description": "Ticket or canonical session resource URL",
+        "schema": { "type": "string", "minLength": 1, "maxLength": 4096 }
+      },
+      "ETag": {
+        "description": "Strong session revision validator",
+        "schema": { "type": "string", "minLength": 1, "maxLength": 256 }
+      }
+    },
+    "responses": {
+      "InvalidRequest": {
+        "description": "Malformed or semantically invalid request",
+        "content": { "application/json": { "schema": { "$ref": "./session-api.schema.json#/$defs/apiErrorEnvelope" } } }
+      },
+      "Unauthorized": {
+        "description": "Missing or invalid service bearer; response never identifies sessions",
+        "headers": {
+          "WWW-Authenticate": { "schema": { "type": "string", "const": "Bearer" } }
+        },
+        "content": { "application/json": { "schema": { "$ref": "./session-api.schema.json#/$defs/apiErrorEnvelope" } } }
+      },
+      "NotFound": {
+        "description": "Session or ticket not found",
+        "content": { "application/json": { "schema": { "$ref": "./session-api.schema.json#/$defs/apiErrorEnvelope" } } }
+      },
+      "Conflict": {
+        "description": "Name ambiguity, generation, idempotency, controller, or busy-state conflict",
+        "content": { "application/json": { "schema": { "$ref": "./session-api.schema.json#/$defs/apiErrorEnvelope" } } }
+      },
+      "PreconditionFailed": {
+        "description": "ETag, expected revision, or expected generation does not match",
+        "content": { "application/json": { "schema": { "$ref": "./session-api.schema.json#/$defs/apiErrorEnvelope" } } }
+      },
+      "TooLarge": {
+        "description": "Request body, environment, prompt, or frame exceeds a configured bound",
+        "content": { "application/json": { "schema": { "$ref": "./session-api.schema.json#/$defs/apiErrorEnvelope" } } }
+      },
+      "Unsupported": {
+        "description": "Known Pi option, resource, isolation mode, or protocol feature is unsupported",
+        "content": { "application/json": { "schema": { "$ref": "./session-api.schema.json#/$defs/apiErrorEnvelope" } } }
+      },
+      "Capacity": {
+        "description": "Connection, session, queue, ticket, or outbound capacity reached",
+        "headers": { "Retry-After": { "schema": { "type": "integer", "minimum": 0 } } },
+        "content": { "application/json": { "schema": { "$ref": "./session-api.schema.json#/$defs/apiErrorEnvelope" } } }
+      },
+      "UpgradeRequired": {
+        "description": "WebSocket upgrade or supported subprotocol required",
+        "content": { "application/json": { "schema": { "$ref": "./session-api.schema.json#/$defs/apiErrorEnvelope" } } }
+      },
+      "Unavailable": {
+        "description": "Host not ready, draining, or temporarily unable to admit the operation",
+        "headers": { "Retry-After": { "schema": { "type": "integer", "minimum": 0 } } },
+        "content": { "application/json": { "schema": { "$ref": "./session-api.schema.json#/$defs/apiErrorEnvelope" } } }
+      }
+    }
+  }
+}

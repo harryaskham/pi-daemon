@@ -5,6 +5,13 @@ title: Security
 
 # Security
 
+The additive HTTP/WebSocket session API uses one opaque server-wide bearer for
+the complete API trust domain; it has no per-session authorization in v1. The
+bearer is authenticated before bodies, upgrades, or session existence are
+observed and is never accepted in process-visible CLI arguments or emitted in
+logs, status, tickets, manifests, journals, or metrics. See the [Session API
+contract](session-api#authentication-and-secret-handling).
+
 A Pi Daemon process is one operator trust domain, not a sandbox. Logical
 sessions isolate state and scheduling; they do not isolate malicious JavaScript
 loaded into the same Node process. The initial service therefore loads no

@@ -1,0 +1,8 @@
+{
+  "kind": "replay_gap",
+  "reason": "cursor_expired",
+  "requestedCursor": "host-01:agent-a:3:2",
+  "oldestAvailableCursor": "host-01:agent-a:3:12",
+  "highWaterCursor": "host-01:agent-a:3:45",
+  "snapshotFollows": true
+}

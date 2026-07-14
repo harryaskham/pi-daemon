@@ -1,0 +1,19 @@
+{
+  "apiVersion": "1.0",
+  "requestId": "req-create-agent-a",
+  "hostInstanceId": "host-01",
+  "ok": true,
+  "data": {
+    "ticketId": "ticket-create-agent-a",
+    "operation": "create",
+    "state": "queued",
+    "submittedAt": "2026-07-14T08:00:00.000Z",
+    "updatedAt": "2026-07-14T08:00:00.000Z",
+    "sessionId": "agent-a",
+    "generation": 1,
+    "links": {
+      "self": "/v1/ticket/ticket-create-agent-a",
+      "session": "/v1/session/agent-a"
+    }
+  }
+}

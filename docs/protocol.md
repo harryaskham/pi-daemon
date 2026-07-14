@@ -12,6 +12,12 @@ the connection; unknown fields and newer minor versions are accepted.
 The canonical machine-readable contract is
 [`protocol.schema.json`](protocol.schema.json).
 
+This local protocol is one of two additive control modes. Authenticated session
+CRUD, multi-reader raw/framed Pi RPC attachment, and the operator-requested
+`/apc` route carrying upstream ACP are specified in the [Session API](session-api).
+Both modes must resolve through one logical-session runtime and generation; the
+HTTP/WebSocket API does not wrap or replace this durable Unix protocol.
+
 ## Command envelope
 
 ```json

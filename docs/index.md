@@ -20,12 +20,14 @@ component.
 ## Documentation
 
 - [Protocol](protocol) — NDJSON operations, event flow, generations, and retry semantics
+- [Session API](session-api) — additive CRUD, multi-reader Pi RPC attach, and `/apc` ACP contract
 - [Operations](operations) — install, serve, probe, status, drain, and recovery
 - [Security](security) — shared-process trust boundary and root policy
 - [Integration](integration) — client and Nix consumer examples
 - [Acceptance](acceptance) — credential-free matrix and live zero-child-process proof
 - [Release](release) — tag, artifact, and rollback checklist
-- [JSON Schema](protocol.schema.json) — language-neutral protocol contract
+- [NDJSON JSON Schema](protocol.schema.json) — language-neutral local protocol contract
+- [Session API JSON Schema](session-api.schema.json) and [OpenAPI](session-api.openapi.json)
 - [Source repository](https://github.com/harryaskham/pi-daemon)
 
 ## Status

@@ -1,0 +1,42 @@
+{
+  "requestId": "req-create-agent-a",
+  "sessionId": "agent-a",
+  "spec": {
+    "cwd": "/srv/work/project-a",
+    "name": "release-audit",
+    "agentDir": "/srv/pi-config/agent-a",
+    "target": {
+      "mode": "new",
+      "sessionDir": "/srv/pi-state/agent-a"
+    },
+    "model": {
+      "provider": "github-copilot",
+      "id": "gpt-5-mini",
+      "thinkingLevel": "medium",
+      "scopedModels": ["github-copilot/gpt-5-mini:medium"]
+    },
+    "tools": {
+      "mode": "allowlist",
+      "include": ["read", "bash"],
+      "exclude": ["write"]
+    },
+    "resources": {
+      "extensions": ["/srv/extensions/safe-a.ts"],
+      "skills": ["/srv/skills/release"],
+      "noThemes": true,
+      "projectTrust": "approve",
+      "extensionFlags": {
+        "release-mode": true,
+        "region": "local"
+      }
+    },
+    "settings": {
+      "retry": { "enabled": true, "maxRetries": 3 }
+    },
+    "env": {
+      "CI": "1",
+      "PROVIDER_TOKEN": "fixture-redacted-value"
+    },
+    "isolation": { "mode": "unisolated" }
+  }
+}

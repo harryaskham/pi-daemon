@@ -1,0 +1,648 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://a.skh.am/pi-daemon/session-api.schema.json",
+  "title": "Pi Daemon additive session API v1",
+  "description": "Language-neutral REST resources, ticket records, framed Pi RPC attachment messages, and ACP transport messages. Raw Pi RPC uses the upstream Pi 0.80.6 shapes.",
+  "oneOf": [
+    { "$ref": "#/$defs/sessionCreateRequest" },
+    { "$ref": "#/$defs/sessionUpdateRequest" },
+    { "$ref": "#/$defs/sessionResource" },
+    { "$ref": "#/$defs/ticketResource" },
+    { "$ref": "#/$defs/sessionRpcFrame" },
+    { "$ref": "#/$defs/jsonRpcMessage" }
+  ],
+  "$defs": {
+    "apiVersion": {
+      "type": "string",
+      "pattern": "^1\\.[0-9]+$"
+    },
+    "identifier": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    },
+    "requestId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "path": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4096
+    },
+    "timestamp": {
+      "type": "string",
+      "minLength": 20,
+      "maxLength": 64
+    },
+    "thinkingLevel": {
+      "enum": ["off", "minimal", "low", "medium", "high", "xhigh", "max"]
+    },
+    "sessionTarget": {
+      "type": "object",
+      "required": ["mode"],
+      "properties": {
+        "mode": { "enum": ["new", "continue", "open", "fork", "memory"] },
+        "path": { "$ref": "#/$defs/path" },
+        "sourceSession": { "$ref": "#/$defs/identifier" },
+        "entryId": { "$ref": "#/$defs/identifier" },
+        "sessionDir": { "$ref": "#/$defs/path" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "mode": { "const": "open" } }, "required": ["mode"] },
+          "then": {
+            "properties": { "path": { "$ref": "#/$defs/path" } },
+            "required": ["path"]
+          }
+        },
+        {
+          "if": { "properties": { "mode": { "const": "fork" } }, "required": ["mode"] },
+          "then": {
+            "properties": { "sourceSession": { "$ref": "#/$defs/identifier" } },
+            "required": ["sourceSession"]
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "sessionModel": {
+      "type": "object",
+      "properties": {
+        "provider": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "id": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "thinkingLevel": { "$ref": "#/$defs/thinkingLevel" },
+        "scopedModels": {
+          "type": "array",
+          "maxItems": 128,
+          "items": { "type": "string", "minLength": 1, "maxLength": 512 },
+          "uniqueItems": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "sessionTools": {
+      "type": "object",
+      "properties": {
+        "mode": { "enum": ["default", "none", "no-builtin", "allowlist"] },
+        "include": {
+          "type": "array",
+          "maxItems": 256,
+          "items": { "type": "string", "minLength": 1, "maxLength": 128 },
+          "uniqueItems": true
+        },
+        "exclude": {
+          "type": "array",
+          "maxItems": 256,
+          "items": { "type": "string", "minLength": 1, "maxLength": 128 },
+          "uniqueItems": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "extensionFlags": {
+      "type": "object",
+      "maxProperties": 256,
+      "propertyNames": { "type": "string", "minLength": 1, "maxLength": 128 },
+      "additionalProperties": {
+        "oneOf": [
+          { "type": "boolean" },
+          { "type": "string", "maxLength": 4096 }
+        ]
+      }
+    },
+    "sessionResources": {
+      "type": "object",
+      "properties": {
+        "extensions": {
+          "type": "array",
+          "maxItems": 128,
+          "items": { "type": "string", "minLength": 1, "maxLength": 4096 }
+        },
+        "skills": {
+          "type": "array",
+          "maxItems": 128,
+          "items": { "type": "string", "minLength": 1, "maxLength": 4096 }
+        },
+        "promptTemplates": {
+          "type": "array",
+          "maxItems": 128,
+          "items": { "type": "string", "minLength": 1, "maxLength": 4096 }
+        },
+        "themes": {
+          "type": "array",
+          "maxItems": 128,
+          "items": { "type": "string", "minLength": 1, "maxLength": 4096 }
+        },
+        "noExtensions": { "type": "boolean" },
+        "noSkills": { "type": "boolean" },
+        "noPromptTemplates": { "type": "boolean" },
+        "noThemes": { "type": "boolean" },
+        "noContextFiles": { "type": "boolean" },
+        "systemPrompt": { "type": "string", "maxLength": 262144 },
+        "appendSystemPrompt": {
+          "type": "array",
+          "maxItems": 64,
+          "items": { "type": "string", "maxLength": 262144 }
+        },
+        "projectTrust": { "enum": ["default", "approve", "deny"] },
+        "extensionFlags": { "$ref": "#/$defs/extensionFlags" }
+      },
+      "additionalProperties": false
+    },
+    "sessionEnvironment": {
+      "type": "object",
+      "description": "Input-only environment values. Raw values are memory-only and MUST NOT appear in responses, logs, manifests, journals, or metrics.",
+      "writeOnly": true,
+      "maxProperties": 256,
+      "propertyNames": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*$", "maxLength": 256 },
+      "additionalProperties": { "type": "string", "maxLength": 65536 }
+    },
+    "sessionIsolation": {
+      "type": "object",
+      "required": ["mode"],
+      "properties": {
+        "mode": { "const": "unisolated" }
+      },
+      "additionalProperties": false
+    },
+    "sessionSpecInput": {
+      "type": "object",
+      "required": ["cwd", "target"],
+      "properties": {
+        "cwd": { "$ref": "#/$defs/path" },
+        "name": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "agentDir": { "$ref": "#/$defs/path" },
+        "target": { "$ref": "#/$defs/sessionTarget" },
+        "model": { "$ref": "#/$defs/sessionModel" },
+        "tools": { "$ref": "#/$defs/sessionTools" },
+        "resources": { "$ref": "#/$defs/sessionResources" },
+        "settings": { "type": "object", "maxProperties": 512 },
+        "env": { "$ref": "#/$defs/sessionEnvironment" },
+        "isolation": { "$ref": "#/$defs/sessionIsolation" }
+      },
+      "additionalProperties": false
+    },
+    "sessionSpecOutput": {
+      "type": "object",
+      "required": ["cwd", "target"],
+      "properties": {
+        "cwd": { "$ref": "#/$defs/path" },
+        "name": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "agentDir": { "$ref": "#/$defs/path" },
+        "target": { "$ref": "#/$defs/sessionTarget" },
+        "model": { "$ref": "#/$defs/sessionModel" },
+        "tools": { "$ref": "#/$defs/sessionTools" },
+        "resources": { "$ref": "#/$defs/sessionResources" },
+        "settings": { "type": "object", "maxProperties": 512 },
+        "isolation": { "$ref": "#/$defs/sessionIsolation" }
+      },
+      "additionalProperties": false
+    },
+    "sessionCreateRequest": {
+      "type": "object",
+      "required": ["requestId", "spec"],
+      "properties": {
+        "requestId": { "$ref": "#/$defs/requestId" },
+        "sessionId": { "$ref": "#/$defs/identifier" },
+        "spec": { "$ref": "#/$defs/sessionSpecInput" }
+      },
+      "additionalProperties": false
+    },
+    "sessionUpdateRequest": {
+      "type": "object",
+      "required": ["requestId", "expectedGeneration", "expectedRevision", "spec"],
+      "properties": {
+        "requestId": { "$ref": "#/$defs/requestId" },
+        "expectedGeneration": { "type": "integer", "minimum": 1 },
+        "expectedRevision": { "type": "integer", "minimum": 1 },
+        "spec": { "$ref": "#/$defs/sessionSpecInput" }
+      },
+      "additionalProperties": false
+    },
+    "environmentSummary": {
+      "type": "object",
+      "required": ["keys", "persistence", "provisioned"],
+      "properties": {
+        "keys": {
+          "type": "array",
+          "maxItems": 256,
+          "items": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*$" },
+          "uniqueItems": true
+        },
+        "digest": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "persistence": { "enum": ["memory-only", "reference"] },
+        "provisioned": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "sessionLinks": {
+      "type": "object",
+      "required": ["self", "rpc", "apc"],
+      "properties": {
+        "self": { "type": "string", "minLength": 1, "maxLength": 4096 },
+        "rpc": { "type": "string", "minLength": 1, "maxLength": 4096 },
+        "apc": { "type": "string", "minLength": 1, "maxLength": 4096 }
+      },
+      "additionalProperties": false
+    },
+    "sessionResource": {
+      "type": "object",
+      "required": [
+        "sessionId",
+        "generation",
+        "revision",
+        "state",
+        "createdAt",
+        "updatedAt",
+        "lastUsedAt",
+        "spec",
+        "environment",
+        "links"
+      ],
+      "properties": {
+        "sessionId": { "$ref": "#/$defs/identifier" },
+        "name": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "generation": { "type": "integer", "minimum": 1 },
+        "revision": { "type": "integer", "minimum": 1 },
+        "state": { "enum": ["opening", "idle", "running", "failed", "closing"] },
+        "createdAt": { "$ref": "#/$defs/timestamp" },
+        "updatedAt": { "$ref": "#/$defs/timestamp" },
+        "lastUsedAt": { "$ref": "#/$defs/timestamp" },
+        "spec": { "$ref": "#/$defs/sessionSpecOutput" },
+        "environment": { "$ref": "#/$defs/environmentSummary" },
+        "links": { "$ref": "#/$defs/sessionLinks" }
+      },
+      "additionalProperties": false
+    },
+    "apiError": {
+      "type": "object",
+      "required": ["code", "message", "retryable"],
+      "properties": {
+        "code": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "message": { "type": "string", "minLength": 1, "maxLength": 4096 },
+        "retryable": { "type": "boolean" },
+        "details": { "type": "object" }
+      },
+      "additionalProperties": false
+    },
+    "apiEnvelopeBase": {
+      "type": "object",
+      "required": ["apiVersion", "requestId", "hostInstanceId", "ok"],
+      "properties": {
+        "apiVersion": { "$ref": "#/$defs/apiVersion" },
+        "requestId": { "$ref": "#/$defs/requestId" },
+        "hostInstanceId": { "$ref": "#/$defs/identifier" },
+        "ok": { "type": "boolean" }
+      }
+    },
+    "apiErrorEnvelope": {
+      "allOf": [
+        { "$ref": "#/$defs/apiEnvelopeBase" },
+        {
+          "type": "object",
+          "required": ["error"],
+          "properties": {
+            "ok": { "const": false },
+            "error": { "$ref": "#/$defs/apiError" }
+          }
+        }
+      ]
+    },
+    "sessionEnvelope": {
+      "allOf": [
+        { "$ref": "#/$defs/apiEnvelopeBase" },
+        {
+          "type": "object",
+          "required": ["data"],
+          "properties": {
+            "ok": { "const": true },
+            "data": { "$ref": "#/$defs/sessionResource" }
+          }
+        }
+      ]
+    },
+    "sessionListPage": {
+      "type": "object",
+      "required": ["sessions"],
+      "properties": {
+        "sessions": {
+          "type": "array",
+          "maxItems": 100,
+          "items": { "$ref": "#/$defs/sessionResource" }
+        },
+        "nextCursor": { "type": "string", "minLength": 1, "maxLength": 1024 }
+      },
+      "additionalProperties": false
+    },
+    "sessionListEnvelope": {
+      "allOf": [
+        { "$ref": "#/$defs/apiEnvelopeBase" },
+        {
+          "type": "object",
+          "required": ["data"],
+          "properties": {
+            "ok": { "const": true },
+            "data": { "$ref": "#/$defs/sessionListPage" }
+          }
+        }
+      ]
+    },
+    "ticketLinks": {
+      "type": "object",
+      "required": ["self"],
+      "properties": {
+        "self": { "type": "string", "minLength": 1, "maxLength": 4096 },
+        "session": { "type": "string", "minLength": 1, "maxLength": 4096 }
+      },
+      "additionalProperties": false
+    },
+    "ticketResource": {
+      "type": "object",
+      "required": ["ticketId", "operation", "state", "submittedAt", "updatedAt", "links"],
+      "properties": {
+        "ticketId": { "$ref": "#/$defs/identifier" },
+        "operation": { "enum": ["create", "update", "delete"] },
+        "state": { "enum": ["queued", "running", "succeeded", "failed", "indeterminate"] },
+        "submittedAt": { "$ref": "#/$defs/timestamp" },
+        "updatedAt": { "$ref": "#/$defs/timestamp" },
+        "sessionId": { "$ref": "#/$defs/identifier" },
+        "generation": { "type": "integer", "minimum": 1 },
+        "result": {},
+        "error": { "$ref": "#/$defs/apiError" },
+        "links": { "$ref": "#/$defs/ticketLinks" }
+      },
+      "additionalProperties": false
+    },
+    "ticketEnvelope": {
+      "allOf": [
+        { "$ref": "#/$defs/apiEnvelopeBase" },
+        {
+          "type": "object",
+          "required": ["data"],
+          "properties": {
+            "ok": { "const": true },
+            "data": { "$ref": "#/$defs/ticketResource" }
+          }
+        }
+      ]
+    },
+    "capabilities": {
+      "type": "object",
+      "required": ["apiVersion", "transports", "rpcSubprotocols", "isolationModes", "authentication"],
+      "properties": {
+        "apiVersion": { "$ref": "#/$defs/apiVersion" },
+        "transports": {
+          "type": "array",
+          "items": { "enum": ["unix-ndjson", "http", "websocket"] },
+          "uniqueItems": true
+        },
+        "rpcSubprotocols": {
+          "type": "array",
+          "items": { "enum": ["pi-rpc.v1", "pi-daemon-rpc.v1"] },
+          "uniqueItems": true
+        },
+        "isolationModes": {
+          "type": "array",
+          "items": { "const": "unisolated" },
+          "uniqueItems": true
+        },
+        "authentication": { "const": "service-bearer" }
+      },
+      "additionalProperties": false
+    },
+    "capabilitiesEnvelope": {
+      "allOf": [
+        { "$ref": "#/$defs/apiEnvelopeBase" },
+        {
+          "type": "object",
+          "required": ["data"],
+          "properties": {
+            "ok": { "const": true },
+            "data": { "$ref": "#/$defs/capabilities" }
+          }
+        }
+      ]
+    },
+    "piRpcCommand": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "type": {
+          "enum": [
+            "prompt",
+            "steer",
+            "follow_up",
+            "abort",
+            "new_session",
+            "get_state",
+            "set_model",
+            "cycle_model",
+            "get_available_models",
+            "set_thinking_level",
+            "cycle_thinking_level",
+            "set_steering_mode",
+            "set_follow_up_mode",
+            "compact",
+            "set_auto_compaction",
+            "set_auto_retry",
+            "abort_retry",
+            "bash",
+            "abort_bash",
+            "get_session_stats",
+            "export_html",
+            "switch_session",
+            "fork",
+            "clone",
+            "get_fork_messages",
+            "get_entries",
+            "get_tree",
+            "get_last_assistant_text",
+            "set_session_name",
+            "get_messages",
+            "get_commands"
+          ]
+        }
+      },
+      "additionalProperties": true
+    },
+    "piRpcResponse": {
+      "type": "object",
+      "required": ["type", "command", "success"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "type": { "const": "response" },
+        "command": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "success": { "type": "boolean" },
+        "data": {},
+        "error": { "type": "string", "maxLength": 4096 }
+      },
+      "additionalProperties": true
+    },
+    "piRpcEvent": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": { "type": "string", "minLength": 1, "not": { "const": "response" } }
+      },
+      "additionalProperties": true
+    },
+    "attachSnapshot": {
+      "type": "object",
+      "required": ["session", "rpcState"],
+      "properties": {
+        "session": { "$ref": "#/$defs/sessionResource" },
+        "rpcState": { "type": "object" },
+        "leafId": {
+          "oneOf": [
+            { "$ref": "#/$defs/identifier" },
+            { "type": "null" }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "rpcCommandFrame": {
+      "type": "object",
+      "required": ["kind", "command"],
+      "properties": {
+        "kind": { "const": "command" },
+        "command": { "$ref": "#/$defs/piRpcCommand" }
+      },
+      "additionalProperties": false
+    },
+    "rpcResponseFrame": {
+      "type": "object",
+      "required": ["kind", "response"],
+      "properties": {
+        "kind": { "const": "response" },
+        "response": { "$ref": "#/$defs/piRpcResponse" }
+      },
+      "additionalProperties": false
+    },
+    "rpcEventFrame": {
+      "type": "object",
+      "required": ["kind", "cursor", "sequence", "event"],
+      "properties": {
+        "kind": { "const": "event" },
+        "cursor": { "type": "string", "minLength": 1, "maxLength": 1024 },
+        "sequence": { "type": "integer", "minimum": 1 },
+        "event": { "$ref": "#/$defs/piRpcEvent" }
+      },
+      "additionalProperties": false
+    },
+    "rpcAttachReadyFrame": {
+      "type": "object",
+      "required": [
+        "kind",
+        "connectionId",
+        "role",
+        "hostInstanceId",
+        "sessionId",
+        "generation",
+        "highWaterCursor",
+        "snapshot"
+      ],
+      "properties": {
+        "kind": { "const": "attach_ready" },
+        "connectionId": { "$ref": "#/$defs/identifier" },
+        "role": { "enum": ["controller", "observer"] },
+        "hostInstanceId": { "$ref": "#/$defs/identifier" },
+        "sessionId": { "$ref": "#/$defs/identifier" },
+        "generation": { "type": "integer", "minimum": 1 },
+        "highWaterCursor": { "type": "string", "minLength": 1, "maxLength": 1024 },
+        "oldestAvailableCursor": { "type": "string", "minLength": 1, "maxLength": 1024 },
+        "snapshot": { "$ref": "#/$defs/attachSnapshot" }
+      },
+      "additionalProperties": false
+    },
+    "rpcReplayGapFrame": {
+      "type": "object",
+      "required": ["kind", "reason", "requestedCursor", "highWaterCursor", "snapshotFollows"],
+      "properties": {
+        "kind": { "const": "replay_gap" },
+        "reason": { "enum": ["cursor_expired", "host_restarted", "generation_changed"] },
+        "requestedCursor": { "type": "string", "minLength": 1, "maxLength": 1024 },
+        "oldestAvailableCursor": { "type": "string", "minLength": 1, "maxLength": 1024 },
+        "highWaterCursor": { "type": "string", "minLength": 1, "maxLength": 1024 },
+        "snapshotFollows": { "const": true }
+      },
+      "additionalProperties": false
+    },
+    "rpcControlFrame": {
+      "type": "object",
+      "required": ["kind", "action"],
+      "properties": {
+        "kind": { "const": "control" },
+        "action": { "enum": ["request_control", "release_control", "control_granted", "control_denied"] },
+        "connectionId": { "$ref": "#/$defs/identifier" },
+        "reason": { "type": "string", "maxLength": 4096 }
+      },
+      "additionalProperties": false
+    },
+    "sessionRpcFrame": {
+      "oneOf": [
+        { "$ref": "#/$defs/rpcCommandFrame" },
+        { "$ref": "#/$defs/rpcResponseFrame" },
+        { "$ref": "#/$defs/rpcEventFrame" },
+        { "$ref": "#/$defs/rpcAttachReadyFrame" },
+        { "$ref": "#/$defs/rpcReplayGapFrame" },
+        { "$ref": "#/$defs/rpcControlFrame" }
+      ]
+    },
+    "jsonRpcMessage": {
+      "type": "object",
+      "required": ["jsonrpc"],
+      "properties": {
+        "jsonrpc": { "const": "2.0" },
+        "id": {
+          "oneOf": [
+            { "type": "string", "maxLength": 256 },
+            { "type": "integer" },
+            { "type": "null" }
+          ]
+        },
+        "method": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "params": {},
+        "result": {},
+        "error": {
+          "type": "object",
+          "required": ["code", "message"],
+          "properties": {
+            "code": { "type": "integer" },
+            "message": { "type": "string", "maxLength": 4096 },
+            "data": {}
+          }
+        }
+      },
+      "anyOf": [
+        {
+          "properties": { "method": { "type": "string", "minLength": 1, "maxLength": 256 } },
+          "required": ["method"]
+        },
+        {
+          "properties": { "result": {} },
+          "required": ["result"]
+        },
+        {
+          "properties": {
+            "error": {
+              "type": "object",
+              "required": ["code", "message"],
+              "properties": {
+                "code": { "type": "integer" },
+                "message": { "type": "string", "maxLength": 4096 },
+                "data": {}
+              }
+            }
+          },
+          "required": ["error"]
+        }
+      ],
+      "additionalProperties": true
+    }
+  }
+}

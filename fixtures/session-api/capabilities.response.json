@@ -1,0 +1,13 @@
+{
+  "apiVersion": "1.0",
+  "requestId": "req-capabilities",
+  "hostInstanceId": "host-01",
+  "ok": true,
+  "data": {
+    "apiVersion": "1.0",
+    "transports": ["unix-ndjson", "http", "websocket"],
+    "rpcSubprotocols": ["pi-rpc.v1", "pi-daemon-rpc.v1"],
+    "isolationModes": ["unisolated"],
+    "authentication": "service-bearer"
+  }
+}

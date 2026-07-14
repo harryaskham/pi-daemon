@@ -1,0 +1,38 @@
+{
+  "apiVersion": "1.0",
+  "requestId": "req-get-agent-a",
+  "hostInstanceId": "host-01",
+  "ok": true,
+  "data": {
+    "sessionId": "agent-a",
+    "name": "release-audit",
+    "generation": 3,
+    "revision": 7,
+    "state": "idle",
+    "createdAt": "2026-07-14T08:00:00.000Z",
+    "updatedAt": "2026-07-14T08:10:00.000Z",
+    "lastUsedAt": "2026-07-14T08:09:59.000Z",
+    "spec": {
+      "cwd": "/srv/work/project-a",
+      "name": "release-audit",
+      "target": { "mode": "new" },
+      "model": {
+        "provider": "github-copilot",
+        "id": "gpt-5-mini",
+        "thinkingLevel": "medium"
+      },
+      "isolation": { "mode": "unisolated" }
+    },
+    "environment": {
+      "keys": ["CI", "PROVIDER_TOKEN"],
+      "digest": "sha256:fixture-digest",
+      "persistence": "memory-only",
+      "provisioned": true
+    },
+    "links": {
+      "self": "/v1/session/agent-a",
+      "rpc": "/v1/session/agent-a/rpc",
+      "apc": "/v1/session/agent-a/apc"
+    }
+  }
+}

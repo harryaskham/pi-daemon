@@ -564,7 +564,7 @@ implementation order. This list is a human-readable crosswalk.
 ### Foundation / release blockers
 
 - [ ] `bd-55ab9e` — parent epic: full standalone Pi session host API.
-- [ ] `bd-e2e717` — additive CRUD/RPC/ACP contract, schemas, fixtures, and
+- [x] `bd-e2e717` — additive CRUD/RPC/ACP contract, schemas, fixtures, and
   control-mode equivalence.
 - [ ] `bd-3a3104` — clean npm pack plus installed-bin execution correctness.
 - [ ] `bd-12c4ba` — current Pi SDK acquisition and compatibility policy.

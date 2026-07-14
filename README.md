@@ -122,6 +122,8 @@ service source into Cacophony.
 ## Documentation
 
 - [`PLAN.md`](PLAN.md) — architecture, protocol, rollout, and provisional beads
+- [`docs/session-api.md`](docs/session-api.md) — additive session CRUD, Pi RPC attach, and `/apc` ACP contract
+- [`session-api.schema.json`](session-api.schema.json) / [`session-api.openapi.json`](session-api.openapi.json) — machine-readable session API
 - [`SECURITY.md`](SECURITY.md) — trust boundary and vulnerability reporting
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — development workflow
 - [`CHANGELOG.md`](CHANGELOG.md) — release history

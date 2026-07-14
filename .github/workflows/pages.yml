@@ -6,6 +6,8 @@ on:
     paths:
       - "docs/**"
       - "protocol.schema.json"
+      - "session-api.schema.json"
+      - "session-api.openapi.json"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
 
@@ -26,8 +28,11 @@ jobs:
       - uses: actions/configure-pages@v5
         with:
           enablement: true
-      - name: Stage generated protocol contract
-        run: cp protocol.schema.json docs/protocol.schema.json
+      - name: Stage generated protocol contracts
+        run: |
+          cp protocol.schema.json docs/protocol.schema.json
+          cp session-api.schema.json docs/session-api.schema.json
+          cp session-api.openapi.json docs/session-api.openapi.json
       - uses: actions/jekyll-build-pages@v1
         with:
           source: ./docs

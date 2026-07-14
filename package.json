@@ -22,7 +22,13 @@
       "types": "./dist/protocol.d.ts",
       "import": "./dist/protocol.js"
     },
-    "./protocol.schema.json": "./dist/protocol.schema.json"
+    "./protocol.schema.json": "./dist/protocol.schema.json",
+    "./session-api": {
+      "types": "./dist/session-api.d.ts",
+      "import": "./dist/session-api.js"
+    },
+    "./session-api.schema.json": "./dist/session-api.schema.json",
+    "./session-api.openapi.json": "./dist/session-api.openapi.json"
   },
   "files": [
     "dist",
