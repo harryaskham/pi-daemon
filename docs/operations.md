@@ -61,7 +61,18 @@ Optional limits:
 --max-concurrent-turns N
 --max-session-queue-depth N
 --idle-session-ttl-ms N
+--max-connections N
+--max-in-flight-requests-per-connection N
+--max-line-bytes N
+--max-event-bytes N
+--max-response-bytes N
+--max-outbound-bytes-per-connection N
 ```
+
+The event and response limits include their complete NDJSON envelopes and
+trailing LF. Each must be no greater than the aggregate per-connection outbound
+byte limit. Oversized/non-serializable events become bounded `eventDropped`
+records; oversized/non-serializable responses become typed errors.
 
 The service emits structured JSON lifecycle logs to stderr. It never logs
 prompts or model output. A `pi_daemon_ready` record includes the socket, host

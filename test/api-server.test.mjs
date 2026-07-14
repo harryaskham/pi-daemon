@@ -9,6 +9,7 @@ import test from "node:test";
 import { SERVICE_BEARER_ENV, ServiceBearerAuthenticator } from "../dist/api-auth.js";
 import { ApiServer } from "../dist/api-server.js";
 import { runCli } from "../dist/cli.js";
+import { PiDaemonClient } from "../dist/client.js";
 import { Multiplexer } from "../dist/multiplexer.js";
 import { FileSessionCatalog } from "../dist/session-catalog.js";
 
@@ -202,18 +203,31 @@ test("serve CLI enables an ephemeral loopback API without logging the bearer", a
   const output = [];
   const errors = [];
   const io = { stdout: (text) => output.push(text), stderr: (text) => errors.push(text) };
+  const socketPath = join(temporaryRoot, "daemon.sock");
 
   const code = await runCli(
     [
       "serve",
       "--socket",
-      join(temporaryRoot, "daemon.sock"),
+      socketPath,
       "--state-dir",
       stateDir,
       "--allow-root",
       work,
       "--api-port",
       "0",
+      "--max-connections",
+      "3",
+      "--max-in-flight-requests-per-connection",
+      "2",
+      "--max-line-bytes",
+      "2048",
+      "--max-event-bytes",
+      "1024",
+      "--max-response-bytes",
+      "1536",
+      "--max-outbound-bytes-per-connection",
+      "4096",
     ],
     io,
     {
@@ -230,6 +244,25 @@ test("serve CLI enables an ephemeral loopback API without logging the bearer", a
           },
         );
         assert.equal(response.status, 200);
+        const client = await PiDaemonClient.connect({ socketPath });
+        try {
+          const handshake = await client.handshake("transport-limits");
+          assert.deepEqual(handshake.data.limits, {
+            maxConnections: 3,
+            maxInFlightRequestsPerConnection: 2,
+            maxLineBytes: 2048,
+            maxEventBytes: 1024,
+            maxResponseBytes: 1536,
+            maxOutboundBytesPerConnection: 4096,
+            multiplexer: {
+              maxSessions: 128,
+              maxConcurrentTurns: 4,
+              maxSessionQueueDepth: 32,
+            },
+          });
+        } finally {
+          client.close();
+        }
         await shutdown();
       },
     },

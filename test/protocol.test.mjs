@@ -6,7 +6,9 @@ import Ajv2020 from "ajv/dist/2020.js";
 import {
   NdjsonDecoder,
   PROTOCOL_VERSION,
+  ProtocolSerializationError,
   ProtocolValidationError,
+  encodeBoundedLine,
   encodeLine,
   errorResponse,
   eventEnvelope,
@@ -31,6 +33,7 @@ test("language-neutral fixtures validate against protocol.schema.json", async ()
     "detach.command.json",
     "success.response.json",
     "message.event.json",
+    "event-dropped.event.json",
     "error.response.json",
   ]) {
     const value = await fixture(name);
@@ -127,6 +130,51 @@ test("NDJSON decoder rejects malformed UTF-8 JSON and oversized lines", () => {
     () => new NdjsonDecoder().push(Uint8Array.from([0xff, 0x0a])),
     (error) => error instanceof ProtocolValidationError && error.code === "invalid_utf8",
   );
+});
+
+test("bounded encoder preflights size before JSON or Buffer allocation", () => {
+  const expected = Buffer.from(`${JSON.stringify({ text: "line\n😀" })}\n`, "utf8");
+  assert.deepEqual(encodeBoundedLine({ text: "line\n😀" }, expected.length), expected);
+
+  const originalStringify = JSON.stringify;
+  let stringifyCalled = false;
+  JSON.stringify = (...args) => {
+    stringifyCalled = true;
+    return originalStringify(...args);
+  };
+  let failure;
+  try {
+    encodeBoundedLine({ text: "x".repeat(8 * 1024 * 1024) }, 1024);
+  } catch (error) {
+    failure = error;
+  } finally {
+    JSON.stringify = originalStringify;
+  }
+  assert.equal(stringifyCalled, false, "oversized data must fail before JSON.stringify");
+  assert.ok(failure instanceof ProtocolSerializationError);
+  assert.equal(failure.code, "outbound_record_too_large");
+});
+
+test("bounded encoder rejects non-plain and non-serializable SDK data", () => {
+  const circular = {};
+  circular.self = circular;
+  const accessor = {};
+  Object.defineProperty(accessor, "value", { enumerable: true, get: () => "private" });
+  let toJsonCalled = false;
+  const custom = {
+    toJSON() {
+      toJsonCalled = true;
+      return { private: "x".repeat(1024 * 1024) };
+    },
+  };
+  for (const value of [{ value: 1n }, circular, accessor, { date: new Date() }, custom]) {
+    assert.throws(
+      () => encodeBoundedLine(value, 1024),
+      (error) =>
+        error instanceof ProtocolSerializationError && error.code === "outbound_not_serializable",
+    );
+  }
+  assert.equal(toJsonCalled, false, "custom toJSON must not execute during bounded encoding");
 });
 
 test("response and event builders omit absent optional fields", () => {

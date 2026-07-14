@@ -60,10 +60,9 @@ class EventFactory {
   }
 }
 
-const startServer = async (limits) => {
+const startServer = async (limits, factory = new EventFactory()) => {
   const directory = await mkdtemp(join(tmpdir(), "pi-daemon-socket-"));
   const socketPath = join(directory, "daemon.sock");
-  const factory = new EventFactory();
   const multiplexer = new Multiplexer({ factory, hostInstanceId: "host-test" });
   const server = new ProtocolServer({ socketPath, multiplexer, limits });
   await server.start();
@@ -228,6 +227,102 @@ test("closing a session clears every attachment before an ID and generation can 
     idempotencyKey: "key-reused-again",
   });
   assert.equal(observed.length, 0);
+});
+
+test("oversized and non-serializable events become bounded typed replacements", async (t) => {
+  const factory = {
+    async open(request) {
+      return {
+        async prompt(prompt) {
+          if (request.sessionId === "oversized") {
+            prompt.onEvent({ event: "messageUpdate", data: { delta: "x".repeat(4096) } });
+          } else if (request.sessionId === "nonserial") {
+            prompt.onEvent({ event: "toolUpdate", data: { value: 1n } });
+          } else {
+            prompt.onEvent({ event: "messageUpdate", data: { delta: "small" } });
+          }
+          return { text: "ok" };
+        },
+        dispose() {},
+      };
+    },
+  };
+  const harness = await startServer(
+    { maxEventBytes: 512, maxResponseBytes: 1024, maxOutboundBytesPerConnection: 4096 },
+    factory,
+  );
+  t.after(async () => harness.server.stop());
+  const client = await PiDaemonClient.connect({ socketPath: harness.socketPath });
+  t.after(() => client.close());
+  const events = [];
+  client.subscribe((event) => events.push(event));
+
+  for (const sessionId of ["oversized", "nonserial"]) {
+    await client.request(openCommand(sessionId));
+    await client.request(attachCommand(sessionId));
+    await client.request(wakeCommand(sessionId));
+  }
+  const dropped = events.filter((event) => event.event === "eventDropped");
+  assert.deepEqual(
+    dropped.map((event) => event.data.error.code),
+    ["outbound_record_too_large", "outbound_not_serializable"],
+  );
+
+  events.length = 0;
+  await client.request(openCommand("small"));
+  await client.request(attachCommand("small"));
+  await client.request(wakeCommand("small"));
+  assert.ok(events.some((event) => event.event === "messageUpdate"));
+  assert.equal(client.closed, false, "a dropped event must not disrupt other sessions");
+});
+
+test("oversized response data becomes a typed error without closing the connection", async (t) => {
+  const factory = {
+    async open() {
+      return {
+        async prompt() {
+          return { text: "x".repeat(4096) };
+        },
+        dispose() {},
+      };
+    },
+  };
+  const harness = await startServer(
+    { maxEventBytes: 1024, maxResponseBytes: 768, maxOutboundBytesPerConnection: 4096 },
+    factory,
+  );
+  t.after(async () => harness.server.stop());
+  const client = await PiDaemonClient.connect({ socketPath: harness.socketPath });
+  t.after(() => client.close());
+
+  await client.request(openCommand("response"));
+  await assert.rejects(
+    client.request(wakeCommand("response")),
+    (error) =>
+      error instanceof ProtocolResponseError && error.code === "outbound_record_too_large",
+  );
+  const status = await client.request({
+    protocolVersion: "1.0",
+    requestId: "status-after-overflow",
+    operation: "status",
+    sessionId: "response",
+    payload: {},
+  });
+  assert.equal(status.data.state, "idle");
+  assert.equal(client.closed, false);
+});
+
+test("protocol record limits cannot exceed the aggregate outbound queue", () => {
+  const multiplexer = new Multiplexer({ factory: new EventFactory() });
+  assert.throws(
+    () =>
+      new ProtocolServer({
+        socketPath: "/unused/pi-daemon.sock",
+        multiplexer,
+        limits: { maxEventBytes: 2048, maxOutboundBytesPerConnection: 1024 },
+      }),
+    /maxEventBytes must not exceed maxOutboundBytesPerConnection/,
+  );
 });
 
 test("malformed and oversized NDJSON receive an error then close", async (t) => {

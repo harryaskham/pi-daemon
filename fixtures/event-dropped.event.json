@@ -1,0 +1,21 @@
+{
+  "protocolVersion": "1.0",
+  "kind": "event",
+  "event": "eventDropped",
+  "hostInstanceId": "host-1",
+  "sessionId": "agent-a",
+  "generation": 2,
+  "sequence": 14,
+  "requestId": "wake-14",
+  "data": {
+    "originalEvent": "messageUpdate",
+    "error": {
+      "code": "outbound_record_too_large",
+      "message": "outbound record exceeds configured byte limit",
+      "retryable": false,
+      "details": {
+        "maxBytes": 1048576
+      }
+    }
+  }
+}

@@ -8,9 +8,11 @@ import {
   DEFAULT_MAX_LINE_BYTES,
   NdjsonDecoder,
   PROTOCOL_VERSION,
+  ProtocolSerializationError,
   ProtocolValidationError,
-  encodeLine,
+  encodeBoundedLine,
   errorResponse,
+  eventEnvelope,
   parseCommand,
   successResponse,
   type EventEnvelope,
@@ -24,6 +26,8 @@ export interface ProtocolServerLimits {
   maxConnections: number;
   maxInFlightRequestsPerConnection: number;
   maxLineBytes: number;
+  maxEventBytes: number;
+  maxResponseBytes: number;
   maxOutboundBytesPerConnection: number;
 }
 
@@ -31,6 +35,8 @@ export const DEFAULT_PROTOCOL_SERVER_LIMITS: Readonly<ProtocolServerLimits> = {
   maxConnections: 64,
   maxInFlightRequestsPerConnection: 64,
   maxLineBytes: DEFAULT_MAX_LINE_BYTES,
+  maxEventBytes: DEFAULT_MAX_LINE_BYTES,
+  maxResponseBytes: DEFAULT_MAX_LINE_BYTES,
   maxOutboundBytesPerConnection: 4 * 1024 * 1024,
 };
 
@@ -65,23 +71,46 @@ class ConnectionWriter {
     });
   }
 
-  send(value: unknown): boolean {
-    if (this.#closed || this.#socket.destroyed) return false;
-    const line = Buffer.from(encodeLine(value), "utf8");
-    if (line.length > this.#maxOutboundBytes) return this.#overflow();
+  send(value: unknown, maxRecordBytes: number): ProtocolSerializationError | undefined {
+    if (this.#closed || this.#socket.destroyed) return undefined;
+    let line: Buffer;
+    try {
+      line = encodeBoundedLine(value, maxRecordBytes);
+    } catch (error) {
+      if (error instanceof ProtocolSerializationError) return error;
+      return new ProtocolSerializationError(
+        "outbound_not_serializable",
+        "outbound record serialization failed",
+      );
+    }
 
     if (!this.#blocked && this.#queue.length === 0) {
       if (this.#socket.writableLength + line.length > this.#maxOutboundBytes) {
-        return this.#overflow();
+        this.#overflow();
+        return undefined;
       }
       this.#blocked = !this.#socket.write(line);
-      return true;
+      return undefined;
     }
 
-    if (this.#queuedBytes + line.length > this.#maxOutboundBytes) return this.#overflow();
+    if (
+      this.#socket.writableLength + this.#queuedBytes + line.length >
+      this.#maxOutboundBytes
+    ) {
+      this.#overflow();
+      return undefined;
+    }
     this.#queue.push(line);
     this.#queuedBytes += line.length;
-    return true;
+    return undefined;
+  }
+
+  destroy(error: Error): void {
+    if (this.#closed) return;
+    this.#closed = true;
+    this.#queue.length = 0;
+    this.#queuedBytes = 0;
+    this.#socket.destroy(error);
   }
 
   end(): void {
@@ -155,12 +184,26 @@ export class ProtocolServer {
         options.limits?.maxLineBytes ?? DEFAULT_PROTOCOL_SERVER_LIMITS.maxLineBytes,
         "maxLineBytes",
       ),
+      maxEventBytes: positiveInteger(
+        options.limits?.maxEventBytes ?? DEFAULT_PROTOCOL_SERVER_LIMITS.maxEventBytes,
+        "maxEventBytes",
+      ),
+      maxResponseBytes: positiveInteger(
+        options.limits?.maxResponseBytes ?? DEFAULT_PROTOCOL_SERVER_LIMITS.maxResponseBytes,
+        "maxResponseBytes",
+      ),
       maxOutboundBytesPerConnection: positiveInteger(
         options.limits?.maxOutboundBytesPerConnection ??
           DEFAULT_PROTOCOL_SERVER_LIMITS.maxOutboundBytesPerConnection,
         "maxOutboundBytesPerConnection",
       ),
     };
+    if (this.limits.maxEventBytes > this.limits.maxOutboundBytesPerConnection) {
+      throw new Error("maxEventBytes must not exceed maxOutboundBytesPerConnection");
+    }
+    if (this.limits.maxResponseBytes > this.limits.maxOutboundBytesPerConnection) {
+      throw new Error("maxResponseBytes must not exceed maxOutboundBytesPerConnection");
+    }
     this.#server = createServer((socket) => this.#accept(socket));
     this.#unsubscribe = this.#multiplexer.subscribe((event) => this.#publishEvent(event));
   }
@@ -280,7 +323,7 @@ export class ProtocolServer {
 
     connection.requestIds.add(command.requestId);
     void this.#dispatch(connection, command)
-      .then((response) => connection.writer.send(response))
+      .then((response) => this.#sendResponse(connection, response))
       .catch((error) => this.#sendError(connection, command.requestId, error, command))
       .finally(() => connection.requestIds.delete(command.requestId));
   }
@@ -400,10 +443,46 @@ export class ProtocolServer {
     }
   }
 
+  #sendResponse(connection: ClientConnection, response: ResponseEnvelope): void {
+    const failure = connection.writer.send(response, this.limits.maxResponseBytes);
+    if (failure === undefined) return;
+    const fallback = errorResponse(
+      response.requestId,
+      this.#multiplexer.hostInstanceId,
+      serializationErrorBody(failure, this.limits.maxResponseBytes),
+      response.sessionId === undefined ? {} : { sessionId: response.sessionId },
+    );
+    const fallbackFailure = connection.writer.send(fallback, this.limits.maxResponseBytes);
+    if (fallbackFailure !== undefined) {
+      connection.writer.destroy(new Error("serialization error response exceeds byte limit"));
+    }
+  }
+
+  #sendEvent(connection: ClientConnection, event: EventEnvelope): void {
+    const failure = connection.writer.send(event, this.limits.maxEventBytes);
+    if (failure === undefined) return;
+    const replacement = eventEnvelope({
+      event: "eventDropped",
+      hostInstanceId: event.hostInstanceId,
+      sessionId: event.sessionId,
+      generation: event.generation,
+      sequence: event.sequence,
+      ...(event.requestId === undefined ? {} : { requestId: event.requestId }),
+      data: {
+        originalEvent: event.event,
+        error: serializationErrorBody(failure, this.limits.maxEventBytes),
+      },
+    });
+    const fallbackFailure = connection.writer.send(replacement, this.limits.maxEventBytes);
+    if (fallbackFailure !== undefined) {
+      connection.writer.destroy(new Error("serialization overflow event exceeds byte limit"));
+    }
+  }
+
   #publishEvent(event: EventEnvelope): void {
     for (const connection of this.#connections) {
       if (connection.subscribedSessions.get(event.sessionId) === event.generation) {
-        connection.writer.send(event);
+        this.#sendEvent(connection, event);
       }
     }
   }
@@ -440,10 +519,26 @@ export class ProtocolServer {
     if (command !== undefined && "sessionId" in command && typeof command.sessionId === "string") {
       options.sessionId = command.sessionId;
     }
-    connection.writer.send(
+    this.#sendResponse(
+      connection,
       errorResponse(requestId, this.#multiplexer.hostInstanceId, body, options),
     );
   }
+}
+
+function serializationErrorBody(
+  error: ProtocolSerializationError,
+  maxBytes: number,
+): ProtocolErrorBody {
+  return {
+    code: error.code,
+    message:
+      error.code === "outbound_record_too_large"
+        ? "outbound record exceeds configured byte limit"
+        : "outbound record is not serializable",
+    retryable: false,
+    details: { maxBytes },
+  };
 }
 
 function protocolError(error: unknown): ProtocolErrorBody {

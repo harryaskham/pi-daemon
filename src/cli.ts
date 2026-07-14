@@ -126,6 +126,12 @@ async function runServe(
       "max-concurrent-turns",
       "max-session-queue-depth",
       "idle-session-ttl-ms",
+      "max-connections",
+      "max-in-flight-requests-per-connection",
+      "max-line-bytes",
+      "max-event-bytes",
+      "max-response-bytes",
+      "max-outbound-bytes-per-connection",
       "api-bind",
       "api-port",
       "api-token-file",
@@ -179,7 +185,42 @@ async function runServe(
     },
   });
   const recovery = await multiplexer.recover();
-  const server = new ProtocolServer({ socketPath, multiplexer });
+  const server = new ProtocolServer({
+    socketPath,
+    multiplexer,
+    limits: {
+      ...(options.has("max-connections")
+        ? { maxConnections: integerOption(options, "max-connections", 1) }
+        : {}),
+      ...(options.has("max-in-flight-requests-per-connection")
+        ? {
+            maxInFlightRequestsPerConnection: integerOption(
+              options,
+              "max-in-flight-requests-per-connection",
+              1,
+            ),
+          }
+        : {}),
+      ...(options.has("max-line-bytes")
+        ? { maxLineBytes: integerOption(options, "max-line-bytes", 1) }
+        : {}),
+      ...(options.has("max-event-bytes")
+        ? { maxEventBytes: integerOption(options, "max-event-bytes", 1) }
+        : {}),
+      ...(options.has("max-response-bytes")
+        ? { maxResponseBytes: integerOption(options, "max-response-bytes", 1) }
+        : {}),
+      ...(options.has("max-outbound-bytes-per-connection")
+        ? {
+            maxOutboundBytesPerConnection: integerOption(
+              options,
+              "max-outbound-bytes-per-connection",
+              1,
+            ),
+          }
+        : {}),
+    },
+  });
   let apiServer: ApiServer | undefined;
   let apiAddress: { host: string; port: number } | undefined;
   try {
@@ -336,6 +377,14 @@ Commands:
   probe    Perform a version/capability handshake.
   request  Send one low-level protocol command and print its response.
   version  Print the package version.
+
+Protocol transport limits:
+  --max-connections N
+  --max-in-flight-requests-per-connection N
+  --max-line-bytes N
+  --max-event-bytes N
+  --max-response-bytes N
+  --max-outbound-bytes-per-connection N
 
 API bearer sources (exactly one when --api-port is set):
   --api-token-file PATH, --api-token-fd FD, or PI_DAEMON_BEARER_TOKEN.

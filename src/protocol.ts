@@ -455,6 +455,206 @@ export function encodeLine(value: unknown): string {
   return `${JSON.stringify(value)}\n`;
 }
 
+export class ProtocolSerializationError extends Error {
+  readonly code: "outbound_record_too_large" | "outbound_not_serializable";
+  readonly details: Readonly<Record<string, unknown>>;
+
+  constructor(
+    code: ProtocolSerializationError["code"],
+    message: string,
+    details: Record<string, unknown> = {},
+  ) {
+    super(message);
+    this.name = "ProtocolSerializationError";
+    this.code = code;
+    this.details = details;
+  }
+}
+
+/**
+ * Encode one JSON record only after a structural pass proves its allocation is
+ * within `maxBytes` (including the trailing LF).
+ *
+ * Transport records are intentionally restricted to plain JSON data. This
+ * avoids invoking arbitrary `toJSON` methods or accessors while handling SDK
+ * events, and lets oversized strings/arrays fail before JSON.stringify or
+ * Buffer allocation. The final byte check is defense in depth against a
+ * serializer/estimator drift.
+ */
+export function encodeBoundedLine(value: unknown, maxBytes: number): Buffer {
+  if (!Number.isSafeInteger(maxBytes) || maxBytes < 1) {
+    throw new Error("maxBytes must be a positive safe integer");
+  }
+  try {
+    const prepared = prepareJsonValue(value, maxBytes - 1, new Set<object>());
+    const recordBytes = prepared.bytes + 1;
+    if (recordBytes > maxBytes) throwRecordTooLarge(maxBytes, recordBytes);
+    const encoded = JSON.stringify(prepared.value);
+    if (encoded === undefined) {
+      throw new ProtocolSerializationError(
+        "outbound_not_serializable",
+        "outbound record has no JSON representation",
+      );
+    }
+    const actualBytes = Buffer.byteLength(encoded, "utf8") + 1;
+    if (actualBytes > maxBytes || actualBytes !== recordBytes) {
+      throwRecordTooLarge(maxBytes, actualBytes);
+    }
+    return Buffer.from(`${encoded}\n`, "utf8");
+  } catch (error) {
+    if (error instanceof ProtocolSerializationError) throw error;
+    throw new ProtocolSerializationError(
+      "outbound_not_serializable",
+      "outbound record is not serializable plain JSON data",
+    );
+  }
+}
+
+interface PreparedJsonValue {
+  bytes: number;
+  value: unknown;
+}
+
+function prepareJsonValue(value: unknown, budget: number, seen: Set<object>): PreparedJsonValue {
+  switch (typeof value) {
+    case "string":
+      return { bytes: measureJsonStringBytes(value, budget), value };
+    case "number":
+      return {
+        bytes: boundedCount(Number.isFinite(value) ? String(value) : "null", budget),
+        value,
+      };
+    case "boolean":
+      return { bytes: boundedCount(value ? "true" : "false", budget), value };
+    case "object": {
+      if (value === null) return { bytes: boundedCount("null", budget), value: null };
+      if (seen.has(value)) {
+        throw new ProtocolSerializationError(
+          "outbound_not_serializable",
+          "outbound record contains a circular reference",
+        );
+      }
+      seen.add(value);
+      try {
+        const toJson = Object.getOwnPropertyDescriptor(value, "toJSON");
+        if (toJson !== undefined && (!("value" in toJson) || typeof toJson.value === "function")) {
+          throwNotSerializable("outbound record contains custom JSON serialization");
+        }
+        if (Array.isArray(value)) {
+          const normalized: unknown[] = [];
+          let bytes = boundedAdd(0, 2, budget);
+          for (let index = 0; index < value.length; index += 1) {
+            if (index > 0) bytes = boundedAdd(bytes, 1, budget);
+            const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+            if (descriptor === undefined) {
+              bytes = boundedAdd(bytes, 4, budget);
+              normalized.push(null);
+              continue;
+            }
+            if (!("value" in descriptor)) throwNotSerializable("array contains an accessor");
+            const prepared = prepareJsonValue(descriptor.value, budget - bytes, seen);
+            bytes = boundedAdd(bytes, prepared.bytes, budget);
+            normalized.push(prepared.value);
+          }
+          return { bytes, value: normalized };
+        }
+
+        const prototype = Object.getPrototypeOf(value);
+        if (prototype !== Object.prototype && prototype !== null) {
+          throwNotSerializable("outbound record contains a non-plain object");
+        }
+        const normalized: Record<string, unknown> = Object.create(null) as Record<string, unknown>;
+        let bytes = boundedAdd(0, 2, budget);
+        let emitted = 0;
+        for (const key in value) {
+          if (!Object.prototype.hasOwnProperty.call(value, key)) continue;
+          const descriptor = Object.getOwnPropertyDescriptor(value, key);
+          if (descriptor === undefined || !("value" in descriptor)) {
+            throwNotSerializable("object contains an accessor");
+          }
+          const child = descriptor.value;
+          if (["undefined", "function", "symbol"].includes(typeof child)) {
+            throwNotSerializable("object contains a non-JSON property value");
+          }
+          if (emitted > 0) bytes = boundedAdd(bytes, 1, budget);
+          bytes = boundedAdd(bytes, measureJsonStringBytes(key, budget - bytes), budget);
+          bytes = boundedAdd(bytes, 1, budget);
+          const prepared = prepareJsonValue(child, budget - bytes, seen);
+          bytes = boundedAdd(bytes, prepared.bytes, budget);
+          normalized[key] = prepared.value;
+          emitted += 1;
+        }
+        return { bytes, value: normalized };
+      } finally {
+        seen.delete(value);
+      }
+    }
+    case "bigint":
+      throwNotSerializable("outbound record contains a bigint");
+    case "undefined":
+    case "function":
+    case "symbol":
+      throwNotSerializable("outbound record has no JSON representation");
+  }
+}
+
+function measureJsonStringBytes(value: string, budget: number): number {
+  let bytes = boundedAdd(0, 2, budget);
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    let addition: number;
+    if (code === 0x22 || code === 0x5c || [0x08, 0x09, 0x0a, 0x0c, 0x0d].includes(code)) {
+      addition = 2;
+    } else if (code <= 0x1f) {
+      addition = 6;
+    } else if (code <= 0x7f) {
+      addition = 1;
+    } else if (code <= 0x7ff) {
+      addition = 2;
+    } else if (code >= 0xd800 && code <= 0xdbff) {
+      const next = value.charCodeAt(index + 1);
+      if (next >= 0xdc00 && next <= 0xdfff) {
+        addition = 4;
+        index += 1;
+      } else {
+        addition = 6;
+      }
+    } else if (code >= 0xdc00 && code <= 0xdfff) {
+      addition = 6;
+    } else {
+      addition = 3;
+    }
+    bytes = boundedAdd(bytes, addition, budget);
+  }
+  return bytes;
+}
+
+function boundedCount(value: string, budget: number): number {
+  const bytes = Buffer.byteLength(value, "utf8");
+  if (bytes > budget) throwRecordTooLarge(budget + 1, bytes + 1);
+  return bytes;
+}
+
+function boundedAdd(current: number, addition: number, budget: number): number {
+  const total = current + addition;
+  if (!Number.isSafeInteger(total) || total > budget) {
+    throwRecordTooLarge(budget + 1, Number.isSafeInteger(total) ? total + 1 : undefined);
+  }
+  return total;
+}
+
+function throwRecordTooLarge(maxBytes: number, recordBytes?: number): never {
+  throw new ProtocolSerializationError(
+    "outbound_record_too_large",
+    "outbound record exceeds byte limit",
+    { maxBytes, ...(recordBytes === undefined ? {} : { recordBytes }) },
+  );
+}
+
+function throwNotSerializable(reason: string): never {
+  throw new ProtocolSerializationError("outbound_not_serializable", reason);
+}
+
 /** Byte-bounded LF-only NDJSON decoder with fatal UTF-8 and JSON errors. */
 export class NdjsonDecoder {
   readonly #maxLineBytes: number;

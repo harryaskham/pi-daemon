@@ -90,10 +90,21 @@ record.
 
 ## Backpressure
 
-The server bounds connections, in-flight commands, input lines, and outbound
-bytes. The multiplexer bounds resident sessions, global concurrent turns, and
+The server bounds connections, in-flight commands, input lines, individual
+event records, individual response records, and total queued outbound bytes.
+Outbound records pass a plain-JSON structural byte measurement before
+`JSON.stringify` or `Buffer` allocation. Oversized response data is replaced by
+a typed `outbound_record_too_large` error; non-serializable response data becomes
+`outbound_not_serializable`. An oversized or non-serializable SDK event is
+replaced at the same sequence by an `eventDropped` event carrying only the safe
+error code, configured limit, and original event name. This preserves the
+connection and delivery for other sessions instead of letting one event consume
+the process or connection budget.
+
+The multiplexer bounds resident sessions, global concurrent turns, and
 per-session queued turns. Each durable journal record is capped at 1 MiB, so an
 oversized prompt is rejected before acceptance and an oversized terminal result
 leaves the accepted request safely indeterminate instead of growing retained
-state without limit. Slow readers are disconnected rather than allowed to grow
-process memory without limit.
+state without limit. Slow readers whose aggregate queue exceeds its separate
+bound are disconnected rather than allowed to grow process memory without
+limit.
