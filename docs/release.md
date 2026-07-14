@@ -26,7 +26,8 @@ explicit operator action.
 4. Run `npm ci --ignore-scripts`, `npm test`, and `npm run pack:check`.
 5. Run the optional credentialed acceptance harness when model/provider behavior changed.
 6. Confirm Linux and macOS Nix checks and `nix run .#pi-daemon -- version` are green.
-7. Confirm Pages deploys and the protocol schema link resolves.
+7. Confirm `nix build .#pages` succeeds, the Docker-free Pages workflow deploys,
+   and the protocol schema link resolves.
 8. Verify no prompt, model output, credential, environment, or private path is in logs/artifacts.
 
 The release workflow installs the exact generated npm tarball and runs its

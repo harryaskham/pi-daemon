@@ -28,16 +28,16 @@ jobs:
       - uses: actions/configure-pages@v5
         with:
           enablement: true
-      - name: Stage generated protocol contracts
+      - name: Build static site with pinned Nix toolchain
         run: |
-          cp protocol.schema.json docs/protocol.schema.json
-          cp session-api.schema.json docs/session-api.schema.json
-          cp session-api.openapi.json docs/session-api.openapi.json
-      - uses: actions/jekyll-build-pages@v1
-        with:
-          source: ./docs
-          destination: ./_site
+          nix build .#pages --print-build-logs
+          mkdir -p _site
+          cp -RL result/. _site/
+          test -s _site/index.html
+          test -s _site/protocol.schema.json
       - uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./_site
 
   deploy:
     environment:

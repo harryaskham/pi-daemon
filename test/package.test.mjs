@@ -7,6 +7,7 @@ import {
   mkdir,
   mkdtemp,
   readFile,
+  realpath,
   rm,
   symlink,
   writeFile,
@@ -59,6 +60,11 @@ const stagePackedPackageWithoutRegistry = async (tarball, consumer, temporaryRoo
   await symlink(
     join(repositoryRoot, "node_modules", "@earendil-works"),
     join(consumer, "node_modules", "@earendil-works"),
+    process.platform === "win32" ? "junction" : "dir",
+  );
+  await symlink(
+    join(repositoryRoot, "node_modules", "@agentclientprotocol"),
+    join(consumer, "node_modules", "@agentclientprotocol"),
     process.platform === "win32" ? "junction" : "dir",
   );
   await symlink(
@@ -194,7 +200,14 @@ test(
       ".bin",
       process.platform === "win32" ? "pi-daemon.cmd" : "pi-daemon",
     );
-    const direct = await run(bin, ["version"], { cwd: consumer });
+    await access(bin, constants.X_OK);
+    if (process.platform !== "win32") {
+      assert.equal((await realpath(bin)).endsWith("/dist/cli.js"), true);
+    }
+    const direct =
+      process.platform === "win32"
+        ? await run(bin, ["version"], { cwd: consumer })
+        : await run(process.execPath, [bin, "version"], { cwd: consumer });
     assert.equal(direct.stdout, `${packageVersion}\n`);
 
     const rpcBin = join(
@@ -203,14 +216,36 @@ test(
       ".bin",
       process.platform === "win32" ? "pi-daemon-rpc.cmd" : "pi-daemon-rpc",
     );
-    const rpcVersion = await run(rpcBin, ["--version"], { cwd: consumer });
+    await access(rpcBin, constants.X_OK);
+    if (process.platform !== "win32") {
+      assert.equal((await realpath(rpcBin)).endsWith("/dist/rpc-stdio-cli.js"), true);
+    }
+    const rpcVersion =
+      process.platform === "win32"
+        ? await run(rpcBin, ["--version"], { cwd: consumer })
+        : await run(process.execPath, [rpcBin, "--version"], { cwd: consumer });
     assert.equal(rpcVersion.stdout, `${packageVersion}\n`);
 
-    const npmExec = await run(npmCommand, ["exec", "--offline", "--", "pi-daemon", "version"], {
-      cwd: consumer,
-      env: npmEnvironment,
-    });
-    assert.equal(npmExec.stdout, `${packageVersion}\n`);
+    // In a normal npm install, also exercise npm's platform-specific bin shim.
+    // Nix build sandboxes intentionally have no /usr/bin/env, so they execute
+    // the resolved bin target with the pinned Node instead.
+    let hasSystemEnv = process.platform === "win32";
+    if (!hasSystemEnv) {
+      try {
+        await access("/usr/bin/env", constants.X_OK);
+        hasSystemEnv = true;
+      } catch {
+        hasSystemEnv = false;
+      }
+    }
+    if (canInstallFromRegistryCache && hasSystemEnv) {
+      const npmExec = await run(
+        npmCommand,
+        ["exec", "--offline", "--", "pi-daemon", "version"],
+        { cwd: consumer, env: npmEnvironment },
+      );
+      assert.equal(npmExec.stdout, `${packageVersion}\n`);
+    }
 
     const importCheck = join(consumer, "package-import-check.mjs");
     await writeFile(

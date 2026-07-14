@@ -20,6 +20,18 @@ const copyReleaseFixture = async (root) => {
   await cp(join(repositoryRoot, "src/version.ts"), join(root, "src/version.ts"));
 };
 
+test("Pages workflow uses the pinned Nix site build without Docker actions", async () => {
+  const workflow = await readFile(join(repositoryRoot, ".github/workflows/pages.yml"), "utf8");
+  const flake = await readFile(join(repositoryRoot, "flake.nix"), "utf8");
+  assert.doesNotMatch(workflow, /jekyll-build-pages|docker\s+(?:pull|run)|uses:\s*docker/i);
+  assert.match(workflow, /nix build \.#pages --print-build-logs/);
+  assert.match(workflow, /actions\/upload-pages-artifact@v3/);
+  assert.match(workflow, /runs-on: \[self-hosted, nix, x86_64-linux\]/);
+  assert.match(flake, /pages = pkgs\.runCommand "pi-daemon-pages"/);
+  assert.match(flake, /nativeBuildInputs = \[pkgs\.pandoc\]/);
+  assert.match(flake, /pages = self\.packages\.\$\{system\}\.pages/);
+});
+
 test("release invariants reject metadata, tag, changelog, and artifact drift", async (t) => {
   const root = await mkdtemp(join(tmpdir(), "pi-daemon-release-"));
   t.after(async () => rm(root, { recursive: true, force: true }));

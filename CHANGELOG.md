@@ -26,6 +26,7 @@ Initial standalone implementation:
 - canonical cwd allowlist and state/auth path isolation
 - bounded background recovery, truthful nondestructive readiness/probe status, whole-shutdown deadlines, safe idle sweep, metrics, and path-redacted lifecycle logs
 - reproducible Nix package/app/dev shell and npm package
-- Linux/macOS CI, release automation, Dependabot, and GitHub Pages
+- Linux/macOS CI, release automation, Dependabot, and Docker-free Nix/Pandoc GitHub Pages
+- hermetic Linux/Nix installed-bin checks that resolve npm links through the pinned Node runtime
 - credential-free full-host acceptance across installed artifacts, configured CRUD, RPC/ACP/stdio, restart/replay, security, and zero per-session child processes
 - optional live-provider two-session zero-child-process acceptance harness
