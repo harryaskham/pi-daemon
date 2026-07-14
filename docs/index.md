@@ -21,6 +21,7 @@ component.
 
 - [Protocol](protocol) — NDJSON operations, event flow, generations, and retry semantics
 - [Session API](session-api) — additive CRUD, multi-reader Pi RPC attach, and `/apc` ACP contract
+- [Session configuration](session-configuration) — Pi CLI mapping, environment handling, resources, tools, and honest isolation limits
 - [Operations](operations) — install, serve, probe, status, drain, and recovery
 - [Security](security) — shared-process trust boundary and root policy
 - [Integration](integration) — client and Nix consumer examples

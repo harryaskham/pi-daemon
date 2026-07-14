@@ -7,9 +7,13 @@ import {
   AuthStorage,
   createAgentSession,
   createAgentSessionRuntime,
+  createAgentSessionServices,
+  createBashTool,
   createExtensionRuntime,
   getAgentDir,
   ModelRegistry,
+  resolveCliModel,
+  resolveModelScopeWithDiagnostics,
   SessionManager,
   SettingsManager,
   type AgentSession,
@@ -19,9 +23,16 @@ import {
   type CreateAgentSessionResult,
   type CreateAgentSessionRuntimeFactory,
   type ResourceLoader,
+  type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 
 import { encodedSessionId, ensurePrivateDirectory } from "./durability.js";
+import {
+  extensionFlagValues,
+  providerApiKeyFromEnvironment,
+  toolConfiguration,
+  type PreparedSessionRuntimeOptions,
+} from "./session-config.js";
 import type {
   AdapterEvent,
   PromptRequest,
@@ -91,50 +102,104 @@ export class PiSessionFactory implements SessionFactory {
   }
 
   async open(request: SessionOpenRequest): Promise<SessionAdapter> {
-    const [stateRoot, agentRoot, ...allowedRoots] = await Promise.all([
-      realpath(this.#stateDir),
-      realpath(this.agentDir),
-      ...this.#allowedRoots.map(async (root) => realpath(root)),
-    ]);
-    const validateCwd = async (candidate: string): Promise<string> =>
-      validateRuntimeCwd(candidate, stateRoot, agentRoot, allowedRoots);
-    const cwd = await validateCwd(request.cwd);
-    if (request.agentDir !== undefined && resolve(request.agentDir) !== this.agentDir) {
+    const runtimeOptions = request.runtimeOptions;
+    const configuredSpec = runtimeOptions?.persistedSpec;
+    const selectedAgentDir = resolve(configuredSpec?.agentDir ?? request.agentDir ?? this.agentDir);
+    if (runtimeOptions === undefined && selectedAgentDir !== this.agentDir) {
       throw new PiAdapterError(
         "agent_dir_mismatch",
-        "logical sessions cannot override the shared host agentDir",
+        "legacy no-tools sessions cannot override the shared host agentDir",
       );
     }
+    await ensurePrivateDirectory(selectedAgentDir, "Pi agent directory");
+    if (selectedAgentDir !== this.agentDir) {
+      validatePrivateAuthFile(join(selectedAgentDir, "auth.json"));
+    }
+
+    const roots = await Promise.all([
+      realpath(this.#stateDir),
+      realpath(this.agentDir),
+      realpath(selectedAgentDir),
+      ...this.#allowedRoots.map(async (root) => realpath(root)),
+    ]);
+    const [stateRoot, defaultAgentRoot, selectedAgentRoot, ...allowedRoots] = roots;
+    const validateCwd = async (candidate: string): Promise<string> =>
+      validateRuntimeCwd(
+        candidate,
+        stateRoot!,
+        [defaultAgentRoot!, selectedAgentRoot!],
+        allowedRoots,
+      );
+    const cwd = await validateCwd(configuredSpec?.cwd ?? request.cwd);
 
     const sessionsRoot = join(this.#stateDir, "sessions");
     const logicalSessionRoot = join(sessionsRoot, encodedSessionId(request.sessionId));
-    const sessionDir = join(logicalSessionRoot, "pi");
+    const configuredSessionDir = configuredSpec?.target.sessionDir;
+    const sessionDir = configuredSessionDir ?? join(logicalSessionRoot, "pi");
     await ensurePrivateDirectory(this.#stateDir, "state directory");
     await ensurePrivateDirectory(sessionsRoot, "sessions directory");
     await ensurePrivateDirectory(logicalSessionRoot, "logical session directory");
     await ensurePrivateDirectory(sessionDir, "Pi session directory");
     const canonicalSessionDir = await realpath(sessionDir);
+    validateSessionRoot(canonicalSessionDir, cwd, selectedAgentRoot!);
     const sessionManager = await createSessionManager(request, cwd, canonicalSessionDir);
 
-    const requestedModel = request.model;
-    const model =
-      requestedModel === undefined
-        ? this.modelRegistry.getAvailable()[0]
-        : this.modelRegistry.find(requestedModel.provider, requestedModel.id);
-    if (model === undefined) {
-      throw new PiAdapterError(
-        "model_unavailable",
-        requestedModel === undefined
-          ? "no authenticated Pi model is available"
-          : `Pi model is unavailable: ${requestedModel.provider}/${requestedModel.id}`,
-      );
+    const baseAuthStorage =
+      selectedAgentDir === this.agentDir
+        ? this.authStorage
+        : AuthStorage.create(join(selectedAgentDir, "auth.json"));
+    const authStorage = scopedAuthStorage(baseAuthStorage, runtimeOptions);
+    const modelRegistry =
+      authStorage === this.authStorage && selectedAgentDir === this.agentDir
+        ? this.modelRegistry
+        : ModelRegistry.create(authStorage, join(selectedAgentDir, "models.json"));
+    const configuredModel = configuredSpec?.model;
+    const resolvedModel =
+      configuredModel === undefined
+        ? undefined
+        : resolveCliModel({
+            ...(configuredModel.provider === undefined
+              ? {}
+              : { cliProvider: configuredModel.provider }),
+            ...(configuredModel.id === undefined ? {} : { cliModel: configuredModel.id }),
+            ...(configuredModel.thinkingLevel === undefined
+              ? {}
+              : { cliThinking: configuredModel.thinkingLevel }),
+            modelRegistry,
+          });
+    if (resolvedModel?.error !== undefined) {
+      throw new PiAdapterError("model_unavailable", resolvedModel.error);
     }
-    if (!this.modelRegistry.hasConfiguredAuth(model)) {
+    const scope =
+      configuredModel?.scopedModels === undefined
+        ? { scopedModels: [], diagnostics: [] }
+        : await resolveModelScopeWithDiagnostics(configuredModel.scopedModels, modelRegistry);
+    const legacyModel =
+      request.model === undefined
+        ? undefined
+        : modelRegistry.find(request.model.provider, request.model.id);
+    const model =
+      resolvedModel?.model ??
+      legacyModel ??
+      scope.scopedModels[0]?.model ??
+      (configuredSpec === undefined ? modelRegistry.getAvailable()[0] : undefined);
+    if (configuredSpec === undefined && model === undefined) {
+      throw new PiAdapterError("model_unavailable", "no authenticated Pi model is available");
+    }
+    if (model !== undefined && !modelRegistry.hasConfiguredAuth(model)) {
       throw new PiAdapterError(
         "model_auth_unavailable",
         `authentication is not configured for provider: ${model.provider}`,
       );
     }
+    const thinkingLevel =
+      resolvedModel?.thinkingLevel ?? configuredModel?.thinkingLevel ?? request.model?.thinkingLevel;
+    const configuredTools =
+      configuredSpec === undefined
+        ? { noTools: "all" as const, tools: [] as string[], excludeTools: undefined }
+        : toolConfiguration(configuredSpec);
+    const configuredExtensionFlags =
+      configuredSpec === undefined ? undefined : extensionFlagValues(configuredSpec);
 
     const createRuntime: CreateAgentSessionRuntimeFactory = async ({
       cwd: runtimeCwd,
@@ -143,57 +208,92 @@ export class PiSessionFactory implements SessionFactory {
       sessionStartEvent,
     }) => {
       const canonicalCwd = await validateCwd(runtimeCwd);
-      if (resolve(runtimeAgentDir) !== this.agentDir) {
+      if (resolve(runtimeAgentDir) !== selectedAgentDir) {
         throw new PiAdapterError(
           "agent_dir_mismatch",
-          "runtime replacement cannot override the shared host agentDir",
+          "runtime replacement cannot override the configured session agentDir",
         );
       }
-      const settingsManager = SettingsManager.inMemory();
-      const resourceLoader = new LockedResourceLoader(request.resources?.systemPrompt);
+      const settingsManager =
+        configuredSpec === undefined
+          ? SettingsManager.inMemory()
+          : SettingsManager.inMemory(
+              configuredSpec.settings as Parameters<typeof SettingsManager.inMemory>[0],
+              {
+                projectTrusted: configuredSpec.resources?.projectTrust === "approve",
+              },
+            );
+      const services =
+        configuredSpec === undefined
+          ? legacyServices(
+              canonicalCwd,
+              selectedAgentDir,
+              authStorage,
+              modelRegistry,
+              settingsManager,
+              request.resources?.systemPrompt,
+            )
+          : await createAgentSessionServices({
+              cwd: canonicalCwd,
+              agentDir: selectedAgentDir,
+              authStorage,
+              modelRegistry,
+              settingsManager,
+              ...(configuredExtensionFlags === undefined
+                ? {}
+                : { extensionFlagValues: configuredExtensionFlags }),
+              resourceLoaderOptions: resourceLoaderOptions(configuredSpec),
+            });
+      services.diagnostics.push(
+        ...scope.diagnostics.map((diagnostic) => ({
+          type: "warning" as const,
+          message: diagnostic.message,
+        })),
+      );
       const materializedSessionManager = await materializeSessionManager(
         runtimeSessionManager,
         canonicalCwd,
       );
+      const customTools =
+        runtimeOptions === undefined
+          ? []
+          : environmentToolOverrides(
+              canonicalCwd,
+              runtimeOptions.environmentOverlay,
+              runtimeOptions.persistedSpec,
+            );
       const result = await this.#createSession({
         cwd: canonicalCwd,
-        agentDir: this.agentDir,
-        authStorage: this.authStorage,
-        modelRegistry: this.modelRegistry,
-        model,
-        ...(request.model?.thinkingLevel === undefined
+        agentDir: selectedAgentDir,
+        authStorage,
+        modelRegistry,
+        ...(model === undefined ? {} : { model }),
+        ...(thinkingLevel === undefined ? {} : { thinkingLevel }),
+        ...(scope.scopedModels.length === 0 ? {} : { scopedModels: scope.scopedModels }),
+        ...(configuredTools.noTools === undefined ? {} : { noTools: configuredTools.noTools }),
+        ...(configuredTools.tools === undefined ? {} : { tools: configuredTools.tools }),
+        ...(configuredTools.excludeTools === undefined
           ? {}
-          : { thinkingLevel: request.model.thinkingLevel }),
-        noTools: "all",
-        tools: [],
-        customTools: [],
-        resourceLoader,
+          : { excludeTools: configuredTools.excludeTools }),
+        customTools,
+        resourceLoader: services.resourceLoader,
         sessionManager: materializedSessionManager,
         settingsManager,
         ...(sessionStartEvent === undefined ? {} : { sessionStartEvent }),
       });
-      if (result.session.getActiveToolNames().length !== 0) {
+      if (runtimeOptions === undefined && result.session.getActiveToolNames().length !== 0) {
         result.session.dispose();
         throw new PiAdapterError(
           "unsafe_tool_profile",
           "Pi SDK enabled tools despite the no-tools resource policy",
         );
       }
-      const services: AgentSessionServices = {
-        cwd: canonicalCwd,
-        agentDir: this.agentDir,
-        authStorage: this.authStorage,
-        modelRegistry: this.modelRegistry,
-        settingsManager,
-        resourceLoader,
-        diagnostics: [],
-      };
       return { ...result, services, diagnostics: services.diagnostics };
     };
 
     const runtime = await createAgentSessionRuntime(createRuntime, {
       cwd,
-      agentDir: this.agentDir,
+      agentDir: selectedAgentDir,
       sessionManager,
     });
     try {
@@ -472,6 +572,129 @@ class LockedResourceLoader implements ResourceLoader {
   async reload(): Promise<void> {}
 }
 
+function legacyServices(
+  cwd: string,
+  agentDir: string,
+  authStorage: AuthStorage,
+  modelRegistry: ModelRegistry,
+  settingsManager: SettingsManager,
+  systemPrompt: string | undefined,
+): AgentSessionServices {
+  return {
+    cwd,
+    agentDir,
+    authStorage,
+    modelRegistry,
+    settingsManager,
+    resourceLoader: new LockedResourceLoader(systemPrompt),
+    diagnostics: [],
+  };
+}
+
+function resourceLoaderOptions(
+  spec: PreparedSessionRuntimeOptions["persistedSpec"],
+): NonNullable<Parameters<typeof createAgentSessionServices>[0]["resourceLoaderOptions"]> {
+  const resources = spec.resources;
+  const approved = resources?.projectTrust === "approve";
+  const extensions = resources?.extensions ?? [];
+  const skills = resources?.skills ?? [];
+  const prompts = resources?.promptTemplates ?? [];
+  const themes = resources?.themes ?? [];
+  return {
+    additionalExtensionPaths: [...extensions],
+    additionalSkillPaths: [...skills],
+    additionalPromptTemplatePaths: [...prompts],
+    additionalThemePaths: [...themes],
+    noExtensions: resources?.noExtensions === true || (!approved && extensions.length === 0),
+    noSkills: resources?.noSkills === true || (!approved && skills.length === 0),
+    noPromptTemplates:
+      resources?.noPromptTemplates === true || (!approved && prompts.length === 0),
+    noThemes: resources?.noThemes === true || (!approved && themes.length === 0),
+    noContextFiles: resources?.noContextFiles === true || !approved,
+    ...(resources?.systemPrompt === undefined ? {} : { systemPrompt: resources.systemPrompt }),
+    ...(resources?.appendSystemPrompt === undefined
+      ? {}
+      : { appendSystemPrompt: [...resources.appendSystemPrompt] }),
+  };
+}
+
+function scopedAuthStorage(
+  base: AuthStorage,
+  runtimeOptions: PreparedSessionRuntimeOptions | undefined,
+): AuthStorage {
+  if (runtimeOptions === undefined || Object.keys(runtimeOptions.environmentOverlay).length === 0) {
+    return base;
+  }
+  const scoped = AuthStorage.inMemory(base.getAll());
+  const provider = runtimeOptions.persistedSpec.model?.provider;
+  if (provider === undefined) return scoped;
+  const environment = { ...runtimeOptions.environmentOverlay };
+  const apiKey = providerApiKeyFromEnvironment(provider, runtimeOptions.environmentOverlay);
+  const existing = scoped.get(provider);
+  if (apiKey !== undefined) {
+    scoped.set(provider, { type: "api_key", key: apiKey, env: environment });
+  } else if (existing?.type === "api_key") {
+    scoped.set(provider, {
+      ...existing,
+      env: { ...(existing.env ?? {}), ...environment },
+    });
+  }
+  return scoped;
+}
+
+function environmentToolOverrides(
+  cwd: string,
+  environment: Readonly<Record<string, string>>,
+  spec: PreparedSessionRuntimeOptions["persistedSpec"],
+): ToolDefinition[] {
+  if (Object.keys(environment).length === 0 || !configuredBashEnabled(spec)) return [];
+  const bash = createBashTool(cwd, {
+    spawnHook: (context) => ({
+      ...context,
+      env: { ...context.env, ...environment },
+    }),
+  });
+  return [
+    {
+      ...bash,
+      label: "bash",
+      promptSnippet: "Execute shell commands in the configured session environment",
+      promptGuidelines: [
+        "Use bash for shell commands; the daemon applies the session-scoped environment only to the child process.",
+      ],
+    } as unknown as ToolDefinition,
+  ];
+}
+
+function configuredBashEnabled(spec: PreparedSessionRuntimeOptions["persistedSpec"]): boolean {
+  const tools = spec.tools;
+  const excluded = tools?.exclude?.includes("bash") ?? false;
+  if (excluded) return false;
+  switch (tools?.mode ?? "default") {
+    case "default":
+      return true;
+    case "none":
+    case "no-builtin":
+      return false;
+    case "allowlist":
+      return tools?.include?.includes("bash") ?? false;
+  }
+}
+
+function validateSessionRoot(sessionRoot: string, cwd: string, agentRoot: string): void {
+  if (
+    isWithin(cwd, sessionRoot) ||
+    isWithin(sessionRoot, cwd) ||
+    isWithin(agentRoot, sessionRoot) ||
+    isWithin(sessionRoot, agentRoot)
+  ) {
+    throw new PiAdapterError(
+      "authority_root_overlap",
+      "Pi session storage must not overlap the workload or credential roots",
+    );
+  }
+}
+
 async function materializeSessionManager(
   sessionManager: SessionManager,
   cwd: string,
@@ -533,7 +756,11 @@ async function createSessionManager(
   cwd: string,
   sessionDir: string,
 ): Promise<SessionManager> {
-  switch (request.session.mode) {
+  const target = request.runtimeOptions?.persistedSpec.target ?? request.session;
+  if (target === undefined) {
+    throw new PiAdapterError("session_target_required", "session target is required");
+  }
+  switch (target.mode) {
     case "memory":
       return SessionManager.inMemory(cwd);
     case "new":
@@ -541,7 +768,7 @@ async function createSessionManager(
     case "continue":
       return SessionManager.continueRecent(cwd, sessionDir);
     case "open": {
-      const configuredPath = request.session.path;
+      const configuredPath = target.path;
       if (configuredPath === undefined) {
         throw new PiAdapterError("session_path_required", "open mode requires a session path");
       }
@@ -551,10 +778,20 @@ async function createSessionManager(
       if (!isWithin(sessionDir, path)) {
         throw new PiAdapterError(
           "session_path_outside_state",
-          "session path must be inside the logical session's state directory",
+          "session path must be inside the configured session directory",
         );
       }
       return SessionManager.open(path, sessionDir, cwd);
+    }
+    case "fork": {
+      const source = request.runtimeOptions?.resolvedSourceSessionPath;
+      if (source === undefined) {
+        throw new PiAdapterError(
+          "session_target_unresolved",
+          "fork sourceSession must resolve to a retained Pi session path before open",
+        );
+      }
+      return SessionManager.forkFrom(await realpath(source), cwd, sessionDir);
     }
   }
 }
@@ -562,7 +799,7 @@ async function createSessionManager(
 async function validateRuntimeCwd(
   candidate: string,
   stateRoot: string,
-  agentRoot: string,
+  agentRoots: string[],
   allowedRoots: string[],
 ): Promise<string> {
   const cwd = await realpath(candidate);
@@ -575,8 +812,7 @@ async function validateRuntimeCwd(
   if (
     isWithin(cwd, stateRoot) ||
     isWithin(stateRoot, cwd) ||
-    isWithin(cwd, agentRoot) ||
-    isWithin(agentRoot, cwd)
+    agentRoots.some((agentRoot) => isWithin(cwd, agentRoot) || isWithin(agentRoot, cwd))
   ) {
     throw new PiAdapterError(
       "authority_root_overlap",

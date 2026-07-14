@@ -4,9 +4,14 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import test from "node:test";
 
-import { AuthStorage, ModelRegistry } from "@earendil-works/pi-coding-agent";
+import {
+  AuthStorage,
+  ModelRegistry,
+  createAgentSession,
+} from "@earendil-works/pi-coding-agent";
 
 import { PiAdapterError, PiSessionAdapter, PiSessionFactory } from "../dist/pi-adapter.js";
+import { parseSessionConfiguration } from "../dist/session-config.js";
 
 const temporaryDirectory = () => mkdtemp(join(tmpdir(), "pi-daemon-adapter-"));
 
@@ -218,6 +223,130 @@ test("factory shares auth/models while isolating session, settings, and locked r
   await second.dispose();
   assert.equal(sessions[0].disposed, 1);
   assert.equal(sessions[1].disposed, 1);
+});
+
+test("configured factory applies scoped model auth, settings, resources, and tool environment", async () => {
+  const stateDir = await temporaryDirectory();
+  const agentDir = await temporaryDirectory();
+  const scopedAgentDir = await temporaryDirectory();
+  const cwd = await temporaryDirectory();
+  const extensionPath = join(cwd, "safe-extension.ts");
+  await writeFile(extensionPath, "export default function () {}\n");
+
+  const seedRegistry = ModelRegistry.inMemory(AuthStorage.inMemory());
+  const model = seedRegistry.getAll().find((candidate) => candidate.provider === "openai");
+  assert.ok(model, "Pi built-in registry must expose an OpenAI model");
+  const authStorage = AuthStorage.inMemory({
+    [model.provider]: { type: "api_key", key: "shared-key" },
+  });
+  const modelRegistry = ModelRegistry.inMemory(authStorage);
+  const previous = process.env.OPENAI_API_KEY;
+  delete process.env.OPENAI_API_KEY;
+  const captures = [];
+  const factory = new PiSessionFactory({
+    stateDir,
+    agentDir,
+    allowedRoots: [cwd],
+    authStorage,
+    modelRegistry,
+    async createSession(options) {
+      captures.push(options);
+      return {
+        session: new FakePiSession("configured-sdk", options.model, options.sessionManager),
+        extensionsResult: options.resourceLoader.getExtensions(),
+      };
+    },
+  });
+  const prepared = parseSessionConfiguration({
+    cwd,
+    agentDir: scopedAgentDir,
+    target: { mode: "memory" },
+    model: { provider: model.provider, id: model.id, thinkingLevel: "high" },
+    tools: { mode: "allowlist", include: ["read", "bash"], exclude: ["write"] },
+    resources: {
+      extensions: [extensionPath],
+      noSkills: true,
+      noPromptTemplates: true,
+      noThemes: true,
+      noContextFiles: true,
+      projectTrust: "approve",
+      systemPrompt: "Configured system prompt.",
+      appendSystemPrompt: ["Configured appendix."],
+      extensionFlags: { fixture: true },
+    },
+    settings: { retry: { enabled: false, maxRetries: 1 } },
+    env: { OPENAI_API_KEY: "session-key", SESSION_MARKER: "configured" },
+    isolation: { mode: "unisolated" },
+  });
+
+  const adapter = await factory.open({
+    sessionId: "configured",
+    generation: 1,
+    ...prepared.openRequest,
+  });
+  try {
+    assert.equal(captures.length, 1);
+    const options = captures[0];
+    assert.equal(options.agentDir, scopedAgentDir);
+    assert.notEqual(options.authStorage, authStorage);
+    assert.equal(await options.authStorage.getApiKey(model.provider), "session-key");
+    assert.equal(await authStorage.getApiKey(model.provider), "shared-key");
+    assert.equal(options.model.provider, model.provider);
+    assert.equal(options.model.id, model.id);
+    assert.equal(options.thinkingLevel, "high");
+    assert.deepEqual(options.tools, ["read", "bash"]);
+    assert.deepEqual(options.excludeTools, ["write"]);
+    const bashTool = options.customTools.find((tool) => tool.name === "bash");
+    assert.ok(bashTool);
+    const bashResult = await bashTool.execute(
+      "configured-bash",
+      { command: 'printf %s "$SESSION_MARKER"' },
+      new AbortController().signal,
+      undefined,
+      { cwd },
+    );
+    assert.equal(bashResult.content[0].text, "configured");
+    assert.equal(options.settingsManager.getGlobalSettings().retry.enabled, false);
+    assert.equal(options.resourceLoader.getSystemPrompt(), "Configured system prompt.");
+    assert.deepEqual(options.resourceLoader.getAppendSystemPrompt(), ["Configured appendix."]);
+    assert.deepEqual(options.resourceLoader.getExtensions().errors, []);
+    assert.equal(options.resourceLoader.getExtensions().extensions.length, 1);
+    assert.equal(process.env.OPENAI_API_KEY, undefined);
+
+    const autoExtensions = join(cwd, ".pi", "extensions");
+    await mkdir(autoExtensions, { recursive: true });
+    await writeFile(join(autoExtensions, "ambient.ts"), "export default function () {}\n");
+    await writeFile(join(cwd, "AGENTS.md"), "ambient context must not load\n");
+    const denied = parseSessionConfiguration({
+      cwd,
+      agentDir: scopedAgentDir,
+      target: { mode: "memory" },
+      model: { provider: model.provider, id: model.id },
+      tools: { mode: "none" },
+      env: {
+        OPENAI_API_KEY: "session-key",
+        SESSION_MARKER: "must-not-enable-bash",
+      },
+    });
+    const deniedAdapter = await factory.open({
+      sessionId: "configured-denied-discovery",
+      generation: 1,
+      ...denied.openRequest,
+    });
+    try {
+      const deniedOptions = captures[1];
+      assert.deepEqual(deniedOptions.resourceLoader.getExtensions().extensions, []);
+      assert.deepEqual(deniedOptions.resourceLoader.getAgentsFiles(), { agentsFiles: [] });
+      assert.equal(deniedOptions.noTools, "all");
+      assert.deepEqual(deniedOptions.customTools, []);
+    } finally {
+      await deniedAdapter.dispose();
+    }
+  } finally {
+    await adapter.dispose();
+    if (previous === undefined) delete process.env.OPENAI_API_KEY;
+    else process.env.OPENAI_API_KEY = previous;
+  }
 });
 
 test("adapter maps Pi events, prompt result, queue controls, abort, and preflight rejection", async () => {
@@ -439,6 +568,48 @@ test("real Pi runtime new, switch, fork, and import preserve resolved conversati
     sessionFile: importedFile,
   });
   assert.deepEqual(changed.at(-1), adapter.identity());
+  await adapter.dispose();
+});
+
+test("real Pi SDK accepts the configured bash override without a model turn", async () => {
+  const stateDir = await temporaryDirectory();
+  const agentDir = await temporaryDirectory();
+  const cwd = await temporaryDirectory();
+  const { authStorage, modelRegistry, model } = modelHarness();
+  const sessions = [];
+  const factory = new PiSessionFactory({
+    stateDir,
+    agentDir,
+    allowedRoots: [cwd],
+    authStorage,
+    modelRegistry,
+    async createSession(options) {
+      const result = await createAgentSession(options);
+      sessions.push(result.session);
+      return result;
+    },
+  });
+  const prepared = parseSessionConfiguration({
+    cwd,
+    target: { mode: "memory" },
+    model: { provider: model.provider, id: model.id },
+    tools: { mode: "allowlist", include: ["bash"] },
+    resources: {
+      noExtensions: true,
+      noSkills: true,
+      noPromptTemplates: true,
+      noThemes: true,
+      noContextFiles: true,
+      systemPrompt: "Configured tool registration probe.",
+    },
+    env: { SESSION_MARKER: "real-sdk" },
+  });
+  const adapter = await factory.open({
+    sessionId: "configured-real-sdk",
+    generation: 1,
+    ...prepared.openRequest,
+  });
+  assert.deepEqual(sessions[0].getActiveToolNames(), ["bash"]);
   await adapter.dispose();
 });
 

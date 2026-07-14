@@ -133,6 +133,8 @@ test(
       "scripts/check-release.mjs",
       "dist/session-api.js",
       "dist/session-api.d.ts",
+      "dist/session-config.js",
+      "dist/session-config.d.ts",
       "dist/session-api.schema.json",
       "dist/session-api.openapi.json",
     ]) {
@@ -187,17 +189,19 @@ test(
       [
         'import { PI_DAEMON_VERSION } from "@harryaskham/pi-daemon";',
         'import { SESSION_API_VERSION } from "@harryaskham/pi-daemon/session-api";',
+        'import { parseSessionConfiguration } from "@harryaskham/pi-daemon/session-config";',
         'import schema from "@harryaskham/pi-daemon/protocol.schema.json" with { type: "json" };',
         'import sessionSchema from "@harryaskham/pi-daemon/session-api.schema.json" with { type: "json" };',
         'import openapi from "@harryaskham/pi-daemon/session-api.openapi.json" with { type: "json" };',
-        'process.stdout.write(`${PI_DAEMON_VERSION} ${SESSION_API_VERSION} ${schema.title} ${sessionSchema.title} ${openapi.openapi}\\n`);',
+        'const isolation = parseSessionConfiguration({ cwd: process.cwd(), target: { mode: "memory" } }).persistedSpec.isolation?.mode;',
+        'process.stdout.write(`${PI_DAEMON_VERSION} ${SESSION_API_VERSION} ${isolation} ${schema.title} ${sessionSchema.title} ${openapi.openapi}\\n`);',
         "",
       ].join("\n"),
     );
     const imported = await run(process.execPath, [basename(importCheck)], { cwd: consumer });
     assert.equal(
       imported.stdout,
-      `${packageVersion} 1.0 Pi Daemon protocol v1 Pi Daemon additive session API v1 3.1.0\n`,
+      `${packageVersion} 1.0 unisolated Pi Daemon protocol v1 Pi Daemon additive session API v1 3.1.0\n`,
     );
   },
 );

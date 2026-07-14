@@ -24,6 +24,7 @@ import {
   type StructuredLogger,
 } from "./observability.js";
 import { eventEnvelope, parseCommand, type EventEnvelope } from "./protocol.js";
+import type { PreparedSessionRuntimeOptions } from "./session-config.js";
 import {
   SessionCatalogError,
   sessionSpecDigest,
@@ -44,9 +45,10 @@ export interface SessionOpenRequest {
   generation: number;
   cwd: string;
   agentDir?: string;
-  session: SessionTarget;
+  session?: SessionTarget;
   model?: OpenPayload["model"];
   resources?: OpenPayload["resources"];
+  runtimeOptions?: PreparedSessionRuntimeOptions;
 }
 
 export interface AdapterEvent {

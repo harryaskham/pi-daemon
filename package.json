@@ -27,6 +27,10 @@
       "types": "./dist/session-api.d.ts",
       "import": "./dist/session-api.js"
     },
+    "./session-config": {
+      "types": "./dist/session-config.d.ts",
+      "import": "./dist/session-config.js"
+    },
     "./session-api.schema.json": "./dist/session-api.schema.json",
     "./session-api.openapi.json": "./dist/session-api.openapi.json"
   },

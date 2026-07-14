@@ -9,6 +9,10 @@ import {
   readPrivateJsonIfExists,
   stateFileSize,
 } from "./durability.js";
+import {
+  parseSessionConfiguration,
+  unprovisionedEnvironmentSummary,
+} from "./session-config.js";
 import type {
   SessionApiState,
   SessionEnvironmentSummary,
@@ -510,12 +514,22 @@ export class FileSessionCatalog implements SessionCatalogStore {
     }
 
     // A process restart makes every previously resident SDK object dormant
-    // until the multiplexer explicitly reopens and marks it resident.
+    // until the multiplexer explicitly reopens and marks it resident. Raw
+    // memory-only environment values do not survive, even for an already
+    // dormant record, so their summary becomes unprovisioned before any replay.
     for (const record of [...this.#records.values()]) {
-      if (record.residency !== "resident") continue;
+      const environment = unprovisionedEnvironmentSummary(record.environment);
+      const residencyChanged = record.residency === "resident";
+      const environmentChanged = environment.provisioned !== record.environment.provisioned;
+      if (!residencyChanged && !environmentChanged) continue;
       const next = this.#next(record, {
-        residency: "dormant",
-        state: record.state === "failed" ? "failed" : "idle",
+        ...(residencyChanged
+          ? {
+              residency: "dormant",
+              state: record.state === "failed" ? "failed" : "idle",
+            }
+          : {}),
+        ...(environmentChanged ? { environment } : {}),
       });
       await this.#write(next);
       this.#records.set(next.sessionId, next);
@@ -612,11 +626,13 @@ function validatePersistedSpec(spec: PersistedSessionSpec): void {
   if ("env" in spec) {
     throw new SessionCatalogError("secret_persistence_refused", "raw environment must not be persisted");
   }
-  if (typeof spec.cwd !== "string" || spec.cwd.length < 1 || spec.cwd.length > 4096) {
-    throw new SessionCatalogError("invalid_session_spec", "session cwd is invalid");
-  }
-  if (!isRecord(spec.target) || typeof spec.target.mode !== "string") {
-    throw new SessionCatalogError("invalid_session_spec", "session target is invalid");
+  try {
+    parseSessionConfiguration(spec);
+  } catch (error) {
+    throw new SessionCatalogError(
+      "invalid_session_spec",
+      error instanceof Error ? error.message : "session spec is invalid",
+    );
   }
 }
 

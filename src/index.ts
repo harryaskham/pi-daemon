@@ -9,6 +9,7 @@ export * from "./pi-sdk-contract.js";
 export * from "./protocol.js";
 export * from "./server.js";
 export * from "./session-api.js";
+export * from "./session-config.js";
 export * from "./session-catalog.js";
 export * from "./tickets.js";
 export * from "./version.js";

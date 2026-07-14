@@ -106,7 +106,21 @@ test("catalog pagination is stable and restart makes resident sessions dormant",
   const first = new FileSessionCatalog({ stateDir });
   await first.recover();
   for (const id of ["a", "b", "c"]) {
-    await first.create({ sessionId: id, name: `name-${id}`, generation: 1, spec: spec(`/work/${id}`) });
+    await first.create({
+      sessionId: id,
+      name: `name-${id}`,
+      generation: 1,
+      spec: spec(`/work/${id}`),
+      ...(id === "a"
+        ? {
+            environment: {
+              keys: ["API_TOKEN"],
+              persistence: "memory-only",
+              provisioned: true,
+            },
+          }
+        : {}),
+    });
   }
   await first.markState("b", 1, "running");
 
@@ -125,6 +139,11 @@ test("catalog pagination is stable and restart makes resident sessions dormant",
   const recovered = await restarted.recover();
   assert.deepEqual(recovered.map((entry) => entry.residency), ["dormant", "dormant", "dormant"]);
   assert.equal((await restarted.get("b")).state, "idle");
+  assert.deepEqual((await restarted.get("a")).environment, {
+    keys: ["API_TOKEN"],
+    persistence: "memory-only",
+    provisioned: false,
+  });
   const resident = await restarted.markResident("a", 1, {
     sessionId: "pi-a",
     sessionFile: "/state/sessions/a.jsonl",

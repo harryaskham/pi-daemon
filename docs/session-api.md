@@ -152,7 +152,10 @@ statement, not a sandbox. Pi SDK components receive explicit cwd, settings,
 resource, tool, and auth objects where supported. Arbitrary extensions can
 still access process globals and share the Node trust domain. The daemon must
 never simulate per-session environment by racing `process.env` replacement or
-`process.chdir()` around concurrent turns.
+`process.chdir()` around concurrent turns. The initial implementation applies a
+session overlay only to known selected-provider API-key auth and the built-in
+bash child-process spawn hook; see [Session configuration](session-configuration)
+for the exact supported mapping and limitations.
 
 ## REST resources
 

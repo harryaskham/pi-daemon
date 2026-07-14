@@ -47,11 +47,29 @@ request journal so a queued request can be replayed and a duplicate terminal
 request can receive its prior result. They are not emitted in status or logs.
 Protect the state directory as sensitive application data.
 
+## Configured session authority
+
+Authenticated clients may explicitly create an `unisolated` configured session.
+The admission parser separates a secret-free persisted spec and sorted
+environment-key summary from the memory-only raw overlay. Raw values never enter
+the catalog or journal; after restart an env-dependent operation fails
+`credentials_required` until re-provisioned. The daemon never swaps global
+`process.env` or cwd. Known provider API keys use a session-scoped in-memory auth
+store and the bash overlay applies only through a child-process spawn hook.
+
+Automatic extensions, packages, skills, prompts, themes, and context discovery
+remain disabled unless project trust is explicitly approved. Explicit resource
+paths are themselves an authority grant. Extension/package JavaScript still
+shares process memory, globals, ambient daemon environment, and provider
+registries with every other in-process session.
+
 ## Separate inhabitants
 
-A workload requiring arbitrary extensions, process tools, filesystem tools, or
-unreviewed project JavaScript must run in a separate Pi Daemon process/security
-domain. Do not widen the shared no-tools host.
+Configured process/filesystem tools and reviewed extensions may share one
+`unisolated` daemon only when all sessions are mutually trusted. A workload
+requiring unreviewed project JavaScript or shell-grade environment, filesystem,
+process, network, or credential isolation must run in a separate Pi Daemon
+process/security domain until a stronger advertised backend exists.
 
 Report vulnerabilities privately to the repository owner; do not include live
 credentials, prompts, output, or private paths in a public issue.
