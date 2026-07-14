@@ -46,6 +46,7 @@ test("session API fixtures validate against their published definitions", async 
     ["rpc.raw-event.json", "piRpcEvent"],
     ["rpc.command.frame.json", "rpcCommandFrame"],
     ["rpc.response.frame.json", "rpcResponseFrame"],
+    ["rpc.extension-ui-response.frame.json", "rpcExtensionUiResponseFrame"],
     ["rpc.control.frame.json", "rpcControlFrame"],
     ["rpc.ready.frame.json", "rpcAttachReadyFrame"],
     ["rpc.event.frame.json", "rpcEventFrame"],
@@ -87,7 +88,9 @@ test("session target and framed event invariants reject ambiguous records", asyn
 
 test("Pi RPC compatibility inventory is exact and includes settled-era commands", async () => {
   const schema = await readJson("session-api.schema.json");
+  const capabilities = await fixture("capabilities.response.json");
   assert.deepEqual(schema.$defs.piRpcCommand.properties.type.enum, [...PI_RPC_COMMAND_TYPES]);
+  assert.deepEqual(capabilities.data.rpc.host.commandTypes, [...PI_RPC_COMMAND_TYPES]);
   assert.equal(PI_RPC_COMMAND_TYPES.length, 31);
   for (const command of ["get_entries", "get_tree", "set_thinking_level", "get_commands"]) {
     assert.equal(PI_RPC_COMMAND_TYPES.includes(command), true);

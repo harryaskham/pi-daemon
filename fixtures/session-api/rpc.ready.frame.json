@@ -35,6 +35,14 @@
         "apc": "/v1/session/agent-a/apc"
       }
     },
+    "requestState": {
+      "state": "running",
+      "sequence": 41,
+      "queuedTurns": 1,
+      "activeRequestId": "request-active",
+      "lastUsedAt": "2026-07-14T08:09:59.000Z",
+      "idleForMs": 0
+    },
     "rpcState": {
       "sessionId": "pi-session-uuid",
       "thinkingLevel": "medium",

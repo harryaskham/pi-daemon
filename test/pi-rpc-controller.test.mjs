@@ -275,6 +275,8 @@ test("controller conforms to every pinned Pi RPC command without owning a proces
 
   assert.deepEqual(PI_RPC_HOST_CAPABILITIES.commandTypes, PI_RPC_COMMAND_TYPES);
   assert.deepEqual(controller.capabilities.policy, { bash: true, exportHtml: true });
+  assert.equal(controller.snapshot().leafId, "entry-2");
+  assert.equal(controller.snapshot().rpcState.sessionId, "pi-session");
   assert.equal(controller.capabilities.contract.processTransportOwned, false);
   for (let index = 0; index < commandFixtures.length; index += 1) {
     const command = { id: `rpc-${index}`, ...commandFixtures[index] };
@@ -393,6 +395,9 @@ test("extension UI requests are bounded, correlated, cancellable, and event-rout
   );
   host.bindings.onError({ extensionPath: "/extension.ts", event: "input", error: "failed" });
   assert.equal(outputs.at(-1).type, "extension_error");
+  const cancelled = host.bindings.uiContext.input("Disconnect cancels", "value");
+  controller.cancelPendingUi();
+  assert.equal(await cancelled, undefined);
   controller.dispose();
 });
 

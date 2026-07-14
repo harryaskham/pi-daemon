@@ -1,0 +1,8 @@
+{
+  "kind": "extension_ui_response",
+  "response": {
+    "type": "extension_ui_response",
+    "id": "ui-request-1",
+    "confirmed": true
+  }
+}

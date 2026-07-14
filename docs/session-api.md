@@ -290,6 +290,7 @@ This wraps the same Pi commands, responses, and events in frames:
 
 - `command` — one Pi RPC command;
 - `response` — response routed only to the issuing connection;
+- `extension_ui_response` — controller-only answer to a correlated extension dialog;
 - `event` — broadcast event plus monotonic sequence and opaque cursor;
 - `attach_ready` — host/session identity and atomic state snapshot;
 - `replay_gap` — requested history is no longer available; and
@@ -332,8 +333,10 @@ This is a concurrency lease inside the single service-bearer trust domain.
 Observers may issue read-only state commands. Mutating commands from an
 observer receive a typed `controller_required` error.
 
-A client requests controller status with `role=controller` during upgrade or a
-framed `request_control` message. If occupied, raw Pi RPC upgrade fails with
+Attachments default to `role=observer`; a raw compatibility client that needs
+mutation authority must explicitly request `role=controller`. A client requests
+controller status with `role=controller` during upgrade or a framed
+`request_control` message. If occupied, raw Pi RPC upgrade fails with
 `409 controller_busy`; framed mode may attach as observer and emit
 `control_denied`. Release/disconnect permits a later explicit request.
 
@@ -346,7 +349,8 @@ they are not transferred silently.
 ### Atomic snapshot, replay, and reconnect
 
 For framed attach, the server establishes the event subscription and captures a
-session snapshot at one high-water sequence under the same session event lock.
+catalog resource, active/queued request state, Pi RPC state, and current leaf at
+one high-water sequence under the same session event boundary.
 It then emits:
 
 1. `attach_ready` with snapshot and high-water cursor;

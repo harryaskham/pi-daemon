@@ -18,6 +18,9 @@ Initial standalone implementation:
 - explicit generation-bound Unix event attach/detach operations
 - optional loopback bearer-authenticated JSON and stream-upgrade admission boundary
 - transport-neutral full Pi 0.80.6 RPC controller with raw events, runtime replacement, and bounded extension UI
+- authenticated raw/framed multi-reader Pi RPC WebSockets with private responses, explicit controller ownership, snapshots, replay cursors/gaps, and keepalive
+- typed per-session Pi configuration with scoped settings/resources/models/auth, deny-by-default discovery, and memory-only environment overlays
+- pre-allocation event/response bounds with typed overflow and connection-local slow-reader failure
 - canonical cwd allowlist and state/auth path isolation
 - bounded background recovery, truthful nondestructive readiness/probe status, whole-shutdown deadlines, safe idle sweep, metrics, and path-redacted lifecycle logs
 - reproducible Nix package/app/dev shell and npm package

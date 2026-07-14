@@ -34,6 +34,12 @@ import {
   type PersistedSessionSpec,
 } from "./session-catalog.js";
 import {
+  RpcAttachmentError,
+  RpcAttachmentManager,
+  type RpcAttachmentLimits,
+} from "./rpc-attachments.js";
+import { WebSocketHandshakeError } from "./websocket.js";
+import {
   MutationTicketController,
   TicketStoreError,
   mutationTicketResource,
@@ -66,6 +72,8 @@ export interface ApiServerOptions {
   port?: number;
   allowInsecureRemote?: boolean;
   limits?: Partial<ApiServerLimits>;
+  rpcLimits?: Partial<RpcAttachmentLimits>;
+  rpcAttachments?: RpcAttachmentManager;
 }
 
 export interface ApiServerAddress {
@@ -99,9 +107,10 @@ class ApiRequestError extends Error {
 
 /**
  * Bearer-authenticated HTTP/WebSocket admission boundary for the additive API.
- * Retained session reads share the durable catalog; asynchronous mutation
- * tickets and stream dispatch land in later slices. This class owns the secure
- * listener, capability negotiation, bounded bodies, and fail-closed upgrades.
+ * Retained session reads share the durable catalog, mutations use durable
+ * tickets, and Pi RPC upgrades use bounded multi-reader attachment hubs. This
+ * class owns secure admission, capability negotiation, bounded bodies, and
+ * fail-closed WebSocket routing; ACP remains an additive downstream adapter.
  */
 export class ApiServer {
   readonly host: string;
@@ -110,7 +119,9 @@ export class ApiServer {
   readonly #multiplexer: Multiplexer;
   readonly #authenticator: ServiceBearerAuthenticator;
   readonly #tickets: MutationTicketController | undefined;
+  readonly #rpcAttachments: RpcAttachmentManager;
   readonly #server: Server;
+  readonly #upgradeSockets = new Set<Duplex>();
   #started = false;
   #ticketRecovery: MutationTicketRecovery | undefined;
   #indeterminateMutationTickets = 0;
@@ -126,6 +137,8 @@ export class ApiServer {
     this.#multiplexer = options.multiplexer;
     this.#authenticator = options.authenticator;
     this.#tickets = options.tickets;
+    this.#rpcAttachments =
+      options.rpcAttachments ?? new RpcAttachmentManager(this.#multiplexer, options.rpcLimits);
     this.limits = {
       maxConnections: positiveInteger(
         options.limits?.maxConnections ?? DEFAULT_API_SERVER_LIMITS.maxConnections,
@@ -151,7 +164,11 @@ export class ApiServer {
     this.#server.maxConnections = this.limits.maxConnections;
     this.#server.requestTimeout = this.limits.requestTimeoutMs;
     this.#server.headersTimeout = this.limits.requestTimeoutMs;
-    this.#server.on("upgrade", (request, socket) => this.#handleUpgrade(request, socket));
+    this.#server.on("upgrade", (request, socket) => {
+      this.#upgradeSockets.add(socket);
+      socket.once("close", () => this.#upgradeSockets.delete(socket));
+      void this.#handleUpgrade(request, socket);
+    });
   }
 
   get ticketRecovery(): MutationTicketRecovery | undefined {
@@ -213,6 +230,9 @@ export class ApiServer {
     this.#tickets?.beginDrain();
     if (!this.#started) return;
     this.#started = false;
+    this.#rpcAttachments.dispose();
+    for (const socket of this.#upgradeSockets) socket.destroy();
+    this.#upgradeSockets.clear();
     this.#server.closeAllConnections();
     await new Promise<void>((resolve, reject) => {
       this.#server.close((error) => (error === undefined ? resolve() : reject(error)));
@@ -246,8 +266,9 @@ export class ApiServer {
           ok: true,
           data: {
             apiVersion: SESSION_API_VERSION,
-            transports: ["unix-ndjson", "http"],
-            rpcSubprotocols: [],
+            transports: ["unix-ndjson", "http", "websocket"],
+            rpcSubprotocols: [...this.#rpcAttachments.capabilities.subprotocols],
+            rpc: this.#rpcAttachments.capabilities,
             isolationModes: ["unisolated"],
             authentication: "service-bearer",
           },
@@ -819,7 +840,7 @@ export class ApiServer {
     return catalogRecordToSessionResource(record);
   }
 
-  #handleUpgrade(request: IncomingMessage, socket: Duplex): void {
+  async #handleUpgrade(request: IncomingMessage, socket: Duplex): Promise<void> {
     const requestId = safeRequestId(request.headers["x-request-id"]);
     if (!this.#authenticator.authenticate(request.headers.authorization)) {
       sendRawHttp(
@@ -835,9 +856,9 @@ export class ApiServer {
       return;
     }
 
-    let pathname: string;
+    let url: URL;
     try {
-      pathname = requestUrl(request).pathname;
+      url = requestUrl(request);
     } catch {
       sendRawHttp(
         socket,
@@ -850,13 +871,41 @@ export class ApiServer {
       );
       return;
     }
-    if (/^\/v1\/session\/[^/]+\/(rpc|apc)$/.test(pathname)) {
+    let rpcSessionRef: string | undefined;
+    try {
+      rpcSessionRef = rpcSessionRefFromPath(url.pathname);
+    } catch (error) {
+      const normalized = normalizeAttachmentError(error);
+      sendRawHttp(
+        socket,
+        normalized.status,
+        errorEnvelope(requestId, this.#multiplexer.hostInstanceId, normalized.body),
+      );
+      return;
+    }
+    if (rpcSessionRef !== undefined) {
+      try {
+        await this.#rpcAttachments.attach(request, socket, rpcSessionRef, url);
+      } catch (error) {
+        const normalized = normalizeAttachmentError(error);
+        sendRawHttp(
+          socket,
+          normalized.status,
+          errorEnvelope(requestId, this.#multiplexer.hostInstanceId, normalized.body),
+          normalized.status === 426
+            ? { "Sec-WebSocket-Protocol": "pi-rpc.v1, pi-daemon-rpc.v1" }
+            : {},
+        );
+      }
+      return;
+    }
+    if (/^\/v1\/session\/[^/]+\/apc$/.test(url.pathname)) {
       sendRawHttp(
         socket,
         501,
         errorEnvelope(requestId, this.#multiplexer.hostInstanceId, {
           code: "stream_not_implemented",
-          message: "authenticated stream upgrade is reserved for the RPC/ACP implementation slice",
+          message: "ACP attachment is not implemented",
           retryable: false,
         }),
       );
@@ -1253,6 +1302,18 @@ function sessionRefFromPath(pathname: string): string | undefined {
   }
 }
 
+function rpcSessionRefFromPath(pathname: string): string | undefined {
+  const match = /^\/v1\/session\/([^/]+)\/rpc$/.exec(pathname);
+  if (match === null) return undefined;
+  try {
+    const value = decodeURIComponent(match[1]!);
+    if (value.length === 0 || value.length > 256) throw new Error("invalid session reference");
+    return value;
+  } catch {
+    throw new RpcAttachmentError(400, "invalid_session_ref", "session reference is invalid");
+  }
+}
+
 function listLimit(value: string | null): number {
   if (value === null) return 50;
   if (!/^\d+$/.test(value)) {
@@ -1278,6 +1339,23 @@ function errorEnvelope(requestId: string, hostInstanceId: string, error: ApiErro
     hostInstanceId,
     ok: false as const,
     error,
+  };
+}
+
+function normalizeAttachmentError(error: unknown): { status: number; body: ApiErrorBody } {
+  if (error instanceof RpcAttachmentError || error instanceof WebSocketHandshakeError) {
+    return {
+      status: error.status,
+      body: {
+        code: error.code,
+        message: error.message,
+        retryable: error instanceof RpcAttachmentError ? error.retryable : false,
+      },
+    };
+  }
+  return {
+    status: 500,
+    body: { code: "rpc_attach_failed", message: "RPC attachment failed", retryable: false },
   };
 }
 
@@ -1387,9 +1465,15 @@ function sendRawHttp(
         ? "Unauthorized"
         : status === 404
           ? "Not Found"
-          : status === 501
-            ? "Not Implemented"
-            : "Error";
+          : status === 409
+            ? "Conflict"
+            : status === 426
+              ? "Upgrade Required"
+              : status === 501
+                ? "Not Implemented"
+                : status === 503
+                  ? "Service Unavailable"
+                  : "Error";
   const body = encodeBoundedLine(value, DEFAULT_API_RESPONSE_BYTES);
   const lines = [
     `HTTP/1.1 ${status} ${reason}`,

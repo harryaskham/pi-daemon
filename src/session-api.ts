@@ -237,6 +237,7 @@ export interface PiRpcEvent extends JsonObject {
 
 export interface SessionAttachSnapshot {
   session: SessionResource;
+  requestState: JsonObject;
   rpcState: JsonObject;
   leafId?: string | null;
 }
@@ -249,6 +250,11 @@ export interface RpcCommandFrame {
 export interface RpcResponseFrame {
   kind: "response";
   response: PiRpcResponse;
+}
+
+export interface RpcExtensionUiResponseFrame {
+  kind: "extension_ui_response";
+  response: JsonObject & { type: "extension_ui_response"; id: string };
 }
 
 export interface RpcEventFrame {
@@ -289,6 +295,7 @@ export interface RpcControlFrame {
 export type SessionRpcFrame =
   | RpcCommandFrame
   | RpcResponseFrame
+  | RpcExtensionUiResponseFrame
   | RpcEventFrame
   | RpcAttachReadyFrame
   | RpcReplayGapFrame

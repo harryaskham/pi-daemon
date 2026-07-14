@@ -139,6 +139,10 @@ test("NDJSON decoder rejects malformed UTF-8 JSON and oversized lines", () => {
 test("bounded encoder preflights size before JSON or Buffer allocation", () => {
   const expected = Buffer.from(`${JSON.stringify({ text: "line\n😀" })}\n`, "utf8");
   assert.deepEqual(encodeBoundedLine({ text: "line\n😀" }, expected.length), expected);
+  assert.deepEqual(
+    encodeBoundedLine({ omitted: undefined, array: [undefined] }, 128),
+    Buffer.from('{"array":[null]}\n'),
+  );
 
   const originalStringify = JSON.stringify;
   let stringifyCalled = false;

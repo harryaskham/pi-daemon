@@ -47,10 +47,12 @@ loopback address `127.0.0.1`. A non-loopback plaintext bind is refused unless
 `--api-allow-insecure-http true` explicitly acknowledges trusted-network or TLS
 reverse-proxy handling.
 
-`GET /v1/capabilities`, durable session CRUD, and ticket lookup/reconciliation
-are implemented. WebSocket RPC/ACP upgrades remain reserved until stream
-dispatch lands and return typed not-implemented responses; no route ever falls
-back to unauthenticated behavior.
+`GET /v1/capabilities` advertises HTTP, WebSocket, both Pi RPC subprotocols,
+the pinned in-process RPC host contract, controller/observer roles, replay, and
+all active attachment limits. Durable session CRUD, ticket lookup/reconciliation,
+and `/rpc` are implemented behind the same bearer boundary. `/apc` remains
+reserved for the downstream ACP adapter and returns a typed not-implemented
+response; it never falls back to an unauthenticated transport.
 
 Optional limits:
 
@@ -73,6 +75,13 @@ The event and response limits include their complete NDJSON envelopes and
 trailing LF. Each must be no greater than the aggregate per-connection outbound
 byte limit. Oversized/non-serializable events become bounded `eventDropped`
 records; oversized/non-serializable responses become typed errors.
+
+Pi RPC attachment defaults separately bound hubs (32), replay events (512),
+replay bytes per hub (2 MiB), aggregate replay capacity (64 MiB), text messages
+(1 MiB), per-reader outbound bytes (4 MiB), and in-flight commands per reader
+(8). A 30-second ping/pong keepalive detects
+dead readers. These effective values are returned by `/v1/capabilities`; a slow
+reader is closed without blocking its session, controller, or other readers.
 
 The service emits structured JSON lifecycle logs to stderr. It never logs
 prompts, model output, credentials, or private state/agent/workload paths.

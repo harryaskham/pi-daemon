@@ -565,6 +565,11 @@ function prepareJsonValue(value: unknown, budget: number, seen: Set<object>): Pr
               continue;
             }
             if (!("value" in descriptor)) throwNotSerializable("array contains an accessor");
+            if (["undefined", "function", "symbol"].includes(typeof descriptor.value)) {
+              bytes = boundedAdd(bytes, 4, budget);
+              normalized.push(null);
+              continue;
+            }
             const prepared = prepareJsonValue(descriptor.value, budget - bytes, seen);
             bytes = boundedAdd(bytes, prepared.bytes, budget);
             normalized.push(prepared.value);
@@ -586,9 +591,7 @@ function prepareJsonValue(value: unknown, budget: number, seen: Set<object>): Pr
             throwNotSerializable("object contains an accessor");
           }
           const child = descriptor.value;
-          if (["undefined", "function", "symbol"].includes(typeof child)) {
-            throwNotSerializable("object contains a non-JSON property value");
-          }
+          if (["undefined", "function", "symbol"].includes(typeof child)) continue;
           if (emitted > 0) bytes = boundedAdd(bytes, 1, budget);
           bytes = boundedAdd(bytes, measureJsonStringBytes(key, budget - bytes), budget);
           bytes = boundedAdd(bytes, 1, budget);

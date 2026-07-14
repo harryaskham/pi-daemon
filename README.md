@@ -22,11 +22,10 @@ or Cacophony credentials.
 
 > **Status:** durable resident/dormant CRUD, bearer-authenticated JSON admission,
 > asynchronous mutation/prompt tickets, exact Pi conversation recovery, bounded
-> serialization, and installed-package checks are implemented. The 2026-07-14
-> completion program still tracks full Pi RPC attachment, per-session runtime
-> configuration and bounded truthful recovery/shutdown are implemented; the
-> remaining program tracks full Pi RPC attachment, ACP translation, clients, and
-> end-to-end acceptance in [`PLAN.md`](PLAN.md). No release tag is cut yet.
+> serialization, per-session runtime configuration, truthful bounded
+> recovery/shutdown, and full multi-reader Pi RPC attachment are implemented.
+> The remaining completion program tracks ACP translation, clients, and
+> end-to-end acceptance in [`PLAN.md`](PLAN.md); no release tag is cut yet.
 
 ## Why
 

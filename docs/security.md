@@ -41,6 +41,9 @@ project code or tools.
 - accepted wake requests are never blindly replayed after a crash
 - queued wake requests are never replayed into a missing, corrupt, or fresh replacement conversation
 - Unix event subscriptions require explicit generation-bound `attach` and `detach`
+- WebSocket RPC upgrades authenticate before subprotocol, session, cursor, or controller disclosure
+- RPC readers have independent message/queue bounds; cursors are scoped to host, canonical session, and generation
+- one explicit controller may mutate or answer extension UI; observers retain read-only state access
 
 Prompts and terminal results are necessarily retained in the private durable
 request journal so a queued request can be replayed and a duplicate terminal

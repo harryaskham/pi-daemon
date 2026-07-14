@@ -609,7 +609,7 @@ implementation order. This list is a human-readable crosswalk.
 - [x] `bd-0052e2` — full transport-neutral Pi RPC on `AgentSessionRuntime`.
 - [x] `bd-ab1b91` — trusted Pi CLI-equivalent per-session configuration and
   honest `unisolated` env/isolation policy.
-- [ ] `bd-509428` — explicit multi-reader attach, atomic snapshot/live boundary,
+- [x] `bd-509428` — explicit multi-reader attach, atomic snapshot/live boundary,
   replay cursor, gap, reconnect, and extension-UI routing.
 
 ### Adapters, clients, and hardening
@@ -617,11 +617,11 @@ implementation order. This list is a human-readable crosswalk.
 - [ ] `bd-e27685` — in-process ACP translation at the requested `/apc` path.
 - [ ] `bd-d87daa` — Pi-RPC stdio bridge and remote attach client; optional stock
   Pi `/connect` extension after parity is proven.
-- [ ] `bd-07980c` — pre-allocation bounds for events/responses and safe overflow.
+- [x] `bd-07980c` — pre-allocation bounds for events/responses and safe overflow.
 - [x] `bd-1877d3` — bounded recovery/shutdown and truthful redacted readiness.
 - [ ] `bd-a4954f` — full install/CRUD/RPC/restart/security/live acceptance.
-- [ ] `bd-fb3b32` — version/tag/changelog/package/Nix release invariants.
-- [ ] `bd-e53e76` — self-hosted CI runner policy (operational maintenance).
+- [x] `bd-fb3b32` — version/tag/changelog/package/Nix release invariants.
+- [x] `bd-e53e76` — self-hosted CI runner policy (operational maintenance).
 - [ ] `bd-acf2d3` — draft: make automated npm dependency updates Nix-aware.
 
 No release tag is appropriate until the foundation and full acceptance blockers

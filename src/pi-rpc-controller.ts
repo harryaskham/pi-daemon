@@ -74,6 +74,11 @@ export const PI_RPC_HOST_CAPABILITIES = {
   policyGatedCommands: ["bash", "abort_bash", "export_html"],
 } as const;
 
+export interface PiRpcSnapshot {
+  rpcState: Record<string, unknown>;
+  leafId: string | null;
+}
+
 export interface PiRpcControllerCapabilities {
   contract: typeof PI_RPC_HOST_CAPABILITIES;
   policy: { bash: boolean; exportHtml: boolean };
@@ -153,6 +158,36 @@ export class PiRpcController {
     return true;
   }
 
+  /** Cancel every pending dialog when the explicit transport controller leaves. */
+  cancelPendingUi(): void {
+    this.#assertOpen();
+    for (const pending of this.#pendingUi.values()) pending.cancel();
+    this.#pendingUi.clear();
+  }
+
+  /** Capture state and leaf synchronously in the controller event-loop boundary. */
+  snapshot(): PiRpcSnapshot {
+    this.#assertOpen();
+    const session = this.#host.rpcSession();
+    return {
+      rpcState: {
+        model: session.model,
+        thinkingLevel: session.thinkingLevel,
+        isStreaming: session.isStreaming,
+        isCompacting: session.isCompacting,
+        steeringMode: session.steeringMode,
+        followUpMode: session.followUpMode,
+        sessionFile: session.sessionFile,
+        sessionId: session.sessionId,
+        sessionName: session.sessionName,
+        autoCompactionEnabled: session.autoCompactionEnabled,
+        messageCount: session.messages.length,
+        pendingMessageCount: session.pendingMessageCount,
+      },
+      leafId: session.sessionManager.getLeafId(),
+    };
+  }
+
   async handle(value: unknown): Promise<RpcResponse> {
     this.#assertOpen();
     let command: RpcCommand;
@@ -183,20 +218,7 @@ export class PiRpcController {
             await this.#host.newSession(command.parentSession),
           );
         case "get_state":
-          return success(id, "get_state", {
-            model: session.model,
-            thinkingLevel: session.thinkingLevel,
-            isStreaming: session.isStreaming,
-            isCompacting: session.isCompacting,
-            steeringMode: session.steeringMode,
-            followUpMode: session.followUpMode,
-            sessionFile: session.sessionFile,
-            sessionId: session.sessionId,
-            sessionName: session.sessionName,
-            autoCompactionEnabled: session.autoCompactionEnabled,
-            messageCount: session.messages.length,
-            pendingMessageCount: session.pendingMessageCount,
-          });
+          return success(id, "get_state", this.snapshot().rpcState);
         case "set_model": {
           const models = await session.modelRegistry.getAvailable();
           const model = models.find(

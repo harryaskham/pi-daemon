@@ -127,6 +127,8 @@ test(
       "dist/cli.js",
       "dist/api-auth.js",
       "dist/api-server.js",
+      "dist/rpc-attachments.js",
+      "dist/websocket.js",
       "dist/index.js",
       "dist/index.d.ts",
       "dist/pi-rpc-controller.js",

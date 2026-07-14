@@ -8,6 +8,7 @@ export * from "./pi-adapter.js";
 export * from "./pi-rpc-controller.js";
 export * from "./pi-sdk-contract.js";
 export * from "./protocol.js";
+export * from "./rpc-attachments.js";
 export * from "./server.js";
 export * from "./session-api.js";
 export * from "./session-config.js";

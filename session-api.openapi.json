@@ -214,6 +214,13 @@
           "schema": { "type": "string", "minLength": 1, "maxLength": 1024 }
         },
         {
+          "name": "generation",
+          "in": "query",
+          "required": false,
+          "description": "Expected daemon session generation; stale values fail before upgrade.",
+          "schema": { "type": "integer", "minimum": 0 }
+        },
+        {
           "name": "role",
           "in": "query",
           "required": false,
@@ -247,6 +254,7 @@
           "oneOf": [
             { "$ref": "./session-api.schema.json#/$defs/piRpcCommand" },
             { "$ref": "./session-api.schema.json#/$defs/rpcCommandFrame" },
+            { "$ref": "./session-api.schema.json#/$defs/rpcExtensionUiResponseFrame" },
             { "$ref": "./session-api.schema.json#/$defs/rpcControlFrame" }
           ]
         },

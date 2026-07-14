@@ -101,8 +101,10 @@ test("all JSON routes authenticate before revealing capabilities or route state"
   assert.equal(allowed.value.requestId, "capabilities-1");
   assert.equal(allowed.value.hostInstanceId, "host-api-test");
   assert.equal(allowed.value.data.authentication, "service-bearer");
-  assert.deepEqual(allowed.value.data.transports, ["unix-ndjson", "http"]);
-  assert.deepEqual(allowed.value.data.rpcSubprotocols, []);
+  assert.deepEqual(allowed.value.data.transports, ["unix-ndjson", "http", "websocket"]);
+  assert.deepEqual(allowed.value.data.rpcSubprotocols, ["pi-rpc.v1", "pi-daemon-rpc.v1"]);
+  assert.equal(allowed.value.data.rpc.host.processTransportOwned, false);
+  assert.equal(allowed.value.data.rpc.replay, true);
   assert.equal(JSON.stringify(allowed.value).includes(TOKEN), false);
 });
 
@@ -799,8 +801,8 @@ test("WebSocket upgrades fail closed on bearer auth before stream routing", asyn
     "/v1/session/private-name/rpc",
     `Authorization: Bearer ${TOKEN}\r\n`,
   );
-  assert.match(authenticated, /^HTTP\/1\.1 501 Not Implemented/);
-  assert.match(authenticated, /stream_not_implemented/);
+  assert.match(authenticated, /^HTTP\/1\.1 426 Upgrade Required/);
+  assert.match(authenticated, /rpc_subprotocol_required/);
   assert.equal(authenticated.includes(TOKEN), false);
 });
 
