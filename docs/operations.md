@@ -83,6 +83,16 @@ replay bytes per hub (2 MiB), aggregate replay capacity (64 MiB), text messages
 dead readers. These effective values are returned by `/v1/capabilities`; a slow
 reader is closed without blocking its session, controller, or other readers.
 
+## Remote stock-RPC client
+
+`pi-daemon-rpc --session ID_OR_EXACT_NAME` translates stock Pi RPC JSONL on
+stdin/stdout to the framed WebSocket API. Supply `--url`, plus exactly one of
+`--token-file`, `--token-fd`, or `PI_DAEMON_BEARER_TOKEN`. Reconnect attempts,
+handshake time, pending/in-flight commands, bytes, replay, terminal response
+drain, and output flush are bounded. Attach/reconnect/gap status is JSONL on
+stderr; bearer values and daemon framing never appear on either output stream.
+See [Remote RPC stdio bridge](rpc-bridge).
+
 The service emits structured JSON lifecycle logs to stderr. It never logs
 prompts, model output, credentials, or private state/agent/workload paths.
 `pi_daemon_listening_degraded` means the transport is available but recovery or

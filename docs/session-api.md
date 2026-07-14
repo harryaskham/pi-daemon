@@ -366,6 +366,17 @@ buffer emits `replay_gap` followed by a fresh `attach_ready` snapshot. Clients
 must discard events from a previous host or generation. Response records are
 not replayed; clients reconcile command effects through state/session entries.
 
+### Stock stdio client
+
+The packaged `pi-daemon-rpc` binary uses framed attach internally and exposes
+only upstream Pi RPC JSONL on stdin/stdout. It unwraps private responses and
+broadcast events, retains the latest cursor across bounded reconnects, and
+reports attach/control/gap lifecycle as JSONL on stderr. Commands sent before a
+disconnect but lacking a response are returned as correlated
+`connection_lost_indeterminate` failures and are never replayed blindly. See
+[Remote RPC stdio bridge](rpc-bridge) for authentication, limits, and terminal
+semantics.
+
 ## `/apc`: upstream Agent Client Protocol
 
 The v1 route is intentionally spelled `/apc` because that is the operator's

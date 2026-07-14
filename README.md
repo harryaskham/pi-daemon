@@ -13,7 +13,7 @@ command queue, events, and idempotency state for every logical session. The
 implemented no-tools scaffold creates **no process per session or wake**. The
 full target retains that unisolated in-process mode while adding durable session
 CRUD by ID/name, an additive authenticated JSON API, multi-reader Pi RPC
-attachment, an ACP adapter, and an attach client. Stronger isolation modes are
+attachment, an ACP adapter, and a stock-compatible RPC stdio attach client. Stronger isolation modes are
 future backends rather than an in-process security claim.
 
 Pi Daemon is not a Cacophony component. Cacophony can deploy and consume it, but
@@ -23,9 +23,9 @@ or Cacophony credentials.
 > **Status:** durable resident/dormant CRUD, bearer-authenticated JSON admission,
 > asynchronous mutation/prompt tickets, exact Pi conversation recovery, bounded
 > serialization, per-session runtime configuration, truthful bounded
-> recovery/shutdown, and full multi-reader Pi RPC attachment are implemented.
-> The remaining completion program tracks ACP translation, clients, and
-> end-to-end acceptance in [`PLAN.md`](PLAN.md); no release tag is cut yet.
+> recovery/shutdown, full multi-reader Pi RPC attachment, and the remote
+> `pi-daemon-rpc` stdio bridge are implemented. The remaining completion
+> program tracks ACP translation and end-to-end acceptance in [`PLAN.md`](PLAN.md); no release tag is cut yet.
 
 ## Why
 
@@ -57,6 +57,11 @@ pi-daemon serve --socket /run/user/1000/pi-daemon.sock \
 pi-daemon probe --socket /run/user/1000/pi-daemon.sock
 pi-daemon request --socket /run/user/1000/pi-daemon.sock --json '{...}'
 pi-daemon version
+
+# Present a retained session as stock Pi RPC JSONL on stdin/stdout.
+# PI_DAEMON_BEARER_TOKEN is memory-only; --token-file/--token-fd are preferred.
+pi-daemon-rpc --url http://127.0.0.1:7463 --session exact-id-or-name \
+  --token-file ~/.config/pi-daemon/api-token
 ```
 
 `serve` uses one process-global Pi `AuthStorage` and `ModelRegistry` from the
@@ -120,7 +125,8 @@ source language; built JavaScript and declarations are emitted under `dist/`.
 ## Nix consumer contract
 
 The checked-in flake exposes `packages.default`, `packages.pi-daemon`,
-`apps.default`, `checks.package`, and `devShells.default` on Linux and macOS:
+`apps.default`, `apps.pi-daemon`, `apps.pi-daemon-rpc`, `checks.package`, and
+`devShells.default` on Linux and macOS:
 
 ```nix
 inputs.pi-daemon.url = "github:harryaskham/pi-daemon";
@@ -143,6 +149,7 @@ service source into Cacophony.
 - [`docs/acceptance.md`](docs/acceptance.md) — live multiplex/zero-child-process proof
 - [`docs/pi-sdk-compatibility.md`](docs/pi-sdk-compatibility.md) — exact SDK acquisition, compatibility gates, upgrades, and rollback
 - [`docs/pi-rpc-host.md`](docs/pi-rpc-host.md) — in-process full Pi RPC command/event/UI semantics
+- [`docs/rpc-bridge.md`](docs/rpc-bridge.md) — authenticated stock-RPC stdio client and reconnect semantics
 - [`docs/release.md`](docs/release.md) — release and rollback checklist
 - `docs/` — published protocol, operations, security, and integration guides
 

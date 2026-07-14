@@ -53,7 +53,7 @@ const startApi = async (limits, suppliedMultiplexer, tickets) => {
     multiplexer,
     authenticator: new ServiceBearerAuthenticator(TOKEN),
     tickets,
-    host: "127.0.0.1",
+    host: "::1",
     port: 0,
     limits,
   });
@@ -691,6 +691,8 @@ test("serve CLI enables an ephemeral loopback API without logging the bearer", a
       work,
       "--api-port",
       "0",
+      "--api-bind",
+      "::1",
       "--max-connections",
       "3",
       "--max-in-flight-requests-per-connection",

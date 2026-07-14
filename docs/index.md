@@ -14,8 +14,8 @@ The implemented scaffold is intentionally no-tools: it does not load
 extensions, skills, prompt templates, themes, context files, or built-in
 filesystem/process tools. The full target adds trusted per-session Pi runtime
 configuration, durable CRUD, authenticated JSON control, Pi RPC attachment,
-and ACP translation while remaining a neutral service—not a Cacophony
-component.
+a stock-compatible remote stdio bridge, and ACP translation while remaining a
+neutral service—not a Cacophony component.
 
 ## Documentation
 
@@ -28,6 +28,7 @@ component.
 - [Acceptance](acceptance) — credential-free matrix and live zero-child-process proof
 - [Pi SDK compatibility](pi-sdk-compatibility) — exact acquisition, public API gates, upgrades, and rollback
 - [Pi RPC runtime host](pi-rpc-host) — full in-process command/event/UI semantics and policy gates
+- [Remote RPC stdio bridge](rpc-bridge) — authentication, stock JSONL translation, reconnect, gap, and terminal semantics
 - [Release](release) — tag, artifact, and rollback checklist
 - [NDJSON JSON Schema](protocol.schema.json) — language-neutral local protocol contract
 - [Session API JSON Schema](session-api.schema.json) and [OpenAPI](session-api.openapi.json)

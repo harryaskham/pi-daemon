@@ -61,10 +61,19 @@ const stagePackedPackageWithoutRegistry = async (tarball, consumer, temporaryRoo
     join(consumer, "node_modules", "@earendil-works"),
     process.platform === "win32" ? "junction" : "dir",
   );
+  await symlink(
+    join(repositoryRoot, "node_modules", "ws"),
+    join(consumer, "node_modules", "ws"),
+    process.platform === "win32" ? "junction" : "dir",
+  );
   await mkdir(join(consumer, "node_modules", ".bin"), { recursive: true });
   await symlink(
     "../@harryaskham/pi-daemon/dist/cli.js",
     join(consumer, "node_modules", ".bin", "pi-daemon"),
+  );
+  await symlink(
+    "../@harryaskham/pi-daemon/dist/rpc-stdio-cli.js",
+    join(consumer, "node_modules", ".bin", "pi-daemon-rpc"),
   );
 };
 
@@ -128,6 +137,9 @@ test(
       "dist/api-auth.js",
       "dist/api-server.js",
       "dist/rpc-attachments.js",
+      "dist/rpc-bridge.js",
+      "dist/rpc-bridge.d.ts",
+      "dist/rpc-stdio-cli.js",
       "dist/websocket.js",
       "dist/index.js",
       "dist/index.d.ts",
@@ -181,6 +193,15 @@ test(
     const direct = await run(bin, ["version"], { cwd: consumer });
     assert.equal(direct.stdout, `${packageVersion}\n`);
 
+    const rpcBin = join(
+      consumer,
+      "node_modules",
+      ".bin",
+      process.platform === "win32" ? "pi-daemon-rpc.cmd" : "pi-daemon-rpc",
+    );
+    const rpcVersion = await run(rpcBin, ["--version"], { cwd: consumer });
+    assert.equal(rpcVersion.stdout, `${packageVersion}\n`);
+
     const npmExec = await run(npmCommand, ["exec", "--offline", "--", "pi-daemon", "version"], {
       cwd: consumer,
       env: npmEnvironment,
@@ -194,18 +215,19 @@ test(
         'import { PI_DAEMON_VERSION } from "@harryaskham/pi-daemon";',
         'import { SESSION_API_VERSION } from "@harryaskham/pi-daemon/session-api";',
         'import { parseSessionConfiguration } from "@harryaskham/pi-daemon/session-config";',
+        'import { DEFAULT_RPC_STDIO_BRIDGE_LIMITS } from "@harryaskham/pi-daemon/rpc-bridge";',
         'import schema from "@harryaskham/pi-daemon/protocol.schema.json" with { type: "json" };',
         'import sessionSchema from "@harryaskham/pi-daemon/session-api.schema.json" with { type: "json" };',
         'import openapi from "@harryaskham/pi-daemon/session-api.openapi.json" with { type: "json" };',
         'const isolation = parseSessionConfiguration({ cwd: process.cwd(), target: { mode: "memory" } }).persistedSpec.isolation?.mode;',
-        'process.stdout.write(`${PI_DAEMON_VERSION} ${SESSION_API_VERSION} ${isolation} ${schema.title} ${sessionSchema.title} ${openapi.openapi}\\n`);',
+        'process.stdout.write(`${PI_DAEMON_VERSION} ${SESSION_API_VERSION} ${isolation} ${DEFAULT_RPC_STDIO_BRIDGE_LIMITS.reconnectAttempts} ${schema.title} ${sessionSchema.title} ${openapi.openapi}\\n`);',
         "",
       ].join("\n"),
     );
     const imported = await run(process.execPath, [basename(importCheck)], { cwd: consumer });
     assert.equal(
       imported.stdout,
-      `${packageVersion} 1.0 unisolated Pi Daemon protocol v1 Pi Daemon additive session API v1 3.1.0\n`,
+      `${packageVersion} 1.0 unisolated 8 Pi Daemon protocol v1 Pi Daemon additive session API v1 3.1.0\n`,
     );
   },
 );

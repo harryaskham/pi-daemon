@@ -44,6 +44,9 @@ project code or tools.
 - WebSocket RPC upgrades authenticate before subprotocol, session, cursor, or controller disclosure
 - RPC readers have independent message/queue bounds; cursors are scoped to host, canonical session, and generation
 - one explicit controller may mutate or answer extension UI; observers retain read-only state access
+- the remote stdio client accepts bearer material only through a bounded private file, inherited fd, or environment
+- client bearer bytes exist only for the authenticated handshake and never enter URL, argv, stdout, stderr, or reconnect status
+- remote WebSocket use requires TLS or an operator-owned authenticated loopback proxy
 
 Prompts and terminal results are necessarily retained in the private durable
 request journal so a queued request can be replayed and a duplicate terminal

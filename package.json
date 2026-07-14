@@ -9,7 +9,8 @@
     "node": ">=22.19.0"
   },
   "bin": {
-    "pi-daemon": "dist/cli.js"
+    "pi-daemon": "dist/cli.js",
+    "pi-daemon-rpc": "dist/rpc-stdio-cli.js"
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -31,6 +32,10 @@
       "types": "./dist/session-config.d.ts",
       "import": "./dist/session-config.js"
     },
+    "./rpc-bridge": {
+      "types": "./dist/rpc-bridge.d.ts",
+      "import": "./dist/rpc-bridge.js"
+    },
     "./session-api.schema.json": "./dist/session-api.schema.json",
     "./session-api.openapi.json": "./dist/session-api.openapi.json"
   },
@@ -48,18 +53,20 @@
     "build": "npm run clean && tsc -p tsconfig.json && node scripts/postbuild.mjs",
     "prepack": "npm run build",
     "check": "tsc -p tsconfig.json --noEmit",
-    "test": "npm run build && node --test test/*.test.mjs",
-    "test:unit": "node --test test/*.test.mjs",
+    "test": "npm run build && node --test --test-concurrency=1 test/*.test.mjs",
+    "test:unit": "node --test --test-concurrency=1 test/*.test.mjs",
     "test:pi-sdk": "npm run build && node --test test/pi-sdk-compatibility.test.mjs",
     "test:live": "npm run build && node scripts/live-sdk-smoke.mjs",
     "pack:check": "npm pack --dry-run",
     "release:check": "node scripts/check-release.mjs"
   },
   "dependencies": {
-    "@earendil-works/pi-coding-agent": "0.80.6"
+    "@earendil-works/pi-coding-agent": "0.80.6",
+    "ws": "8.21.0"
   },
   "devDependencies": {
     "@types/node": "24.10.1",
+    "@types/ws": "8.18.1",
     "ajv": "8.17.1",
     "typescript": "5.9.3"
   },

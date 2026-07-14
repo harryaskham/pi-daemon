@@ -132,7 +132,7 @@ async function startHarness(t, rpcLimits) {
   const server = new ApiServer({
     multiplexer,
     authenticator: new ServiceBearerAuthenticator(TOKEN),
-    host: "127.0.0.1",
+    host: "::1",
     port: 0,
     rpcLimits,
   });

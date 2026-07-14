@@ -25,7 +25,7 @@
         src = ./.;
 
         nodejs = pkgs.nodejs_24;
-        npmDepsHash = "sha256-i4L8qxTOC6vZ4mnM0Sf2DKnGApF/92QWyzjNKVfJ1jg=";
+        npmDepsHash = "sha256-gCD7DaKgCUClmRf23IQJnaZz4jehWnHQkR/t5g7Nffg=";
         npmDepsFetcherVersion = 2;
         nativeBuildInputs = [pkgs.makeWrapper];
 
@@ -46,6 +46,8 @@
             protocol.schema.json session-api.schema.json session-api.openapi.json "$packageRoot/"
           makeWrapper ${pkgs.nodejs_24}/bin/node "$out/bin/pi-daemon" \
             --add-flags "$packageRoot/dist/cli.js"
+          makeWrapper ${pkgs.nodejs_24}/bin/node "$out/bin/pi-daemon-rpc" \
+            --add-flags "$packageRoot/dist/rpc-stdio-cli.js"
           runHook postInstall
         '';
 
@@ -70,6 +72,10 @@
       pi-daemon = {
         type = "app";
         program = "${self.packages.${system}.pi-daemon}/bin/pi-daemon";
+      };
+      pi-daemon-rpc = {
+        type = "app";
+        program = "${self.packages.${system}.pi-daemon}/bin/pi-daemon-rpc";
       };
     });
 
