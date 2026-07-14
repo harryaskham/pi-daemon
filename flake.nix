@@ -77,8 +77,20 @@
         table { border-collapse: collapse; }
         th, td { border: 1px solid color-mix(in srgb, CanvasText 25%, Canvas); padding: .4rem .6rem; }
         CSS
+        cat > nested-links.lua <<'LUA'
+        function Link(link)
+          local target = link.target
+          if target:match("^https?://") or target:match("^mailto:") or
+             target:match("^#") or target:match("^/") or target:match("^%.%./") then
+            return link
+          end
+          link.target = "../" .. target
+          return link
+        end
+        LUA
         for source in ${./docs}/*.md; do
           name="$(basename "$source" .md)"
+          filter=""
           if [ "$name" = index ]; then
             destination="$out/index.html"
             css="style.css"
@@ -86,12 +98,14 @@
             mkdir -p "$out/$name"
             destination="$out/$name/index.html"
             css="../style.css"
+            filter="--lua-filter=$PWD/nested-links.lua"
           fi
           pandoc "$source" \
             --standalone \
             --from=gfm+yaml_metadata_block \
             --to=html5 \
             --css="$css" \
+            $filter \
             --output="$destination"
         done
         cp ${./protocol.schema.json} "$out/protocol.schema.json"
