@@ -2,7 +2,7 @@
 import { realpath } from "node:fs/promises";
 import { homedir } from "node:os";
 import { resolve } from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 
@@ -275,7 +275,15 @@ Commands:
 `;
 }
 
-const invokedPath = process.argv[1];
-if (invokedPath !== undefined && import.meta.url === pathToFileURL(invokedPath).href) {
+async function isDirectInvocation(invokedPath: string | undefined): Promise<boolean> {
+  if (invokedPath === undefined) return false;
+  try {
+    return (await realpath(invokedPath)) === (await realpath(fileURLToPath(import.meta.url)));
+  } catch {
+    return import.meta.url === pathToFileURL(invokedPath).href;
+  }
+}
+
+if (await isDirectInvocation(process.argv[1])) {
   process.exitCode = await runCli(process.argv.slice(2));
 }

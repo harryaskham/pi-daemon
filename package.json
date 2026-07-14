@@ -21,7 +21,8 @@
     "./protocol": {
       "types": "./dist/protocol.d.ts",
       "import": "./dist/protocol.js"
-    }
+    },
+    "./protocol.schema.json": "./dist/protocol.schema.json"
   },
   "files": [
     "dist",
@@ -34,6 +35,7 @@
   "scripts": {
     "clean": "node scripts/clean.mjs",
     "build": "npm run clean && tsc -p tsconfig.json && node scripts/postbuild.mjs",
+    "prepack": "npm run build",
     "check": "tsc -p tsconfig.json --noEmit",
     "test": "npm run build && node --test test/*.test.mjs",
     "test:unit": "node --test test/*.test.mjs",
