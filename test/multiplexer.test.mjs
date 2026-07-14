@@ -68,6 +68,8 @@ class ControlledAdapter {
   maxActive = 0;
   disposed = 0;
   aborted = 0;
+  steering = [];
+  followUps = [];
 
   prompt(request) {
     const completion = deferred();
@@ -83,6 +85,14 @@ class ControlledAdapter {
     return completion.promise.finally(() => {
       this.active -= 1;
     });
+  }
+
+  async steer(message) {
+    this.steering.push(message);
+  }
+
+  async followUp(message) {
+    this.followUps.push(message);
   }
 
   abort() {
@@ -248,6 +258,41 @@ test("queue depth rejects excess turns without starting them", async () => {
   await waitFor(() => factory.adapter("a").calls.length === 1);
   factory.adapter("a").calls[0].completion.resolve("done");
   await first;
+});
+
+test("steer and follow-up deduplicate within one host and reject semantic key reuse", async () => {
+  const factory = new ControlledFactory();
+  const mux = new Multiplexer({ factory });
+  await mux.open(openCommand("controls"));
+  const wake = mux.wake(wakeCommand("controls", "active"));
+  await waitFor(() => factory.adapter("controls").calls.length === 1);
+  const adapter = factory.adapter("controls");
+  const steer = {
+    protocolVersion: "1.0",
+    requestId: "steer-one",
+    operation: "steer",
+    sessionId: "controls",
+    generation: 1,
+    idempotencyKey: "control-key",
+    payload: { message: "redirect" },
+  };
+  await Promise.all([mux.steer(steer), mux.steer({ ...steer, requestId: "steer-retry" })]);
+  assert.deepEqual(adapter.steering, ["redirect"]);
+  await assert.rejects(
+    mux.steer({ ...steer, payload: { message: "different" } }),
+    (error) => error instanceof MultiplexerError && error.code === "idempotency_conflict",
+  );
+
+  const followUp = {
+    ...steer,
+    operation: "followUp",
+    idempotencyKey: "follow-key",
+    payload: { message: "next" },
+  };
+  await Promise.all([mux.followUp(followUp), mux.followUp(followUp)]);
+  assert.deepEqual(adapter.followUps, ["next"]);
+  adapter.calls[0].completion.resolve({ text: "done" });
+  await wake;
 });
 
 test("abort bypasses the turn queue and returns the session to idle", async () => {

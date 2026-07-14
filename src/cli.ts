@@ -16,6 +16,7 @@ import { PiSessionFactory } from "./pi-adapter.js";
 import { parseCommand } from "./protocol.js";
 import { ProtocolServer } from "./server.js";
 import { FileSessionCatalog } from "./session-catalog.js";
+import { FileMutationTicketStore, MutationTicketController } from "./tickets.js";
 import { PI_DAEMON_VERSION } from "./version.js";
 
 export interface CliIo {
@@ -156,6 +157,7 @@ async function runServe(
   }
   const durability = new FileDurabilityStore({ stateDir });
   const catalog = new FileSessionCatalog({ stateDir });
+  const tickets = new MutationTicketController(new FileMutationTicketStore({ stateDir }));
   const logger = new JsonLineLogger(io.stderr, { component: "pi-daemon" });
   const idleSessionTtlMs = options.has("idle-session-ttl-ms")
     ? integerOption(options, "idle-session-ttl-ms", 0)
@@ -237,6 +239,7 @@ async function runServe(
       apiServer = new ApiServer({
         multiplexer,
         authenticator: loaded.authenticator,
+        tickets,
         host: options.get("api-bind") ?? "127.0.0.1",
         port: integerOption(options, "api-port", 0),
         allowInsecureRemote: options.has("api-allow-insecure-http")
@@ -261,6 +264,9 @@ async function runServe(
     restoredSessions: recovery.opened.length,
     replayedRequests: recovery.replayed.length,
     recoveryFailures: recovery.failures.length,
+    queuedMutationTickets: apiServer?.ticketRecovery?.queued.length ?? 0,
+    indeterminateMutationTickets: apiServer?.ticketRecovery?.indeterminate.length ?? 0,
+    prunedMutationTickets: apiServer?.ticketRecovery?.pruned ?? 0,
     api:
       apiAddress === undefined
         ? { enabled: false }

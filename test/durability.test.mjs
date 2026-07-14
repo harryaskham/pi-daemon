@@ -8,6 +8,7 @@ import {
   DurabilityError,
   FileDurabilityStore,
   encodedSessionId,
+  wakeTicketId,
 } from "../dist/durability.js";
 import { Multiplexer, MultiplexerError } from "../dist/multiplexer.js";
 
@@ -102,7 +103,16 @@ test("journal transitions are append-only and terminal duplicates are cached", a
   const command = wakeCommand("key-1");
 
   assert.equal((await store.beginRequest(command)).state, "queued");
-  assert.equal((await store.beginRequest({ ...command, requestId: "retry-request" })).state, "queued");
+  assert.equal(
+    (
+      await store.beginRequest({
+        ...command,
+        requestId: "retry-request",
+        payload: { ...command.payload, waitForTerminal: false },
+      })
+    ).state,
+    "queued",
+  );
   assert.equal((await store.markAccepted(command.sessionId, command.idempotencyKey)).state, "accepted");
   const completed = await store.markCompleted(command.sessionId, command.idempotencyKey, {
     text: "answer",
@@ -164,6 +174,34 @@ test("recovery leaves queued requests replayable and makes accepted requests ind
   assert.deepEqual(recovery.queued.map((entry) => entry.idempotencyKey), ["queued"]);
   assert.deepEqual(recovery.indeterminate.map((entry) => entry.idempotencyKey), ["accepted"]);
   assert.equal((await restarted.beginRequest(wakeCommand("accepted"))).state, "indeterminate");
+});
+
+test("wake journal tickets support exact lookup and explicit indeterminate reconciliation", async () => {
+  const stateDir = await temporaryState();
+  const first = new FileDurabilityStore({ stateDir });
+  await first.recover();
+  const command = wakeCommand("reconcile");
+  await first.beginRequest(command);
+  await first.markAccepted(command.sessionId, command.idempotencyKey);
+
+  const restarted = new FileDurabilityStore({ stateDir });
+  await restarted.recover();
+  const ticketId = wakeTicketId(command.sessionId, command.idempotencyKey);
+  assert.equal((await restarted.getRequestByTicket(ticketId)).state, "indeterminate");
+  assert.equal(
+    (await restarted.getRequest(command.sessionId, command.idempotencyKey)).requestId,
+    command.requestId,
+  );
+  const reconciled = await restarted.reconcileRequest(ticketId, {
+    state: "completed",
+    result: { text: "observed in Pi entry entry-7" },
+  });
+  assert.equal(reconciled.state, "completed");
+  assert.deepEqual(reconciled.result, { text: "observed in Pi entry entry-7" });
+  await assert.rejects(
+    restarted.reconcileRequest(ticketId, { state: "completed", result: {} }),
+    (error) => error instanceof DurabilityError && error.code === "ticket_not_indeterminate",
+  );
 });
 
 test("terminal journal compaction automatically enforces count retention", async () => {
@@ -257,6 +295,12 @@ test("memory sessions never persist manifests or wake journals for crash replay"
   await mux.recover();
   await mux.open(openCommand("memory-agent"));
   await mux.wake(wakeCommand("memory-key", "ephemeral", "memory-agent"));
+  await assert.rejects(
+    mux.submitWake(wakeCommand("memory-ticket", "ephemeral", "memory-agent")),
+    (error) =>
+      error instanceof MultiplexerError &&
+      error.code === "durable_admission_unavailable",
+  );
 
   const recovered = await new FileDurabilityStore({ stateDir }).recover();
   assert.deepEqual(recovered.manifests, []);

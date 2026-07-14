@@ -71,7 +71,8 @@
         "summary": "Create one logical Pi runtime from a CLI-equivalent session specification",
         "description": "The server allocates the canonical session ID before returning a bounded retained ticket. Raw env values are memory-only and must never appear in the ticket, logs, metrics, manifests, journals, or session resource.",
         "parameters": [
-          { "$ref": "#/components/parameters/IdempotencyKey" }
+          { "$ref": "#/components/parameters/IdempotencyKey" },
+          { "$ref": "#/components/parameters/WaitForTerminal" }
         ],
         "requestBody": {
           "required": true,
@@ -134,7 +135,8 @@
         "description": "A cwd, target, agentDir, environment, resource, settings, or isolation change replaces the runtime and increments generation. In-place name or supported Pi state changes increment revision only. Busy replacements fail rather than racing a live turn.",
         "parameters": [
           { "$ref": "#/components/parameters/IdempotencyKey" },
-          { "$ref": "#/components/parameters/IfMatch" }
+          { "$ref": "#/components/parameters/IfMatch" },
+          { "$ref": "#/components/parameters/WaitForTerminal" }
         ],
         "requestBody": {
           "required": true,
@@ -177,7 +179,8 @@
             "in": "query",
             "required": false,
             "schema": { "type": "boolean", "default": true }
-          }
+          },
+          { "$ref": "#/components/parameters/WaitForTerminal" }
         ],
         "responses": {
           "202": {
@@ -290,6 +293,100 @@
         "x-upstream-protocol": "Agent Client Protocol JSON-RPC 2.0"
       }
     },
+    "/ticket": {
+      "get": {
+        "operationId": "getTicketByIdempotency",
+        "summary": "Read a retained mutation ticket by idempotency scope",
+        "parameters": [
+          { "$ref": "#/components/parameters/RequestId" },
+          { "$ref": "#/components/parameters/IdempotencyKey" },
+          {
+            "name": "method",
+            "in": "query",
+            "required": true,
+            "schema": { "enum": ["POST", "PUT", "DELETE", "WAKE"] }
+          },
+          {
+            "name": "target",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string", "minLength": 1, "maxLength": 4096 }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Current ticket for the exact method, canonical target, and idempotency key",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "./session-api.schema.json#/$defs/ticketEnvelope" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/InvalidRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/ticket/{ticketId}/reconcile": {
+      "post": {
+        "operationId": "reconcileTicket",
+        "summary": "Explicitly resolve an indeterminate ticket after inspecting retained Pi entries",
+        "parameters": [
+          { "$ref": "#/components/parameters/RequestId" },
+          {
+            "name": "ticketId",
+            "in": "path",
+            "required": true,
+            "schema": { "$ref": "./session-api.schema.json#/$defs/identifier" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["requestId", "state", "evidence"],
+                "properties": {
+                  "requestId": { "$ref": "./session-api.schema.json#/$defs/identifier" },
+                  "state": { "enum": ["succeeded", "failed"] },
+                  "error": { "$ref": "./session-api.schema.json#/$defs/apiError" },
+                  "evidence": {
+                    "type": "object",
+                    "required": ["piEntryIds"],
+                    "properties": {
+                      "piEntryIds": {
+                        "type": "array",
+                        "minItems": 1,
+                        "maxItems": 256,
+                        "items": { "$ref": "./session-api.schema.json#/$defs/identifier" }
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Reconciled terminal ticket",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "./session-api.schema.json#/$defs/ticketEnvelope" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/InvalidRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    },
     "/ticket/{ticketId}": {
       "get": {
         "operationId": "getTicket",
@@ -347,6 +444,13 @@
         "in": "header",
         "required": true,
         "schema": { "type": "string", "minLength": 1, "maxLength": 512 }
+      },
+      "WaitForTerminal": {
+        "name": "waitForTerminal",
+        "in": "query",
+        "required": false,
+        "description": "Convenience barrier: hold the ticket envelope until terminal instead of returning immediately after admission.",
+        "schema": { "type": "boolean", "default": false }
       },
       "IfMatch": {
         "name": "If-Match",

@@ -7,6 +7,7 @@ import test from "node:test";
 
 import { PiDaemonClient, ProtocolResponseError } from "../dist/client.js";
 import { runCli } from "../dist/cli.js";
+import { FileDurabilityStore } from "../dist/durability.js";
 import { Multiplexer } from "../dist/multiplexer.js";
 import { ProtocolServer } from "../dist/server.js";
 
@@ -41,6 +42,18 @@ const wakeCommand = (sessionId) => ({
 class EventAdapter {
   calls = 0;
 
+  constructor(sessionId, sessionFile) {
+    this.sessionId = sessionId;
+    this.sessionFile = sessionFile;
+  }
+
+  identity() {
+    return {
+      sessionId: `pi-${this.sessionId}`,
+      ...(this.sessionFile === undefined ? {} : { sessionFile: this.sessionFile }),
+    };
+  }
+
   async prompt(request) {
     this.calls += 1;
     request.onEvent({ event: "messageUpdate", data: { delta: request.prompt } });
@@ -54,7 +67,12 @@ class EventFactory {
   adapters = new Map();
 
   async open(request) {
-    const adapter = new EventAdapter();
+    const adapter = new EventAdapter(
+      request.sessionId,
+      request.session.mode === "memory"
+        ? undefined
+        : `/tmp/pi-daemon-${request.sessionId}.jsonl`,
+    );
     this.adapters.set(request.sessionId, adapter);
     return adapter;
   }
@@ -101,6 +119,47 @@ test("Unix client/server handshake open wake and status round trip", async (t) =
   assert.equal(status.data.sessionId, "a");
   assert.equal(status.data.state, "idle");
   assert.equal((await lstat(harness.socketPath)).mode & 0o777, 0o600);
+});
+
+test("wake can durably acknowledge a prompt ticket without waiting for terminal completion", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "pi-daemon-async-wake-"));
+  const socketPath = join(directory, "daemon.sock");
+  const factory = new EventFactory();
+  const multiplexer = new Multiplexer({
+    factory,
+    durability: new FileDurabilityStore({ stateDir: join(directory, "state") }),
+    hostInstanceId: "host-async-wake",
+  });
+  await multiplexer.recover();
+  const server = new ProtocolServer({ socketPath, multiplexer });
+  await server.start();
+  t.after(async () => server.stop());
+  const client = await PiDaemonClient.connect({ socketPath });
+  t.after(() => client.close());
+  await client.request({
+    ...openCommand("async"),
+    payload: {
+      ...openCommand("async").payload,
+      session: { mode: "new" },
+    },
+  });
+
+  const admitted = await client.request({
+    ...wakeCommand("async"),
+    payload: { prompt: "prompt-async", waitForTerminal: false },
+  });
+  assert.equal(admitted.data.ticket.operation, "prompt");
+  assert.ok(["queued", "running", "succeeded"].includes(admitted.data.ticket.state));
+  const deadline = Date.now() + 2_000;
+  let terminal;
+  do {
+    terminal = await multiplexer.requestTicket(admitted.data.ticket.ticketId);
+    if (terminal?.state === "succeeded") break;
+    if (Date.now() > deadline) throw new Error("timed out waiting for prompt ticket");
+    await new Promise((resolve) => setTimeout(resolve, 2));
+  } while (true);
+  assert.deepEqual(terminal.result, { text: "answer:prompt-async" });
+  assert.equal(factory.adapters.get("async").calls, 1);
 });
 
 test("session events are not broadcast to unrelated client connections", async (t) => {

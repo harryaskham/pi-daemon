@@ -1,0 +1,13 @@
+{
+  "protocolVersion": "1.0",
+  "requestId": "wake-agent-a-async",
+  "operation": "wake",
+  "sessionId": "agent-a",
+  "generation": 3,
+  "idempotencyKey": "message-019f-async",
+  "payload": {
+    "prompt": "Reply with only pong",
+    "source": "scheduler",
+    "waitForTerminal": false
+  }
+}

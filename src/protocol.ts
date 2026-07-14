@@ -46,6 +46,7 @@ export interface SessionTarget {
 
 export interface OpenPayload {
   cwd: string;
+  name?: string;
   agentDir?: string;
   session: SessionTarget;
   model?: ModelPolicy;
@@ -55,6 +56,7 @@ export interface OpenPayload {
 export interface WakePayload {
   prompt: string;
   source?: string;
+  waitForTerminal?: boolean;
 }
 
 export interface MessagePayload {
@@ -327,6 +329,7 @@ export function parseCommand(value: unknown, limits: ParseLimits = {}): Protocol
     case "open": {
       validateSessionIdentity(command);
       stringField(payload, "cwd", { max: 4096 });
+      stringField(payload, "name", { max: 128, optional: true });
       stringField(payload, "agentDir", { max: 4096, optional: true });
       const session = record(payload.session, "payload.session");
       const mode = stringField(session, "mode", { max: 16 });
@@ -354,6 +357,16 @@ export function parseCommand(value: unknown, limits: ParseLimits = {}): Protocol
         max: limits.maxPromptChars ?? DEFAULT_MAX_PROMPT_CHARS,
       });
       stringField(payload, "source", { max: 128, optional: true });
+      if (
+        payload.waitForTerminal !== undefined &&
+        typeof payload.waitForTerminal !== "boolean"
+      ) {
+        throw new ProtocolValidationError(
+          "invalid_field",
+          "payload.waitForTerminal must be a boolean",
+          { field: "payload.waitForTerminal" },
+        );
+      }
       break;
     }
     case "steer":

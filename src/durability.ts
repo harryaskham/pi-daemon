@@ -78,6 +78,14 @@ export interface DurabilityStore {
     idempotencyKey: string,
     error: JournalError,
   ): Promise<JournalEntry>;
+  getRequest(sessionId: string, idempotencyKey: string): Promise<JournalEntry | undefined>;
+  getRequestByTicket(ticketId: string): Promise<JournalEntry | undefined>;
+  reconcileRequest(
+    ticketId: string,
+    outcome:
+      | { state: "completed"; result: unknown }
+      | { state: "failed"; error: JournalError },
+  ): Promise<JournalEntry>;
   pruneSession(sessionId: string): Promise<number>;
 }
 
@@ -109,9 +117,14 @@ export class FileDurabilityStore implements DurabilityStore {
   readonly #maxJournalRecordBytes: number;
   readonly #now: () => Date;
   readonly #entries = new Map<string, Map<string, JournalEntry>>();
+  readonly #ticketIndex = new Map<
+    string,
+    { sessionId: string; idempotencyKey: string }
+  >();
   readonly #loadedSessions = new Set<string>();
   readonly #sessionTails = new Map<string, Promise<void>>();
   #initialized = false;
+  #journalsScanned = false;
 
   constructor(options: FileDurabilityOptions) {
     if (options.stateDir.length === 0) throw new Error("stateDir must not be empty");
@@ -136,11 +149,7 @@ export class FileDurabilityStore implements DurabilityStore {
   async recover(): Promise<RecoverySnapshot> {
     await this.#initialize();
     const manifests = await this.#loadManifests();
-    const journalNames = await readdir(this.#journalDir);
-    for (const name of journalNames.sort()) {
-      if (!name.endsWith(".jsonl")) continue;
-      await this.#loadJournalFile(join(this.#journalDir, name));
-    }
+    await this.#scanJournalFiles();
 
     const queued: JournalEntry[] = [];
     const indeterminate: JournalEntry[] = [];
@@ -208,6 +217,9 @@ export class FileDurabilityStore implements DurabilityStore {
       if (!retainArtifacts) {
         await rm(this.#sessionDir(sessionId), { recursive: true, force: true });
         await rm(this.#journalPath(sessionId), { force: true });
+        for (const entry of this.#entries.get(sessionId)?.values() ?? []) {
+          this.#ticketIndex.delete(wakeTicketId(entry.sessionId, entry.idempotencyKey));
+        }
         this.#entries.delete(sessionId);
         this.#loadedSessions.delete(sessionId);
       }
@@ -247,6 +259,7 @@ export class FileDurabilityStore implements DurabilityStore {
       };
       await this.#append(entry);
       entries.set(entry.idempotencyKey, entry);
+      this.#indexTicket(entry);
       return cloneEntry(entry);
     });
   }
@@ -288,6 +301,62 @@ export class FileDurabilityStore implements DurabilityStore {
     return entry;
   }
 
+  async getRequest(
+    sessionId: string,
+    idempotencyKey: string,
+  ): Promise<JournalEntry | undefined> {
+    await this.#initialize();
+    await this.#loadSessionJournal(sessionId);
+    const entry = this.#entries.get(sessionId)?.get(idempotencyKey);
+    return entry === undefined ? undefined : cloneEntry(entry);
+  }
+
+  async getRequestByTicket(ticketId: string): Promise<JournalEntry | undefined> {
+    await this.#initialize();
+    await this.#scanJournalFiles();
+    const reference = this.#ticketIndex.get(ticketId);
+    if (reference === undefined) return undefined;
+    return this.getRequest(reference.sessionId, reference.idempotencyKey);
+  }
+
+  async reconcileRequest(
+    ticketId: string,
+    outcome:
+      | { state: "completed"; result: unknown }
+      | { state: "failed"; error: JournalError },
+  ): Promise<JournalEntry> {
+    await this.#initialize();
+    await this.#scanJournalFiles();
+    const reference = this.#ticketIndex.get(ticketId);
+    if (reference === undefined) {
+      throw new DurabilityError("ticket_not_found", "wake ticket does not exist", { ticketId });
+    }
+    const entry = await this.#serialize(reference.sessionId, async () => {
+      await this.#loadSessionJournal(reference.sessionId);
+      const current = this.#entries.get(reference.sessionId)?.get(reference.idempotencyKey);
+      if (current?.state !== "indeterminate") {
+        throw new DurabilityError(
+          "ticket_not_indeterminate",
+          "only an indeterminate wake ticket can be reconciled",
+          { ticketId, state: current?.state },
+        );
+      }
+      return cloneEntry(
+        await this.#transition(
+          reference.sessionId,
+          reference.idempotencyKey,
+          outcome.state,
+          outcome.state === "completed"
+            ? { result: outcome.result }
+            : { error: outcome.error },
+          true,
+        ),
+      );
+    });
+    await this.pruneSession(reference.sessionId);
+    return entry;
+  }
+
   async pruneSession(sessionId: string): Promise<number> {
     await this.#initialize();
     return this.#serialize(sessionId, async () => {
@@ -313,6 +382,11 @@ export class FileDurabilityStore implements DurabilityStore {
       if (removed === 0) return 0;
 
       await atomicWriteLines(this.#journalPath(sessionId), retained);
+      for (const entry of entries.values()) {
+        if (!retained.some((candidate) => candidate.idempotencyKey === entry.idempotencyKey)) {
+          this.#ticketIndex.delete(wakeTicketId(entry.sessionId, entry.idempotencyKey));
+        }
+      }
       this.#entries.set(
         sessionId,
         new Map(retained.map((entry) => [entry.idempotencyKey, entry])),
@@ -326,6 +400,7 @@ export class FileDurabilityStore implements DurabilityStore {
     idempotencyKey: string,
     state: JournalState,
     patch: { result?: unknown; error?: JournalError } = {},
+    reconciliation = false,
   ): Promise<JournalEntry> {
     const entries = this.#entries.get(sessionId);
     const current = entries?.get(idempotencyKey);
@@ -335,7 +410,7 @@ export class FileDurabilityStore implements DurabilityStore {
         idempotencyKey,
       });
     }
-    if (!allowedTransition(current.state, state)) {
+    if (!allowedTransition(current.state, state, reconciliation)) {
       if (current.state === state) return current;
       throw new DurabilityError("invalid_journal_transition", "invalid request journal transition", {
         sessionId,
@@ -374,6 +449,16 @@ export class FileDurabilityStore implements DurabilityStore {
       manifests.push(structuredClone(value));
     }
     return manifests;
+  }
+
+  async #scanJournalFiles(): Promise<void> {
+    if (this.#journalsScanned) return;
+    const journalNames = await readdir(this.#journalDir);
+    for (const name of journalNames.sort()) {
+      if (!name.endsWith(".jsonl")) continue;
+      await this.#loadJournalFile(join(this.#journalDir, name));
+    }
+    this.#journalsScanned = true;
   }
 
   async #loadSessionJournal(sessionId: string): Promise<void> {
@@ -422,8 +507,27 @@ export class FileDurabilityStore implements DurabilityStore {
       const entries = this.#entries.get(value.sessionId) ?? new Map<string, JournalEntry>();
       entries.set(value.idempotencyKey, value);
       this.#entries.set(value.sessionId, entries);
+      this.#indexTicket(value, path);
       this.#loadedSessions.add(value.sessionId);
     }
+  }
+
+  #indexTicket(entry: JournalEntry, path?: string): void {
+    const ticketId = wakeTicketId(entry.sessionId, entry.idempotencyKey);
+    const existing = this.#ticketIndex.get(ticketId);
+    if (
+      existing !== undefined &&
+      (existing.sessionId !== entry.sessionId ||
+        existing.idempotencyKey !== entry.idempotencyKey)
+    ) {
+      throw new DurabilityError("ticket_id_collision", "wake ticket identifier collision", {
+        ...(path === undefined ? {} : { path }),
+      });
+    }
+    this.#ticketIndex.set(ticketId, {
+      sessionId: entry.sessionId,
+      idempotencyKey: entry.idempotencyKey,
+    });
   }
 
   async #append(entry: JournalEntry): Promise<void> {
@@ -506,12 +610,20 @@ export class DurabilityError extends Error {
   }
 }
 
+export function wakeTicketId(sessionId: string, idempotencyKey: string): string {
+  const scope = `WAKE\n${sessionId}\n${idempotencyKey}`;
+  const digest = createHash("sha256").update(scope, "utf8").digest("base64url");
+  return `ticket-${digest.slice(0, 43)}`;
+}
+
 export function requestFingerprint(command: DurableWakeCommand): string {
+  const { waitForTerminal: ignoredWaitMode, ...payload } = command.payload;
+  void ignoredWaitMode;
   const semantic = {
     sessionId: command.sessionId,
     generation: command.generation,
     idempotencyKey: command.idempotencyKey,
-    payload: command.payload,
+    payload,
   };
   return createHash("sha256").update(canonicalJson(semantic)).digest("hex");
 }
@@ -521,7 +633,11 @@ export function encodedSessionId(sessionId: string): string {
   return `s-${Buffer.from(sessionId, "utf8").toString("base64url")}`;
 }
 
-function allowedTransition(from: JournalState, to: JournalState): boolean {
+function allowedTransition(
+  from: JournalState,
+  to: JournalState,
+  reconciliation = false,
+): boolean {
   switch (from) {
     case "queued":
       return to === "accepted" || to === "failed";
@@ -530,7 +646,7 @@ function allowedTransition(from: JournalState, to: JournalState): boolean {
     case "completed":
     case "failed":
     case "indeterminate":
-      return false;
+      return reconciliation && (to === "completed" || to === "failed");
   }
 }
 

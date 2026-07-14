@@ -29,6 +29,7 @@ test("language-neutral fixtures validate against protocol.schema.json", async ()
     "handshake.command.json",
     "open.command.json",
     "wake.command.json",
+    "wake-async.command.json",
     "attach.command.json",
     "detach.command.json",
     "success.response.json",
@@ -52,6 +53,9 @@ test("parses handshake open wake and attachment fixtures", async () => {
   const wake = parseCommand(await fixture("wake.command.json"));
   assert.equal(wake.operation, "wake");
   assert.equal(wake.idempotencyKey, "message-019f");
+  const asynchronousWake = parseCommand(await fixture("wake-async.command.json"));
+  assert.equal(asynchronousWake.operation, "wake");
+  assert.equal(asynchronousWake.payload.waitForTerminal, false);
   assert.equal(parseCommand(await fixture("attach.command.json")).operation, "attach");
   assert.equal(parseCommand(await fixture("detach.command.json")).operation, "detach");
 });

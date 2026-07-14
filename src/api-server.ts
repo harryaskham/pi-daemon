@@ -10,8 +10,30 @@ import type { Duplex } from "node:stream";
 
 import { ServiceBearerAuthenticator } from "./api-auth.js";
 import { Multiplexer, MultiplexerError } from "./multiplexer.js";
-import { SESSION_API_VERSION, type ApiErrorBody } from "./session-api.js";
-import { catalogRecordToSessionResource } from "./session-catalog.js";
+import {
+  ProtocolSerializationError,
+  encodeBoundedLine,
+  type OpenPayload,
+  type ProtocolCommand,
+} from "./protocol.js";
+import {
+  SESSION_API_VERSION,
+  type ApiErrorBody,
+  type SessionSpec,
+  type TicketResource,
+} from "./session-api.js";
+import {
+  catalogRecordToSessionResource,
+  type PersistedSessionSpec,
+} from "./session-catalog.js";
+import {
+  MutationTicketController,
+  TicketStoreError,
+  mutationTicketResource,
+  type MutationTicketCommand,
+  type MutationTicketRecord,
+  type MutationTicketRecovery,
+} from "./tickets.js";
 
 export interface ApiServerLimits {
   maxConnections: number;
@@ -19,6 +41,8 @@ export interface ApiServerLimits {
   maxHeaderBytes: number;
   requestTimeoutMs: number;
 }
+
+export const DEFAULT_API_RESPONSE_BYTES = 2 * 1024 * 1024;
 
 export const DEFAULT_API_SERVER_LIMITS: Readonly<ApiServerLimits> = {
   maxConnections: 64,
@@ -30,6 +54,7 @@ export const DEFAULT_API_SERVER_LIMITS: Readonly<ApiServerLimits> = {
 export interface ApiServerOptions {
   multiplexer: Multiplexer;
   authenticator: ServiceBearerAuthenticator;
+  tickets?: MutationTicketController;
   host?: string;
   port?: number;
   allowInsecureRemote?: boolean;
@@ -39,6 +64,16 @@ export interface ApiServerOptions {
 export interface ApiServerAddress {
   host: string;
   port: number;
+}
+
+interface MutationSubmission {
+  ticket: MutationTicketRecord;
+  responseRequestId: string;
+}
+
+interface ReconciliationSubmission {
+  resource: TicketResource;
+  responseRequestId: string;
 }
 
 class ApiRequestError extends Error {
@@ -67,8 +102,10 @@ export class ApiServer {
   readonly limits: ApiServerLimits;
   readonly #multiplexer: Multiplexer;
   readonly #authenticator: ServiceBearerAuthenticator;
+  readonly #tickets: MutationTicketController | undefined;
   readonly #server: Server;
   #started = false;
+  #ticketRecovery: MutationTicketRecovery | undefined;
 
   constructor(options: ApiServerOptions) {
     this.host = options.host ?? "127.0.0.1";
@@ -80,6 +117,7 @@ export class ApiServer {
     }
     this.#multiplexer = options.multiplexer;
     this.#authenticator = options.authenticator;
+    this.#tickets = options.tickets;
     this.limits = {
       maxConnections: positiveInteger(
         options.limits?.maxConnections ?? DEFAULT_API_SERVER_LIMITS.maxConnections,
@@ -108,6 +146,12 @@ export class ApiServer {
     this.#server.on("upgrade", (request, socket) => this.#handleUpgrade(request, socket));
   }
 
+  get ticketRecovery(): MutationTicketRecovery | undefined {
+    return this.#ticketRecovery === undefined
+      ? undefined
+      : structuredClone(this.#ticketRecovery);
+  }
+
   get address(): ApiServerAddress | undefined {
     const address = this.#server.address();
     if (address === null || typeof address === "string") return undefined;
@@ -116,6 +160,9 @@ export class ApiServer {
 
   async start(): Promise<ApiServerAddress> {
     if (this.#started) throw new Error("API server is already started");
+    this.#ticketRecovery = await this.#tickets?.recover(async (command) =>
+      this.#executeMutation(command),
+    );
     await new Promise<void>((resolve, reject) => {
       const onError = (error: Error): void => {
         this.#server.off("listening", onListening);
@@ -199,6 +246,65 @@ export class ApiServer {
       }
 
       if (request.method === "GET") {
+        if (url.pathname === "/v1/ticket") {
+          const method = ticketLookupMethod(url.searchParams.get("method"));
+          const target = url.searchParams.get("target");
+          if (target === null || target.length === 0 || target.length > 4096) {
+            throw new ApiRequestError(400, "invalid_ticket_target", "ticket target is invalid");
+          }
+          const idempotencyKey = requiredIdempotencyKey(
+            request.headers["idempotency-key"],
+          );
+          const mutationTicket =
+            method === "WAKE"
+              ? undefined
+              : await this.#tickets?.getByIdempotency(method, target, idempotencyKey);
+          const wakeSession =
+            method === "WAKE" ? wakeSessionFromTarget(target) : undefined;
+          const wakeTicket =
+            wakeSession === undefined
+              ? undefined
+              : await this.#multiplexer.requestTicketByIdempotency(
+                  wakeSession,
+                  idempotencyKey,
+                );
+          const resource =
+            mutationTicket === undefined
+              ? wakeTicket
+              : mutationTicketResource(mutationTicket);
+          if (resource === undefined) {
+            throw new ApiRequestError(404, "ticket_not_found", "ticket not found");
+          }
+          sendJson(response, 200, {
+            apiVersion: SESSION_API_VERSION,
+            requestId,
+            hostInstanceId: this.#multiplexer.hostInstanceId,
+            ok: true,
+            data: resource,
+          });
+          return;
+        }
+
+        const ticketId = ticketIdFromPath(url.pathname);
+        if (ticketId !== undefined) {
+          const mutationTicket = await this.#tickets?.get(ticketId);
+          const resource =
+            mutationTicket === undefined
+              ? await this.#multiplexer.requestTicket(ticketId)
+              : mutationTicketResource(mutationTicket);
+          if (resource === undefined) {
+            throw new ApiRequestError(404, "ticket_not_found", "ticket not found");
+          }
+          sendJson(response, 200, {
+            apiVersion: SESSION_API_VERSION,
+            requestId,
+            hostInstanceId: this.#multiplexer.hostInstanceId,
+            ok: true,
+            data: resource,
+          });
+          return;
+        }
+
         const sessionRef = sessionRefFromPath(url.pathname);
         if (sessionRef !== undefined) {
           const record = await this.#multiplexer.retainedSession(sessionRef);
@@ -221,13 +327,96 @@ export class ApiServer {
         }
       }
 
+      if (request.method === "POST") {
+        const reconcileTicketId = reconcileTicketIdFromPath(url.pathname);
+        if (reconcileTicketId !== undefined) {
+          const reconciliation = await this.#reconcileTicket(
+            request,
+            reconcileTicketId,
+          );
+          sendJson(response, 200, {
+            apiVersion: SESSION_API_VERSION,
+            requestId: reconciliation.responseRequestId,
+            hostInstanceId: this.#multiplexer.hostInstanceId,
+            ok: true,
+            data: reconciliation.resource,
+          });
+          return;
+        }
+      }
+
       if (request.method === "POST" && url.pathname === "/v1/session") {
-        await readBoundedJson(request, this.limits.maxBodyBytes);
-        throw new ApiRequestError(
-          501,
-          "not_implemented",
-          "session CRUD dispatch is not implemented by this transport foundation",
+        if (this.#tickets === undefined) {
+          await readBoundedJson(request, this.limits.maxBodyBytes);
+          throw new ApiRequestError(
+            501,
+            "not_implemented",
+            "session mutation tickets are not configured",
+          );
+        }
+        const waitForTerminal = booleanQuery(
+          url.searchParams.get("waitForTerminal"),
+          false,
         );
+        const submission = await this.#submitCreate(request, requestId);
+        const responseTicket = await this.#ticketForResponse(
+          waitForTerminal,
+          submission.ticket,
+        );
+        sendJson(
+          response,
+          202,
+          ticketEnvelope(
+            submission.responseRequestId,
+            this.#multiplexer.hostInstanceId,
+            responseTicket,
+          ),
+          {
+            Location: `/v1/ticket/${encodeURIComponent(responseTicket.ticketId)}`,
+          },
+        );
+        return;
+      }
+
+      if (request.method === "PUT" || request.method === "DELETE") {
+        const sessionRef = sessionRefFromPath(url.pathname);
+        if (sessionRef !== undefined) {
+          if (this.#tickets === undefined) {
+            if (request.method === "PUT") await readBoundedJson(request, this.limits.maxBodyBytes);
+            throw new ApiRequestError(
+              501,
+              "not_implemented",
+              "session mutation tickets are not configured",
+            );
+          }
+          const waitForTerminal = booleanQuery(
+            url.searchParams.get("waitForTerminal"),
+            false,
+          );
+          const submission =
+            request.method === "PUT"
+              ? await this.#submitUpdate(request, sessionRef, requestId)
+              : await this.#submitDelete(request, url, sessionRef, requestId);
+          const responseTicket = await this.#ticketForResponse(
+            waitForTerminal,
+            submission.ticket,
+          );
+          sendJson(
+            response,
+            202,
+            ticketEnvelope(
+              submission.responseRequestId,
+              this.#multiplexer.hostInstanceId,
+              responseTicket,
+            ),
+            {
+              Location: `/v1/ticket/${encodeURIComponent(
+                responseTicket.ticketId,
+              )}`,
+            },
+          );
+          return;
+        }
       }
       throw new ApiRequestError(404, "route_not_found", "API route not found");
     } catch (error) {
@@ -238,6 +427,298 @@ export class ApiServer {
         errorEnvelope(requestId, this.#multiplexer.hostInstanceId, normalized.body),
       );
     }
+  }
+
+  async #ticketForResponse(
+    waitForTerminal: boolean,
+    admitted: MutationTicketRecord,
+  ): Promise<MutationTicketRecord> {
+    if (!waitForTerminal) return admitted;
+    return (await this.#tickets!.wait(admitted.ticketId)) ?? admitted;
+  }
+
+  async #submitCreate(
+    request: IncomingMessage,
+    responseRequestId: string,
+  ): Promise<MutationSubmission> {
+    const idempotencyKey = requiredIdempotencyKey(request.headers["idempotency-key"]);
+    const body = parseSessionCreateRequest(
+      await readBoundedJson(request, this.limits.maxBodyBytes),
+    );
+    assertMatchingRequestId(request.headers["x-request-id"], body.requestId);
+    const existing = await this.#tickets!.getByIdempotency(
+      "POST",
+      "/v1/session",
+      idempotencyKey,
+    );
+    const sessionId = body.sessionId ?? existing?.sessionId ?? randomUUID();
+    const command: MutationTicketCommand = {
+      operation: "create",
+      requestId: body.requestId || responseRequestId,
+      sessionId,
+      generation: 1,
+      spec: body.spec,
+    };
+    return {
+      ticket: await this.#tickets!.submit({
+        method: "POST",
+        canonicalTarget: "/v1/session",
+        idempotencyKey,
+        command,
+      }),
+      responseRequestId: body.requestId,
+    };
+  }
+
+  async #submitUpdate(
+    request: IncomingMessage,
+    sessionRef: string,
+    responseRequestId: string,
+  ): Promise<MutationSubmission> {
+    const idempotencyKey = requiredIdempotencyKey(request.headers["idempotency-key"]);
+    const body = parseSessionUpdateRequest(
+      await readBoundedJson(request, this.limits.maxBodyBytes),
+    );
+    assertMatchingRequestId(request.headers["x-request-id"], body.requestId);
+    const directTarget = `/v1/session/${encodeURIComponent(sessionRef)}`;
+    const directTicket = await this.#tickets!.getByIdempotency(
+      "PUT",
+      directTarget,
+      idempotencyKey,
+    );
+    if (directTicket !== undefined) {
+      if (directTicket.command.operation !== "update") {
+        throw new TicketStoreError("corrupt_ticket", "ticket operation does not match scope");
+      }
+      assertIfMatch(
+        request.headers["if-match"],
+        directTicket.sessionId,
+        directTicket.command.expectedRevision,
+      );
+      const command: MutationTicketCommand = {
+        operation: "update",
+        requestId: body.requestId || responseRequestId,
+        sessionId: directTicket.sessionId,
+        expectedGeneration: body.expectedGeneration,
+        expectedRevision: body.expectedRevision,
+        generation: body.expectedGeneration + 1,
+        spec: body.spec,
+      };
+      return {
+        ticket: await this.#tickets!.submit({
+          method: "PUT",
+          canonicalTarget: directTarget,
+          idempotencyKey,
+          command,
+        }),
+        responseRequestId: body.requestId,
+      };
+    }
+    const current = await this.#multiplexer.retainedSession(sessionRef);
+    if (current === undefined) {
+      throw new ApiRequestError(404, "session_not_found", "session not found");
+    }
+    assertIfMatch(request.headers["if-match"], current.sessionId, current.revision);
+    if (
+      body.expectedGeneration !== current.generation ||
+      body.expectedRevision !== current.revision
+    ) {
+      throw new ApiRequestError(
+        412,
+        "session_precondition_failed",
+        "session generation or revision changed",
+      );
+    }
+    const command: MutationTicketCommand = {
+      operation: "update",
+      requestId: body.requestId || responseRequestId,
+      sessionId: current.sessionId,
+      expectedGeneration: body.expectedGeneration,
+      expectedRevision: body.expectedRevision,
+      generation: body.expectedGeneration + 1,
+      spec: body.spec,
+    };
+    return {
+      ticket: await this.#tickets!.submit({
+        method: "PUT",
+        canonicalTarget: `/v1/session/${encodeURIComponent(current.sessionId)}`,
+        idempotencyKey,
+        command,
+      }),
+      responseRequestId: body.requestId,
+    };
+  }
+
+  async #submitDelete(
+    request: IncomingMessage,
+    url: URL,
+    sessionRef: string,
+    responseRequestId: string,
+  ): Promise<MutationSubmission> {
+    const idempotencyKey = requiredIdempotencyKey(request.headers["idempotency-key"]);
+    const retainArtifacts = booleanQuery(url.searchParams.get("retainArtifacts"), true);
+    const directTarget = `/v1/session/${encodeURIComponent(sessionRef)}?retainArtifacts=${retainArtifacts}`;
+    const directTicket = await this.#tickets!.getByIdempotency(
+      "DELETE",
+      directTarget,
+      idempotencyKey,
+    );
+    if (directTicket !== undefined) {
+      if (directTicket.command.operation !== "delete") {
+        throw new TicketStoreError("corrupt_ticket", "ticket operation does not match scope");
+      }
+      assertIfMatch(
+        request.headers["if-match"],
+        directTicket.sessionId,
+        directTicket.command.expectedRevision,
+      );
+      const command: MutationTicketCommand = {
+        operation: "delete",
+        requestId: responseRequestId,
+        sessionId: directTicket.sessionId,
+        expectedGeneration: directTicket.command.expectedGeneration,
+        expectedRevision: directTicket.command.expectedRevision,
+        retainArtifacts,
+      };
+      return {
+        ticket: await this.#tickets!.submit({
+          method: "DELETE",
+          canonicalTarget: directTarget,
+          idempotencyKey,
+          command,
+        }),
+        responseRequestId,
+      };
+    }
+    const current = await this.#multiplexer.retainedSession(sessionRef);
+    if (current === undefined) {
+      throw new ApiRequestError(404, "session_not_found", "session not found");
+    }
+    assertIfMatch(request.headers["if-match"], current.sessionId, current.revision);
+    const command: MutationTicketCommand = {
+      operation: "delete",
+      requestId: responseRequestId,
+      sessionId: current.sessionId,
+      expectedGeneration: current.generation,
+      expectedRevision: current.revision,
+      retainArtifacts,
+    };
+    return {
+      ticket: await this.#tickets!.submit({
+        method: "DELETE",
+        canonicalTarget: `/v1/session/${encodeURIComponent(current.sessionId)}?retainArtifacts=${retainArtifacts}`,
+        idempotencyKey,
+        command,
+      }),
+      responseRequestId,
+    };
+  }
+
+  async #reconcileTicket(
+    request: IncomingMessage,
+    ticketId: string,
+  ): Promise<ReconciliationSubmission> {
+    const body = parseTicketReconciliation(
+      await readBoundedJson(request, this.limits.maxBodyBytes),
+    );
+    assertMatchingRequestId(request.headers["x-request-id"], body.requestId);
+    const mutation = await this.#tickets?.get(ticketId);
+    if (mutation !== undefined) {
+      const reconciled = await this.#tickets!.reconcile(
+        ticketId,
+        body.state === "succeeded"
+          ? { state: "succeeded", result: body.result }
+          : { state: "failed", error: body.error },
+      );
+      return {
+        resource: mutationTicketResource(reconciled),
+        responseRequestId: body.requestId,
+      };
+    }
+    try {
+      return {
+        resource: await this.#multiplexer.reconcileWakeTicket(
+          ticketId,
+          body.state === "succeeded"
+            ? { state: "completed", result: body.result }
+            : { state: "failed", error: body.error },
+        ),
+        responseRequestId: body.requestId,
+      };
+    } catch (error) {
+      if (
+        error instanceof MultiplexerError &&
+        (error.code === "ticket_not_found" || error.code === "journal_entry_missing")
+      ) {
+        throw new ApiRequestError(404, "ticket_not_found", "ticket not found");
+      }
+      throw error;
+    }
+  }
+
+  async #executeMutation(command: MutationTicketCommand): Promise<unknown> {
+    if (command.operation === "create") {
+      if ((await this.#multiplexer.retainedSession(command.sessionId)) !== undefined) {
+        throw new MultiplexerError("session_exists", "session ID already exists");
+      }
+      await this.#multiplexer.open(openCommandFromTicket(command));
+      return this.#currentSessionResource(command.sessionId);
+    }
+
+    const current = await this.#multiplexer.retainedSession(command.sessionId);
+    if (current === undefined) {
+      throw new MultiplexerError("session_not_found", "session not found");
+    }
+    if (
+      current.generation !== command.expectedGeneration ||
+      current.revision !== command.expectedRevision
+    ) {
+      throw new MultiplexerError("session_precondition_failed", "session version changed");
+    }
+
+    if (command.operation === "update") {
+      if (current.residency === "resident") {
+        await this.#multiplexer.close({
+          protocolVersion: "1.0",
+          requestId: `${command.requestId}-replace-close`,
+          operation: "close",
+          sessionId: command.sessionId,
+          generation: current.generation,
+          payload: { retainSession: true },
+        });
+      }
+      await this.#multiplexer.open(openCommandFromTicket(command));
+      return this.#currentSessionResource(command.sessionId);
+    }
+
+    const changed = command.retainArtifacts
+      ? await this.#multiplexer.close({
+          protocolVersion: "1.0",
+          requestId: command.requestId,
+          operation: "close",
+          sessionId: command.sessionId,
+          generation: command.expectedGeneration,
+          payload: { retainSession: true },
+        })
+      : await this.#multiplexer.deleteRetainedSession(command.sessionId, {
+          requestId: command.requestId,
+          expectedGeneration: command.expectedGeneration,
+          expectedRevision: command.expectedRevision,
+        });
+    if (!changed) throw new MultiplexerError("session_not_found", "session not found");
+    return {
+      sessionId: command.sessionId,
+      retained: command.retainArtifacts,
+      deleted: !command.retainArtifacts,
+    };
+  }
+
+  async #currentSessionResource(sessionId: string): Promise<unknown> {
+    const record = await this.#multiplexer.retainedSession(sessionId);
+    if (record === undefined) {
+      throw new MultiplexerError("catalog_record_missing", "session catalog record is missing");
+    }
+    return catalogRecordToSessionResource(record);
   }
 
   #handleUpgrade(request: IncomingMessage, socket: Duplex): void {
@@ -335,6 +816,474 @@ function requestUrl(request: IncomingMessage): URL {
   }
 }
 
+function ticketEnvelope(
+  requestId: string,
+  hostInstanceId: string,
+  record: MutationTicketRecord,
+) {
+  return {
+    apiVersion: SESSION_API_VERSION,
+    requestId,
+    hostInstanceId,
+    ok: true as const,
+    data: mutationTicketResource(record),
+  };
+}
+
+function reconcileTicketIdFromPath(pathname: string): string | undefined {
+  const match = /^\/v1\/ticket\/([^/]+)\/reconcile$/.exec(pathname);
+  if (match === null) return undefined;
+  return decodeTicketId(match[1]!);
+}
+
+function ticketIdFromPath(pathname: string): string | undefined {
+  const match = /^\/v1\/ticket\/([^/]+)$/.exec(pathname);
+  if (match === null) return undefined;
+  return decodeTicketId(match[1]!);
+}
+
+function decodeTicketId(value: string): string {
+  try {
+    const ticketId = decodeURIComponent(value);
+    if (!/^ticket-[A-Za-z0-9_-]{43}$/.test(ticketId)) throw new Error("invalid ticket ID");
+    return ticketId;
+  } catch {
+    throw new ApiRequestError(400, "invalid_ticket_id", "ticket identifier is invalid");
+  }
+}
+
+function parseTicketReconciliation(value: unknown):
+  | {
+      requestId: string;
+      state: "succeeded";
+      result: unknown;
+    }
+  | {
+      requestId: string;
+      state: "failed";
+      error: ApiErrorBody;
+    } {
+  const input = apiRecord(value, "ticket reconciliation");
+  const requestId = apiString(input.requestId, "requestId", 128);
+  const evidence = apiRecord(input.evidence, "evidence");
+  if (
+    !Array.isArray(evidence.piEntryIds) ||
+    evidence.piEntryIds.length < 1 ||
+    evidence.piEntryIds.length > 256 ||
+    !evidence.piEntryIds.every(
+      (entryId) => typeof entryId === "string" && entryId.length > 0 && entryId.length <= 256,
+    )
+  ) {
+    throw new ApiRequestError(
+      400,
+      "invalid_reconciliation_evidence",
+      "reconciliation requires bounded retained Pi entry IDs",
+    );
+  }
+  const piEntryIds = evidence.piEntryIds as string[];
+  if (input.result !== undefined) {
+    throw new ApiRequestError(
+      400,
+      "invalid_reconciliation",
+      "reconciliation persists Pi entry IDs, not client-supplied result content",
+    );
+  }
+  if (input.state === "succeeded") {
+    return {
+      requestId,
+      state: "succeeded",
+      result: { reconciled: true, piEntryIds: [...piEntryIds] },
+    };
+  }
+  if (input.state === "failed") {
+    const error = apiRecord(input.error, "error");
+    const retryable = error.retryable;
+    if (typeof retryable !== "boolean") {
+      throw new ApiRequestError(
+        400,
+        "invalid_reconciliation",
+        "error.retryable is invalid",
+      );
+    }
+    return {
+      requestId,
+      state: "failed",
+      error: {
+        code: apiString(error.code, "error.code", 128),
+        message: "client reconciliation marked the ticket failed",
+        retryable,
+      },
+    };
+  }
+  throw new ApiRequestError(
+    400,
+    "invalid_reconciliation",
+    "reconciliation state must be succeeded or failed",
+  );
+}
+
+function ticketLookupMethod(
+  value: string | null,
+): "POST" | "PUT" | "DELETE" | "WAKE" {
+  if (value !== "POST" && value !== "PUT" && value !== "DELETE" && value !== "WAKE") {
+    throw new ApiRequestError(400, "invalid_ticket_method", "ticket method is invalid");
+  }
+  return value;
+}
+
+function wakeSessionFromTarget(target: string): string {
+  const match = /^\/v1\/session\/([^/]+)\/wake$/.exec(target);
+  if (match === null) {
+    throw new ApiRequestError(
+      400,
+      "invalid_ticket_target",
+      "WAKE ticket target must be a canonical session wake path",
+    );
+  }
+  try {
+    const sessionId = decodeURIComponent(match[1]!);
+    if (sessionId.length === 0 || sessionId.length > 256) throw new Error("invalid session ID");
+    return sessionId;
+  } catch {
+    throw new ApiRequestError(400, "invalid_ticket_target", "WAKE ticket target is invalid");
+  }
+}
+
+function requiredIdempotencyKey(value: string | string[] | undefined): string {
+  if (
+    typeof value !== "string" ||
+    value.length === 0 ||
+    value.length > 512 ||
+    /[\r\n]/.test(value)
+  ) {
+    throw new ApiRequestError(
+      400,
+      "invalid_idempotency_key",
+      "Idempotency-Key is required and must be at most 512 characters",
+    );
+  }
+  return value;
+}
+
+function assertMatchingRequestId(
+  header: string | string[] | undefined,
+  bodyRequestId: string,
+): void {
+  if (header !== undefined && (typeof header !== "string" || header !== bodyRequestId)) {
+    throw new ApiRequestError(
+      400,
+      "request_id_mismatch",
+      "X-Request-Id must match the mutation body requestId",
+    );
+  }
+}
+
+function assertIfMatch(
+  value: string | string[] | undefined,
+  sessionId: string,
+  revision: number,
+): void {
+  if (typeof value !== "string" || value !== sessionEtag(sessionId, revision)) {
+    throw new ApiRequestError(
+      412,
+      "session_precondition_failed",
+      "If-Match does not match the current session revision",
+    );
+  }
+}
+
+function booleanQuery(value: string | null, defaultValue: boolean): boolean {
+  if (value === null) return defaultValue;
+  if (value === "true") return true;
+  if (value === "false") return false;
+  throw new ApiRequestError(400, "invalid_boolean", "query boolean must be true or false");
+}
+
+function parseSessionCreateRequest(value: unknown): {
+  requestId: string;
+  sessionId?: string;
+  spec: PersistedSessionSpec;
+} {
+  const input = apiRecord(value, "session create request");
+  const requestId = apiString(input.requestId, "requestId", 128);
+  const sessionId = apiOptionalString(input.sessionId, "sessionId", 256);
+  const spec = parseSupportedSessionSpec(input.spec);
+  return { requestId, ...(sessionId === undefined ? {} : { sessionId }), spec };
+}
+
+function parseSessionUpdateRequest(value: unknown): {
+  requestId: string;
+  expectedGeneration: number;
+  expectedRevision: number;
+  spec: PersistedSessionSpec;
+} {
+  const input = apiRecord(value, "session update request");
+  return {
+    requestId: apiString(input.requestId, "requestId", 128),
+    expectedGeneration: apiInteger(input.expectedGeneration, "expectedGeneration", 0),
+    expectedRevision: apiInteger(input.expectedRevision, "expectedRevision", 1),
+    spec: parseSupportedSessionSpec(input.spec),
+  };
+}
+
+function parseSupportedSessionSpec(value: unknown): PersistedSessionSpec {
+  const input = apiRecord(value, "session spec");
+  const cwd = apiString(input.cwd, "spec.cwd", 4096);
+  const targetInput = apiRecord(input.target, "spec.target");
+  const mode = apiString(targetInput.mode, "spec.target.mode", 16);
+  if (!["new", "continue", "open", "memory"].includes(mode)) {
+    throw unsupported("session target mode is not supported by the current runtime");
+  }
+  const path = apiOptionalString(targetInput.path, "spec.target.path", 4096);
+  if (mode === "open" && path === undefined) {
+    throw new ApiRequestError(400, "invalid_session_spec", "open target requires spec.target.path");
+  }
+  if (
+    targetInput.sourceSession !== undefined ||
+    targetInput.entryId !== undefined ||
+    targetInput.sessionDir !== undefined
+  ) {
+    throw unsupported("fork and custom session directory targets are not yet supported");
+  }
+  const target: PersistedSessionSpec["target"] = {
+    mode: mode as "new" | "continue" | "open" | "memory",
+    ...(path === undefined ? {} : { path }),
+  };
+  const spec: PersistedSessionSpec = { cwd, target, isolation: { mode: "unisolated" } };
+
+  const name = apiOptionalString(input.name, "spec.name", 128);
+  if (name !== undefined) spec.name = name;
+  const agentDir = apiOptionalString(input.agentDir, "spec.agentDir", 4096);
+  if (agentDir !== undefined) spec.agentDir = agentDir;
+
+  if (input.model !== undefined) {
+    const modelInput = apiRecord(input.model, "spec.model");
+    const provider = apiOptionalString(modelInput.provider, "spec.model.provider", 128);
+    const id = apiOptionalString(modelInput.id, "spec.model.id", 256);
+    if ((provider === undefined) !== (id === undefined)) {
+      throw new ApiRequestError(
+        400,
+        "invalid_session_spec",
+        "model provider and id must be supplied together",
+      );
+    }
+    if (modelInput.scopedModels !== undefined) {
+      const scopedModels = apiStringArray(
+        modelInput.scopedModels,
+        "spec.model.scopedModels",
+        128,
+        512,
+      );
+      if (scopedModels.length > 0) {
+        throw unsupported("scoped model lists are not yet supported");
+      }
+    }
+    const thinkingLevel = apiOptionalString(
+      modelInput.thinkingLevel,
+      "spec.model.thinkingLevel",
+      16,
+    );
+    if (
+      thinkingLevel !== undefined &&
+      !["off", "minimal", "low", "medium", "high", "xhigh", "max"].includes(
+        thinkingLevel,
+      )
+    ) {
+      throw new ApiRequestError(400, "invalid_session_spec", "thinking level is invalid");
+    }
+    spec.model = {
+      ...(provider === undefined ? {} : { provider, id: id! }),
+      ...(thinkingLevel === undefined
+        ? {}
+        : {
+            thinkingLevel: thinkingLevel as NonNullable<
+              NonNullable<SessionSpec["model"]>["thinkingLevel"]
+            >,
+          }),
+    };
+  }
+
+  if (input.tools !== undefined) {
+    const tools = apiRecord(input.tools, "spec.tools");
+    const mode = apiOptionalString(tools.mode, "spec.tools.mode", 32) ?? "none";
+    const include =
+      tools.include === undefined
+        ? []
+        : apiStringArray(tools.include, "spec.tools.include", 256, 128);
+    const exclude =
+      tools.exclude === undefined
+        ? []
+        : apiStringArray(tools.exclude, "spec.tools.exclude", 256, 128);
+    if (mode !== "none" || include.length > 0 || exclude.length > 0) {
+      throw unsupported("only the no-tools session policy is currently supported");
+    }
+    spec.tools = { mode: "none", include: [], exclude: [] };
+  }
+
+  if (input.resources !== undefined) {
+    const resources = apiRecord(input.resources, "spec.resources");
+    for (const field of ["extensions", "skills", "promptTemplates", "themes", "appendSystemPrompt"]) {
+      const selected = resources[field];
+      if (selected !== undefined) {
+        const values = apiStringArray(selected, `spec.resources.${field}`, 256, 4096);
+        if (values.length > 0) {
+          throw unsupported(`${field} resources are not yet supported`);
+        }
+      }
+    }
+    if (
+      resources.extensionFlags !== undefined ||
+      (resources.projectTrust !== undefined &&
+        resources.projectTrust !== "deny" &&
+        resources.projectTrust !== "default")
+    ) {
+      throw unsupported("extension flags or project approval are not yet supported");
+    }
+    const systemPrompt = apiOptionalString(
+      resources.systemPrompt,
+      "spec.resources.systemPrompt",
+      256 * 1024,
+      true,
+    );
+    spec.resources = {
+      noExtensions: true,
+      noSkills: true,
+      noPromptTemplates: true,
+      noThemes: true,
+      noContextFiles: true,
+      ...(systemPrompt === undefined ? {} : { systemPrompt }),
+    };
+  }
+
+  if (input.settings !== undefined && Object.keys(apiRecord(input.settings, "spec.settings")).length > 0) {
+    throw unsupported("per-session settings overrides are not yet supported");
+  }
+  if (input.env !== undefined && Object.keys(apiRecord(input.env, "spec.env")).length > 0) {
+    throw unsupported("per-session environment overlays are not yet supported");
+  }
+  if (input.isolation !== undefined) {
+    const isolation = apiRecord(input.isolation, "spec.isolation");
+    if (isolation.mode !== "unisolated") {
+      throw unsupported("only unisolated in-process sessions are supported");
+    }
+  }
+  return spec;
+}
+
+function openCommandFromTicket(
+  command: Extract<MutationTicketCommand, { operation: "create" | "update" }>,
+): Extract<ProtocolCommand, { operation: "open" }> {
+  return {
+    protocolVersion: "1.0",
+    requestId: command.requestId,
+    operation: "open",
+    sessionId: command.sessionId,
+    generation: command.generation,
+    payload: openPayloadFromSpec(command.spec),
+  };
+}
+
+function openPayloadFromSpec(spec: PersistedSessionSpec): OpenPayload {
+  const session: OpenPayload["session"] = {
+    mode: spec.target.mode as OpenPayload["session"]["mode"],
+    ...(spec.target.path === undefined ? {} : { path: spec.target.path }),
+  };
+  const resources: OpenPayload["resources"] = {
+    extensions: "none",
+    skills: "none",
+    promptTemplates: "none",
+    themes: "none",
+    contextFiles: "none",
+    tools: "none",
+    ...(spec.resources?.systemPrompt === undefined
+      ? {}
+      : { systemPrompt: spec.resources.systemPrompt }),
+  };
+  const payload: OpenPayload = {
+    cwd: spec.cwd,
+    session,
+    resources,
+    ...(spec.name === undefined ? {} : { name: spec.name }),
+    ...(spec.agentDir === undefined ? {} : { agentDir: spec.agentDir }),
+  };
+  if (spec.model?.provider !== undefined && spec.model.id !== undefined) {
+    payload.model = {
+      provider: spec.model.provider,
+      id: spec.model.id,
+      ...(spec.model.thinkingLevel === undefined
+        ? {}
+        : { thinkingLevel: spec.model.thinkingLevel }),
+    };
+  }
+  return payload;
+}
+
+function apiRecord(value: unknown, field: string): Record<string, unknown> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new ApiRequestError(400, "invalid_session_spec", `${field} must be an object`);
+  }
+  return value as Record<string, unknown>;
+}
+
+function apiString(
+  value: unknown,
+  field: string,
+  max: number,
+  allowEmpty = false,
+): string {
+  if (
+    typeof value !== "string" ||
+    (!allowEmpty && value.length === 0) ||
+    value.length > max ||
+    /[\u0000]/.test(value)
+  ) {
+    throw new ApiRequestError(400, "invalid_session_spec", `${field} is invalid`);
+  }
+  return value;
+}
+
+function apiOptionalString(
+  value: unknown,
+  field: string,
+  max: number,
+  allowEmpty = false,
+): string | undefined {
+  return value === undefined ? undefined : apiString(value, field, max, allowEmpty);
+}
+
+function apiStringArray(
+  value: unknown,
+  field: string,
+  maxItems: number,
+  maxItemLength: number,
+): string[] {
+  if (
+    !Array.isArray(value) ||
+    value.length > maxItems ||
+    !value.every(
+      (item) =>
+        typeof item === "string" &&
+        item.length > 0 &&
+        item.length <= maxItemLength &&
+        !/[\u0000]/.test(item),
+    )
+  ) {
+    throw new ApiRequestError(400, "invalid_session_spec", `${field} is invalid`);
+  }
+  return [...value] as string[];
+}
+
+function apiInteger(value: unknown, field: string, minimum: number): number {
+  if (!Number.isSafeInteger(value) || (value as number) < minimum) {
+    throw new ApiRequestError(400, "invalid_session_spec", `${field} is invalid`);
+  }
+  return value as number;
+}
+
+function unsupported(message: string): ApiRequestError {
+  return new ApiRequestError(422, "unsupported_session_option", message);
+}
+
 function sessionEtag(sessionId: string, revision: number): string {
   return `"${Buffer.from(sessionId, "utf8").toString("base64url")}:${revision}"`;
 }
@@ -382,9 +1331,39 @@ function errorEnvelope(requestId: string, hostInstanceId: string, error: ApiErro
 }
 
 function normalizeApiError(error: unknown): { status: number; body: ApiErrorBody } {
+  if (error instanceof ProtocolSerializationError) {
+    return {
+      status: 500,
+      body: {
+        code: error.code,
+        message: "API response exceeds the bounded JSON transport contract",
+        retryable: false,
+      },
+    };
+  }
   if (error instanceof ApiRequestError) {
     return {
       status: error.status,
+      body: { code: error.code, message: error.message, retryable: error.retryable },
+    };
+  }
+  if (error instanceof TicketStoreError) {
+    const status =
+      error.code === "ticket_not_found"
+        ? 404
+        : error.code === "idempotency_conflict" ||
+            error.code === "ticket_not_indeterminate" ||
+            error.code === "invalid_ticket_transition"
+          ? 409
+          : error.code === "ticket_capacity"
+            ? 429
+            : error.code === "ticket_record_too_large"
+              ? 413
+              : error.code === "tickets_not_ready"
+                ? 503
+                : 400;
+    return {
+      status,
       body: { code: error.code, message: error.message, retryable: error.retryable },
     };
   }
@@ -392,7 +1371,9 @@ function normalizeApiError(error: unknown): { status: number; body: ApiErrorBody
     const status =
       error.code === "session_not_found"
         ? 404
-        : error.code === "stale_generation" || error.code === "session_busy"
+        : error.code === "stale_generation" ||
+            error.code === "session_busy" ||
+            error.code === "ticket_not_indeterminate"
           ? 409
           : error.retryable
             ? 503
@@ -418,7 +1399,7 @@ function sendJson(
   value: unknown,
   headers: Record<string, string> = {},
 ): void {
-  const body = Buffer.from(`${JSON.stringify(value)}\n`, "utf8");
+  const body = encodeBoundedLine(value, DEFAULT_API_RESPONSE_BYTES);
   response.writeHead(status, {
     "Cache-Control": "no-store",
     "Content-Length": String(body.length),
@@ -445,7 +1426,7 @@ function sendRawHttp(
           : status === 501
             ? "Not Implemented"
             : "Error";
-  const body = Buffer.from(`${JSON.stringify(value)}\n`, "utf8");
+  const body = encodeBoundedLine(value, DEFAULT_API_RESPONSE_BYTES);
   const lines = [
     `HTTP/1.1 ${status} ${reason}`,
     "Cache-Control: no-store",

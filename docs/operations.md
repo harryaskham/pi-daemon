@@ -125,15 +125,31 @@ its retained manifest/journal/Pi files without first creating an SDK runtime.
 Daemon status exposes only counts; the additive session API exposes bounded
 resources.
 
+## Durable command tickets
+
+Owner-private atomic mutation tickets live under `state/tickets/`. They are
+bounded to 4096 records, 1 MiB each, and seven days for terminal or
+indeterminate retention by default. Ticket commands contain only the secret-free
+persisted session spec; raw environment values are rejected before admission.
+The wake path continues to use the bounded per-session journal and derives an
+opaque ticket ID from session/idempotency scope. Authenticated API responses are
+preflighted against a 2 MiB structural JSON bound; an oversized list/result
+becomes a typed `outbound_record_too_large` error before JSON/Buffer allocation.
+
 ## Restart recovery
 
 At startup, manifests reopen the resolved Pi session file recorded after the
 original create/continue/open operation; the requested target is never rerun as
 though it were still unresolved. Durable `queued` wakes replay only after that
-exact conversation opens. `accepted` wakes become `indeterminate` and require
-client reconciliation. A missing/corrupt Pi file, a legacy `new`/`continue`
-manifest without resolved identity, or a generation mismatch blocks replay and
-is reported as a recovery failure.
+exact conversation opens, while queued mutation tickets replay through their
+secret-free commands. `accepted` wakes and `running` mutations become
+`indeterminate` and require client reconciliation. Readiness logs expose only
+queued/indeterminate/pruned counts, never ticket commands or results.
+
+A missing/corrupt Pi file, a legacy `new`/`continue` manifest without resolved
+identity, or a generation mismatch blocks replay and is reported as a recovery
+failure. Corrupt, permissive, mismatched, oversized, or symlinked state fails
+closed rather than being ignored.
 
 `memory` targets are explicitly resident-only: they have a catalog identity but
 no runtime manifest or durable wake journal, remain dormant after restart, and

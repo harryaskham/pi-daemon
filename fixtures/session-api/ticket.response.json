@@ -5,6 +5,8 @@
   "ok": true,
   "data": {
     "ticketId": "ticket-create-agent-a",
+    "requestId": "req-create-agent-a",
+    "idempotencyKey": "create-agent-a-once",
     "operation": "create",
     "state": "queued",
     "submittedAt": "2026-07-14T08:00:00.000Z",

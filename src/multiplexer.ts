@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { isAbsolute, resolve } from "node:path";
 
 import {
@@ -9,6 +9,8 @@ import {
   type JournalEntry,
   type RecoverySnapshot,
 } from "./durability.js";
+import type { TicketResource } from "./session-api.js";
+import { wakeTicketResource } from "./tickets.js";
 import type {
   OpenPayload,
   ProtocolCommand,
@@ -140,6 +142,11 @@ export interface WakeResult {
   session: SessionSnapshot;
 }
 
+export interface WakeAdmission {
+  ticket: TicketResource;
+  completion: Promise<WakeResult>;
+}
+
 export class MultiplexerError extends Error {
   readonly code: string;
   readonly retryable: boolean;
@@ -186,6 +193,7 @@ interface SessionSlot {
     string,
     { fingerprint: string; promise: Promise<WakeResult>; abort: AbortController }
   >;
+  controls: Map<string, { fingerprint: string; promise: Promise<void> }>;
 }
 
 interface SemaphoreWaiter {
@@ -595,6 +603,7 @@ export class Multiplexer {
             retained === undefined
               ? await this.#catalog.create({
                   sessionId: command.sessionId,
+                  ...(catalogSpec.name === undefined ? {} : { name: catalogSpec.name }),
                   generation: command.generation,
                   spec: catalogSpec,
                   residency: "resident",
@@ -606,7 +615,11 @@ export class Multiplexer {
                   expectedGeneration: retained.generation,
                   expectedRevision: retained.revision,
                   generation: command.generation,
-                  ...(retained.name === undefined ? {} : { name: retained.name }),
+                  ...(catalogSpec.name === undefined
+                    ? retained.name === undefined
+                      ? {}
+                      : { name: retained.name }
+                    : { name: catalogSpec.name }),
                   spec: catalogSpec,
                   environment: retained.environment,
                   residency: "resident",
@@ -660,6 +673,7 @@ export class Multiplexer {
         turnTail: Promise.resolve(),
         lastUsedAt: this.#now(),
         inFlight: new Map(),
+        controls: new Map(),
       };
       this.#sessions.set(command.sessionId, slot);
       adapter.setIdentityChangeHandler?.(async (identity) =>
@@ -674,6 +688,69 @@ export class Multiplexer {
       this.#emit(slot, "opened", command.requestId, { state: slot.state });
       return { created: true, session: snapshot(slot, this.#now()) };
     });
+  }
+
+  async submitWake(
+    command: Extract<ProtocolCommand, { operation: "wake" }>,
+  ): Promise<WakeAdmission> {
+    if (this.#durability === undefined) {
+      throw new MultiplexerError(
+        "durable_admission_unavailable",
+        "asynchronous wake admission requires durable request storage",
+      );
+    }
+    const slot = this.#requireSession(command.sessionId, command.generation);
+    if (!slot.durableConversation) {
+      throw new MultiplexerError(
+        "durable_admission_unavailable",
+        "memory-only sessions cannot create durable wake tickets",
+      );
+    }
+    const completion = this.wake(command);
+    void completion.catch(() => {});
+    try {
+      const entry = await this.#durability.beginRequest(command);
+      return { ticket: wakeTicketResource(entry), completion };
+    } catch (error) {
+      await completion.catch(() => {});
+      throw asMultiplexerError(
+        error,
+        "durability_failed",
+        "failed to persist asynchronous wake admission",
+      );
+    }
+  }
+
+  async requestTicket(ticketId: string): Promise<TicketResource | undefined> {
+    const entry = await this.#durability?.getRequestByTicket(ticketId);
+    return entry === undefined ? undefined : wakeTicketResource(entry);
+  }
+
+  async requestTicketByIdempotency(
+    sessionId: string,
+    idempotencyKey: string,
+  ): Promise<TicketResource | undefined> {
+    const entry = await this.#durability?.getRequest(sessionId, idempotencyKey);
+    return entry === undefined ? undefined : wakeTicketResource(entry);
+  }
+
+  async reconcileWakeTicket(
+    ticketId: string,
+    outcome:
+      | { state: "completed"; result: unknown }
+      | { state: "failed"; error: { code: string; message: string; retryable: boolean } },
+  ): Promise<TicketResource> {
+    if (this.#durability === undefined) {
+      throw new MultiplexerError(
+        "durable_admission_unavailable",
+        "wake reconciliation requires durable request storage",
+      );
+    }
+    try {
+      return wakeTicketResource(await this.#durability.reconcileRequest(ticketId, outcome));
+    } catch (error) {
+      throw asMultiplexerError(error, "reconciliation_failed", "wake reconciliation failed");
+    }
   }
 
   wake(command: Extract<ProtocolCommand, { operation: "wake" }>): Promise<WakeResult> {
@@ -780,21 +857,58 @@ export class Multiplexer {
   }
 
   async steer(command: Extract<ProtocolCommand, { operation: "steer" }>): Promise<void> {
-    const slot = this.#requireRunningSession(command.sessionId, command.generation);
-    if (slot.adapter.steer === undefined) {
-      throw new MultiplexerError("unsupported_operation", "session adapter does not support steer");
-    }
-    await slot.adapter.steer(command.payload.message);
-    slot.lastUsedAt = this.#now();
+    return this.#runEphemeralControl(command, async (slot) => {
+      if (slot.adapter.steer === undefined) {
+        throw new MultiplexerError("unsupported_operation", "session adapter does not support steer");
+      }
+      await slot.adapter.steer(command.payload.message);
+    });
   }
 
   async followUp(command: Extract<ProtocolCommand, { operation: "followUp" }>): Promise<void> {
-    const slot = this.#requireRunningSession(command.sessionId, command.generation);
-    if (slot.adapter.followUp === undefined) {
-      throw new MultiplexerError("unsupported_operation", "session adapter does not support followUp");
+    return this.#runEphemeralControl(command, async (slot) => {
+      if (slot.adapter.followUp === undefined) {
+        throw new MultiplexerError(
+          "unsupported_operation",
+          "session adapter does not support followUp",
+        );
+      }
+      await slot.adapter.followUp(command.payload.message);
+    });
+  }
+
+  #runEphemeralControl(
+    command: Extract<ProtocolCommand, { operation: "steer" | "followUp" }>,
+    invoke: (slot: SessionSlot) => Promise<void>,
+  ): Promise<void> {
+    const slot = this.#requireSession(command.sessionId, command.generation);
+    const fingerprint = controlFingerprint(command);
+    const existing = slot.controls.get(command.idempotencyKey);
+    if (existing !== undefined) {
+      if (existing.fingerprint !== fingerprint) {
+        throw new MultiplexerError(
+          "idempotency_conflict",
+          "control idempotency key was used for a different command",
+        );
+      }
+      return existing.promise;
     }
-    await slot.adapter.followUp(command.payload.message);
-    slot.lastUsedAt = this.#now();
+    if (slot.state !== "running") {
+      throw new MultiplexerError("session_not_running", "logical session is not running", {
+        retryable: true,
+        details: { state: slot.state },
+      });
+    }
+    const promise = invoke(slot).then(() => {
+      slot.lastUsedAt = this.#now();
+    });
+    slot.controls.set(command.idempotencyKey, { fingerprint, promise });
+    while (slot.controls.size > 256) {
+      const oldest = slot.controls.keys().next().value as string | undefined;
+      if (oldest === undefined) break;
+      slot.controls.delete(oldest);
+    }
+    return promise;
   }
 
   async abort(command: Extract<ProtocolCommand, { operation: "abort" }>): Promise<boolean> {
@@ -1334,16 +1448,6 @@ export class Multiplexer {
     return slot;
   }
 
-  #requireRunningSession(sessionId: string, generation: number): SessionSlot {
-    const slot = this.#requireSession(sessionId, generation);
-    if (slot.state !== "running") {
-      throw new MultiplexerError("session_not_running", "logical session has no active turn", {
-        retryable: true,
-      });
-    }
-    return slot;
-  }
-
   #assertGeneration(slot: SessionSlot, generation: number): void {
     if (generation !== slot.generation) {
       throw new MultiplexerError("stale_generation", "session generation does not match", {
@@ -1524,6 +1628,7 @@ function persistedSpecFromOpen(payload: OpenPayload): PersistedSessionSpec {
     },
     isolation: { mode: "unisolated" },
   };
+  if (payload.name !== undefined) spec.name = payload.name;
   if (payload.agentDir !== undefined) spec.agentDir = payload.agentDir;
   if (payload.model !== undefined) spec.model = { ...payload.model };
   return spec;
@@ -1542,6 +1647,23 @@ function snapshot(slot: SessionSlot, now: number): SessionSnapshot {
   if (slot.activeRequestId !== undefined) result.activeRequestId = slot.activeRequestId;
   if (slot.lastErrorCode !== undefined) result.lastErrorCode = slot.lastErrorCode;
   return result;
+}
+
+function controlFingerprint(
+  command: Extract<ProtocolCommand, { operation: "steer" | "followUp" }>,
+): string {
+  return createHash("sha256")
+    .update(
+      canonicalJson({
+        operation: command.operation,
+        sessionId: command.sessionId,
+        generation: command.generation,
+        idempotencyKey: command.idempotencyKey,
+        payload: command.payload,
+      }),
+      "utf8",
+    )
+    .digest("hex");
 }
 
 function canonicalJson(value: unknown): string {

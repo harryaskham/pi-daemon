@@ -99,6 +99,7 @@
               "required": ["cwd", "session"],
               "properties": {
                 "cwd": { "type": "string", "minLength": 1, "maxLength": 4096 },
+                "name": { "type": "string", "minLength": 1, "maxLength": 128 },
                 "agentDir": { "type": "string", "minLength": 1, "maxLength": 4096 },
                 "session": {
                   "type": "object",
@@ -130,7 +131,8 @@
               "required": ["prompt"],
               "properties": {
                 "prompt": { "type": "string", "minLength": 1, "maxLength": 262144 },
-                "source": { "type": "string", "maxLength": 128 }
+                "source": { "type": "string", "maxLength": 128 },
+                "waitForTerminal": { "type": "boolean", "default": true }
               }
             }
           }

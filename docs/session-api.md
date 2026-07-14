@@ -165,6 +165,8 @@ never simulate per-session environment by racing `process.env` replacement or
 | `PUT /v1/session/{sessionRef}` | replace desired spec with stale checks | `202` ticket envelope |
 | `DELETE /v1/session/{sessionRef}` | close and optionally remove artifacts | `202` ticket envelope |
 | `GET /v1/ticket/{ticketId}` | inspect bounded mutation ticket | `200` ticket envelope |
+| `GET /v1/ticket?method=...&target=...` | exact lookup using `Idempotency-Key` | `200` ticket envelope |
+| `POST /v1/ticket/{ticketId}/reconcile` | resolve indeterminate work with retained Pi entry evidence | `200` ticket envelope |
 | `GET /v1/session/{sessionRef}/rpc` | WebSocket Pi RPC attach | `101` |
 | `GET /v1/session/{sessionRef}/apc` | WebSocket upstream ACP attach | `101` |
 
@@ -230,7 +232,17 @@ service, method, and canonical target. Reusing it with the same semantic payload
 joins the retained ticket. Reusing it with a different payload returns
 `409 idempotency_conflict`.
 
-Mutations return `202` and a bounded retained ticket in one of these states:
+Ticket resources retain the original safe `requestId` and `idempotencyKey` so a
+client can reconcile retries without inspecting mutation payloads. Besides the
+ticket URL, an authenticated client can look up the exact method/canonical-target
+scope with `GET /v1/ticket` and the `Idempotency-Key` header.
+
+Mutations return `202` and a bounded retained ticket in one of these states.
+Callers that need a convenience barrier may add `waitForTerminal=true`; the
+response remains a ticket envelope but is held until that ticket is terminal.
+The default is immediate admission and later GET/status observation.
+
+Ticket states:
 
 - `queued` — durably admitted but not submitted to Pi;
 - `running` — runtime transition has started;
@@ -238,10 +250,22 @@ Mutations return `202` and a bounded retained ticket in one of these states:
 - `failed` — terminal typed failure retained; or
 - `indeterminate` — submission may have occurred before a host interruption.
 
-An indeterminate mutation is never blindly replayed. The client reads the
-session resource/history and chooses a fresh idempotency key only after
-reconciliation. Ticket count, bytes, and retention age are bounded. A pruned
-ticket returns `404 ticket_not_found`; pruning never changes session state.
+An indeterminate mutation is never blindly replayed. After reading retained Pi
+entries through RPC, a trusted client may explicitly reconcile it by posting the
+bounded entry IDs and a succeeded/failed outcome to the ticket reconciliation
+route. The entry IDs are audit evidence supplied by the client; the daemon stores
+only those IDs and a safe outcome summary, never client-supplied result content
+or error text. It does not claim provider-transaction proof when Pi lacks one.
+Otherwise the client
+chooses a fresh idempotency key only after reconciliation. Ticket count, bytes,
+and retention age are bounded. A pruned ticket returns `404 ticket_not_found`;
+pruning never changes session state.
+
+Legacy NDJSON `wake` retains its wait-for-terminal default. Setting
+`payload.waitForTerminal` to `false` instead returns a durable `prompt` ticket
+immediately; that ticket is readable through the same GET routes. Queued wakes
+are replayable, accepted wakes become indeterminate after restart, and terminal
+prompt results/errors remain bounded by the existing request journal policy.
 
 ## Pi RPC attachment
 

@@ -369,6 +369,15 @@ export class ProtocolServer {
         });
       }
       case "wake": {
+        if (command.payload.waitForTerminal === false) {
+          const admission = await this.#multiplexer.submitWake(command);
+          return successResponse(
+            command.requestId,
+            this.#multiplexer.hostInstanceId,
+            { ticket: admission.ticket },
+            { sessionId: command.sessionId },
+          );
+        }
         const result = await this.#multiplexer.wake(command);
         return successResponse(command.requestId, this.#multiplexer.hostInstanceId, result, {
           sessionId: command.sessionId,

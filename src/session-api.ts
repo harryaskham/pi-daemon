@@ -7,7 +7,9 @@ export const SESSION_API_PATHS = {
   session: "/v1/session/{sessionRef}",
   rpc: "/v1/session/{sessionRef}/rpc",
   apc: "/v1/session/{sessionRef}/apc",
+  tickets: "/v1/ticket",
   ticket: "/v1/ticket/{ticketId}",
+  reconcileTicket: "/v1/ticket/{ticketId}/reconcile",
 } as const;
 
 /**
@@ -199,7 +201,9 @@ export type TicketState = "queued" | "running" | "succeeded" | "failed" | "indet
 
 export interface TicketResource {
   ticketId: string;
-  operation: "create" | "update" | "delete";
+  requestId: string;
+  idempotencyKey: string;
+  operation: "create" | "update" | "delete" | "prompt";
   state: TicketState;
   submittedAt: string;
   updatedAt: string;

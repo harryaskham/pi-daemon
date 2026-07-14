@@ -605,7 +605,7 @@ implementation order. This list is a human-readable crosswalk.
 ### Core host behavior
 
 - [x] `bd-df7ba9` — durable resident/dormant catalog and session CRUD.
-- [ ] `bd-7d1407` — asynchronous durable command tickets and reconciliation.
+- [x] `bd-7d1407` — asynchronous durable command tickets and reconciliation.
 - [ ] `bd-0052e2` — full transport-neutral Pi RPC on `AgentSessionRuntime`.
 - [ ] `bd-ab1b91` — trusted Pi CLI-equivalent per-session configuration and
   honest `unisolated` env/isolation policy.

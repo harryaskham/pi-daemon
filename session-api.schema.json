@@ -374,15 +374,26 @@
     },
     "ticketResource": {
       "type": "object",
-      "required": ["ticketId", "operation", "state", "submittedAt", "updatedAt", "links"],
+      "required": [
+        "ticketId",
+        "requestId",
+        "idempotencyKey",
+        "operation",
+        "state",
+        "submittedAt",
+        "updatedAt",
+        "links"
+      ],
       "properties": {
         "ticketId": { "$ref": "#/$defs/identifier" },
-        "operation": { "enum": ["create", "update", "delete"] },
+        "requestId": { "$ref": "#/$defs/identifier" },
+        "idempotencyKey": { "type": "string", "minLength": 1, "maxLength": 512 },
+        "operation": { "enum": ["create", "update", "delete", "prompt"] },
         "state": { "enum": ["queued", "running", "succeeded", "failed", "indeterminate"] },
         "submittedAt": { "$ref": "#/$defs/timestamp" },
         "updatedAt": { "$ref": "#/$defs/timestamp" },
         "sessionId": { "$ref": "#/$defs/identifier" },
-        "generation": { "type": "integer", "minimum": 1 },
+        "generation": { "type": "integer", "minimum": 0 },
         "result": {},
         "error": { "$ref": "#/$defs/apiError" },
         "links": { "$ref": "#/$defs/ticketLinks" }

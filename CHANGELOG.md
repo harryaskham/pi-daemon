@@ -13,6 +13,7 @@ Initial standalone implementation:
 - per-session ordering, global concurrency, bounded queues, and event sequencing
 - resolved Pi conversation manifests and idempotency journal with exact-identity replay and indeterminate crash semantics
 - owner-private resident/dormant session catalog with exact names, pagination, optimistic updates, and Pi conversation identity
+- bounded durable mutation/prompt tickets, idempotent admission, restart reconciliation, and optional asynchronous wake acknowledgement
 - owner-only Unix socket server and JavaScript client
 - explicit generation-bound Unix event attach/detach operations
 - optional loopback bearer-authenticated JSON and stream-upgrade admission boundary

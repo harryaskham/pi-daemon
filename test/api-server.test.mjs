@@ -10,8 +10,13 @@ import { SERVICE_BEARER_ENV, ServiceBearerAuthenticator } from "../dist/api-auth
 import { ApiServer } from "../dist/api-server.js";
 import { runCli } from "../dist/cli.js";
 import { PiDaemonClient } from "../dist/client.js";
+import { FileDurabilityStore, wakeTicketId } from "../dist/durability.js";
 import { Multiplexer } from "../dist/multiplexer.js";
 import { FileSessionCatalog } from "../dist/session-catalog.js";
+import {
+  FileMutationTicketStore,
+  MutationTicketController,
+} from "../dist/tickets.js";
 
 const TOKEN = "fixture-service-bearer-0123456789";
 
@@ -21,7 +26,23 @@ class EmptyFactory {
   }
 }
 
-const startApi = async (limits, suppliedMultiplexer) => {
+class SessionAdapter {
+  async prompt() {
+    return { text: "ok" };
+  }
+  identity() {
+    return { sessionId: "pi-api-fixture" };
+  }
+  async dispose() {}
+}
+
+class SessionFactory {
+  async open() {
+    return new SessionAdapter();
+  }
+}
+
+const startApi = async (limits, suppliedMultiplexer, tickets) => {
   const multiplexer =
     suppliedMultiplexer ??
     new Multiplexer({
@@ -31,6 +52,7 @@ const startApi = async (limits, suppliedMultiplexer) => {
   const server = new ApiServer({
     multiplexer,
     authenticator: new ServiceBearerAuthenticator(TOKEN),
+    tickets,
     host: "127.0.0.1",
     port: 0,
     limits,
@@ -150,6 +172,314 @@ test("authenticated session reads expose bounded resident/dormant catalog resour
   });
   assert.equal(invalidLimit.status, 400);
   assert.equal(invalidLimit.value.error.code, "invalid_limit");
+});
+
+test("authenticated API responses fail with a bounded typed error before oversized allocation", async (t) => {
+  const stateDir = await mkdtemp(join(tmpdir(), "pi-daemon-api-response-bound-"));
+  t.after(async () => rm(stateDir, { recursive: true, force: true }));
+  const seed = new FileSessionCatalog({ stateDir });
+  await seed.recover();
+  for (let index = 0; index < 9; index += 1) {
+    await seed.create({
+      sessionId: `large-${index}`,
+      generation: 1,
+      residency: "dormant",
+      state: "idle",
+      spec: {
+        cwd: `/work/large-${index}`,
+        target: { mode: "new" },
+        resources: { systemPrompt: "x".repeat(256 * 1024) },
+        isolation: { mode: "unisolated" },
+      },
+    });
+  }
+  const multiplexer = new Multiplexer({
+    factory: new EmptyFactory(),
+    catalog: new FileSessionCatalog({ stateDir }),
+    hostInstanceId: "host-api-response-bound",
+  });
+  await multiplexer.recover();
+  const harness = await startApi(undefined, multiplexer);
+  t.after(async () => harness.server.stop());
+  const response = await requestJson(harness.address, {
+    path: "/v1/session?limit=100",
+    headers: { Authorization: `Bearer ${TOKEN}` },
+  });
+  assert.equal(response.status, 500);
+  assert.equal(response.value.error.code, "outbound_record_too_large");
+  assert.equal(JSON.stringify(response.value).includes("x".repeat(1024)), false);
+});
+
+test("authenticated CRUD mutations return durable deduplicated tickets and terminal resources", async (t) => {
+  const stateDir = await mkdtemp(join(tmpdir(), "pi-daemon-api-mutations-"));
+  t.after(async () => rm(stateDir, { recursive: true, force: true }));
+  const multiplexer = new Multiplexer({
+    factory: new SessionFactory(),
+    durability: new FileDurabilityStore({ stateDir }),
+    catalog: new FileSessionCatalog({ stateDir }),
+    hostInstanceId: "host-api-mutations",
+  });
+  await multiplexer.recover();
+  const tickets = new MutationTicketController(new FileMutationTicketStore({ stateDir }));
+  const harness = await startApi(undefined, multiplexer, tickets);
+  t.after(async () => harness.server.stop());
+  const auth = { Authorization: `Bearer ${TOKEN}`, "Content-Type": "application/json" };
+  const createBody = {
+    requestId: "create-request",
+    sessionId: "created-session",
+    spec: {
+      cwd: "/work/created",
+      name: "created-name",
+      target: { mode: "memory" },
+      tools: { mode: "none" },
+      isolation: { mode: "unisolated" },
+    },
+  };
+
+  const created = await requestJson(harness.address, {
+    method: "POST",
+    path: "/v1/session",
+    headers: {
+      ...auth,
+      "X-Request-Id": createBody.requestId,
+      "Idempotency-Key": "create-once",
+    },
+    body: JSON.stringify(createBody),
+  });
+  assert.equal(created.status, 202);
+  assert.equal(created.value.data.state, "queued");
+  assert.equal(created.value.data.operation, "create");
+  assert.equal(created.headers.location, `/v1/ticket/${created.value.data.ticketId}`);
+  const createTerminal = await waitForTicket(
+    harness.address,
+    created.value.data.ticketId,
+    auth.Authorization,
+  );
+  assert.equal(createTerminal.state, "succeeded");
+  assert.equal(createTerminal.result.sessionId, "created-session");
+  assert.equal(createTerminal.result.name, "created-name");
+
+  const duplicate = await requestJson(harness.address, {
+    method: "POST",
+    path: "/v1/session",
+    headers: {
+      ...auth,
+      "X-Request-Id": "create-retry",
+      "Idempotency-Key": "create-once",
+    },
+    body: JSON.stringify({ ...createBody, requestId: "create-retry" }),
+  });
+  assert.equal(duplicate.status, 202);
+  assert.equal(duplicate.value.requestId, "create-retry");
+  assert.equal(duplicate.value.data.ticketId, created.value.data.ticketId);
+  assert.equal(duplicate.value.data.state, "succeeded");
+  const byIdempotency = await requestJson(harness.address, {
+    path: "/v1/ticket?method=POST&target=%2Fv1%2Fsession",
+    headers: {
+      Authorization: auth.Authorization,
+      "Idempotency-Key": "create-once",
+    },
+  });
+  assert.equal(byIdempotency.status, 200);
+  assert.equal(byIdempotency.value.data.ticketId, created.value.data.ticketId);
+  assert.equal(byIdempotency.value.data.idempotencyKey, "create-once");
+
+  const conflict = await requestJson(harness.address, {
+    method: "POST",
+    path: "/v1/session",
+    headers: {
+      ...auth,
+      "X-Request-Id": "create-conflict",
+      "Idempotency-Key": "create-once",
+    },
+    body: JSON.stringify({
+      ...createBody,
+      requestId: "create-conflict",
+      spec: { ...createBody.spec, cwd: "/work/different" },
+    }),
+  });
+  assert.equal(conflict.status, 409);
+  assert.equal(conflict.value.error.code, "idempotency_conflict");
+  const unsupportedEnv = await requestJson(harness.address, {
+    method: "POST",
+    path: "/v1/session",
+    headers: {
+      ...auth,
+      "X-Request-Id": "env-request",
+      "Idempotency-Key": "env-once",
+    },
+    body: JSON.stringify({
+      requestId: "env-request",
+      sessionId: "env-session",
+      spec: {
+        ...createBody.spec,
+        env: { PROVIDER_TOKEN: "secret-value-must-not-persist" },
+      },
+    }),
+  });
+  assert.equal(unsupportedEnv.status, 422);
+  assert.equal(JSON.stringify(unsupportedEnv.value).includes("secret-value-must-not-persist"), false);
+
+  const fetched = await requestJson(harness.address, {
+    path: "/v1/session/created-name",
+    headers: { Authorization: auth.Authorization },
+  });
+  assert.equal(fetched.status, 200);
+  const updated = await requestJson(harness.address, {
+    method: "PUT",
+    path: "/v1/session/created-name?waitForTerminal=true",
+    headers: {
+      ...auth,
+      "X-Request-Id": "update-request",
+      "Idempotency-Key": "update-once",
+      "If-Match": fetched.headers.etag,
+    },
+    body: JSON.stringify({
+      requestId: "update-request",
+      expectedGeneration: fetched.value.data.generation,
+      expectedRevision: fetched.value.data.revision,
+      spec: { ...createBody.spec, name: "updated-name" },
+    }),
+  });
+  assert.equal(updated.status, 202);
+  assert.equal(updated.value.data.state, "succeeded");
+  const updateTerminal = await waitForTicket(
+    harness.address,
+    updated.value.data.ticketId,
+    auth.Authorization,
+  );
+  assert.equal(updateTerminal.state, "succeeded");
+  assert.equal(updateTerminal.result.generation, 2);
+  assert.equal(updateTerminal.result.name, "updated-name");
+  const updateRetry = await requestJson(harness.address, {
+    method: "PUT",
+    path: "/v1/session/created-session",
+    headers: {
+      ...auth,
+      "X-Request-Id": "update-retry",
+      "Idempotency-Key": "update-once",
+      "If-Match": fetched.headers.etag,
+    },
+    body: JSON.stringify({
+      requestId: "update-retry",
+      expectedGeneration: fetched.value.data.generation,
+      expectedRevision: fetched.value.data.revision,
+      spec: { ...createBody.spec, name: "updated-name" },
+    }),
+  });
+  assert.equal(updateRetry.status, 202);
+  assert.equal(updateRetry.value.requestId, "update-retry");
+  assert.equal(updateRetry.value.data.ticketId, updated.value.data.ticketId);
+  assert.equal(updateRetry.value.data.state, "succeeded");
+
+  const current = await requestJson(harness.address, {
+    path: "/v1/session/updated-name",
+    headers: { Authorization: auth.Authorization },
+  });
+  const deleted = await requestJson(harness.address, {
+    method: "DELETE",
+    path: "/v1/session/updated-name?retainArtifacts=false",
+    headers: {
+      Authorization: auth.Authorization,
+      "X-Request-Id": "delete-request",
+      "Idempotency-Key": "delete-once",
+      "If-Match": current.headers.etag,
+    },
+  });
+  assert.equal(deleted.status, 202);
+  const deleteTerminal = await waitForTicket(
+    harness.address,
+    deleted.value.data.ticketId,
+    auth.Authorization,
+  );
+  assert.equal(deleteTerminal.state, "succeeded");
+  assert.equal(deleteTerminal.result.deleted, true);
+  const deleteRetry = await requestJson(harness.address, {
+    method: "DELETE",
+    path: "/v1/session/created-session?retainArtifacts=false",
+    headers: {
+      Authorization: auth.Authorization,
+      "X-Request-Id": "delete-retry",
+      "Idempotency-Key": "delete-once",
+      "If-Match": current.headers.etag,
+    },
+  });
+  assert.equal(deleteRetry.status, 202);
+  assert.equal(deleteRetry.value.data.ticketId, deleted.value.data.ticketId);
+  assert.equal(deleteRetry.value.data.state, "succeeded");
+  const missing = await requestJson(harness.address, {
+    path: "/v1/session/created-session",
+    headers: { Authorization: auth.Authorization },
+  });
+  assert.equal(missing.status, 404);
+});
+
+test("authenticated wake ticket lookup and explicit Pi-entry reconciliation are durable", async (t) => {
+  const stateDir = await mkdtemp(join(tmpdir(), "pi-daemon-api-reconcile-"));
+  t.after(async () => rm(stateDir, { recursive: true, force: true }));
+  const first = new FileDurabilityStore({ stateDir });
+  await first.recover();
+  const command = {
+    protocolVersion: "1.0",
+    requestId: "wake-before-restart",
+    operation: "wake",
+    sessionId: "reconcile-session",
+    generation: 1,
+    idempotencyKey: "reconcile-key",
+    payload: { prompt: "prompt persisted before restart" },
+  };
+  await first.beginRequest(command);
+  await first.markAccepted(command.sessionId, command.idempotencyKey);
+
+  const multiplexer = new Multiplexer({
+    factory: new EmptyFactory(),
+    durability: new FileDurabilityStore({ stateDir }),
+    hostInstanceId: "host-api-reconcile",
+  });
+  await multiplexer.recover();
+  const harness = await startApi(undefined, multiplexer);
+  t.after(async () => harness.server.stop());
+  const authorization = `Bearer ${TOKEN}`;
+  const ticketId = wakeTicketId(command.sessionId, command.idempotencyKey);
+
+  const status = await requestJson(harness.address, {
+    path: `/v1/ticket/${ticketId}`,
+    headers: { Authorization: authorization },
+  });
+  assert.equal(status.status, 200);
+  assert.equal(status.value.data.operation, "prompt");
+  assert.equal(status.value.data.state, "indeterminate");
+
+  const byKey = await requestJson(harness.address, {
+    path: "/v1/ticket?method=WAKE&target=%2Fv1%2Fsession%2Freconcile-session%2Fwake",
+    headers: {
+      Authorization: authorization,
+      "Idempotency-Key": command.idempotencyKey,
+    },
+  });
+  assert.equal(byKey.status, 200);
+  assert.equal(byKey.value.data.ticketId, ticketId);
+
+  const reconciled = await requestJson(harness.address, {
+    method: "POST",
+    path: `/v1/ticket/${ticketId}/reconcile`,
+    headers: {
+      Authorization: authorization,
+      "Content-Type": "application/json",
+      "X-Request-Id": "reconcile-request",
+    },
+    body: JSON.stringify({
+      requestId: "reconcile-request",
+      state: "succeeded",
+      evidence: { piEntryIds: ["entry-user-1", "entry-assistant-2"] },
+    }),
+  });
+  assert.equal(reconciled.status, 200);
+  assert.equal(reconciled.value.data.state, "succeeded");
+  assert.deepEqual(reconciled.value.data.result, {
+    reconciled: true,
+    piEntryIds: ["entry-user-1", "entry-assistant-2"],
+  });
 });
 
 test("authenticated JSON bodies are byte bounded before future CRUD dispatch", async (t) => {
@@ -329,6 +659,22 @@ test("WebSocket upgrades fail closed on bearer auth before stream routing", asyn
   assert.match(authenticated, /stream_not_implemented/);
   assert.equal(authenticated.includes(TOKEN), false);
 });
+
+const waitForTicket = async (address, ticketId, token) => {
+  const deadline = Date.now() + 2_000;
+  while (true) {
+    const response = await requestJson(address, {
+      path: `/v1/ticket/${ticketId}`,
+      headers: { Authorization: token },
+    });
+    assert.equal(response.status, 200);
+    if (["succeeded", "failed", "indeterminate"].includes(response.value.data.state)) {
+      return response.value.data;
+    }
+    if (Date.now() > deadline) throw new Error("timed out waiting for mutation ticket");
+    await new Promise((resolve) => setTimeout(resolve, 2));
+  }
+};
 
 const requestJson = async (address, options) =>
   new Promise((resolve, reject) => {

@@ -20,11 +20,12 @@ Pi Daemon is not a Cacophony component. Cacophony can deploy and consume it, but
 the service protocol contains no beads, Cacophony agents, messages, profiles,
 or Cacophony credentials.
 
-> **Status:** the PD-001–PD-012 no-tools scaffold is implemented, but the
-> 2026-07-14 completion audit found the full standalone host is not yet
-> release-ready. Durable session CRUD, bearer-authenticated JSON transport,
-> full Pi RPC attachment, runtime replacement/recovery, ACP translation, and
-> installed-package correctness are tracked in [`PLAN.md`](PLAN.md).
+> **Status:** durable resident/dormant CRUD, bearer-authenticated JSON admission,
+> asynchronous mutation/prompt tickets, exact Pi conversation recovery, bounded
+> serialization, and installed-package checks are implemented. The 2026-07-14
+> completion program still tracks full Pi RPC attachment, per-session runtime
+> configuration, ACP translation, clients, shutdown/readiness hardening, and
+> end-to-end acceptance in [`PLAN.md`](PLAN.md); no release tag is cut yet.
 
 ## Why
 

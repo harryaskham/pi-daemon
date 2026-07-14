@@ -86,7 +86,20 @@ duplicate turn.
 
 The same idempotency key with different semantic payload is rejected. Live
 duplicates join one promise; terminal duplicates receive the cached terminal
-record.
+record. `wake.payload.waitForTerminal` defaults to `true` for compatibility.
+Set it to `false` to return a durable `prompt` ticket after queued admission;
+inspect that ticket through the authenticated Session API instead of holding the
+NDJSON request open.
+
+`steer` and `followUp` are explicitly host-incarnation-local controls: Pi does
+not provide a transactional control ID that can prove whether they crossed a
+crash boundary. The daemon joins identical live/retained-in-process keys and
+rejects semantic key reuse, with a bounded 256-key cache per resident runtime,
+but never claims restart-safe replay. A client that loses the host incarnation
+must inspect Pi entries/state before issuing a fresh control key. `abort` is
+idempotent host-local cancellation and is never replayed. Extension and other
+mutating Pi RPC commands are classified by the RPC parity layer before they are
+admitted; commands without durable semantics must not be auto-retried.
 
 ## Backpressure
 
