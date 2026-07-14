@@ -33,6 +33,17 @@ const openCommand = (sessionId = "agent/a", generation = 1) => ({
   },
 });
 
+const persistentOpenCommand = (sessionId = "agent/a", generation = 1) => {
+  const command = openCommand(sessionId, generation);
+  command.payload.session = { mode: "new" };
+  return command;
+};
+
+const conversationIdentity = (sessionId = "agent/a", generation = 1) => ({
+  sessionId: `pi-${sessionId}-${generation}`,
+  sessionFile: `/state/pi/${encodeURIComponent(sessionId)}-${generation}.jsonl`,
+});
+
 const wakeCommand = (idempotencyKey, prompt = `prompt-${idempotencyKey}`, sessionId = "agent/a") => ({
   protocolVersion: "1.0",
   requestId: `request-${idempotencyKey}`,
@@ -70,13 +81,15 @@ test("manifests use traversal-safe paths and owner-only atomic files", async () 
   const stateDir = await temporaryState();
   const store = new FileDurabilityStore({ stateDir });
   await store.recover();
-  const command = openCommand("../../agent/α");
-  const manifest = await store.saveManifest(command);
+  const command = persistentOpenCommand("../../agent/α");
+  const identity = conversationIdentity(command.sessionId);
+  const manifest = await store.saveManifest(command, identity);
   assert.equal(manifest.sessionId, "../../agent/α");
 
   const path = join(stateDir, "sessions", encodedSessionId(command.sessionId), "manifest.json");
   const persisted = JSON.parse(await readFile(path, "utf8"));
   assert.equal(persisted.payload.cwd, command.payload.cwd);
+  assert.deepEqual(persisted.conversation, identity);
   assert.equal((await stat(path)).mode & 0o777, 0o600);
   assert.equal((await stat(stateDir)).mode & 0o777, 0o700);
   assert.equal(encodedSessionId(command.sessionId).includes("/"), false);
@@ -191,6 +204,14 @@ class ImmediateAdapter {
   calls = [];
   disposed = 0;
 
+  constructor(sessionId, generation) {
+    this.conversation = conversationIdentity(sessionId, generation);
+  }
+
+  identity() {
+    return this.conversation;
+  }
+
   async prompt(request) {
     this.calls.push(request);
     return { text: `answer:${request.prompt}` };
@@ -203,9 +224,11 @@ class ImmediateAdapter {
 
 class ImmediateFactory {
   adapters = new Map();
+  requests = [];
 
   async open(request) {
-    const adapter = new ImmediateAdapter();
+    this.requests.push(structuredClone(request));
+    const adapter = new ImmediateAdapter(request.sessionId, request.generation);
     this.adapters.set(`${request.sessionId}:${request.generation}`, adapter);
     return adapter;
   }
@@ -217,13 +240,37 @@ class ImmediateFactory {
   }
 }
 
+class MemoryFactory extends ImmediateFactory {
+  async open(request) {
+    const adapter = await super.open(request);
+    adapter.conversation = { sessionId: `pi-memory-${request.sessionId}` };
+    return adapter;
+  }
+}
+
+test("memory sessions never persist manifests or wake journals for crash replay", async () => {
+  const stateDir = await temporaryState();
+  const mux = new Multiplexer({
+    factory: new MemoryFactory(),
+    durability: new FileDurabilityStore({ stateDir }),
+  });
+  await mux.recover();
+  await mux.open(openCommand("memory-agent"));
+  await mux.wake(wakeCommand("memory-key", "ephemeral", "memory-agent"));
+
+  const recovered = await new FileDurabilityStore({ stateDir }).recover();
+  assert.deepEqual(recovered.manifests, []);
+  assert.deepEqual(recovered.queued, []);
+  assert.deepEqual(recovered.indeterminate, []);
+});
+
 test("multiplexer joins live duplicates and serves completed duplicates without a second turn", async () => {
   const stateDir = await temporaryState();
   const store = new FileDurabilityStore({ stateDir });
   const factory = new ImmediateFactory();
   const mux = new Multiplexer({ factory, durability: store });
   await mux.recover();
-  await mux.open(openCommand());
+  await mux.open(persistentOpenCommand());
 
   const command = wakeCommand("same");
   const [first, duplicate] = await Promise.all([mux.wake(command), mux.wake(command)]);
@@ -235,11 +282,34 @@ test("multiplexer joins live duplicates and serves completed duplicates without 
   assert.equal(factory.adapter().calls.length, 1);
 });
 
-test("multiplexer restart reopens manifests, replays queued only, and refuses accepted replay", async () => {
+test("legacy new manifests without resolved identity never admit queued replay", async () => {
   const stateDir = await temporaryState();
   const first = new FileDurabilityStore({ stateDir });
   await first.recover();
-  await first.saveManifest(openCommand());
+  await first.saveManifest(persistentOpenCommand());
+  await first.beginRequest(wakeCommand("legacy-queued"));
+
+  const factory = new ImmediateFactory();
+  const mux = new Multiplexer({
+    factory,
+    durability: new FileDurabilityStore({ stateDir }),
+  });
+  const report = await mux.recover();
+  assert.deepEqual(report.opened, []);
+  assert.deepEqual(report.replayed, []);
+  assert.ok(
+    report.failures.some(
+      (failure) => failure.sessionId === "agent/a" && failure.code === "conversation_identity_missing",
+    ),
+  );
+  assert.equal(factory.requests.length, 0);
+});
+
+test("multiplexer restart reopens exact resolved identity, replays queued only, and refuses accepted replay", async () => {
+  const stateDir = await temporaryState();
+  const first = new FileDurabilityStore({ stateDir });
+  await first.recover();
+  await first.saveManifest(persistentOpenCommand(), conversationIdentity());
   await first.beginRequest(wakeCommand("queued"));
   await first.beginRequest(wakeCommand("accepted"));
   await first.markAccepted("agent/a", "accepted");
@@ -258,6 +328,10 @@ test("multiplexer restart reopens manifests, replays queued only, and refuses ac
   assert.deepEqual(report.replayed, ["queued"]);
   assert.equal(factory.adapter().calls.length, 1);
   assert.equal(factory.adapter().calls[0].idempotencyKey, "queued");
+  assert.deepEqual(factory.requests[0].session, {
+    mode: "open",
+    path: conversationIdentity().sessionFile,
+  });
 
   await assert.rejects(
     mux.wake(wakeCommand("accepted")),

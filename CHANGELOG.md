@@ -8,10 +8,10 @@ semantic versioning once a release tag is cut.
 Initial standalone implementation:
 
 - versioned, forward-tolerant NDJSON protocol and JSON schema
-- one-process multiplexer with isolated Pi SDK sessions
+- one-process multiplexer with isolated, replaceable Pi `AgentSessionRuntime` sessions
 - shared authentication/model registry and locked no-tools resources
 - per-session ordering, global concurrency, bounded queues, and event sequencing
-- durable manifests and idempotency journal with indeterminate crash semantics
+- resolved Pi conversation manifests and idempotency journal with exact-identity replay and indeterminate crash semantics
 - owner-private resident/dormant session catalog with exact names, pagination, optimistic updates, and Pi conversation identity
 - owner-only Unix socket server and JavaScript client
 - explicit generation-bound Unix event attach/detach operations

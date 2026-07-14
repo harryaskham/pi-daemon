@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { readdir, rm } from "node:fs/promises";
-import { join } from "node:path";
+import { isAbsolute, join, resolve } from "node:path";
 
 import {
   atomicWritePrivateJson,
@@ -28,7 +28,7 @@ export type PersistedSessionSpec = Omit<SessionSpec, "env">;
 export type SessionTerminalState = SessionTerminalSummary["state"];
 
 export interface SessionConversationIdentity {
-  sessionId?: string;
+  sessionId: string;
   sessionFile?: string;
 }
 
@@ -657,10 +657,16 @@ function validateEnvironment(value: unknown, path: string): asserts value is Ses
 
 function validateConversation(value: unknown, path: string): asserts value is SessionConversationIdentity {
   if (!isRecord(value)) throw corrupt("catalog conversation identity is invalid", path);
-  if (value.sessionId !== undefined && typeof value.sessionId !== "string") {
+  if (typeof value.sessionId !== "string" || value.sessionId.length === 0) {
     throw corrupt("catalog Pi session ID is invalid", path);
   }
-  if (value.sessionFile !== undefined && typeof value.sessionFile !== "string") {
+  if (
+    value.sessionFile !== undefined &&
+    (typeof value.sessionFile !== "string" ||
+      value.sessionFile.length === 0 ||
+      !isAbsolute(value.sessionFile) ||
+      resolve(value.sessionFile) !== value.sessionFile)
+  ) {
     throw corrupt("catalog Pi session file is invalid", path);
   }
 }

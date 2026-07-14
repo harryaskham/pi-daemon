@@ -10,7 +10,7 @@ import {
   rm,
   stat,
 } from "node:fs/promises";
-import { basename, dirname, join } from "node:path";
+import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 
 import type { OpenPayload, ProtocolCommand } from "./protocol.js";
 
@@ -19,11 +19,17 @@ export const DURABILITY_FORMAT_VERSION = 1 as const;
 export type DurableOpenCommand = Extract<ProtocolCommand, { operation: "open" }>;
 export type DurableWakeCommand = Extract<ProtocolCommand, { operation: "wake" }>;
 
+export interface DurableConversationIdentity {
+  sessionId: string;
+  sessionFile?: string;
+}
+
 export interface SessionManifest {
   formatVersion: typeof DURABILITY_FORMAT_VERSION;
   sessionId: string;
   generation: number;
   payload: OpenPayload;
+  conversation?: DurableConversationIdentity;
   createdAt: string;
   updatedAt: string;
 }
@@ -59,7 +65,10 @@ export interface RecoverySnapshot {
 
 export interface DurabilityStore {
   recover(): Promise<RecoverySnapshot>;
-  saveManifest(command: DurableOpenCommand): Promise<SessionManifest>;
+  saveManifest(
+    command: DurableOpenCommand,
+    conversation?: DurableConversationIdentity,
+  ): Promise<SessionManifest | undefined>;
   closeSession(sessionId: string, retainArtifacts: boolean): Promise<void>;
   beginRequest(command: DurableWakeCommand): Promise<JournalEntry>;
   markAccepted(sessionId: string, idempotencyKey: string): Promise<JournalEntry>;
@@ -160,19 +169,29 @@ export class FileDurabilityStore implements DurabilityStore {
     };
   }
 
-  async saveManifest(command: DurableOpenCommand): Promise<SessionManifest> {
+  async saveManifest(
+    command: DurableOpenCommand,
+    conversation?: DurableConversationIdentity,
+  ): Promise<SessionManifest | undefined> {
     await this.#initialize();
     return this.#serialize(command.sessionId, async () => {
       await ensurePrivateDirectory(this.#sessionDir(command.sessionId), "logical session directory");
       const path = this.#manifestPath(command.sessionId);
       const previous = await readPrivateJsonIfExists<SessionManifest>(path);
       if (previous !== undefined) validateManifest(previous, path);
+      if (conversation !== undefined && conversation.sessionFile === undefined) {
+        await rm(path, { force: true });
+        return undefined;
+      }
       const now = this.#timestamp();
       const manifest: SessionManifest = {
         formatVersion: DURABILITY_FORMAT_VERSION,
         sessionId: command.sessionId,
         generation: command.generation,
         payload: structuredClone(command.payload),
+        ...(conversation === undefined
+          ? {}
+          : { conversation: structuredClone(conversation) }),
         createdAt: previous?.createdAt ?? now,
         updatedAt: now,
       };
@@ -535,6 +554,25 @@ function validateManifest(value: unknown, path: string): asserts value is Sessio
     throw corrupt("manifest generation is invalid", path);
   }
   if (!isRecord(value.payload)) throw corrupt("manifest payload is invalid", path);
+  if (value.conversation !== undefined) {
+    if (!isRecord(value.conversation)) {
+      throw corrupt("manifest conversation identity is invalid", path);
+    }
+    if (
+      typeof value.conversation.sessionId !== "string" ||
+      value.conversation.sessionId.length === 0
+    ) {
+      throw corrupt("manifest Pi session ID is invalid", path);
+    }
+    if (
+      typeof value.conversation.sessionFile !== "string" ||
+      value.conversation.sessionFile.length === 0 ||
+      !isAbsolute(value.conversation.sessionFile) ||
+      resolve(value.conversation.sessionFile) !== value.conversation.sessionFile
+    ) {
+      throw corrupt("manifest Pi session file is invalid", path);
+    }
+  }
   if (typeof value.createdAt !== "string" || typeof value.updatedAt !== "string") {
     throw corrupt("manifest timestamps are invalid", path);
   }

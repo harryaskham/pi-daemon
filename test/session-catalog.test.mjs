@@ -38,7 +38,7 @@ test("catalog persists secret-free records with exact ID/name resolution and opt
       persistence: "reference",
       provisioned: true,
     },
-    conversation: { sessionId: "pi-a", sessionFile: "sessions/a.jsonl" },
+    conversation: { sessionId: "pi-a", sessionFile: "/state/sessions/a.jsonl" },
   });
   assert.equal(created.revision, 1);
   assert.equal(created.residency, "resident");
@@ -127,7 +127,7 @@ test("catalog pagination is stable and restart makes resident sessions dormant",
   assert.equal((await restarted.get("b")).state, "idle");
   const resident = await restarted.markResident("a", 1, {
     sessionId: "pi-a",
-    sessionFile: "sessions/a.jsonl",
+    sessionFile: "/state/sessions/a.jsonl",
   });
   assert.equal(resident.residency, "resident");
   const deleted = await restarted.delete("name-c");
@@ -140,13 +140,23 @@ class CatalogAdapter {
     this.sessionId = sessionId;
     this.generation = generation;
     this.disposed = 0;
+    this.conversation = {
+      sessionId: `pi-${this.sessionId}-${this.generation}`,
+      sessionFile: `/state/sessions/${this.sessionId}-${this.generation}.jsonl`,
+    };
   }
 
   identity() {
-    return {
-      sessionId: `pi-${this.sessionId}-${this.generation}`,
-      sessionFile: `sessions/${this.sessionId}-${this.generation}.jsonl`,
-    };
+    return this.conversation;
+  }
+
+  setIdentityChangeHandler(handler) {
+    this.identityChangeHandler = handler;
+  }
+
+  async replaceConversation(conversation) {
+    this.conversation = conversation;
+    await this.identityChangeHandler?.(conversation);
   }
 
   async prompt(request) {
@@ -160,9 +170,14 @@ class CatalogAdapter {
 
 class CatalogFactory {
   adapters = [];
+  requests = [];
 
   async open(request) {
+    this.requests.push(structuredClone(request));
     const adapter = new CatalogAdapter(request.sessionId, request.generation);
+    if (request.session.mode === "memory") {
+      adapter.conversation = { sessionId: `pi-memory-${request.sessionId}` };
+    }
     this.adapters.push(adapter);
     return adapter;
   }
@@ -249,6 +264,10 @@ test("multiplexer catalogs open, terminal state, eviction, dormant reopen, updat
   await mux.open({ ...openCommand(), requestId: "reopen-catalog" });
   assert.equal((await mux.retainedSession("catalog-session")).residency, "resident");
   assert.equal(factory.adapters.length, 2);
+  assert.deepEqual(factory.requests[1].session, {
+    mode: "open",
+    path: "/state/sessions/catalog-session-1.jsonl",
+  });
   await mux.close({
     protocolVersion: "1.0",
     requestId: "close-catalog",
@@ -285,6 +304,72 @@ test("multiplexer catalogs open, terminal state, eviction, dormant reopen, updat
   assert.ok(events.includes("sessionDeleted"));
 });
 
+test("catalog-only dormant and memory sessions remain dormant across restart", async () => {
+  const stateDir = await temporaryState();
+  const mux = new Multiplexer({
+    factory: new CatalogFactory(),
+    durability: new FileDurabilityStore({ stateDir }),
+    catalog: new FileSessionCatalog({ stateDir }),
+  });
+  await mux.recover();
+  await mux.open(openCommand("closed-dormant"));
+  await mux.close({
+    protocolVersion: "1.0",
+    requestId: "close-dormant",
+    operation: "close",
+    sessionId: "closed-dormant",
+    generation: 1,
+    payload: { retainSession: true },
+  });
+  const memory = openCommand("memory-dormant");
+  memory.payload.session = { mode: "memory" };
+  await mux.open(memory);
+  await mux.dispose();
+
+  const factory = new CatalogFactory();
+  const restarted = new Multiplexer({
+    factory,
+    durability: new FileDurabilityStore({ stateDir }),
+    catalog: new FileSessionCatalog({ stateDir }),
+  });
+  const report = await restarted.recover();
+  assert.deepEqual(report.opened, []);
+  assert.equal(factory.requests.length, 0);
+  assert.deepEqual(
+    (await restarted.retainedSessions()).sessions.map((record) => record.residency),
+    ["dormant", "dormant"],
+  );
+});
+
+test("runtime conversation replacement updates catalog and manifest before returning", async () => {
+  const stateDir = await temporaryState();
+  const factory = new CatalogFactory();
+  const mux = new Multiplexer({
+    factory,
+    durability: new FileDurabilityStore({ stateDir }),
+    catalog: new FileSessionCatalog({ stateDir }),
+  });
+  const events = [];
+  mux.subscribe((event) => events.push(event));
+  await mux.recover();
+  await mux.open(openCommand("runtime-replaced"));
+
+  const replacement = {
+    sessionId: "pi-runtime-replacement",
+    sessionFile: "/state/sessions/runtime-replacement.jsonl",
+  };
+  await factory.adapters[0].replaceConversation(replacement);
+  assert.deepEqual((await mux.retainedSession("runtime-replaced")).conversation, replacement);
+  const manifestPath = join(
+    stateDir,
+    "sessions",
+    encodedSessionId("runtime-replaced"),
+    "manifest.json",
+  );
+  assert.deepEqual(JSON.parse(await readFile(manifestPath, "utf8")).conversation, replacement);
+  assert.ok(events.some((event) => event.event === "conversationChanged"));
+});
+
 test("multiplexer restart recovers catalog records and reopens durable manifests", async () => {
   const stateDir = await temporaryState();
   const firstCatalog = new FileSessionCatalog({ stateDir });
@@ -310,6 +395,10 @@ test("multiplexer restart recovers catalog records and reopens durable manifests
   assert.equal(record.residency, "resident");
   assert.equal(record.conversation.sessionId, "pi-restart-session-1");
   assert.equal(restartedFactory.adapters.length, 1);
+  assert.deepEqual(restartedFactory.requests[0].session, {
+    mode: "open",
+    path: "/state/sessions/restart-session-1.jsonl",
+  });
 });
 
 test("catalog rejects name collisions, unsafe path segments, capacity overflow, and insecure state", async () => {
@@ -320,6 +409,15 @@ test("catalog rejects name collisions, unsafe path segments, capacity overflow, 
   await assert.rejects(
     catalog.create({ sessionId: "alpha", generation: 1, spec: spec("/collision") }),
     (error) => error instanceof SessionCatalogError && error.code === "session_name_conflict",
+  );
+  await assert.rejects(
+    catalog.create({
+      sessionId: "invalid-conversation",
+      generation: 1,
+      spec: spec("/invalid"),
+      conversation: { sessionId: "pi-invalid", sessionFile: "relative/session.jsonl" },
+    }),
+    (error) => error instanceof SessionCatalogError && error.code === "corrupt_catalog",
   );
   await assert.rejects(
     catalog.create({ sessionId: "id-b", name: "id-a", generation: 1, spec: spec("/b") }),

@@ -53,11 +53,14 @@ The normal `npm test` suite proves:
 - live duplicate wake joining and terminal duplicate cache hits
 - generation/policy conflicts and bounded session/turn capacity
 - one-session failure/abort containment
-- queued restart replay and accepted-to-indeterminate conversion
+- queued restart replay only after exact Pi conversation ID/file restoration
+- missing/corrupt/legacy-ambiguous identity blocks replay; accepted becomes indeterminate
+- memory targets remain catalog-only with no durable wake journal
 - owner-only atomic manifests/journals and terminal retention compaction
 - path traversal, symlink, permissive mode, and authority-root refusal
 - empty Pi tool/resource profile and distinct session/settings/resource state
-- real SDK no-tools session construction without a model turn
+- real SDK no-tools runtime construction plus new/switch/fork/import rebinding
+- real SDK restart continuity for an owner-only materialized empty conversation
 - bounded Unix NDJSON framing, connection isolation, and typed errors
 - drain timeout abort, idle eviction, metrics, and structured-log redaction
 - language-neutral fixture/schema compatibility

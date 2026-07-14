@@ -59,8 +59,9 @@ pi-daemon version
 ```
 
 `serve` uses one process-global Pi `AuthStorage` and `ModelRegistry` from the
-configured `--agent-dir` while creating isolated session managers, settings,
-resource loaders, and event subscriptions per logical session. The initial
+configured `--agent-dir` while creating one `AgentSessionRuntime` with isolated
+session managers, settings, resource loaders, and rebound event subscriptions
+per logical session. The initial
 adapter enforces an empty tool/resource profile; project extensions, skills,
 prompt templates, themes, context files, and built-in tools are not loaded.
 
@@ -87,7 +88,9 @@ The first release deliberately starts narrow:
 - bounded requests, queues, sessions, turns, buffers, and drain;
 - content/auth redaction in logs and status;
 - no blind replay after an indeterminate accepted request;
-- one isolated `SessionManager` and settings domain per logical session.
+- durable wakes replay only after the exact resolved Pi conversation reopens;
+- memory sessions are resident-only and never journaled for crash replay;
+- one isolated `AgentSessionRuntime`, `SessionManager`, and settings domain per logical session.
 
 A shared process is a shared trust boundary, not a sandbox. Workloads requiring
 arbitrary extensions or process/filesystem tools need a separate trust domain.

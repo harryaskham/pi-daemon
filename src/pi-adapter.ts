@@ -1,10 +1,12 @@
 import { lstatSync } from "node:fs";
-import { realpath, stat } from "node:fs/promises";
+import { chmod, lstat, open, realpath, stat } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve } from "node:path";
 
 import {
+  AgentSessionRuntime,
   AuthStorage,
   createAgentSession,
+  createAgentSessionRuntime,
   createExtensionRuntime,
   getAgentDir,
   ModelRegistry,
@@ -12,8 +14,10 @@ import {
   SettingsManager,
   type AgentSession,
   type AgentSessionEvent,
+  type AgentSessionServices,
   type CreateAgentSessionOptions,
   type CreateAgentSessionResult,
+  type CreateAgentSessionRuntimeFactory,
   type ResourceLoader,
 } from "@earendil-works/pi-coding-agent";
 
@@ -87,29 +91,14 @@ export class PiSessionFactory implements SessionFactory {
   }
 
   async open(request: SessionOpenRequest): Promise<SessionAdapter> {
-    const [cwd, stateRoot, agentRoot, ...allowedRoots] = await Promise.all([
-      realpath(request.cwd),
+    const [stateRoot, agentRoot, ...allowedRoots] = await Promise.all([
       realpath(this.#stateDir),
       realpath(this.agentDir),
       ...this.#allowedRoots.map(async (root) => realpath(root)),
     ]);
-    if (!(await stat(cwd)).isDirectory()) {
-      throw new PiAdapterError("cwd_not_directory", "logical session cwd must be a directory");
-    }
-    if (!allowedRoots.some((root) => isWithin(root, cwd))) {
-      throw new PiAdapterError("cwd_not_allowed", "logical session cwd is outside allowed roots");
-    }
-    if (
-      isWithin(cwd, stateRoot) ||
-      isWithin(stateRoot, cwd) ||
-      isWithin(cwd, agentRoot) ||
-      isWithin(agentRoot, cwd)
-    ) {
-      throw new PiAdapterError(
-        "authority_root_overlap",
-        "logical session cwd must not overlap daemon state or Pi credential roots",
-      );
-    }
+    const validateCwd = async (candidate: string): Promise<string> =>
+      validateRuntimeCwd(candidate, stateRoot, agentRoot, allowedRoots);
+    const cwd = await validateCwd(request.cwd);
     if (request.agentDir !== undefined && resolve(request.agentDir) !== this.agentDir) {
       throw new PiAdapterError(
         "agent_dir_mismatch",
@@ -124,9 +113,8 @@ export class PiSessionFactory implements SessionFactory {
     await ensurePrivateDirectory(sessionsRoot, "sessions directory");
     await ensurePrivateDirectory(logicalSessionRoot, "logical session directory");
     await ensurePrivateDirectory(sessionDir, "Pi session directory");
-    const sessionManager = await createSessionManager(request, cwd, sessionDir);
-    const settingsManager = SettingsManager.inMemory();
-    const resourceLoader = new LockedResourceLoader(request.resources?.systemPrompt);
+    const canonicalSessionDir = await realpath(sessionDir);
+    const sessionManager = await createSessionManager(request, cwd, canonicalSessionDir);
 
     const requestedModel = request.model;
     const model =
@@ -148,73 +136,153 @@ export class PiSessionFactory implements SessionFactory {
       );
     }
 
-    const result = await this.#createSession({
+    const createRuntime: CreateAgentSessionRuntimeFactory = async ({
+      cwd: runtimeCwd,
+      agentDir: runtimeAgentDir,
+      sessionManager: runtimeSessionManager,
+      sessionStartEvent,
+    }) => {
+      const canonicalCwd = await validateCwd(runtimeCwd);
+      if (resolve(runtimeAgentDir) !== this.agentDir) {
+        throw new PiAdapterError(
+          "agent_dir_mismatch",
+          "runtime replacement cannot override the shared host agentDir",
+        );
+      }
+      const settingsManager = SettingsManager.inMemory();
+      const resourceLoader = new LockedResourceLoader(request.resources?.systemPrompt);
+      const materializedSessionManager = await materializeSessionManager(
+        runtimeSessionManager,
+        canonicalCwd,
+      );
+      const result = await this.#createSession({
+        cwd: canonicalCwd,
+        agentDir: this.agentDir,
+        authStorage: this.authStorage,
+        modelRegistry: this.modelRegistry,
+        model,
+        ...(request.model?.thinkingLevel === undefined
+          ? {}
+          : { thinkingLevel: request.model.thinkingLevel }),
+        noTools: "all",
+        tools: [],
+        customTools: [],
+        resourceLoader,
+        sessionManager: materializedSessionManager,
+        settingsManager,
+        ...(sessionStartEvent === undefined ? {} : { sessionStartEvent }),
+      });
+      if (result.session.getActiveToolNames().length !== 0) {
+        result.session.dispose();
+        throw new PiAdapterError(
+          "unsafe_tool_profile",
+          "Pi SDK enabled tools despite the no-tools resource policy",
+        );
+      }
+      const services: AgentSessionServices = {
+        cwd: canonicalCwd,
+        agentDir: this.agentDir,
+        authStorage: this.authStorage,
+        modelRegistry: this.modelRegistry,
+        settingsManager,
+        resourceLoader,
+        diagnostics: [],
+      };
+      return { ...result, services, diagnostics: services.diagnostics };
+    };
+
+    const runtime = await createAgentSessionRuntime(createRuntime, {
       cwd,
       agentDir: this.agentDir,
-      authStorage: this.authStorage,
-      modelRegistry: this.modelRegistry,
-      model,
-      ...(request.model?.thinkingLevel === undefined
-        ? {}
-        : { thinkingLevel: request.model.thinkingLevel }),
-      noTools: "all",
-      tools: [],
-      customTools: [],
-      resourceLoader,
       sessionManager,
-      settingsManager,
     });
-    if (result.session.getActiveToolNames().length !== 0) {
-      result.session.dispose();
-      throw new PiAdapterError(
-        "unsafe_tool_profile",
-        "Pi SDK enabled tools despite the no-tools resource policy",
-      );
+    try {
+      return await PiSessionAdapter.create(runtime, {
+        sessionRoot: canonicalSessionDir,
+        validateCwd,
+      });
+    } catch (error) {
+      await runtime.dispose().catch(() => {});
+      throw error;
     }
-    return new PiSessionAdapter(result.session);
   }
 }
 
+export interface PiSessionIdentity {
+  sessionId: string;
+  sessionFile?: string;
+}
+
+export interface PiSessionAdapterOptions {
+  sessionRoot: string;
+  validateCwd: (cwd: string) => Promise<string>;
+}
+
 export class PiSessionAdapter implements SessionAdapter {
-  readonly #session: AgentSession;
-  readonly #unsubscribe: () => void;
+  readonly #runtime: AgentSessionRuntime;
+  readonly #sessionRoot: string;
+  readonly #validateCwd: (cwd: string) => Promise<string>;
+  #unsubscribe: (() => void) | undefined;
+  #identityChangeHandler: ((identity: PiSessionIdentity) => Promise<void>) | undefined;
   #eventSink: ((event: AdapterEvent) => void) | undefined;
   #disposed = false;
+  #invalidated = true;
 
-  constructor(session: AgentSession) {
-    this.#session = session;
-    this.#unsubscribe = session.subscribe((event) => this.#onSessionEvent(event));
+  private constructor(runtime: AgentSessionRuntime, options: PiSessionAdapterOptions) {
+    this.#runtime = runtime;
+    this.#sessionRoot = options.sessionRoot;
+    this.#validateCwd = options.validateCwd;
+    runtime.setBeforeSessionInvalidate(() => this.#invalidateSession());
+    runtime.setRebindSession(async (session) => this.#bindSession(session, true));
   }
 
-  identity(): { sessionId: string; sessionFile?: string } {
+  static async create(
+    runtime: AgentSessionRuntime,
+    options: PiSessionAdapterOptions,
+  ): Promise<PiSessionAdapter> {
+    const adapter = new PiSessionAdapter(runtime, options);
+    await adapter.#bindSession(runtime.session, false);
+    return adapter;
+  }
+
+  identity(): PiSessionIdentity {
+    this.#assertOpen();
+    const session = this.#runtime.session;
     return {
-      sessionId: this.#session.sessionId,
-      ...(this.#session.sessionFile === undefined
-        ? {}
-        : { sessionFile: this.#session.sessionFile }),
+      sessionId: session.sessionId,
+      ...(session.sessionFile === undefined ? {} : { sessionFile: session.sessionFile }),
     };
+  }
+
+  setIdentityChangeHandler(
+    handler: ((identity: PiSessionIdentity) => Promise<void>) | undefined,
+  ): void {
+    this.#assertOpen();
+    this.#identityChangeHandler = handler;
   }
 
   async prompt(request: PromptRequest): Promise<unknown> {
     this.#assertOpen();
+    const session = this.#runtime.session;
     this.#eventSink = request.onEvent;
     try {
-      await this.#session.prompt(request.prompt, {
+      await session.prompt(request.prompt, {
         expandPromptTemplates: false,
         source: "rpc",
         preflightResult: (accepted) => {
           if (!accepted) request.onEvent({ event: "preflightRejected" });
         },
       });
+      await session.waitForIdle();
       return {
-        text: this.#session.getLastAssistantText(),
-        sessionId: this.#session.sessionId,
-        sessionFile: this.#session.sessionFile,
+        text: session.getLastAssistantText(),
+        sessionId: session.sessionId,
+        sessionFile: session.sessionFile,
         model:
-          this.#session.model === undefined
+          session.model === undefined
             ? undefined
-            : { provider: this.#session.model.provider, id: this.#session.model.id },
-        thinkingLevel: this.#session.thinkingLevel,
+            : { provider: session.model.provider, id: session.model.id },
+        thinkingLevel: session.thinkingLevel,
       };
     } finally {
       if (this.#eventSink === request.onEvent) this.#eventSink = undefined;
@@ -223,28 +291,116 @@ export class PiSessionAdapter implements SessionAdapter {
 
   async steer(message: string): Promise<void> {
     this.#assertOpen();
-    await this.#session.steer(message);
+    await this.#runtime.session.steer(message);
   }
 
   async followUp(message: string): Promise<void> {
     this.#assertOpen();
-    await this.#session.followUp(message);
+    await this.#runtime.session.followUp(message);
   }
 
   async abort(): Promise<void> {
     this.#assertOpen();
-    await this.#session.abort();
+    await this.#runtime.session.abort();
   }
 
-  dispose(): void {
+  async newSession(): Promise<{ cancelled: boolean }> {
+    this.#assertReplaceable();
+    return this.#runtime.newSession();
+  }
+
+  async switchSession(
+    sessionPath: string,
+    cwdOverride?: string,
+  ): Promise<{ cancelled: boolean }> {
+    this.#assertReplaceable();
+    const path = await this.#validatedSessionPath(sessionPath);
+    const preview = SessionManager.open(path, this.#sessionRoot, cwdOverride);
+    await this.#validateCwd(preview.getCwd());
+    return this.#runtime.switchSession(path, cwdOverride === undefined ? {} : { cwdOverride });
+  }
+
+  async fork(
+    entryId: string,
+    position: "before" | "at" = "before",
+  ): Promise<{ cancelled: boolean; selectedText?: string }> {
+    this.#assertReplaceable();
+    return this.#runtime.fork(entryId, { position });
+  }
+
+  async importFromJsonl(
+    inputPath: string,
+    cwdOverride?: string,
+  ): Promise<{ cancelled: boolean }> {
+    this.#assertReplaceable();
+    const path = await this.#validatedSessionPath(inputPath);
+    const preview = SessionManager.open(path, this.#sessionRoot, cwdOverride);
+    await this.#validateCwd(preview.getCwd());
+    return this.#runtime.importFromJsonl(path, cwdOverride);
+  }
+
+  async dispose(): Promise<void> {
     if (this.#disposed) return;
     this.#disposed = true;
-    this.#unsubscribe();
-    this.#session.dispose();
+    this.#identityChangeHandler = undefined;
+    this.#invalidateSession();
+    await this.#runtime.dispose();
+  }
+
+  async #bindSession(session: AgentSession, replacement: boolean): Promise<void> {
+    this.#unsubscribe?.();
+    this.#unsubscribe = undefined;
+    try {
+      await session.bindExtensions({ mode: "rpc" });
+      this.#unsubscribe = session.subscribe((event) => this.#onSessionEvent(event));
+      this.#invalidated = false;
+      if (replacement && this.#identityChangeHandler !== undefined) {
+        await this.#identityChangeHandler(this.identity());
+      }
+    } catch (error) {
+      this.#invalidateSession();
+      throw error;
+    }
+  }
+
+  #invalidateSession(): void {
+    this.#unsubscribe?.();
+    this.#unsubscribe = undefined;
+    this.#eventSink = undefined;
+    this.#invalidated = true;
+  }
+
+  async #validatedSessionPath(sessionPath: string): Promise<string> {
+    const path = await realpath(
+      isAbsolute(sessionPath) ? sessionPath : join(this.#sessionRoot, sessionPath),
+    );
+    if (!isWithin(this.#sessionRoot, path)) {
+      throw new PiAdapterError(
+        "session_path_outside_state",
+        "session path must be inside the logical session's state directory",
+      );
+    }
+    return path;
+  }
+
+  #assertReplaceable(): void {
+    this.#assertOpen();
+    if (!this.#runtime.session.isIdle) {
+      throw new PiAdapterError(
+        "session_busy",
+        "Pi conversation cannot be replaced while the session is active",
+      );
+    }
   }
 
   #assertOpen(): void {
     if (this.#disposed) throw new PiAdapterError("session_disposed", "Pi session is disposed");
+    if (this.#invalidated) {
+      throw new PiAdapterError(
+        "session_invalidated",
+        "Pi session runtime was invalidated before replacement completed",
+      );
+    }
   }
 
   #onSessionEvent(event: AgentSessionEvent): void {
@@ -316,6 +472,62 @@ class LockedResourceLoader implements ResourceLoader {
   async reload(): Promise<void> {}
 }
 
+async function materializeSessionManager(
+  sessionManager: SessionManager,
+  cwd: string,
+): Promise<SessionManager> {
+  if (!sessionManager.isPersisted()) return sessionManager;
+  const sessionFile = sessionManager.getSessionFile();
+  const header = sessionManager.getHeader();
+  if (sessionFile === undefined || header === null) {
+    throw new PiAdapterError(
+      "session_identity_missing",
+      "persisted Pi session is missing its file or header identity",
+    );
+  }
+
+  let exists = false;
+  try {
+    const info = await lstat(sessionFile);
+    if (info.isSymbolicLink() || !info.isFile()) {
+      throw new PiAdapterError(
+        "insecure_session_path",
+        "Pi session path must be a regular non-symlink file",
+      );
+    }
+    const getuid = process.getuid;
+    if (getuid !== undefined && info.uid !== getuid()) {
+      throw new PiAdapterError(
+        "insecure_session_path",
+        "Pi session file must be owned by the current user",
+      );
+    }
+    exists = true;
+  } catch (error) {
+    if (!isNodeError(error) || error.code !== "ENOENT") throw error;
+  }
+  if (!exists) {
+    const entries = [header, ...sessionManager.getEntries()];
+    const handle = await open(sessionFile, "wx", 0o600);
+    try {
+      await handle.writeFile(`${entries.map((entry) => JSON.stringify(entry)).join("\n")}\n`, "utf8");
+      await handle.sync();
+    } finally {
+      await handle.close();
+    }
+  }
+  await chmod(sessionFile, 0o600);
+
+  const reopened = SessionManager.open(sessionFile, sessionManager.getSessionDir(), cwd);
+  if (reopened.getSessionId() !== sessionManager.getSessionId()) {
+    throw new PiAdapterError(
+      "session_identity_mismatch",
+      "materialized Pi session identity does not match the requested conversation",
+    );
+  }
+  return reopened;
+}
+
 async function createSessionManager(
   request: SessionOpenRequest,
   cwd: string,
@@ -345,6 +557,33 @@ async function createSessionManager(
       return SessionManager.open(path, sessionDir, cwd);
     }
   }
+}
+
+async function validateRuntimeCwd(
+  candidate: string,
+  stateRoot: string,
+  agentRoot: string,
+  allowedRoots: string[],
+): Promise<string> {
+  const cwd = await realpath(candidate);
+  if (!(await stat(cwd)).isDirectory()) {
+    throw new PiAdapterError("cwd_not_directory", "logical session cwd must be a directory");
+  }
+  if (!allowedRoots.some((root) => isWithin(root, cwd))) {
+    throw new PiAdapterError("cwd_not_allowed", "logical session cwd is outside allowed roots");
+  }
+  if (
+    isWithin(cwd, stateRoot) ||
+    isWithin(stateRoot, cwd) ||
+    isWithin(cwd, agentRoot) ||
+    isWithin(agentRoot, cwd)
+  ) {
+    throw new PiAdapterError(
+      "authority_root_overlap",
+      "logical session cwd must not overlap daemon state or Pi credential roots",
+    );
+  }
+  return cwd;
 }
 
 function validatePrivateAuthFile(path: string): void {

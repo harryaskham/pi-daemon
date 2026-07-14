@@ -595,16 +595,16 @@ implementation order. This list is a human-readable crosswalk.
 - [ ] `bd-55ab9e` — parent epic: full standalone Pi session host API.
 - [x] `bd-e2e717` — additive CRUD/RPC/ACP contract, schemas, fixtures, and
   control-mode equivalence.
-- [ ] `bd-3a3104` — clean npm pack plus installed-bin execution correctness.
-- [ ] `bd-12c4ba` — current Pi SDK acquisition and compatibility policy.
+- [x] `bd-3a3104` — clean npm pack plus installed-bin execution correctness.
+- [x] `bd-12c4ba` — current Pi SDK acquisition and compatibility policy.
 - [x] `bd-6148e1` — configurable bearer-authenticated API transport and explicit
   session attachment (depends on the contract).
-- [ ] `bd-143f05` — preserve real Pi conversation identity across restart and
+- [x] `bd-143f05` — preserve real Pi conversation identity across restart and
   runtime replacement (depends on current SDK).
 
 ### Core host behavior
 
-- [ ] `bd-df7ba9` — durable resident/dormant catalog and session CRUD.
+- [x] `bd-df7ba9` — durable resident/dormant catalog and session CRUD.
 - [ ] `bd-7d1407` — asynchronous durable command tickets and reconciliation.
 - [ ] `bd-0052e2` — full transport-neutral Pi RPC on `AgentSessionRuntime`.
 - [ ] `bd-ab1b91` — trusted Pi CLI-equivalent per-session configuration and

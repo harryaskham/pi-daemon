@@ -83,11 +83,14 @@ entries; downgrading the fetcher makes `npm ci` request uncached Pi tarballs.
 
 ## Runtime policy
 
-Each logical host slot will use `AgentSessionRuntime`. Runtime replacement must
-rebind host event listeners and extension UI to `runtime.session`; stale
-`AgentSession`, `SessionManager`, resource loader, or extension objects must not
-survive a replacement. The raw `/rpc` surface preserves Pi command/event shapes,
-but a daemon-owned transport-neutral controller performs dispatch and routing.
+Each logical host slot uses `AgentSessionRuntime`. Runtime replacement recreates
+locked cwd-bound services, rebinds extension/session listeners to
+`runtime.session`, and durably records the new Pi ID/file before returning; stale
+`AgentSession`, `SessionManager`, resource loader, or extension objects do not
+survive a replacement. If rebinding or identity persistence fails, the adapter
+remains invalidated rather than serving the disposed conversation. The raw
+`/rpc` surface preserves Pi command/event shapes, but a daemon-owned
+transport-neutral controller performs dispatch and routing.
 
 Per-session configuration is a snapshot built from supported public SDK inputs.
 The default `unisolated` mode does not promise independent `process.env`, cwd,

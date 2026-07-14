@@ -30,12 +30,16 @@ project code or tools.
 - required canonical `--allow-root` for every logical cwd
 - cwd must not overlap daemon state or Pi credential roots
 - opened Pi session files remain inside that logical session's state directory
+- persistent Pi managers are materialized as owner-only JSONL before durable acceptance
+- restart/eviction replay requires the exact recorded Pi session ID and canonical file
+- memory-only sessions never write replayable wake journals or masquerade as durable
 - default Pi auth file must be an owner-only regular file
 - empty built-in/custom tool allowlist
 - empty extensions, skills, templates, themes, context files, and append prompt
 - no Cacophony node token, CA key, daemon state, or orchestration authority
 - structured logs redact prompts, output/content, environment, and credentials
 - accepted wake requests are never blindly replayed after a crash
+- queued wake requests are never replayed into a missing, corrupt, or fresh replacement conversation
 - Unix event subscriptions require explicit generation-bound `attach` and `detach`
 
 Prompts and terminal results are necessarily retained in the private durable

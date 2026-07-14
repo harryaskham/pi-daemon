@@ -1,8 +1,10 @@
 import { randomUUID } from "node:crypto";
+import { isAbsolute, resolve } from "node:path";
 
 import {
   DurabilityError,
   requestFingerprint,
+  type DurableOpenCommand,
   type DurabilityStore,
   type JournalEntry,
   type RecoverySnapshot,
@@ -63,6 +65,9 @@ export interface PromptRequest {
 export interface SessionAdapter {
   prompt(request: PromptRequest): Promise<unknown>;
   identity?(): SessionConversationIdentity;
+  setIdentityChangeHandler?(
+    handler: ((identity: SessionConversationIdentity) => Promise<void>) | undefined,
+  ): void;
   steer?(message: string): Promise<void> | void;
   followUp?(message: string): Promise<void> | void;
   abort?(): Promise<void> | void;
@@ -167,7 +172,9 @@ interface SessionSlot {
   state: SessionState;
   policy: NormalizedOpenPolicy;
   policyKey: string;
+  openCommand: DurableOpenCommand;
   adapter: SessionAdapter;
+  durableConversation: boolean;
   sequence: number;
   pendingTurns: number;
   turnTail: Promise<void>;
@@ -352,31 +359,113 @@ export class Multiplexer {
       failures: [],
     };
 
-    for (const manifest of recovered.manifests) {
+    const manifests = new Map(
+      recovered.manifests.map((manifest) => [manifest.sessionId, manifest]),
+    );
+    const restoredIds = new Set<string>();
+    const restore = async (
+      sessionId: string,
+      generation: number,
+      payload: OpenPayload,
+    ): Promise<void> => {
       try {
         const parsed = parseCommand({
           protocolVersion: "1.0",
           requestId: `restore-open-${randomUUID()}`,
           operation: "open",
-          sessionId: manifest.sessionId,
-          generation: manifest.generation,
-          payload: manifest.payload,
+          sessionId,
+          generation,
+          payload,
         });
         if (parsed.operation !== "open") throw new Error("restored command is not open");
         await this.open(parsed);
-        report.opened.push(manifest.sessionId);
+        report.opened.push(sessionId);
       } catch (error) {
         const normalized = asMultiplexerError(
           error,
           "restore_open_failed",
           "failed to restore logical session",
         );
+        report.failures.push({ sessionId, code: normalized.code, message: normalized.message });
+      }
+    };
+
+    for (const record of catalog) {
+      const manifest = manifests.get(record.sessionId);
+      if (manifest === undefined) continue;
+      if (manifest.generation !== record.generation) {
         report.failures.push({
-          sessionId: manifest.sessionId,
+          sessionId: record.sessionId,
+          code: "manifest_generation_mismatch",
+          message: "retained session generation does not match its runtime manifest",
+        });
+        continue;
+      }
+      let payload: OpenPayload;
+      let conversation = record.conversation ?? manifest.conversation;
+      try {
+        payload = manifest.payload;
+        if (
+          record.conversation === undefined &&
+          conversation !== undefined &&
+          this.#catalog !== undefined
+        ) {
+          const migrated = await this.#catalog.markResident(
+            record.sessionId,
+            record.generation,
+            conversation,
+          );
+          this.#catalogRecords.set(migrated.sessionId, migrated);
+          conversation = migrated.conversation;
+        }
+      } catch (error) {
+        const normalized = asMultiplexerError(
+          error,
+          "restore_open_failed",
+          "failed to prepare retained logical session",
+        );
+        report.failures.push({
+          sessionId: record.sessionId,
           code: normalized.code,
           message: normalized.message,
         });
+        continue;
       }
+      if (payload.session.mode === "memory") {
+        continue;
+      }
+      if (conversation?.sessionFile === undefined && payload.session.mode !== "open") {
+        report.failures.push({
+          sessionId: record.sessionId,
+          code: "conversation_identity_missing",
+          message: "durable session has no resolved Pi conversation identity",
+        });
+        continue;
+      }
+      restoredIds.add(record.sessionId);
+      await restore(record.sessionId, record.generation, payload);
+    }
+
+    for (const manifest of recovered.manifests) {
+      if (restoredIds.has(manifest.sessionId) || this.#catalogRecords.has(manifest.sessionId)) {
+        continue;
+      }
+      if (manifest.payload.session.mode === "memory") continue;
+      let payload = manifest.payload;
+      if (manifest.conversation?.sessionFile !== undefined) {
+        payload = {
+          ...manifest.payload,
+          session: { mode: "open", path: manifest.conversation.sessionFile },
+        };
+      } else if (manifest.payload.session.mode !== "open") {
+        report.failures.push({
+          sessionId: manifest.sessionId,
+          code: "conversation_identity_missing",
+          message: "legacy manifest has no resolved Pi conversation identity",
+        });
+        continue;
+      }
+      await restore(manifest.sessionId, manifest.generation, payload);
     }
 
     const bySession = new Map<string, JournalEntry[]>();
@@ -446,6 +535,11 @@ export class Multiplexer {
         }
       }
 
+      const runtimePolicy =
+        existing === undefined
+          ? resolvedRuntimePolicy(policy, retained, command.generation)
+          : policy;
+
       if (existing !== undefined) {
         if (command.generation < existing.generation) {
           throw new MultiplexerError("stale_generation", "session generation is stale", {
@@ -484,15 +578,19 @@ export class Multiplexer {
       const request: SessionOpenRequest = {
         sessionId: command.sessionId,
         generation: command.generation,
-        ...policy,
+        ...runtimePolicy,
       };
 
       let adapter: SessionAdapter | undefined;
+      let conversation: SessionConversationIdentity | undefined;
       try {
         adapter = await this.#factory.open(request);
-        await this.#durability?.saveManifest(command);
+        conversation = validateOpenedConversation(
+          adapter.identity?.(),
+          command.payload.session.mode,
+          this.#durability !== undefined || this.#catalog !== undefined,
+        );
         if (this.#catalog !== undefined) {
-          const conversation = adapter.identity?.();
           const catalogRecord =
             retained === undefined
               ? await this.#catalog.create({
@@ -518,8 +616,20 @@ export class Multiplexer {
                 });
           this.#catalogRecords.set(catalogRecord.sessionId, catalogRecord);
         }
+        await this.#durability?.saveManifest(command, conversation);
       } catch (error) {
         await Promise.resolve(adapter?.dispose()).catch(() => {});
+        const catalog = this.#catalog;
+        if (catalog !== undefined && !this.#sessions.has(command.sessionId)) {
+          await catalog
+            .get(command.sessionId)
+            .then(async (record) => {
+              if (record === undefined) return;
+              const dormant = await catalog.markDormant(record.sessionId, record.generation);
+              this.#catalogRecords.set(dormant.sessionId, dormant);
+            })
+            .catch(() => {});
+        }
         this.metrics.increment("open_failures");
         this.#logger.write("warn", "session_open_failed", {
           sessionId: command.sessionId,
@@ -542,7 +652,9 @@ export class Multiplexer {
         state: "idle",
         policy,
         policyKey,
+        openCommand: structuredClone(command),
         adapter,
+        durableConversation: conversation?.sessionFile !== undefined,
         sequence: 0,
         pendingTurns: 0,
         turnTail: Promise.resolve(),
@@ -550,6 +662,9 @@ export class Multiplexer {
         inFlight: new Map(),
       };
       this.#sessions.set(command.sessionId, slot);
+      adapter.setIdentityChangeHandler?.(async (identity) =>
+        this.#persistConversationIdentity(slot, identity),
+      );
       this.metrics.increment("sessions_opened");
       this.metrics.observe("open_latency_ms", this.#now() - openStartedAt);
       this.#logger.write("info", "session_opened", {
@@ -613,9 +728,10 @@ export class Multiplexer {
     abort: AbortController,
     queuedAt: number,
   ): Promise<WakeResult> {
+    const durability = slot.durableConversation ? this.#durability : undefined;
     let journal: JournalEntry | undefined;
     try {
-      journal = await this.#durability?.beginRequest(command);
+      journal = await durability?.beginRequest(command);
     } catch (error) {
       this.#releaseReservation(slot, abort);
       throw asMultiplexerError(error, "durability_failed", "failed to persist queued wake");
@@ -644,7 +760,7 @@ export class Multiplexer {
       const failure = new MultiplexerError("session_failed", "logical session is failed", {
         details: { lastErrorCode: slot.lastErrorCode },
       });
-      await this.#durability
+      await durability
         ?.markFailed(slot.sessionId, command.idempotencyKey, journalError(failure))
         .catch(() => {});
       this.#releaseReservation(slot, abort);
@@ -1031,6 +1147,7 @@ export class Multiplexer {
     if (this.#sessions.get(slot.sessionId) !== slot || slot.generation !== command.generation) {
       throw new MultiplexerError("stale_generation", "session changed before queued turn started");
     }
+    const durability = slot.durableConversation ? this.#durability : undefined;
     let release: (() => void) | undefined;
     let turnStartedAt = 0;
     let journalState: "queued" | "accepted" | "terminal" = "queued";
@@ -1040,8 +1157,8 @@ export class Multiplexer {
       release = await this.#turns.acquire(abort.signal);
       turnStartedAt = this.#now();
       this.metrics.observe("queue_wait_ms", turnStartedAt - queuedAt);
-      if (this.#durability !== undefined) {
-        await this.#durability.markAccepted(slot.sessionId, command.idempotencyKey);
+      if (durability !== undefined) {
+        await durability.markAccepted(slot.sessionId, command.idempotencyKey);
         journalState = "accepted";
       }
       slot.state = "running";
@@ -1063,9 +1180,9 @@ export class Multiplexer {
       };
       if (command.payload.source !== undefined) request.source = command.payload.source;
       const result = await slot.adapter.prompt(request);
-      if (this.#durability !== undefined) {
+      if (durability !== undefined) {
         try {
-          await this.#durability.markCompleted(slot.sessionId, command.idempotencyKey, result);
+          await durability.markCompleted(slot.sessionId, command.idempotencyKey, result);
           journalState = "terminal";
         } catch (error) {
           throw new MultiplexerError(
@@ -1096,11 +1213,11 @@ export class Multiplexer {
     } catch (error) {
       const normalized = asMultiplexerError(error, "turn_failed", "logical session turn failed");
       if (
-        this.#durability !== undefined &&
+        durability !== undefined &&
         journalState !== "terminal" &&
         normalized.code !== "durability_completion_failed"
       ) {
-        await this.#durability
+        await durability
           .markFailed(slot.sessionId, command.idempotencyKey, journalError(normalized))
           .catch(() => {});
       }
@@ -1132,6 +1249,48 @@ export class Multiplexer {
       delete slot.activeAbort;
       delete slot.activeRequestId;
       release?.();
+    }
+  }
+
+  async #persistConversationIdentity(
+    slot: SessionSlot,
+    identity: SessionConversationIdentity,
+  ): Promise<void> {
+    if (this.#sessions.get(slot.sessionId) !== slot) {
+      throw new MultiplexerError(
+        "stale_generation",
+        "session changed before Pi conversation identity could be persisted",
+      );
+    }
+    const conversation = validateOpenedConversation(
+      identity,
+      slot.durableConversation ? "new" : "memory",
+      true,
+    );
+    try {
+      if (this.#catalog !== undefined) {
+        const record = await this.#catalog.markResident(
+          slot.sessionId,
+          slot.generation,
+          conversation,
+        );
+        this.#catalogRecords.set(record.sessionId, record);
+      }
+      await this.#durability?.saveManifest(slot.openCommand, conversation);
+      slot.durableConversation = conversation?.sessionFile !== undefined;
+      this.#emit(slot, "conversationChanged", undefined, { conversation });
+    } catch (error) {
+      this.metrics.increment("conversation_identity_failures");
+      this.#logger.write("warn", "conversation_identity_persist_failed", {
+        sessionId: slot.sessionId,
+        generation: slot.generation,
+        errorCode: errorCode(error),
+      });
+      throw asMultiplexerError(
+        error,
+        "conversation_identity_persist_failed",
+        "failed to persist replaced Pi conversation identity",
+      );
     }
   }
 
@@ -1275,6 +1434,75 @@ function normalizeOpenPolicy(payload: OpenPayload): NormalizedOpenPolicy {
   if (payload.model !== undefined) policy.model = { ...payload.model };
   if (payload.resources !== undefined) policy.resources = { ...payload.resources };
   return policy;
+}
+
+function resolvedRuntimePolicy(
+  policy: NormalizedOpenPolicy,
+  retained: SessionCatalogRecord | undefined,
+  generation: number,
+): NormalizedOpenPolicy {
+  if (retained === undefined || retained.generation !== generation) return policy;
+  const sessionFile = retained.conversation?.sessionFile;
+  if (sessionFile !== undefined) {
+    return { ...policy, session: { mode: "open", path: sessionFile } };
+  }
+  if (policy.session.mode === "open") return policy;
+  if (policy.session.mode === "memory") {
+    throw new MultiplexerError(
+      "ephemeral_session_unavailable",
+      "memory-only session cannot be reopened after eviction or restart",
+    );
+  }
+  throw new MultiplexerError(
+    "conversation_identity_missing",
+    "retained session has no resolved Pi conversation identity",
+  );
+}
+
+function validateOpenedConversation(
+  identity: SessionConversationIdentity | undefined,
+  targetMode: SessionTarget["mode"],
+  required: boolean,
+): SessionConversationIdentity | undefined {
+  if (identity === undefined) {
+    if (required) {
+      throw new MultiplexerError(
+        "conversation_identity_missing",
+        "session adapter did not report its resolved Pi conversation identity",
+      );
+    }
+    return undefined;
+  }
+  if (typeof identity.sessionId !== "string" || identity.sessionId.length === 0) {
+    throw new MultiplexerError(
+      "conversation_identity_invalid",
+      "session adapter reported an invalid Pi session ID",
+    );
+  }
+  if (
+    identity.sessionFile !== undefined &&
+    (identity.sessionFile.length === 0 ||
+      !isAbsolute(identity.sessionFile) ||
+      resolve(identity.sessionFile) !== identity.sessionFile)
+  ) {
+    throw new MultiplexerError(
+      "conversation_identity_invalid",
+      "session adapter reported a non-canonical Pi session file",
+    );
+  }
+  if (targetMode === "memory" && identity.sessionFile !== undefined) {
+    throw new MultiplexerError(
+      "conversation_identity_invalid",
+      "memory-only session unexpectedly reported a persistent Pi session file",
+    );
+  }
+  if (targetMode !== "memory" && required && identity.sessionFile === undefined) {
+    throw new MultiplexerError(
+      "conversation_identity_missing",
+      "persistent session did not resolve to a Pi session file",
+    );
+  }
+  return structuredClone(identity);
 }
 
 function persistedSpecFromOpen(payload: OpenPayload): PersistedSessionSpec {

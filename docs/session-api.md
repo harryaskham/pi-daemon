@@ -86,10 +86,12 @@ A session resource has:
   timestamp, request ID, and error code without prompt/result content.
 
 JSON API creation starts generation at 1. Legacy NDJSON generations beginning at
-0 remain readable in the catalog for compatibility. Replacing the
-`AgentSessionRuntime` increments generation. Updating metadata or Pi state in
-place increments revision without necessarily incrementing generation. Every
-successful catalog mutation increments revision.
+0 remain readable in the catalog for compatibility. Replacing the desired runtime policy increments generation. Pi `new`,
+`switch`, `fork`, or import inside the same hosted runtime changes the recorded
+conversation ID/file and increments resource revision without silently changing
+the daemon generation. Updating other metadata or Pi state in place likewise
+does not necessarily increment generation. Every successful catalog mutation
+increments revision.
 
 `{sessionRef}` is URL-decoded exactly once and resolves as follows:
 
@@ -175,8 +177,11 @@ advertised by capabilities.
 
 Idle eviction disposes only the SDK runtime, marks the catalog record dormant,
 and preserves its Pi session files. A later create/open with the same generation
-and policy reopens it; DELETE can remove a dormant record and its retained
-artifacts without first making it resident.
+and policy reopens the exact resolved conversation rather than evaluating the
+original `new` or `continue` target again. DELETE can remove a dormant record and
+its retained artifacts without first making it resident. A `memory` target is
+resident-only and has no manifest or replayable wake journal; restart leaves its
+catalog record dormant instead of fabricating an empty conversation.
 
 `PUT` carries the full desired spec. Cwd, target, agentDir, environment,
 resources, settings, or isolation changes replace the runtime and increment

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
-import { chmod, mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { chmod, copyFile, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import test from "node:test";
 
 import { AuthStorage, ModelRegistry } from "@earendil-works/pi-coding-agent";
@@ -40,20 +40,27 @@ const openRequest = (cwd, model, sessionId = "agent-a") => ({
 
 class FakePiSession {
   listeners = new Set();
+  extensionRunner = { hasHandlers: () => false, emit: async () => undefined };
   sessionId;
-  sessionFile = undefined;
+  sessionFile;
+  sessionManager;
   model;
   thinkingLevel = "off";
+  isIdle = true;
   disposed = 0;
   aborted = 0;
+  bindings = 0;
+  waits = 0;
   steering = [];
   followUps = [];
   lastText = undefined;
   preflight = true;
 
-  constructor(id, model) {
+  constructor(id, model, sessionManager) {
     this.sessionId = id;
     this.model = model;
+    this.sessionManager = sessionManager;
+    this.sessionFile = sessionManager?.getSessionFile();
   }
 
   subscribe(listener) {
@@ -63,6 +70,14 @@ class FakePiSession {
 
   getActiveToolNames() {
     return [];
+  }
+
+  async bindExtensions() {
+    this.bindings += 1;
+  }
+
+  async waitForIdle() {
+    this.waits += 1;
   }
 
   async prompt(text, options) {
@@ -112,6 +127,45 @@ class FakePiSession {
   }
 }
 
+class FakePiRuntime {
+  session;
+  nextSession;
+  #rebind;
+  #beforeInvalidate;
+
+  constructor(session, nextSession) {
+    this.session = session;
+    this.nextSession = nextSession;
+  }
+
+  setRebindSession(handler) {
+    this.#rebind = handler;
+  }
+
+  setBeforeSessionInvalidate(handler) {
+    this.#beforeInvalidate = handler;
+  }
+
+  async newSession() {
+    this.#beforeInvalidate?.();
+    this.session.dispose();
+    this.session = this.nextSession;
+    await this.#rebind?.(this.session);
+    return { cancelled: false };
+  }
+
+  async dispose() {
+    this.#beforeInvalidate?.();
+    this.session.dispose();
+  }
+}
+
+const adapterForFakeRuntime = async (runtime, sessionRoot) =>
+  PiSessionAdapter.create(runtime, {
+    sessionRoot,
+    validateCwd: async (cwd) => cwd,
+  });
+
 test("factory shares auth/models while isolating session, settings, and locked resources", async () => {
   const stateDir = await temporaryDirectory();
   const agentDir = await temporaryDirectory();
@@ -127,7 +181,11 @@ test("factory shares auth/models while isolating session, settings, and locked r
     modelRegistry,
     async createSession(options) {
       captures.push(options);
-      const session = new FakePiSession(`sdk-${captures.length}`, options.model);
+      const session = new FakePiSession(
+        `sdk-${captures.length}`,
+        options.model,
+        options.sessionManager,
+      );
       sessions.push(session);
       return {
         session,
@@ -156,16 +214,17 @@ test("factory shares auth/models while isolating session, settings, and locked r
     (error) => error instanceof PiAdapterError && error.code === "resource_extension_refused",
   );
 
-  first.dispose();
-  second.dispose();
+  await first.dispose();
+  await second.dispose();
   assert.equal(sessions[0].disposed, 1);
   assert.equal(sessions[1].disposed, 1);
 });
 
 test("adapter maps Pi events, prompt result, queue controls, abort, and preflight rejection", async () => {
   const { model } = modelHarness();
+  const sessionRoot = await temporaryDirectory();
   const session = new FakePiSession("sdk-a", model);
-  const adapter = new PiSessionAdapter(session);
+  const adapter = await adapterForFakeRuntime(new FakePiRuntime(session), sessionRoot);
   const events = [];
   const result = await adapter.prompt({
     requestId: "request-1",
@@ -175,6 +234,8 @@ test("adapter maps Pi events, prompt result, queue controls, abort, and prefligh
     onEvent: (event) => events.push(event),
   });
   assert.equal(result.text, "answer:hello");
+  assert.equal(session.bindings, 1);
+  assert.equal(session.waits, 1);
   assert.deepEqual(
     events.map((event) => event.event),
     ["turnStart", "messageUpdate", "turnEnd", "entryAppended", "agentSettled"],
@@ -200,7 +261,46 @@ test("adapter maps Pi events, prompt result, queue controls, abort, and prefligh
     /preflight rejected/,
   );
   assert.deepEqual(rejected.map((event) => event.event), ["preflightRejected"]);
-  adapter.dispose();
+  await adapter.dispose();
+});
+
+test("runtime replacement rebinds subscriptions and persists changed identity before returning", async () => {
+  const sessionRoot = await temporaryDirectory();
+  const { model } = modelHarness();
+  const first = new FakePiSession("sdk-first", model);
+  const second = new FakePiSession("sdk-second", model);
+  const runtime = new FakePiRuntime(first, second);
+  const adapter = await adapterForFakeRuntime(runtime, sessionRoot);
+  const changed = [];
+  adapter.setIdentityChangeHandler(async (identity) => changed.push(identity));
+
+  assert.deepEqual(await adapter.newSession(), { cancelled: false });
+  assert.equal(first.listeners.size, 0);
+  assert.equal(second.listeners.size, 1);
+  assert.equal(second.bindings, 1);
+  assert.deepEqual(adapter.identity(), { sessionId: "sdk-second" });
+  assert.deepEqual(changed, [{ sessionId: "sdk-second" }]);
+  await adapter.dispose();
+});
+
+test("runtime replacement fails closed when durable identity persistence fails", async () => {
+  const sessionRoot = await temporaryDirectory();
+  const { model } = modelHarness();
+  const runtime = new FakePiRuntime(
+    new FakePiSession("sdk-first", model),
+    new FakePiSession("sdk-second", model),
+  );
+  const adapter = await adapterForFakeRuntime(runtime, sessionRoot);
+  adapter.setIdentityChangeHandler(async () => {
+    throw new Error("identity store unavailable");
+  });
+
+  await assert.rejects(adapter.newSession(), /identity store unavailable/);
+  assert.throws(
+    () => adapter.identity(),
+    (error) => error instanceof PiAdapterError && error.code === "session_invalidated",
+  );
+  await adapter.dispose();
 });
 
 test("factory refuses permissive default auth storage", async () => {
@@ -248,6 +348,35 @@ test("factory refuses cwd authority overlap, out-of-root cwd, and external sessi
     authStorage,
     modelRegistry,
   });
+  const sourceRequest = openRequest(allowedRoot, model, "source-session");
+  sourceRequest.session = { mode: "new" };
+  const source = await factory.open(sourceRequest);
+  const sourceIdentity = source.identity();
+  const invalidImport = join(dirname(sourceIdentity.sessionFile), "invalid-cwd.jsonl");
+  const invalidEntries = (await readFile(sourceIdentity.sessionFile, "utf8"))
+    .trim()
+    .split("\n")
+    .map((line) => JSON.parse(line));
+  invalidEntries[0].cwd = outsideCwd;
+  await writeFile(
+    invalidImport,
+    `${invalidEntries.map((entry) => JSON.stringify(entry)).join("\n")}\n`,
+    { mode: 0o600 },
+  );
+  await assert.rejects(
+    source.importFromJsonl(invalidImport),
+    (error) => error instanceof PiAdapterError && error.code === "cwd_not_allowed",
+  );
+  assert.deepEqual(source.identity(), sourceIdentity);
+
+  const siblingRequest = openRequest(allowedRoot, model, "sibling-session");
+  siblingRequest.session = { mode: "open", path: source.identity().sessionFile };
+  await assert.rejects(
+    factory.open(siblingRequest),
+    (error) => error instanceof PiAdapterError && error.code === "session_path_outside_state",
+  );
+  await source.dispose();
+
   const outsideSession = join(outsideCwd, "session.jsonl");
   await writeFile(outsideSession, "{}\n");
   const request = openRequest(allowedRoot, model);
@@ -256,6 +385,61 @@ test("factory refuses cwd authority overlap, out-of-root cwd, and external sessi
     factory.open(request),
     (error) => error instanceof PiAdapterError && error.code === "session_path_outside_state",
   );
+});
+
+test("real Pi runtime new, switch, fork, and import preserve resolved conversation identity", async () => {
+  const stateDir = await temporaryDirectory();
+  const agentDir = await temporaryDirectory();
+  const cwd = await temporaryDirectory();
+  const { authStorage, modelRegistry, model } = modelHarness();
+  const factory = new PiSessionFactory({
+    stateDir,
+    agentDir,
+    allowedRoots: [cwd],
+    authStorage,
+    modelRegistry,
+  });
+  const request = openRequest(cwd, model);
+  request.session = { mode: "new" };
+  const adapter = await factory.open(request);
+  const first = adapter.identity();
+  assert.ok(first.sessionFile);
+  assert.match(await readFile(first.sessionFile, "utf8"), new RegExp(first.sessionId));
+  const changed = [];
+  adapter.setIdentityChangeHandler(async (identity) => changed.push(identity));
+
+  assert.deepEqual(await adapter.newSession(), { cancelled: false });
+  const second = adapter.identity();
+  assert.notEqual(second.sessionId, first.sessionId);
+  assert.notEqual(second.sessionFile, first.sessionFile);
+  assert.deepEqual(changed.at(-1), second);
+
+  assert.deepEqual(await adapter.switchSession(first.sessionFile), { cancelled: false });
+  assert.deepEqual(adapter.identity(), first);
+  assert.deepEqual(changed.at(-1), first);
+
+  const entries = (await readFile(first.sessionFile, "utf8"))
+    .trim()
+    .split("\n")
+    .map((line) => JSON.parse(line));
+  const forkEntry = entries.findLast((entry) => entry.type !== "session");
+  assert.ok(forkEntry);
+  assert.equal((await adapter.fork(forkEntry.id, "at")).cancelled, false);
+  const forked = adapter.identity();
+  assert.notEqual(forked.sessionId, first.sessionId);
+  assert.notEqual(forked.sessionFile, first.sessionFile);
+  assert.deepEqual(changed.at(-1), forked);
+
+  const importedFile = join(dirname(first.sessionFile), "imported-session.jsonl");
+  await copyFile(first.sessionFile, importedFile);
+  await chmod(importedFile, 0o600);
+  assert.deepEqual(await adapter.importFromJsonl(importedFile), { cancelled: false });
+  assert.deepEqual(adapter.identity(), {
+    sessionId: first.sessionId,
+    sessionFile: importedFile,
+  });
+  assert.deepEqual(changed.at(-1), adapter.identity());
+  await adapter.dispose();
 });
 
 test("real Pi SDK opens an isolated no-tools in-memory session without a model turn", async () => {
@@ -271,7 +455,7 @@ test("real Pi SDK opens an isolated no-tools in-memory session without a model t
     modelRegistry,
   });
   const adapter = await factory.open(openRequest(cwd, model));
-  adapter.dispose();
+  await adapter.dispose();
   const readiness = factory.readiness();
   assert.ok(readiness.availableModels > 0);
   assert.deepEqual(readiness.authErrors, []);

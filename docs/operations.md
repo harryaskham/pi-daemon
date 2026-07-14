@@ -92,7 +92,9 @@ drain starts; after the deadline, queued and active turns are aborted.
 
 Idle SDK sessions are evicted after 30 minutes by default while their durable
 catalog and Pi session artifacts remain. Eviction emits `sessionDormant` and
-`sessionEvicted`; re-open the same generation and policy to load it again. Set
+`sessionEvicted`; re-open the same generation and policy to load the exact
+resolved Pi session file again. A retained close removes the runtime manifest,
+so it stays dormant across restart until explicitly reopened. Set
 `--idle-session-ttl-ms 0` to disable eviction.
 
 ## Durable session catalog
@@ -114,7 +116,14 @@ resources.
 
 ## Restart recovery
 
-At startup, manifests are reopened before the socket becomes ready. Durable
-`queued` wakes replay; `accepted` wakes become `indeterminate` and require
-client reconciliation. Corrupt, permissive, mismatched, or symlinked state
-fails closed rather than being ignored.
+At startup, manifests reopen the resolved Pi session file recorded after the
+original create/continue/open operation; the requested target is never rerun as
+though it were still unresolved. Durable `queued` wakes replay only after that
+exact conversation opens. `accepted` wakes become `indeterminate` and require
+client reconciliation. A missing/corrupt Pi file, a legacy `new`/`continue`
+manifest without resolved identity, or a generation mismatch blocks replay and
+is reported as a recovery failure.
+
+`memory` targets are explicitly resident-only: they have a catalog identity but
+no runtime manifest or durable wake journal, remain dormant after restart, and
+cannot be reopened as an empty replacement conversation.
