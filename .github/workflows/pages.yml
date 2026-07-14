@@ -9,6 +9,7 @@ on:
       - "session-api.schema.json"
       - "session-api.openapi.json"
       - ".github/workflows/pages.yml"
+      - "flake.nix"
   workflow_dispatch:
 
 permissions:

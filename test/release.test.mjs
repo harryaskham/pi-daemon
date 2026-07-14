@@ -25,6 +25,7 @@ test("Pages workflow uses the pinned Nix site build without Docker actions", asy
   const flake = await readFile(join(repositoryRoot, "flake.nix"), "utf8");
   assert.doesNotMatch(workflow, /jekyll-build-pages|docker\s+(?:pull|run)|uses:\s*docker/i);
   assert.match(workflow, /nix build \.#pages --print-build-logs/);
+  assert.match(workflow, /- "flake\.nix"/);
   assert.match(workflow, /actions\/upload-pages-artifact@v3/);
   assert.match(workflow, /runs-on: \[self-hosted, nix, x86_64-linux\]/);
   assert.match(flake, /pages = pkgs\.runCommand "pi-daemon-pages"/);
