@@ -813,7 +813,9 @@ test("WebSocket upgrades fail closed on bearer auth before stream routing", asyn
 });
 
 const waitForTicket = async (address, ticketId, token) => {
-  const deadline = Date.now() + 2_000;
+  // Self-hosted Node jobs can be heavily CPU-throttled while sibling Nix jobs
+  // build. Keep this finite but above the API's observed multi-second tail.
+  const deadline = Date.now() + 15_000;
   while (true) {
     const response = await requestJson(address, {
       path: `/v1/ticket/${ticketId}`,
@@ -824,7 +826,7 @@ const waitForTicket = async (address, ticketId, token) => {
       return response.value.data;
     }
     if (Date.now() > deadline) throw new Error("timed out waiting for mutation ticket");
-    await new Promise((resolve) => setTimeout(resolve, 2));
+    await new Promise((resolve) => setTimeout(resolve, 10));
   }
 };
 
