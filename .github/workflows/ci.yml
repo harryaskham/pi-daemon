@@ -15,7 +15,7 @@ concurrency:
 jobs:
   node:
     name: Node ${{ matrix.node }}
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, nix, x86_64-linux]
     strategy:
       fail-fast: false
       matrix:
@@ -31,12 +31,16 @@ jobs:
       - run: npm run pack:check
 
   nix:
-    name: Nix (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
+    name: Nix (${{ matrix.name }})
+    runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-14]
+        include:
+          - name: Linux x86_64
+            runner: [self-hosted, nix, x86_64-linux]
+          - name: macOS
+            runner: [self-hosted, macos]
     steps:
       - uses: actions/checkout@v4
       - uses: cachix/install-nix-action@v31

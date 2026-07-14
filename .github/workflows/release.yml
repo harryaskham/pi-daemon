@@ -9,7 +9,7 @@ permissions:
 
 jobs:
   release:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, nix, x86_64-linux]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -22,8 +22,21 @@ jobs:
         id: pack
         shell: bash
         run: |
-          tarball=$(npm pack --json | jq -r '.[0].filename')
-          sha256sum "$tarball" > "$tarball.sha256"
+          set -euo pipefail
+          pack_json=$(npm pack --json)
+          tarball=$(node -e '
+            let input = "";
+            process.stdin.setEncoding("utf8");
+            process.stdin.on("data", chunk => input += chunk);
+            process.stdin.on("end", () => process.stdout.write(JSON.parse(input)[0].filename));
+          ' <<< "$pack_json")
+          node - "$tarball" <<'NODE'
+          const { createHash } = require("node:crypto");
+          const { readFileSync, writeFileSync } = require("node:fs");
+          const file = process.argv[2];
+          const digest = createHash("sha256").update(readFileSync(file)).digest("hex");
+          writeFileSync(`${file}.sha256`, `${digest}  ${file}\n`);
+          NODE
           echo "tarball=$tarball" >> "$GITHUB_OUTPUT"
       - name: Create GitHub release
         env:
