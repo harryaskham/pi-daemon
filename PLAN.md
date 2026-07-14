@@ -592,7 +592,7 @@ implementation order. This list is a human-readable crosswalk.
 
 ### Foundation / release blockers
 
-- [ ] `bd-55ab9e` — parent epic: full standalone Pi session host API.
+- [x] `bd-55ab9e` — parent epic: full standalone Pi session host API.
 - [x] `bd-e2e717` — additive CRUD/RPC/ACP contract, schemas, fixtures, and
   control-mode equivalence.
 - [x] `bd-3a3104` — clean npm pack plus installed-bin execution correctness.
@@ -624,6 +624,6 @@ implementation order. This list is a human-readable crosswalk.
 - [x] `bd-e53e76` — self-hosted CI runner policy (operational maintenance).
 - [ ] `bd-acf2d3` — draft: make automated npm dependency updates Nix-aware.
 
-No release tag is appropriate until the foundation and full acceptance blockers
-land, or the existing artefact is deliberately renamed and published only as a
-scaffold preview.
+All standalone delivery and acceptance blockers are landed. Cutting the first
+release tag is an explicit operator action under `docs/release.md`; the remaining
+draft dependency-maintenance item is not a product-completion blocker.

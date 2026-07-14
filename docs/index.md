@@ -37,7 +37,8 @@ neutral service—not a Cacophony component.
 
 ## Status
 
-The PD-001–PD-012 scaffold is implemented, but the 2026-07-14 completion audit
-found the full standalone host is not release-ready. See the repository
-`PLAN.md` for the evidence, registered Cacophony board IDs, dependency order,
-and full-host acceptance sequence.
+The 2026-07-14 completion audit and every dependent implementation slice are
+landed. Full credential-free npm and Nix acceptance passes across installed
+artifacts, configured CRUD, Pi RPC, ACP, stdio bridge, restart/replay, security,
+and bounded shutdown. The repository is a release candidate; cutting a tag
+remains an explicit operator action under the release checklist.
