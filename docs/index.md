@@ -19,6 +19,7 @@ neutral service—not a Cacophony component.
 
 ## Documentation
 
+- **[Operator quickstart](quickstart)** — run collision-free Home Manager instances, create/delete sessions, wait on tickets, and attach RPC or ACP clients
 - [Protocol](protocol) — NDJSON operations, event flow, generations, and retry semantics
 - [Session API](session-api) — additive CRUD, multi-reader Pi RPC attach, and `/apc` ACP contract
 - [Session configuration](session-configuration) — Pi CLI mapping, environment handling, resources, tools, and honest isolation limits

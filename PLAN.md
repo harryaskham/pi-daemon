@@ -626,6 +626,12 @@ implementation order. This list is a human-readable crosswalk.
 - [x] `bd-e53e76` — self-hosted CI runner policy (operational maintenance).
 - [ ] `bd-acf2d3` — draft: make automated npm dependency updates Nix-aware.
 
+### Post-completion operator surfaces
+
+- [x] `bd-71cfa2` — concise GitHub Pages quickstart for collision-free Home
+  Manager instances, authenticated session tickets, Pi RPC, ACP, and the
+  `unisolated` trust boundary.
+
 All standalone delivery and acceptance blockers are landed. Cutting the first
 release tag is an explicit operator action under `docs/release.md`; the remaining
 draft dependency-maintenance item is not a product-completion blocker.

@@ -116,6 +116,7 @@
         cp ${./session-api.openapi.json} "$out/session-api.openapi.json"
         touch "$out/.nojekyll"
         test -s "$out/index.html"
+        test -s "$out/quickstart/index.html"
         test -s "$out/protocol/index.html"
       '';
     in {

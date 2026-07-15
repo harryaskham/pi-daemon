@@ -51,6 +51,25 @@ test("flake publishes the collision-safe multi-instance Home Manager service mod
   assert.doesNotMatch(module, /PI_DAEMON_BEARER_TOKEN\s*=/);
 });
 
+test("Pages publishes a prominent secret-safe operator quickstart", async () => {
+  const [readme, index, quickstart, flake] = await Promise.all([
+    readFile(join(repositoryRoot, "README.md"), "utf8"),
+    readFile(join(repositoryRoot, "docs/index.md"), "utf8"),
+    readFile(join(repositoryRoot, "docs/quickstart.md"), "utf8"),
+    readFile(join(repositoryRoot, "flake.nix"), "utf8"),
+  ]);
+  assert.match(readme, /\[Operator quickstart\]\(docs\/quickstart\.md\)/);
+  assert.match(index, /\[Operator quickstart\]\(quickstart\)/);
+  assert.match(quickstart, /Idempotency-Key: quickstart-create-v1/);
+  assert.match(quickstart, /\/v1\/ticket\/\$ticket_id/);
+  assert.match(quickstart, /pi-daemon-rpc/);
+  assert.match(quickstart, /agent-client-protocol\.v1/);
+  assert.match(quickstart, /`isolation\.mode: "unisolated"`/);
+  assert.match(quickstart, /--config <\(printf/);
+  assert.doesNotMatch(quickstart, /--header ["']Authorization: Bearer/);
+  assert.match(flake, /test -s "\$out\/quickstart\/index\.html"/);
+});
+
 test("self-hosted workflows bound every job and long-running Nix step", async () => {
   const [ci, pages, release] = await Promise.all([
     readFile(join(repositoryRoot, ".github/workflows/ci.yml"), "utf8"),

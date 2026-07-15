@@ -28,6 +28,10 @@ or Cacophony credentials.
 > Full credential-free install/CRUD/RPC/ACP/restart/security acceptance is green;
 > the repository is a release candidate, but no release tag is cut yet.
 
+**Start here:** [Operator quickstart](docs/quickstart.md) — run collision-free
+Home Manager instances, use the authenticated session API, and attach RPC or
+ACP clients without putting the service bearer in process arguments.
+
 ## Why
 
 Starting one `pi --mode rpc` process for every logical agent or every cold wake
@@ -144,6 +148,7 @@ supervisord on nix-on-droid; see [Operations](docs/operations.md#home-manager-se
 
 ## Documentation
 
+- [`docs/quickstart.md`](docs/quickstart.md) — secure Home Manager, session API, RPC, and ACP operator quickstart
 - [`PLAN.md`](PLAN.md) — architecture, protocol, rollout, and provisional beads
 - [`docs/session-api.md`](docs/session-api.md) — additive session CRUD, Pi RPC attach, and `/apc` ACP contract
 - [`docs/session-cli.md`](docs/session-cli.md) — high-level session CRUD, tickets, prompt/control, and endpoint discovery
