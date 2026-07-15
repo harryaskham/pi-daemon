@@ -158,6 +158,10 @@ test(
       "scripts/check-release.mjs",
       "dist/session-api.js",
       "dist/session-api.d.ts",
+      "dist/session-client.js",
+      "dist/session-client.d.ts",
+      "dist/session-cli.js",
+      "dist/session-cli.d.ts",
       "dist/session-config.js",
       "dist/session-config.d.ts",
       "dist/session-api.schema.json",
@@ -209,6 +213,11 @@ test(
         ? await run(bin, ["version"], { cwd: consumer })
         : await run(process.execPath, [bin, "version"], { cwd: consumer });
     assert.equal(direct.stdout, `${packageVersion}\n`);
+    const installedHelp =
+      process.platform === "win32"
+        ? await run(bin, ["help"], { cwd: consumer })
+        : await run(process.execPath, [bin, "help"], { cwd: consumer });
+    assert.match(installedHelp.stdout, /session list\|show\|create\|update\|delete/);
 
     const rpcBin = join(
       consumer,
@@ -251,7 +260,7 @@ test(
     await writeFile(
       importCheck,
       [
-        'import { PI_DAEMON_VERSION } from "@harryaskham/pi-daemon";',
+        'import { PI_DAEMON_VERSION, SessionApiClient } from "@harryaskham/pi-daemon";',
         'import { SESSION_API_VERSION } from "@harryaskham/pi-daemon/session-api";',
         'import { parseSessionConfiguration } from "@harryaskham/pi-daemon/session-config";',
         'import { DEFAULT_RPC_STDIO_BRIDGE_LIMITS } from "@harryaskham/pi-daemon/rpc-bridge";',
@@ -259,14 +268,14 @@ test(
         'import sessionSchema from "@harryaskham/pi-daemon/session-api.schema.json" with { type: "json" };',
         'import openapi from "@harryaskham/pi-daemon/session-api.openapi.json" with { type: "json" };',
         'const isolation = parseSessionConfiguration({ cwd: process.cwd(), target: { mode: "memory" } }).persistedSpec.isolation?.mode;',
-        'process.stdout.write(`${PI_DAEMON_VERSION} ${SESSION_API_VERSION} ${isolation} ${DEFAULT_RPC_STDIO_BRIDGE_LIMITS.reconnectAttempts} ${schema.title} ${sessionSchema.title} ${openapi.openapi}\\n`);',
+        'process.stdout.write(`${PI_DAEMON_VERSION} ${SESSION_API_VERSION} ${isolation} ${DEFAULT_RPC_STDIO_BRIDGE_LIMITS.reconnectAttempts} ${typeof SessionApiClient} ${schema.title} ${sessionSchema.title} ${openapi.openapi}\\n`);',
         "",
       ].join("\n"),
     );
     const imported = await run(process.execPath, [basename(importCheck)], { cwd: consumer });
     assert.equal(
       imported.stdout,
-      `${packageVersion} 1.0 unisolated 8 Pi Daemon protocol v1 Pi Daemon additive session API v1 3.1.0\n`,
+      `${packageVersion} 1.0 unisolated 8 function Pi Daemon protocol v1 Pi Daemon additive session API v1 3.1.0\n`,
     );
   },
 );

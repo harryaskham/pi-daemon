@@ -170,7 +170,7 @@ function parseArgs(args: string[]): ParsedRpcStdioArgs {
   return parsed;
 }
 
-function loadClientBearer(options: {
+export function loadClientBearer(options: {
   tokenFile?: string;
   tokenFd?: number;
   environment: NodeJS.ProcessEnv;

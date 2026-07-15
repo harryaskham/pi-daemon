@@ -23,6 +23,7 @@ neutral service—not a Cacophony component.
 - [Session API](session-api) — additive CRUD, multi-reader Pi RPC attach, and `/apc` ACP contract
 - [Session configuration](session-configuration) — Pi CLI mapping, environment handling, resources, tools, and honest isolation limits
 - [Operations](operations) — install, serve, probe, status, drain, and recovery
+- [Session management CLI](session-cli) — JSON CRUD, tickets, prompts/controls, and endpoint discovery
 - [Security](security) — shared-process trust boundary and root policy
 - [Integration](integration) — client and Nix consumer examples
 - [Acceptance](acceptance) — credential-free matrix and live zero-child-process proof

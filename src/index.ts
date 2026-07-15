@@ -13,6 +13,8 @@ export * from "./rpc-attachments.js";
 export * from "./rpc-bridge.js";
 export * from "./server.js";
 export * from "./session-api.js";
+export * from "./session-client.js";
+export * from "./session-cli.js";
 export * from "./session-config.js";
 export * from "./session-catalog.js";
 export * from "./tickets.js";

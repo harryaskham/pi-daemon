@@ -15,6 +15,12 @@ import { JsonLineLogger } from "./observability.js";
 import { PiSessionFactory } from "./pi-adapter.js";
 import { parseCommand } from "./protocol.js";
 import { ProtocolServer } from "./server.js";
+import {
+  SessionCliUsageError,
+  runHighLevelCli,
+  type SessionCliDependencies,
+} from "./session-cli.js";
+import { SessionApiClientError } from "./session-client.js";
 import { FileSessionCatalog } from "./session-catalog.js";
 import { FileMutationTicketStore, MutationTicketController } from "./tickets.js";
 import { PI_DAEMON_VERSION } from "./version.js";
@@ -24,7 +30,7 @@ export interface CliIo {
   stderr: (text: string) => void;
 }
 
-export interface CliDependencies {
+export interface CliDependencies extends SessionCliDependencies {
   factory?: SessionFactory;
   waitForShutdown?: (shutdown: () => Promise<void>) => Promise<void>;
 }
@@ -59,10 +65,30 @@ export async function runCli(
         return await runRequest(args, io);
       case "serve":
         return await runServe(args, io, dependencies);
+      case "session":
+      case "ticket":
+      case "prompt":
+      case "control":
+      case "rpc":
+      case "acp":
+        return await runHighLevelCli(command, args, io, dependencies);
       default:
         throw new CliUsageError(`unknown command: ${command}`);
     }
   } catch (error) {
+    if (error instanceof SessionApiClientError) {
+      io.stderr(
+        `${JSON.stringify({
+          error: {
+            status: error.status,
+            code: error.code,
+            message: error.message,
+            retryable: error.retryable,
+          },
+        })}\n`,
+      );
+      return error.retryable ? 75 : 1;
+    }
     if (error instanceof ProtocolResponseError) {
       io.stderr(
         `${JSON.stringify({
@@ -71,7 +97,7 @@ export async function runCli(
       );
       return error.retryable ? 75 : 1;
     }
-    if (error instanceof CliUsageError) {
+    if (error instanceof CliUsageError || error instanceof SessionCliUsageError) {
       io.stderr(`${error.message}\nRun 'pi-daemon help' for usage.\n`);
       return 2;
     }
@@ -143,6 +169,7 @@ async function runServe(
   io: CliIo,
   dependencies: CliDependencies,
 ): Promise<number> {
+  const allowedRootValues = repeatedOptionValues(args, "allow-root");
   const options = parseOptions(
     args,
     new Set([
@@ -168,13 +195,19 @@ async function runServe(
       "api-token-fd",
       "api-allow-insecure-http",
     ]),
+    new Set(["allow-root"]),
   );
   const socketPath = resolve(requiredOption(options, "socket"));
   const stateDir = resolve(
     options.get("state-dir") ?? `${homedir()}/.local/state/pi-daemon`,
   );
   const agentDir = resolve(options.get("agent-dir") ?? getAgentDir());
-  const allowedRoot = await realpath(resolve(requiredOption(options, "allow-root")));
+  if (allowedRootValues.length === 0) {
+    throw new CliUsageError("missing required option: --allow-root");
+  }
+  const allowedRoots = await Promise.all(
+    allowedRootValues.map(async (root) => realpath(resolve(root))),
+  );
   const apiEnabled = options.has("api-port");
   if (
     !apiEnabled &&
@@ -197,7 +230,7 @@ async function runServe(
       new PiSessionFactory({
         stateDir,
         agentDir,
-        allowedRoots: [allowedRoot],
+        allowedRoots,
       }),
     durability,
     catalog,
@@ -443,7 +476,11 @@ class CliUsageError extends Error {
   override readonly name = "CliUsageError";
 }
 
-function parseOptions(args: string[], allowed: Set<string>): Map<string, string> {
+function parseOptions(
+  args: string[],
+  allowed: Set<string>,
+  repeatable: Set<string> = new Set(),
+): Map<string, string> {
   const options = new Map<string, string>();
   for (let index = 0; index < args.length; index += 1) {
     const token = args[index]!;
@@ -452,7 +489,9 @@ function parseOptions(args: string[], allowed: Set<string>): Map<string, string>
     }
     const name = token.slice(2);
     if (!allowed.has(name)) throw new CliUsageError(`unknown option: --${name}`);
-    if (options.has(name)) throw new CliUsageError(`duplicate option: --${name}`);
+    if (options.has(name) && !repeatable.has(name)) {
+      throw new CliUsageError(`duplicate option: --${name}`);
+    }
     const value = args[index + 1];
     if (value === undefined || value.startsWith("--")) {
       throw new CliUsageError(`option --${name} requires a value`);
@@ -461,6 +500,21 @@ function parseOptions(args: string[], allowed: Set<string>): Map<string, string>
     index += 1;
   }
   return options;
+}
+
+function repeatedOptionValues(args: string[], name: string): string[] {
+  const flag = `--${name}`;
+  const values: string[] = [];
+  for (let index = 0; index < args.length; index += 1) {
+    if (args[index] !== flag) continue;
+    const value = args[index + 1];
+    if (value === undefined || value.startsWith("--")) {
+      throw new CliUsageError(`option ${flag} requires a value`);
+    }
+    values.push(value);
+    index += 1;
+  }
+  return values;
 }
 
 function booleanOption(options: Map<string, string>, name: string): boolean {
@@ -529,19 +583,45 @@ function helpText(): string {
   return `Pi Daemon ${PI_DAEMON_VERSION}
 
 Usage:
-  pi-daemon serve --socket PATH --allow-root PATH [--state-dir PATH] [--agent-dir PATH] [limit options]
+  pi-daemon serve --socket PATH --allow-root PATH [--allow-root PATH ...] [--state-dir PATH] [--agent-dir PATH] [limit options]
                   [--api-port PORT] [--api-bind HOST]
                   [--api-token-file PATH | --api-token-fd FD]
                   [--api-allow-insecure-http true|false]
   pi-daemon probe --socket PATH [--timeout-ms N]
   pi-daemon request --socket PATH --json REQUEST [--timeout-ms N]
+  pi-daemon session list|show|create|update|delete [options]
+  pi-daemon ticket get|wait|reconcile [options]
+  pi-daemon prompt --session REF --generation N --message TEXT [target options]
+  pi-daemon control steer|follow-up|abort --session REF --generation N [options]
+  pi-daemon rpc attach --session REF [pi-daemon-rpc options]
+  pi-daemon rpc discover --session REF [API target options]
+  pi-daemon acp discover --session REF [API target options]
   pi-daemon version
 
 Commands:
   serve    Start the owner-local Unix-socket service.
   probe    Perform a version/capability handshake.
   request  Send one low-level protocol command and print its response.
+  session  Manage retained sessions with high-level JSON commands.
+  ticket   Inspect, wait for, or reconcile durable tickets.
+  prompt   Submit one prompt through Unix wake or authenticated Pi RPC.
+  control  Steer, follow up, or abort one resident session.
+  rpc      Run the stock-RPC bridge or discover its WebSocket endpoint.
+  acp      Discover the route-scoped ACP WebSocket endpoint.
   version  Print the package version.
+
+High-level target options:
+  --socket PATH               Owner-only Unix protocol (compatible operations)
+  --url URL                   Authenticated API (default http://127.0.0.1:7463)
+  --token-file PATH           Owner-only bearer file
+  --token-fd FD               Inherited bearer descriptor, or PI_DAEMON_BEARER_TOKEN
+  --allow-insecure-http true  Explicitly permit non-loopback plaintext
+  --timeout-ms N              Bound connect/request/poll/turn waits
+
+Create/update configuration:
+  --spec-file PATH            Owner-only full SessionSpec JSON (may contain env)
+  --spec-json JSON            Full SessionSpec without raw env values
+  --cwd PATH --target new|continue|open|memory [typed model/tool options]
 
 Recovery limits:
   --recovery-open-timeout-ms N

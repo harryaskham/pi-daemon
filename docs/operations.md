@@ -16,8 +16,9 @@ npm test
 ## Serve
 
 Choose three non-overlapping paths: an owner-private socket directory, daemon
-state, and an allowed workload root. The Pi agent directory may be supplied
-explicitly and defaults to Pi's normal configured directory.
+state, and one or more allowed workload roots. Repeat `--allow-root PATH` for
+each canonical root. The Pi agent directory may be supplied explicitly and
+defaults to Pi's normal configured directory.
 
 ```console
 pi-daemon serve \
@@ -100,6 +101,14 @@ prompts, model output, credentials, or private state/agent/workload paths.
 `pi_daemon_listening_degraded` means the transport is available but recovery or
 provider readiness is incomplete/degraded; `pi_daemon_ready` is emitted only
 when all bounded recovery work settles without an indeterminate/failure state.
+
+## High-level session management
+
+`pi-daemon session`, `ticket`, `prompt`, `control`, `rpc`, and `acp` provide
+bounded JSON commands over either the owner-only Unix socket or authenticated
+API. Bearers remain file/fd/environment-only, mutations carry idempotency and
+stale generation/revision checks, and endpoint discovery never prints token
+values. See [Session management CLI](session-cli) for examples.
 
 ## Probe and status
 

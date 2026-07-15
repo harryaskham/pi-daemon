@@ -668,9 +668,11 @@ test("serve CLI enables an ephemeral loopback API without logging the bearer", a
   const temporaryRoot = await mkdtemp(join(tmpdir(), "pi-daemon-api-cli-"));
   t.after(async () => rm(temporaryRoot, { recursive: true, force: true }));
   const work = join(temporaryRoot, "work");
+  const workTwo = join(temporaryRoot, "work-two");
   const stateDir = join(temporaryRoot, "state");
   await Promise.all([
     mkdir(work, { recursive: true, mode: 0o700 }),
+    mkdir(workTwo, { recursive: true, mode: 0o700 }),
     mkdir(stateDir, { recursive: true, mode: 0o700 }),
   ]);
   const previousToken = process.env[SERVICE_BEARER_ENV];
@@ -693,6 +695,8 @@ test("serve CLI enables an ephemeral loopback API without logging the bearer", a
       stateDir,
       "--allow-root",
       work,
+      "--allow-root",
+      workTwo,
       "--api-port",
       "0",
       "--api-bind",
