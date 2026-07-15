@@ -16,6 +16,7 @@ jobs:
   node:
     name: Node ${{ matrix.node }}
     runs-on: [self-hosted, nix, x86_64-linux]
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -33,6 +34,7 @@ jobs:
   nix:
     name: Nix (${{ matrix.name }})
     runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -47,4 +49,6 @@ jobs:
         with:
           github_access_token: ${{ secrets.GITHUB_TOKEN }}
       - run: nix flake check --print-build-logs
+        timeout-minutes: 25
       - run: nix run .#pi-daemon -- version
+        timeout-minutes: 5

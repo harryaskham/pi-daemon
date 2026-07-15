@@ -34,6 +34,20 @@ test("Pages workflow uses the pinned Nix site build without Docker actions", asy
   assert.match(flake, /pages = self\.packages\.\$\{system\}\.pages/);
 });
 
+test("self-hosted workflows bound every job and long-running Nix step", async () => {
+  const [ci, pages, release] = await Promise.all([
+    readFile(join(repositoryRoot, ".github/workflows/ci.yml"), "utf8"),
+    readFile(join(repositoryRoot, ".github/workflows/pages.yml"), "utf8"),
+    readFile(join(repositoryRoot, ".github/workflows/release.yml"), "utf8"),
+  ]);
+  assert.equal((ci.match(/timeout-minutes: 30/g) ?? []).length, 2);
+  assert.match(ci, /nix flake check --print-build-logs\n\s+timeout-minutes: 25/);
+  assert.match(ci, /nix run \.#pi-daemon -- version\n\s+timeout-minutes: 5/);
+  assert.match(pages, /build:\n\s+runs-on: \[self-hosted, nix, x86_64-linux\]\n\s+timeout-minutes: 20/);
+  assert.match(pages, /deploy:\n\s+timeout-minutes: 10/);
+  assert.match(release, /release:\n\s+runs-on: \[self-hosted, nix, x86_64-linux\]\n\s+timeout-minutes: 45/);
+});
+
 test("release invariants reject metadata, tag, changelog, and artifact drift", async (t) => {
   const root = await mkdtemp(join(tmpdir(), "pi-daemon-release-"));
   t.after(async () => rm(root, { recursive: true, force: true }));

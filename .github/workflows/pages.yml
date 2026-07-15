@@ -24,6 +24,7 @@ concurrency:
 jobs:
   build:
     runs-on: [self-hosted, nix, x86_64-linux]
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/configure-pages@v5
@@ -41,6 +42,7 @@ jobs:
           path: ./_site
 
   deploy:
+    timeout-minutes: 10
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
