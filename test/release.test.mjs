@@ -34,6 +34,23 @@ test("Pages workflow uses the pinned Nix site build without Docker actions", asy
   assert.match(flake, /pages = self\.packages\.\$\{system\}\.pages/);
 });
 
+test("flake publishes the collision-safe multi-instance Home Manager service module", async () => {
+  const [flake, module] = await Promise.all([
+    readFile(join(repositoryRoot, "flake.nix"), "utf8"),
+    readFile(join(repositoryRoot, "nix/home-manager-module.nix"), "utf8"),
+  ]);
+  assert.match(flake, /homeManagerModules\.pi-daemon = import \.\/nix\/home-manager-module\.nix/);
+  assert.match(flake, /homeManagerModules\.default = self\.homeManagerModules\.pi-daemon/);
+  assert.match(flake, /home-manager-module = import \.\/nix\/home-manager-module-check\.nix/);
+  assert.match(module, /systemd\.user\.services/);
+  assert.match(module, /launchd\.agents/);
+  assert.match(module, /supervisord\.programs/);
+  assert.match(module, /Label = "com\.pi-daemon\.\$\{name\}"/);
+  assert.match(module, /api\.port and api\.tokenFile are required/);
+  assert.match(module, /enabled Pi Daemon APIs must use unique ports/);
+  assert.doesNotMatch(module, /PI_DAEMON_BEARER_TOKEN\s*=/);
+});
+
 test("self-hosted workflows bound every job and long-running Nix step", async () => {
   const [ci, pages, release] = await Promise.all([
     readFile(join(repositoryRoot, ".github/workflows/ci.yml"), "utf8"),

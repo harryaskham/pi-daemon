@@ -102,6 +102,54 @@ prompts, model output, credentials, or private state/agent/workload paths.
 provider readiness is incomplete/degraded; `pi_daemon_ready` is emitted only
 when all bounded recovery work settles without an indeterminate/failure state.
 
+## Home Manager service instances
+
+The flake exports `homeManagerModules.default` and the equivalent
+`homeManagerModules.pi-daemon`. It can run any number of independently named
+foreground daemon instances. Each instance has its own native service identity,
+state/config directory, Unix socket, Pi agent/auth directory, API port, token
+file, environment, roots, and logs:
+
+```nix
+{
+  imports = [ inputs.pi-daemon.homeManagerModules.default ];
+
+  services.pi-daemon.instances.work = {
+    stateDir = "${config.xdg.stateHome}/pi-daemon-work";
+    socketPath = "${config.xdg.runtimeDir}/pi-daemon-work.sock";
+    agentDir = "${config.home.homeDirectory}/.pi-work";
+    allowedRoots = [ "/srv/work" ];
+    api = {
+      enable = true;
+      bind = "127.0.0.1";
+      port = 17463;
+      tokenFile = config.sops.secrets.pi-daemon-work.path;
+    };
+    extraArgs = [ "--max-sessions" "32" "--max-concurrent-turns" "4" ];
+  };
+}
+```
+
+`home-manager switch` installs the package, creates owner-private state/socket
+directories, and enables `pi-daemon-work.service` on Linux systemd,
+`com.pi-daemon.work` on Darwin launchd, or `pi-daemon-work` when a nix-on-droid
+supervisord option surface is present. These identities cannot collide with
+Cacophony's `cacophony.service` / `com.cacophony.lifecycle` identities.
+
+```console
+systemctl --user status pi-daemon-work
+launchctl print "gui/$UID/com.pi-daemon.work"
+supervisorctl status pi-daemon-work
+```
+
+Enabled instances must use unique `stateDir`, `socketPath`, stdout/stderr logs,
+and API ports.
+Instance names are bounded alphanumeric/hyphen identifiers. At least one
+explicit workload root is required. Enabling the API requires both an explicit
+port and an owner-private `tokenFile`; only the file path enters the Nix service
+definition, never its bearer bytes. `extraArgs` may set resource limits but
+cannot override module-managed identity, root, path, or API arguments.
+
 ## High-level session management
 
 `pi-daemon session`, `ticket`, `prompt`, `control`, `rpc`, and `acp` provide

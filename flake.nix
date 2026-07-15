@@ -17,6 +17,9 @@
     ];
     forAllSystems = nixpkgs.lib.genAttrs systems;
   in {
+    homeManagerModules.pi-daemon = import ./nix/home-manager-module.nix {inherit self;};
+    homeManagerModules.default = self.homeManagerModules.pi-daemon;
+
     packages = forAllSystems (system: let
       pkgs = import nixpkgs {inherit system;};
       package = pkgs.buildNpmPackage {
@@ -136,9 +139,14 @@
       };
     });
 
-    checks = forAllSystems (system: {
+    checks = forAllSystems (system: let
+      pkgs = import nixpkgs {inherit system;};
+    in {
       package = self.packages.${system}.default;
       pages = self.packages.${system}.pages;
+      home-manager-module = import ./nix/home-manager-module-check.nix {
+        inherit self pkgs;
+      };
     });
 
     devShells = forAllSystems (system: let

@@ -620,6 +620,8 @@ implementation order. This list is a human-readable crosswalk.
 - [x] `bd-07980c` — pre-allocation bounds for events/responses and safe overflow.
 - [x] `bd-1877d3` — bounded recovery/shutdown and truthful redacted readiness.
 - [x] `bd-a4954f` — full install/CRUD/RPC/restart/security/live acceptance.
+- [x] `bd-691be8` — multi-instance Home Manager service module for systemd,
+  launchd, and conditional supervisord.
 - [x] `bd-fb3b32` — version/tag/changelog/package/Nix release invariants.
 - [x] `bd-e53e76` — self-hosted CI runner policy (operational maintenance).
 - [ ] `bd-acf2d3` — draft: make automated npm dependency updates Nix-aware.

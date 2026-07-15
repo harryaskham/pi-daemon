@@ -126,8 +126,9 @@ source language; built JavaScript and declarations are emitted under `dist/`.
 ## Nix consumer contract
 
 The checked-in flake exposes `packages.default`, `packages.pi-daemon`,
-`apps.default`, `apps.pi-daemon`, `apps.pi-daemon-rpc`, `checks.package`, and
-`devShells.default` on Linux and macOS:
+`apps.default`, `apps.pi-daemon`, `apps.pi-daemon-rpc`,
+`homeManagerModules.default` (`homeManagerModules.pi-daemon`), package/site/module
+checks, and `devShells.default` on Linux and macOS:
 
 ```nix
 inputs.pi-daemon.url = "github:harryaskham/pi-daemon";
@@ -137,7 +138,9 @@ inputs.pi-daemon.inputs.nixpkgs.follows = "nixpkgs";
 The standalone lock follows the fleet's warm nixpkgs baseline; consumers should
 use `nixpkgs.follows` so Pi Daemon shares their own evaluated package set. A
 Cacophony node can therefore consume the reproducible package without copying
-service source into Cacophony.
+service source into Cacophony. The Home Manager module creates independently
+named user services through systemd on Linux, launchd on Darwin, or conditional
+supervisord on nix-on-droid; see [Operations](docs/operations.md#home-manager-service-instances).
 
 ## Documentation
 

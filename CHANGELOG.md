@@ -26,7 +26,7 @@ Initial standalone implementation:
 - pre-allocation event/response bounds with typed overflow and connection-local slow-reader failure
 - canonical cwd allowlist and state/auth path isolation
 - bounded background recovery, truthful nondestructive readiness/probe status, whole-shutdown deadlines, safe idle sweep, metrics, and path-redacted lifecycle logs
-- reproducible Nix package/app/dev shell and npm package
+- reproducible Nix package/app/dev shell, multi-instance Home Manager service module, and npm package
 - bounded Linux/macOS CI, release automation, Dependabot, and Docker-free Nix/Pandoc GitHub Pages
 - hermetic Linux/Nix installed-bin checks that resolve npm links through the pinned Node runtime
 - credential-free full-host acceptance across installed artifacts, configured CRUD, RPC/ACP/stdio, restart/replay, security, and zero per-session child processes
