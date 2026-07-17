@@ -52,6 +52,7 @@
         stateDir = "/home/tester/.state/pi-alpha";
         socketPath = "/home/tester/.run/pi-alpha.sock";
         agentDir = "/home/tester/.pi-alpha";
+        authSeedFile = "/home/tester/.pi/agent/auth.json";
         allowedRoots = ["/srv/alpha" "/srv/shared"];
         api = {
           enable = true;
@@ -67,6 +68,10 @@
         agentDir = "/home/tester/.pi-beta";
         allowedRoots = ["/srv/beta"];
         environment.PI_DAEMON_TEST = "beta";
+        api = {
+          enable = true;
+          port = 17464;
+        };
       };
     };
   };
@@ -126,6 +131,34 @@
       }
     ];
   };
+  evalTokenCollision = lib.evalModules {
+    specialArgs = {inherit pkgs;};
+    modules = [
+      baseStubs
+      self.homeManagerModules.pi-daemon
+      {
+        services.pi-daemon.package = testPackage;
+        services.pi-daemon.instances = {
+          one = {
+            allowedRoots = ["/srv/one"];
+            api = {
+              enable = true;
+              port = 17463;
+              tokenFile = "/run/secrets/shared";
+            };
+          };
+          two = {
+            allowedRoots = ["/srv/two"];
+            api = {
+              enable = true;
+              port = 17464;
+              tokenFile = "/run/secrets/shared";
+            };
+          };
+        };
+      }
+    ];
+  };
   evalSupervisord = lib.evalModules {
     specialArgs = {inherit pkgs;};
     modules = [
@@ -138,6 +171,7 @@
   assertionsOk = builtins.all (entry: entry.assertion) eval.config.assertions;
   collisionDetected = !(builtins.all (entry: entry.assertion) evalCollision.config.assertions);
   portCollisionDetected = !(builtins.all (entry: entry.assertion) evalPortCollision.config.assertions);
+  tokenCollisionDetected = !(builtins.all (entry: entry.assertion) evalTokenCollision.config.assertions);
   normalServices =
     if pkgs.stdenv.isDarwin
     then eval.config.launchd.agents
@@ -152,6 +186,10 @@
     if pkgs.stdenv.isDarwin
     then normalAlpha.config.Label
     else "pi-daemon-alpha";
+  normalBetaCommand =
+    if pkgs.stdenv.isDarwin
+    then builtins.concatStringsSep " " normalBeta.config.ProgramArguments
+    else normalBeta.Service.ExecStart;
   normalBetaEnvironment =
     if pkgs.stdenv.isDarwin
     then normalBeta.config.EnvironmentVariables
@@ -171,6 +209,7 @@ in
   assert assertionsOk;
   assert collisionDetected;
   assert portCollisionDetected;
+  assert tokenCollisionDetected;
     pkgs.runCommand "pi-daemon-home-manager-module-check" {} ''
       test ${lib.escapeShellArg (toString (builtins.length eval.config.home.packages))} = 1
       test ${lib.escapeShellArg normalAlphaIdentity} = ${lib.escapeShellArg (
@@ -182,10 +221,17 @@ in
       test ${lib.escapeShellArg normalBetaEnvironment.PI_DAEMON_SOCKET} = /home/tester/.run/pi-beta.sock
       printf '%s\n' ${lib.escapeShellArg normalAlphaCommand} | grep -F -- '--socket'
       printf '%s\n' ${lib.escapeShellArg normalAlphaCommand} | grep -F -- '/home/tester/.run/pi-alpha.sock'
+      printf '%s\n' ${lib.escapeShellArg normalAlphaCommand} | grep -F -- '--auth-seed-file'
+      printf '%s\n' ${lib.escapeShellArg normalAlphaCommand} | grep -F -- '/home/tester/.pi/agent/auth.json'
       printf '%s\n' ${lib.escapeShellArg normalAlphaCommand} | grep -F -- '--allow-root'
       printf '%s\n' ${lib.escapeShellArg normalAlphaCommand} | grep -F -- '/srv/shared'
       printf '%s\n' ${lib.escapeShellArg normalAlphaCommand} | grep -F -- '--api-port'
       printf '%s\n' ${lib.escapeShellArg normalAlphaCommand} | grep -F -- '17463'
+      printf '%s\n' ${lib.escapeShellArg normalBetaCommand} | grep -F -- '17464'
+      if printf '%s\n' ${lib.escapeShellArg normalBetaCommand} | grep -F -- '--api-token-file'; then
+        echo 'default managed bearer must not enter argv' >&2
+        exit 1
+      fi
       ${lib.optionalString pkgs.stdenv.isLinux ''
         printf '%s\n' ${lib.escapeShellArg supervisorAlpha.command} | grep -F -- '/home/tester/.run/pi-alpha.sock'
         test ${lib.escapeShellArg supervisorAlpha.autorestart} = true

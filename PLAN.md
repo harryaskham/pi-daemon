@@ -631,6 +631,8 @@ implementation order. This list is a human-readable crosswalk.
 - [x] `bd-71cfa2` — concise GitHub Pages quickstart for collision-free Home
   Manager instances, authenticated session tickets, Pi RPC, ACP, and the
   `unisolated` trust boundary.
+- [x] `bd-367ec5` — first-launch private service directories, stable generated
+  API bearer, and non-overwriting per-instance Pi auth seeding.
 
 All standalone delivery and acceptance blockers are landed. Cutting the first
 release tag is an explicit operator action under `docs/release.md`; the remaining

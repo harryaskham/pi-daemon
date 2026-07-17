@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { chmod, lstat, mkdir, mkdtemp, rm } from "node:fs/promises";
+import { chmod, lstat, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createConnection } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -488,6 +488,8 @@ test("serve shutdown honors one whole deadline when adapter disposal hangs", asy
     },
   };
   const errors = [];
+  const authSeed = join(root, "auth-seed.json");
+  await writeFile(authSeed, "{}\n", { mode: 0o600 });
   const started = Date.now();
   const code = await runCli(
     [
@@ -496,6 +498,10 @@ test("serve shutdown honors one whole deadline when adapter disposal hangs", asy
       socketPath,
       "--state-dir",
       stateDir,
+      "--agent-dir",
+      join(root, "agent"),
+      "--auth-seed-file",
+      authSeed,
       "--allow-root",
       work,
       "--idle-session-ttl-ms",

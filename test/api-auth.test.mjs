@@ -65,8 +65,17 @@ test("owner-only regular token files and inherited descriptors load safely", asy
   assert.throws(() => loadServiceBearer({ tokenFile: tokenLink, environment: {} }), /non-symlink/);
 });
 
-test("bearer values are bounded and safe for Authorization headers", () => {
+test("bearer values and files are bounded before unbounded reads", async (t) => {
   for (const invalid of ["short", "contains whitespace 123456", "line\nbreak-123456789"] ) {
     assert.throws(() => new ServiceBearerAuthenticator(invalid));
   }
+
+  const directory = await mkdtemp(join(tmpdir(), "pi-daemon-api-auth-large-"));
+  t.after(async () => rm(directory, { recursive: true, force: true }));
+  const oversized = join(directory, "oversized-token");
+  await writeFile(oversized, "x".repeat(4099), { mode: 0o600 });
+  assert.throws(
+    () => loadServiceBearer({ tokenFile: oversized, environment: {} }),
+    /maximum byte limit/,
+  );
 });

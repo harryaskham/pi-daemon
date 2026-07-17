@@ -29,10 +29,19 @@ The initial release:
 
 `serve` requires an explicit canonical `--allow-root`; a logical cwd must be
 under that root and must not overlap the daemon state or Pi credential roots.
-The socket directory, socket, state directories, manifests, and journals are
-owner-only, real paths; permissive directories and symlinked state files are
+The socket directory, socket, state and agent directories, manifests, and
+journals are owner-only real paths; absent daemon-owned directories are created
+with mode `0700`, while permissive directories and symlinked state files are
 refused rather than silently followed. Session files opened by path must stay
 inside that logical session's private state directory.
+
+With the API enabled and no external bearer source, first launch atomically
+installs a random `0600` bearer at `STATE_DIR/api-token`. A custom Pi agent
+directory may seed an absent `auth.json` once from Pi's normal owner-private auth
+file, or from an explicit `--auth-seed-file`. Existing credentials are never
+overwritten or rotated. Seed and bearer bytes never enter argv, logs, status,
+Nix evaluation, manifests, or responses; symlinked, foreign-owned, permissive,
+invalid, oversized, or conflicting inputs fail closed.
 
 A client needing arbitrary code execution or unreviewed extensions must use a
 separate process/security domain.

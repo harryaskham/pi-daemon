@@ -60,7 +60,8 @@ The implementation must:
 
 - obtain the bearer from an owner-only file, inherited file descriptor, or
   environment-backed secret source rather than a CLI argument visible in a
-  process listing;
+  process listing; when no external source is configured, first launch
+  atomically generates and reuses the owner-only `STATE_DIR/api-token` file;
 - authenticate an HTTP request or WebSocket upgrade before reading a body or
   revealing whether a session exists;
 - never include the token in logs, status, metrics, errors, manifests, tickets,

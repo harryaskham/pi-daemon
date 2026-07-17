@@ -1,9 +1,21 @@
-import { createHash, timingSafeEqual } from "node:crypto";
-import { closeSync, constants, fstatSync, openSync, readFileSync } from "node:fs";
+import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
+import {
+  closeSync,
+  constants,
+  fstatSync,
+  fsyncSync,
+  linkSync,
+  openSync,
+  readSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
+import { dirname, join } from "node:path";
 
 export const SERVICE_BEARER_ENV = "PI_DAEMON_BEARER_TOKEN";
 export const MIN_SERVICE_BEARER_BYTES = 16;
 export const MAX_SERVICE_BEARER_BYTES = 4096;
+const MAX_RAW_SERVICE_BEARER_BYTES = MAX_SERVICE_BEARER_BYTES + 2;
 
 export interface ServiceBearerSourceOptions {
   tokenFile?: string;
@@ -41,6 +53,57 @@ export class ServiceBearerAuthenticator {
   }
 }
 
+/**
+ * Creates one complete random bearer without exposing a partially-written final
+ * file. Existing files are validated and never replaced or rotated.
+ */
+export function ensureServiceBearerFile(path: string): boolean {
+  try {
+    const existing = stripOneLineEnding(readPrivateTokenFile(path));
+    new ServiceBearerAuthenticator(existing);
+    return false;
+  } catch (error) {
+    if (!(isNodeError(error) && error.code === "ENOENT")) throw error;
+  }
+
+  const temporary = join(
+    dirname(path),
+    `.pi-daemon-bearer-${process.pid}-${randomUUID()}.tmp`,
+  );
+  const token = `${randomBytes(32).toString("base64url")}\n`;
+  let fd: number | undefined;
+  let created = false;
+  try {
+    fd = openSync(
+      temporary,
+      constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY | constants.O_NOFOLLOW,
+      0o600,
+    );
+    writeFileSync(fd, token, "utf8");
+    fsyncSync(fd);
+    closeSync(fd);
+    fd = undefined;
+    try {
+      linkSync(temporary, path);
+      created = true;
+    } catch (error) {
+      if (!(isNodeError(error) && error.code === "EEXIST")) throw error;
+    }
+  } finally {
+    if (fd !== undefined) closeSync(fd);
+    try {
+      unlinkSync(temporary);
+    } catch (error) {
+      if (!(isNodeError(error) && error.code === "ENOENT")) throw error;
+    }
+  }
+
+  if (created) syncDirectory(dirname(path));
+  const installed = stripOneLineEnding(readPrivateTokenFile(path));
+  new ServiceBearerAuthenticator(installed);
+  return created;
+}
+
 export function loadServiceBearer(
   options: ServiceBearerSourceOptions = {},
 ): LoadedServiceBearer {
@@ -70,7 +133,7 @@ export function loadServiceBearer(
       if (!Number.isSafeInteger(fd) || fd < 3) {
         throw new Error("--api-token-fd must be an inherited file descriptor of at least 3");
       }
-      token = readFileSync(fd, "utf8");
+      token = readBoundedBearerFd(fd);
       break;
     }
     case "environment":
@@ -102,7 +165,33 @@ function readPrivateTokenFile(path: string): string {
     if ((info.mode & 0o077) !== 0) {
       throw new Error("API bearer token file must be owner-only");
     }
-    return readFileSync(fd, "utf8");
+    return readBoundedBearerFd(fd, info.size);
+  } finally {
+    closeSync(fd);
+  }
+}
+
+function readBoundedBearerFd(fd: number, knownSize?: number): string {
+  if (knownSize !== undefined && knownSize > MAX_RAW_SERVICE_BEARER_BYTES) {
+    throw new Error("API bearer token exceeds the maximum byte limit");
+  }
+  const buffer = Buffer.allocUnsafe(MAX_RAW_SERVICE_BEARER_BYTES + 1);
+  let offset = 0;
+  while (offset < buffer.length) {
+    const bytes = readSync(fd, buffer, offset, buffer.length - offset, null);
+    if (bytes === 0) break;
+    offset += bytes;
+  }
+  if (offset > MAX_RAW_SERVICE_BEARER_BYTES) {
+    throw new Error("API bearer token exceeds the maximum byte limit");
+  }
+  return buffer.subarray(0, offset).toString("utf8");
+}
+
+function syncDirectory(path: string): void {
+  const fd = openSync(path, constants.O_RDONLY);
+  try {
+    fsyncSync(fd);
   } finally {
     closeSync(fd);
   }

@@ -11,34 +11,26 @@ ticket, attaches stock Pi RPC, and shows the ACP connection contract. The
 service bearer is read from an owner-only file; it is never placed in Nix source
 or a process argument.
 
-Prerequisites: a flake-based Home Manager configuration, Bash, `openssl`,
-`curl`, and `jq`.
+Prerequisites: a flake-based Home Manager configuration, Bash, `curl`, and
+`jq`. Log in with normal Pi once before starting an isolated daemon instance so
+`~/.pi/agent/auth.json` exists as an owner-private regular file.
 
-## 1. Create private inputs
+## 1. Create workload roots
 
-Choose the workload roots and create a different bearer file for every service
-instance. Do this before `home-manager switch` because the service fails closed
-when its configured token file is absent or permissive.
+Only workload authority roots are operator-owned inputs. Pi Daemon deliberately
+does not create them because doing so would turn a configuration typo into a
+filesystem authority grant:
 
 ```bash
-install -d -m 700 \
-  "$HOME/.config/pi-daemon" \
-  "$HOME/.pi/operator" \
-  "$HOME/.pi/sandbox" \
-  "$HOME/work" \
-  "$HOME/scratch-work"
-for instance in operator sandbox; do
-  token_file="$HOME/.config/pi-daemon/$instance.token"
-  if [[ -L "$token_file" || (-e "$token_file" && ! -f "$token_file") ]]; then
-    printf 'refusing non-regular token path: %s\n' "$token_file" >&2
-    exit 1
-  fi
-  if [[ ! -e "$token_file" ]]; then
-    (umask 077; openssl rand -hex 32 > "$token_file")
-  fi
-  chmod 600 "$token_file"
-done
+install -d -m 700 "$HOME/work" "$HOME/scratch-work"
 ```
+
+On first launch the daemon itself creates and validates its private state,
+socket, and agent directories. A distinct empty `agentDir` seeds `auth.json`
+once from Pi's normal agent directory when that source exists. The API generates
+a random owner-only bearer at `stateDir/api-token` when no file, descriptor, or
+environment bearer is configured. Restart reuses both files; existing auth and
+bearer files are never overwritten or rotated.
 
 ## 2. Enable Home Manager instances
 
@@ -76,7 +68,6 @@ in {
         enable = true;
         bind = "127.0.0.1";
         port = 7463;
-        tokenFile = "${home}/.config/pi-daemon/operator.token";
       };
     };
 
@@ -91,7 +82,6 @@ in {
         enable = true;
         bind = "127.0.0.1";
         port = 7464;
-        tokenFile = "${home}/.config/pi-daemon/sandbox.token";
       };
     };
   };
@@ -101,12 +91,13 @@ in {
 Each name produces an independent native service: for example,
 `pi-daemon-operator.service` under Linux systemd, `com.pi-daemon.operator`
 under Darwin launchd, or `pi-daemon-operator` under nix-on-droid supervisord.
-The module rejects duplicate state directories, sockets, or enabled API ports.
-Keep `allowedRoots` disjoint from state, agent, and token locations; the daemon
-rejects authority roots that overlap its state or credential storage. The module
-creates private state/socket directories but does not put bearer bytes in the
-Nix store. Provision Pi provider authentication in each distinct `agentDir`
-before expecting model readiness.
+The module rejects duplicate state directories, sockets, enabled API ports, or
+effective bearer paths. Keep `allowedRoots` disjoint from state and agent
+locations; the daemon rejects authority roots that overlap its state or
+credential storage. Home Manager still creates log parents needed by native
+supervisors, while the daemon owns first-launch state/socket/agent setup. Neither
+Nix nor Home Manager evaluates bearer or Pi auth bytes. Set `authSeedFile` or
+`api.tokenFile` only to override the safe first-launch defaults.
 
 Apply the configuration; Home Manager enables and starts the service. The
 platform-native restart commands are shown when an explicit restart is needed:
@@ -146,7 +137,7 @@ It requires Bash, `curl`, and `jq`.
 set -euo pipefail
 
 API="http://127.0.0.1:7463"
-TOKEN_FILE="$HOME/.config/pi-daemon/operator.token"
+TOKEN_FILE="$HOME/.local/state/pi-daemon/operator/api-token"
 SESSION_ID="quickstart"
 SESSION_CWD="$HOME/work/pi-daemon-quickstart"
 mkdir -p "$SESSION_CWD"
@@ -260,7 +251,7 @@ Configure an ACP client that supports WebSocket transport with:
 | --- | --- |
 | URL | `ws://127.0.0.1:7463/v1/session/quickstart/apc` |
 | WebSocket subprotocol | `agent-client-protocol.v1` |
-| HTTP authorization | `Bearer` value read from `~/.config/pi-daemon/operator.token` |
+| HTTP authorization | `Bearer` value read from `~/.local/state/pi-daemon/operator/api-token` |
 
 After the WebSocket opens, send upstream ACP JSON-RPC `initialize`, then bind the
 route-scoped session with `session/load` using session ID `quickstart` and the

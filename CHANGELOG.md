@@ -27,6 +27,7 @@ Initial standalone implementation:
 - canonical cwd allowlist and state/auth path isolation
 - bounded background recovery, truthful nondestructive readiness/probe status, whole-shutdown deadlines, safe idle sweep, metrics, and path-redacted lifecycle logs
 - reproducible Nix package/app/dev shell, multi-instance Home Manager service module, and npm package
+- first-launch private directory bootstrap, stable generated API bearer, and non-overwriting per-instance Pi auth seeding
 - bounded Linux/macOS CI, release automation, Dependabot, and Docker-free Nix/Pandoc GitHub Pages
 - prominent secret-safe operator quickstart for Home Manager instances, session tickets, Pi RPC, and ACP
 - hermetic Linux/Nix installed-bin checks that resolve npm links through the pinned Node runtime

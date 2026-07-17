@@ -21,10 +21,12 @@ project code or tools.
 
 - authenticated JSON listener disabled unless `--api-port` is explicit
 - JSON listener defaults to literal loopback and refuses implicit remote plaintext
-- exactly one service bearer source: owner-only non-symlink file, inherited fd, or runtime environment
+- exactly one effective service bearer source: when no external file, fd, or environment source is configured, first launch atomically generates `STATE_DIR/api-token`
+- generated bearer files are random, owner-only, complete before publication, stable across restart, and never overwrite an existing path
 - bearer authorization is checked before JSON bodies, route/session disclosure, and RPC/ACP stream upgrades
 - bearer material is reduced to a one-way digest after startup loading and never logged or returned
 - owner-only Unix socket in a non-group/world-writable real directory
+- absent daemon-owned state, socket-parent, and Pi agent directories are created as owner-only; permissive or overlapping state/credential roots fail closed
 - owner-only state directories, manifests, and journals
 - symlink and traversal refusal for durable state/session paths
 - required canonical `--allow-root` for every logical cwd
@@ -35,6 +37,7 @@ project code or tools.
 - memory-only sessions never write replayable wake journals or masquerade as durable
 - ACP is route/cwd/generation scoped, bounded per peer/hub, and never launches an adapter subprocess
 - default Pi auth file must be an owner-only regular file
+- an absent custom-agent `auth.json` may be seeded once from the bounded owner-only normal Pi auth file or an explicit required seed; it is never synchronized, overwritten, logged, or returned
 - empty built-in/custom tool allowlist
 - empty extensions, skills, templates, themes, context files, and append prompt
 - no Cacophony node token, CA key, daemon state, or orchestration authority

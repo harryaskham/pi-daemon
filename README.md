@@ -53,11 +53,11 @@ pi-daemon serve --socket /run/user/1000/pi-daemon.sock \
   --allow-root ~/work
 
 # Optional authenticated JSON/WebSocket admission boundary.
-# The referenced token file must already exist with mode 0600:
+# With no explicit bearer source, first launch creates and reuses the
+# owner-only token at STATE_DIR/api-token:
 pi-daemon serve --socket /run/user/1000/pi-daemon.sock \
   --state-dir ~/.local/state/pi-daemon --allow-root ~/work \
-  --api-bind 127.0.0.1 --api-port 7463 \
-  --api-token-file ~/.config/pi-daemon/api-token
+  --api-bind 127.0.0.1 --api-port 7463
 
 pi-daemon probe --socket /run/user/1000/pi-daemon.sock
 pi-daemon request --socket /run/user/1000/pi-daemon.sock --json '{...}'
@@ -66,8 +66,14 @@ pi-daemon version
 # Present a retained session as stock Pi RPC JSONL on stdin/stdout.
 # PI_DAEMON_BEARER_TOKEN is memory-only; --token-file/--token-fd are preferred.
 pi-daemon-rpc --url http://127.0.0.1:7463 --session exact-id-or-name \
-  --token-file ~/.config/pi-daemon/api-token
+  --token-file ~/.local/state/pi-daemon/api-token
 ```
+
+On first launch, `serve` creates and validates its private state, socket, and Pi
+agent directories. When a custom `--agent-dir` has no `auth.json`, it seeds once
+from Pi's normal owner-private auth file if present; `--auth-seed-file` selects a
+required source explicitly. Existing auth and bearer files are never overwritten
+or rotated.
 
 `serve` uses one process-global Pi `AuthStorage` and `ModelRegistry` from the
 configured `--agent-dir` while creating one `AgentSessionRuntime` with isolated

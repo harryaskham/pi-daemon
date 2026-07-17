@@ -1,13 +1,14 @@
 #!/usr/bin/env node
 import { realpath } from "node:fs/promises";
 import { homedir } from "node:os";
-import { resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 
-import { loadServiceBearer } from "./api-auth.js";
+import { loadServiceBearer, SERVICE_BEARER_ENV } from "./api-auth.js";
 import { ApiServer } from "./api-server.js";
+import { bootstrapServicePaths } from "./bootstrap.js";
 import { PiDaemonClient, ProtocolResponseError } from "./client.js";
 import { FileDurabilityStore } from "./durability.js";
 import { Multiplexer, type SessionFactory } from "./multiplexer.js";
@@ -176,6 +177,7 @@ async function runServe(
       "socket",
       "state-dir",
       "agent-dir",
+      "auth-seed-file",
       "allow-root",
       "max-sessions",
       "max-concurrent-turns",
@@ -201,7 +203,8 @@ async function runServe(
   const stateDir = resolve(
     options.get("state-dir") ?? `${homedir()}/.local/state/pi-daemon`,
   );
-  const agentDir = resolve(options.get("agent-dir") ?? getAgentDir());
+  const defaultAgentDir = resolve(getAgentDir());
+  const agentDir = resolve(options.get("agent-dir") ?? defaultAgentDir);
   if (allowedRootValues.length === 0) {
     throw new CliUsageError("missing required option: --allow-root");
   }
@@ -217,6 +220,41 @@ async function runServe(
   ) {
     throw new CliUsageError("API listener options require --api-port");
   }
+  const configuredTokenFile = options.get("api-token-file");
+  const tokenFd = options.has("api-token-fd")
+    ? integerOption(options, "api-token-fd", 3)
+    : undefined;
+  const bearerSourceCount = [
+    configuredTokenFile,
+    tokenFd,
+    process.env[SERVICE_BEARER_ENV],
+  ].filter((value) => value !== undefined).length;
+  if (apiEnabled && bearerSourceCount > 1) {
+    throw new CliUsageError("API listener bearer sources are mutually exclusive");
+  }
+  const apiTokenFile = apiEnabled
+    ? configuredTokenFile === undefined && bearerSourceCount === 0
+      ? join(stateDir, "api-token")
+      : configuredTokenFile === undefined
+        ? undefined
+        : resolve(configuredTokenFile)
+    : undefined;
+  const configuredAuthSeedFile = options.get("auth-seed-file");
+  const authSeedFile =
+    configuredAuthSeedFile === undefined && agentDir !== defaultAgentDir
+      ? join(defaultAgentDir, "auth.json")
+      : configuredAuthSeedFile === undefined
+        ? undefined
+        : resolve(configuredAuthSeedFile);
+  const bootstrap = await bootstrapServicePaths({
+    stateDir,
+    socketPath,
+    agentDir,
+    ...(apiTokenFile === undefined ? {} : { apiTokenFile }),
+    ...(authSeedFile === undefined ? {} : { authSeedFile }),
+    authSeedRequired: configuredAuthSeedFile !== undefined,
+  });
+
   const durability = new FileDurabilityStore({ stateDir });
   const catalog = new FileSessionCatalog({ stateDir });
   const tickets = new MutationTicketController(new FileMutationTicketStore({ stateDir }));
@@ -310,12 +348,8 @@ async function runServe(
   try {
     await server.start();
     if (apiEnabled) {
-      const tokenFile = options.get("api-token-file");
-      const tokenFd = options.has("api-token-fd")
-        ? integerOption(options, "api-token-fd", 3)
-        : undefined;
       const loaded = loadServiceBearer({
-        ...(tokenFile === undefined ? {} : { tokenFile: resolve(tokenFile) }),
+        ...(apiTokenFile === undefined ? {} : { tokenFile: apiTokenFile }),
         ...(tokenFd === undefined ? {} : { tokenFd }),
       });
       apiServer = new ApiServer({
@@ -350,6 +384,10 @@ async function runServe(
       apiAddress === undefined
         ? { enabled: false }
         : { enabled: true, host: apiAddress.host, port: apiAddress.port },
+    bootstrap: {
+      bearerCreated: bootstrap.bearerCreated,
+      auth: bootstrap.auth,
+    },
   });
   const initialStatus = multiplexer.status();
   logger.write(
@@ -584,6 +622,7 @@ function helpText(): string {
 
 Usage:
   pi-daemon serve --socket PATH --allow-root PATH [--allow-root PATH ...] [--state-dir PATH] [--agent-dir PATH] [limit options]
+                  [--auth-seed-file PATH]
                   [--api-port PORT] [--api-bind HOST]
                   [--api-token-file PATH | --api-token-fd FD]
                   [--api-allow-insecure-http true|false]
@@ -635,8 +674,14 @@ Protocol transport limits:
   --max-response-bytes N
   --max-outbound-bytes-per-connection N
 
-API bearer sources (exactly one when --api-port is set):
+First-launch bootstrap:
+  Private state, socket, and agent directories are created if absent.
+  A custom agent directory seeds auth once from the normal Pi auth file when present;
+  --auth-seed-file PATH selects a required owner-private seed explicitly.
+
+API bearer sources:
   --api-token-file PATH, --api-token-fd FD, or PI_DAEMON_BEARER_TOKEN.
+  With none configured, an owner-only bearer is generated once at STATE_DIR/api-token.
 `;
 }
 

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { access, mkdir, mkdtemp, readFile, readdir, rm } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { request as httpRequest } from "node:http";
 import { createConnection } from "node:net";
 import { tmpdir } from "node:os";
@@ -685,6 +685,8 @@ test("serve CLI enables an ephemeral loopback API without logging the bearer", a
   const errors = [];
   const io = { stdout: (text) => output.push(text), stderr: (text) => errors.push(text) };
   const socketPath = join(temporaryRoot, "daemon.sock");
+  const authSeed = join(temporaryRoot, "auth-seed.json");
+  await writeFile(authSeed, "{}\n", { mode: 0o600 });
 
   const code = await runCli(
     [
@@ -693,6 +695,10 @@ test("serve CLI enables an ephemeral loopback API without logging the bearer", a
       socketPath,
       "--state-dir",
       stateDir,
+      "--agent-dir",
+      join(temporaryRoot, "agent"),
+      "--auth-seed-file",
+      authSeed,
       "--allow-root",
       work,
       "--allow-root",
@@ -758,22 +764,22 @@ test("serve CLI enables an ephemeral loopback API without logging the bearer", a
   assert.equal(errors.join("").includes(temporaryRoot), false);
 });
 
-test("serve CLI fails closed and removes the Unix socket when no bearer source exists", async (t) => {
-  const temporaryRoot = await mkdtemp(join(tmpdir(), "pi-daemon-api-cli-denied-"));
+test("serve CLI generates and uses a stable default bearer when no external source exists", async (t) => {
+  const temporaryRoot = await mkdtemp(join(tmpdir(), "pi-daemon-api-cli-generated-"));
   t.after(async () => rm(temporaryRoot, { recursive: true, force: true }));
   const work = join(temporaryRoot, "work");
   const stateDir = join(temporaryRoot, "state");
   const socketPath = join(temporaryRoot, "daemon.sock");
-  await Promise.all([
-    mkdir(work, { recursive: true, mode: 0o700 }),
-    mkdir(stateDir, { recursive: true, mode: 0o700 }),
-  ]);
+  await mkdir(work, { recursive: true, mode: 0o700 });
   const previousToken = process.env[SERVICE_BEARER_ENV];
   delete process.env[SERVICE_BEARER_ENV];
   t.after(() => {
     if (previousToken !== undefined) process.env[SERVICE_BEARER_ENV] = previousToken;
   });
   const errors = [];
+  const authSeed = join(temporaryRoot, "auth-seed.json");
+  await writeFile(authSeed, "{}\n", { mode: 0o600 });
+  let generatedToken;
   const code = await runCli(
     [
       "serve",
@@ -781,16 +787,38 @@ test("serve CLI fails closed and removes the Unix socket when no bearer source e
       socketPath,
       "--state-dir",
       stateDir,
+      "--agent-dir",
+      join(temporaryRoot, "agent"),
+      "--auth-seed-file",
+      authSeed,
       "--allow-root",
       work,
       "--api-port",
       "0",
     ],
     { stdout: () => {}, stderr: (text) => errors.push(text) },
-    { factory: new EmptyFactory() },
+    {
+      factory: new EmptyFactory(),
+      waitForShutdown: async (shutdown) => {
+        const ready = errors.map((line) => JSON.parse(line)).find((entry) => entry.event === "pi_daemon_ready");
+        assert.ok(ready);
+        generatedToken = (await readFile(join(stateDir, "api-token"), "utf8")).trimEnd();
+        const response = await requestJson(
+          { host: ready.api.host, port: ready.api.port },
+          {
+            path: "/v1/capabilities",
+            headers: { Authorization: `Bearer ${generatedToken}` },
+          },
+        );
+        assert.equal(response.status, 200);
+        await shutdown();
+      },
+    },
   );
-  assert.equal(code, 1);
-  assert.match(errors.join(""), /requires exactly one bearer source/);
+  assert.equal(code, 0);
+  assert.ok(generatedToken.length >= 16);
+  assert.equal(errors.join("").includes(generatedToken), false);
+  assert.equal(errors.join("").includes(temporaryRoot), false);
   await assert.rejects(
     access(socketPath),
     (error) => error instanceof Error && "code" in error && error.code === "ENOENT",

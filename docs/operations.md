@@ -15,10 +15,11 @@ npm test
 
 ## Serve
 
-Choose three non-overlapping paths: an owner-private socket directory, daemon
-state, and one or more allowed workload roots. Repeat `--allow-root PATH` for
-each canonical root. The Pi agent directory may be supplied explicitly and
-defaults to Pi's normal configured directory.
+Choose non-overlapping daemon state, Pi agent, and allowed workload roots.
+Repeat `--allow-root PATH` for each canonical root. Workload roots must already
+exist because they are explicit authority grants. The daemon creates absent
+private state, socket-parent, and agent directories before constructing the Pi
+runtime.
 
 ```console
 pi-daemon serve \
@@ -28,8 +29,9 @@ pi-daemon serve \
   --allow-root "$HOME/work"
 ```
 
-To enable the additive authenticated JSON listener, choose exactly one bearer
-source. Supplying the token as a CLI value is intentionally unsupported:
+To enable the additive authenticated JSON listener, either let the daemon
+create its stable default bearer file or configure exactly one external source.
+Supplying bearer bytes as a CLI value is intentionally unsupported:
 
 ```console
 pi-daemon serve \
@@ -37,16 +39,25 @@ pi-daemon serve \
   --state-dir "$HOME/.local/state/pi-daemon" \
   --allow-root "$HOME/work" \
   --api-bind 127.0.0.1 \
-  --api-port 7463 \
-  --api-token-file "$HOME/.config/pi-daemon/api-token"
+  --api-port 7463
 ```
 
-The token file must be an owner-only regular non-symlink file. An inherited
+When no bearer source is supplied, first launch atomically generates an
+owner-only bearer at `STATE_DIR/api-token`; later launches validate and reuse it.
+`--api-token-file PATH` selects another generated-or-existing path. An inherited
 secret descriptor (`--api-token-fd FD`) or `PI_DAEMON_BEARER_TOKEN` may be used
-instead, but sources are mutually exclusive. The default bind is the literal
-loopback address `127.0.0.1`. A non-loopback plaintext bind is refused unless
+instead, but sources are mutually exclusive. Existing files must be owner-only,
+regular, and non-symlinked and are never overwritten. The default bind is the
+literal loopback address `127.0.0.1`. A non-loopback plaintext bind is refused unless
 `--api-allow-insecure-http true` explicitly acknowledges trusted-network or TLS
 reverse-proxy handling.
+
+When `--agent-dir` differs from Pi's normal agent directory and has no
+`auth.json`, first launch copies the normal owner-private `auth.json` once if it
+exists. `--auth-seed-file PATH` names a required source explicitly. The seed is
+bounded to 1 MiB, must be an owner-only regular JSON file, and never overwrites
+an existing destination. Missing implicit auth leaves the service listening but
+degraded so an operator can authenticate Pi later.
 
 `GET /v1/capabilities` advertises HTTP, WebSocket, both Pi RPC subprotocols,
 the pinned in-process RPC host contract, controller/observer roles, replay, and
@@ -118,20 +129,22 @@ file, environment, roots, and logs:
     stateDir = "${config.xdg.stateHome}/pi-daemon-work";
     socketPath = "${config.xdg.runtimeDir}/pi-daemon-work.sock";
     agentDir = "${config.home.homeDirectory}/.pi-work";
+    # Optional: otherwise a distinct agentDir seeds once from Pi's normal auth.
+    authSeedFile = "${config.home.homeDirectory}/.pi/agent/auth.json";
     allowedRoots = [ "/srv/work" ];
     api = {
       enable = true;
       bind = "127.0.0.1";
       port = 17463;
-      tokenFile = config.sops.secrets.pi-daemon-work.path;
+      # Optional: otherwise stateDir/api-token is generated on first launch.
     };
     extraArgs = [ "--max-sessions" "32" "--max-concurrent-turns" "4" ];
   };
 }
 ```
 
-`home-manager switch` installs the package, creates owner-private state/socket
-directories, and enables `pi-daemon-work.service` on Linux systemd,
+`home-manager switch` installs the package, creates native-supervisor log
+parents, and enables `pi-daemon-work.service` on Linux systemd,
 `com.pi-daemon.work` on Darwin launchd, or `pi-daemon-work` when a nix-on-droid
 supervisord option surface is present. These identities cannot collide with
 Cacophony's `cacophony.service` / `com.cacophony.lifecycle` identities.
@@ -143,11 +156,11 @@ supervisorctl status pi-daemon-work
 ```
 
 Enabled instances must use unique `stateDir`, `socketPath`, stdout/stderr logs,
-and API ports.
-Instance names are bounded alphanumeric/hyphen identifiers. At least one
-explicit workload root is required. Enabling the API requires both an explicit
-port and an owner-private `tokenFile`; only the file path enters the Nix service
-definition, never its bearer bytes. `extraArgs` may set resource limits but
+API ports, and effective token paths. Instance names are bounded
+alphanumeric/hyphen identifiers. At least one explicit workload root and an API
+port are required when those surfaces are enabled. An optional external
+`tokenFile` contributes only its path to the Nix service definition, never its
+bearer bytes. `extraArgs` may set resource limits but
 cannot override module-managed identity, root, path, or API arguments.
 
 ## High-level session management

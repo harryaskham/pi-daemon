@@ -34,6 +34,12 @@
         default = "${homeDirectory}/.pi/agent";
         description = "Pi SDK agent/auth directory. Configure a distinct path for a separate credential domain.";
       };
+      authSeedFile = lib.mkOption {
+        type = lib.types.nullOr lib.types.str;
+        default = null;
+        example = "${homeDirectory}/.pi/agent/auth.json";
+        description = "Optional required owner-private Pi auth.json seed. When null, a distinct agentDir seeds once from Pi's normal agent directory if that auth file exists.";
+      };
       allowedRoots = lib.mkOption {
         type = lib.types.listOf lib.types.str;
         default = [];
@@ -83,7 +89,7 @@
           type = lib.types.nullOr lib.types.str;
           default = null;
           example = lib.literalExpression "config.sops.secrets.pi-daemon-api-token.path";
-          description = "Owner-only bearer token file read at service start. Token bytes never enter the Nix store or argv.";
+          description = "Optional owner-only bearer token file. When null, the daemon generates and reuses stateDir/api-token on first launch. Token bytes never enter the Nix store or argv.";
         };
         allowInsecureHttp = lib.mkOption {
           type = lib.types.bool;
@@ -105,20 +111,26 @@
       "--agent-dir"
       instance.agentDir
     ]
+    ++ lib.optionals (instance.authSeedFile != null) [
+      "--auth-seed-file"
+      instance.authSeedFile
+    ]
     ++ lib.concatMap (root: ["--allow-root" root]) instance.allowedRoots
     ++ lib.optionals instance.api.enable [
       "--api-bind"
       instance.api.bind
       "--api-port"
       (toString instance.api.port)
-      "--api-token-file"
-      instance.api.tokenFile
       "--api-allow-insecure-http"
       (
         if instance.api.allowInsecureHttp
         then "true"
         else "false"
       )
+    ]
+    ++ lib.optionals (instance.api.enable && instance.api.tokenFile != null) [
+      "--api-token-file"
+      instance.api.tokenFile
     ]
     ++ instance.extraArgs;
 
@@ -150,11 +162,16 @@
   serviceName = name: "pi-daemon-${name}";
   enabledList = lib.attrValues enabledInstances;
   enabledApiInstances = lib.filter (instance: instance.api.enable) enabledList;
+  effectiveApiTokenFile = instance:
+    if instance.api.tokenFile == null
+    then "${instance.stateDir}/api-token"
+    else instance.api.tokenFile;
   unique = values: builtins.length values == builtins.length (lib.unique values);
   protectedExtraArgs = [
     "--socket"
     "--state-dir"
     "--agent-dir"
+    "--auth-seed-file"
     "--allow-root"
     "--api-bind"
     "--api-port"
@@ -203,8 +220,8 @@ in {
           })
           enabledInstances)
         ++ (lib.mapAttrsToList (name: instance: {
-            assertion = !instance.api.enable || (instance.api.port != null && instance.api.tokenFile != null);
-            message = "services.pi-daemon.instances.${name}: api.port and api.tokenFile are required when api.enable is true";
+            assertion = !instance.api.enable || instance.api.port != null;
+            message = "services.pi-daemon.instances.${name}: api.port is required when api.enable is true";
           })
           enabledInstances)
         ++ (lib.mapAttrsToList (name: instance: {
@@ -232,6 +249,10 @@ in {
           {
             assertion = unique (map (instance: instance.api.port) enabledApiInstances);
             message = "enabled Pi Daemon APIs must use unique ports";
+          }
+          {
+            assertion = unique (map effectiveApiTokenFile enabledApiInstances);
+            message = "enabled Pi Daemon APIs must use unique effective token files";
           }
         ];
 
