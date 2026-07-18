@@ -39,6 +39,7 @@ Initial standalone implementation:
 - exact-pinned Dash frontend foundation with progressive Nord Midnight shell, virtual 10k-session and mixed-transcript viewports, lazy CodeMirror/Vim composer, accessible split-tree controls, deterministic visual artifact, and measured browser/bundle receipts
 - owner-safe persisted Dash inventory with immediate 10k-session hot-head bootstrap, background full-index hydration/reconcile, keyed message search without retained text, managed/external identity merging, exact shared source fingerprints, and opaque revision-bound paging
 - normalized ID-based rich transcript store with replay-gap reconciliation, safe markdown/code, bounded images/output, specialized and generic tool renderers, summaries/custom state, and lazy semantic highlighting
+- bounded in-process `VirtualTerminal` for Pi TUI ANSI projection, styled row deltas, Unicode/cursor/resize/input fidelity, terminal side-channel stripping, representative upstream component fixtures, and measured frame budgets
 - hermetic Linux/Nix installed-bin checks that resolve npm links through the pinned Node runtime
 - credential-free full-host acceptance across installed artifacts, configured CRUD, RPC/ACP/stdio, restart/replay, security, and zero per-session child processes
 - optional live-provider two-session zero-child-process acceptance harness

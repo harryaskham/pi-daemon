@@ -131,12 +131,14 @@ resident runtime and extension instance can drive the virtual view. The daemon
 parses ANSI into bounded styled row deltas; the browser does not evaluate
 extension JavaScript.
 
-A first read-only TUI mirror can reuse Pi's exported message/tool/components and
-custom renderers. Full `ctx.ui.custom()`, overlays, component widgets, custom
-editors, and keyboard interaction require the terminal-injection/UI-broker seam.
-The plan includes a spike and compatibility tests before promising that full
-mode. Rich web remains available even when a particular extension cannot be
-represented semantically.
+The completed `bd-2756e4` spike now provides the bounded `VirtualTerminal`,
+headless styled row-delta projection, strict side-channel stripping, exported Pi
+message/tool/custom/overlay/editor fixtures, and measured full/delta/resize
+receipts. Full `ctx.ui.custom()`, component widgets, custom editors, and
+keyboard interaction still require the documented `InteractiveSessionView`
+terminal/lifecycle/external-extension-binding seam; Pi 0.80.6 continues to
+hardcode `ProcessTerminal` and re-emits `session_start` on `bindExtensions()`.
+Rich web remains available while that small upstream seam is pending.
 
 ### 3.5 Configuration
 
@@ -1289,8 +1291,8 @@ These lanes intentionally begin in parallel:
   stack, editor, virtualization, split and accessibility spike.
 - [x] `bd-e25765` — instance YAML convention, safe precedence, current CLI
   mapping, and Home Manager configuration foundation.
-- [ ] `bd-2756e4` — VirtualTerminal/headless-grid performance spike and supported
-  Pi `InteractiveSessionView`/UI-broker seam.
+- [x] `bd-2756e4` — VirtualTerminal/headless-grid performance spike and supported
+  Pi `InteractiveSessionView`/UI-broker seam proposal.
 
 ### Core data and browser shell
 

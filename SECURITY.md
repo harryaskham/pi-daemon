@@ -60,5 +60,13 @@ and UI-only overlays are owner-private, byte/count/depth bounded, revisioned,
 atomically written, and cannot mutate bind/auth/roots/credentials/resource
 policy.
 
+Shadow-TUI output is interpreted inside a bounded `VirtualTerminal`; raw ANSI
+is never sent to browser JavaScript. OSC 52 clipboard access, terminal image
+payloads, DCS/APC/PM/SOS device channels, unsafe links, terminal queries, and
+unsupported controls are stripped without retaining their payloads. The shadow
+view shares the one resident session runtime, extension instance, and JSONL
+writer; starting a child Pi/PTY against the session is not a supported render
+path.
+
 A client needing arbitrary code execution or unreviewed extensions must use a
 separate process/security domain.

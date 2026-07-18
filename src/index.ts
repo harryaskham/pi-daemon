@@ -27,4 +27,5 @@ export * from "./session-catalog.js";
 export * from "./session-inventory.js";
 export * from "./tickets.js";
 export * from "./transcript-projector.js";
+export * from "./virtual-terminal.js";
 export * from "./version.js";

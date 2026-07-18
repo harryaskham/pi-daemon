@@ -27,8 +27,11 @@ or Cacophony credentials.
 > `pi-daemon-rpc` stdio bridge, in-process ACP translation, and the first Pi
 > Daemon Dash foundation are implemented. Dash now includes a packaged
 > content-hashed SPA, preview-only transcript projection, secure browser BFF,
-> signed revocable cookie exchange, and revisioned workspace/UI-settings stores;
-> inventory, ownership/live channels, and shadow TUI continue in staged slices.
+> signed revocable cookie exchange, revisioned workspace/UI-settings stores,
+> persisted 10k-session inventory, rich transcript rendering, an incremental
+> ownership foundation, and a bounded in-process shadow-terminal renderer;
+> ownership file operations, live channels, and full shadow-view lifecycle
+> wiring continue in staged slices.
 > Full credential-free install/CRUD/RPC/ACP/restart/security acceptance is green;
 > the repository is a release candidate, but no release tag is cut yet.
 
@@ -167,6 +170,7 @@ supervisord on nix-on-droid; see [Operations](docs/operations.md#home-manager-se
 - [`docs/session-api.md`](docs/session-api.md) — additive session CRUD, Pi RPC attach, and `/apc` ACP contract
 - [`docs/dashboard-protocol.md`](docs/dashboard-protocol.md) — Dash browser/backend contract, limits, identity, and performance budgets
 - [`docs/transcript-projection.md`](docs/transcript-projection.md) — preview-only Pi JSONL active-branch projection, cache, paging, and bounds
+- [`docs/shadow-tui.md`](docs/shadow-tui.md) — in-process virtual terminal, control policy, performance proof, and Pi view seam
 - [`docs/session-cli.md`](docs/session-cli.md) — high-level session CRUD, tickets, prompt/control, and endpoint discovery
 - [`session-api.schema.json`](session-api.schema.json) / [`session-api.openapi.json`](session-api.openapi.json) — machine-readable session API
 - [`SECURITY.md`](SECURITY.md) — trust boundary and vulnerability reporting

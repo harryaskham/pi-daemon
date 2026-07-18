@@ -186,6 +186,8 @@ test(
       "dist/source-fingerprint.d.ts",
       "dist/transcript-projector.js",
       "dist/transcript-projector.d.ts",
+      "dist/virtual-terminal.js",
+      "dist/virtual-terminal.d.ts",
       "dist/dashboard-api.schema.json",
       "dist/dashboard-api.openapi.json",
       "THIRD_PARTY_NOTICES.md",
@@ -302,19 +304,20 @@ test(
         'import { DEFAULT_SESSION_INVENTORY_LIMITS } from "@harryaskham/pi-daemon/session-inventory";',
         'import { formatSessionSourceFingerprint } from "@harryaskham/pi-daemon/source-fingerprint";',
         'import { TranscriptProjector } from "@harryaskham/pi-daemon/transcript-projector";',
+        'import { VirtualTerminal } from "@harryaskham/pi-daemon/virtual-terminal";',
         'import dashSchema from "@harryaskham/pi-daemon/dashboard-api.schema.json" with { type: "json" };',
         'import dashOpenapi from "@harryaskham/pi-daemon/dashboard-api.openapi.json" with { type: "json" };',
         'const isolation = parseSessionConfiguration({ cwd: process.cwd(), target: { mode: "memory" } }).persistedSpec.isolation?.mode;',
         'const dashFixture = createDashboardContractFixtures();',
         'const fingerprint = formatSessionSourceFingerprint(new Uint8Array(32));',
-        'process.stdout.write(`${PI_DAEMON_VERSION} ${SESSION_API_VERSION} ${isolation} ${DEFAULT_RPC_STDIO_BRIDGE_LIMITS.reconnectAttempts} ${typeof SessionApiClient} ${schema.title} ${sessionSchema.title} ${openapi.openapi} ${DASH_API_VERSION} ${DASH_DEFAULT_LIMITS.maxInventoryPageItems} ${dashFixture.transcript.hydration} ${dashSchema.title} ${dashOpenapi.openapi} ${DEFAULT_SESSION_INVENTORY_LIMITS.maxSessions} ${fingerprint.slice(0, 7)} ${typeof TranscriptProjector} ${typeof DashboardBrowserAuth} ${typeof DashboardWorkspaceStore} ${typeof DashboardServer}\\n`);',
+        'process.stdout.write(`${PI_DAEMON_VERSION} ${SESSION_API_VERSION} ${isolation} ${DEFAULT_RPC_STDIO_BRIDGE_LIMITS.reconnectAttempts} ${typeof SessionApiClient} ${schema.title} ${sessionSchema.title} ${openapi.openapi} ${DASH_API_VERSION} ${DASH_DEFAULT_LIMITS.maxInventoryPageItems} ${dashFixture.transcript.hydration} ${dashSchema.title} ${dashOpenapi.openapi} ${DEFAULT_SESSION_INVENTORY_LIMITS.maxSessions} ${fingerprint.slice(0, 7)} ${typeof TranscriptProjector} ${typeof DashboardBrowserAuth} ${typeof DashboardWorkspaceStore} ${typeof DashboardServer} ${typeof VirtualTerminal}\\n`);',
         "",
       ].join("\n"),
     );
     const imported = await run(process.execPath, [basename(importCheck)], { cwd: consumer });
     assert.equal(
       imported.stdout,
-      `${packageVersion} 1.0 unisolated 8 function Pi Daemon protocol v1 Pi Daemon additive session API v1 3.1.0 1.0 100 not-requested Pi Daemon Dash browser API v1 3.1.0 10000 sha256: function function function function\n`,
+      `${packageVersion} 1.0 unisolated 8 function Pi Daemon protocol v1 Pi Daemon additive session API v1 3.1.0 1.0 100 not-requested Pi Daemon Dash browser API v1 3.1.0 10000 sha256: function function function function function\n`,
     );
   },
 );

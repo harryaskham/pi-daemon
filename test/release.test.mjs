@@ -35,25 +35,32 @@ test("Pages workflow uses the pinned Nix site build without Docker actions", asy
 });
 
 test("Pages publishes the Dash protocol, schema, and OpenAPI from the pinned site build", async () => {
-  const [workflow, flake, index, protocol, inventory] = await Promise.all([
+  const [workflow, flake, index, protocol, inventory, shadowTui] = await Promise.all([
     readFile(join(repositoryRoot, ".github/workflows/pages.yml"), "utf8"),
     readFile(join(repositoryRoot, "flake.nix"), "utf8"),
     readFile(join(repositoryRoot, "docs/index.md"), "utf8"),
     readFile(join(repositoryRoot, "docs/dashboard-protocol.md"), "utf8"),
     readFile(join(repositoryRoot, "docs/dashboard-inventory.md"), "utf8"),
+    readFile(join(repositoryRoot, "docs/shadow-tui.md"), "utf8"),
   ]);
   assert.match(workflow, /- "dashboard-api\.schema\.json"/);
   assert.match(workflow, /- "dashboard-api\.openapi\.json"/);
   assert.match(workflow, /test -s _site\/dashboard-protocol\/index\.html/);
   assert.match(workflow, /test -s _site\/dashboard-inventory\/index\.html/);
+  assert.match(workflow, /test -s _site\/shadow-tui\/index\.html/);
   assert.match(flake, /cp \$\{\.\/dashboard-api\.schema\.json\} "\$out\/dashboard-api\.schema\.json"/);
   assert.match(flake, /test -s "\$out\/dashboard-protocol\/index\.html"/);
+  assert.match(flake, /test -s "\$out\/shadow-tui\/index\.html"/);
   assert.match(index, /\[Dash browser\/backend protocol\]\(dashboard-protocol\)/);
   assert.match(index, /\[Dash session inventory\]\(dashboard-inventory\)/);
+  assert.match(index, /\[Dash shadow TUI\]\(shadow-tui\)/);
   assert.match(protocol, /daemon service bearer is \*\*server-to-server only\*\*/);
   assert.match(inventory, /31\.58 ms/);
   assert.match(inventory, /formatSessionSourceFingerprint/);
   assert.match(protocol, /snapshotFollows: true/);
+  assert.match(shadowTui, /second\s+`pi` process/);
+  assert.match(shadowTui, /InteractiveSessionView/);
+  assert.match(shadowTui, /OSC 52/);
 });
 
 test("Dash transcript projector is exported, documented, and included in clean builds", async () => {
@@ -71,6 +78,20 @@ test("Dash transcript projector is exported, documented, and included in clean b
   assert.match(readme, /docs\/transcript-projection\.md/);
   assert.match(docs, /hydration: "not-requested"/);
   assert.match(docs, /sha256:<base64url digest>/);
+});
+
+test("shadow TUI terminal is exported with its audited upstream seam", async () => {
+  const [manifest, index, docs, implementation] = await Promise.all([
+    readFile(join(repositoryRoot, "package.json"), "utf8").then(JSON.parse),
+    readFile(join(repositoryRoot, "src/index.ts"), "utf8"),
+    readFile(join(repositoryRoot, "docs/shadow-tui.md"), "utf8"),
+    readFile(join(repositoryRoot, "src/virtual-terminal.ts"), "utf8"),
+  ]);
+  assert.equal(manifest.exports["./virtual-terminal"].import, "./dist/virtual-terminal.js");
+  assert.equal(manifest.dependencies["@earendil-works/pi-tui"], "0.80.6");
+  assert.match(index, /export \* from "\.\/virtual-terminal\.js"/);
+  assert.match(docs, /extensionBinding\?: "managed" \| "external"/);
+  assert.doesNotMatch(implementation, /node:child_process|ProcessTerminal|process\.(?:stdin|stdout)/);
 });
 
 test("clean package builds include the content-hashed Dash SPA and secure server exports", async () => {

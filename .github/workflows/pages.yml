@@ -41,6 +41,7 @@ jobs:
           test -s _site/protocol.schema.json
           test -s _site/dashboard-protocol/index.html
           test -s _site/dashboard-inventory/index.html
+          test -s _site/shadow-tui/index.html
           test -s _site/dashboard-api.schema.json
           test -s _site/dashboard-api.openapi.json
       - uses: actions/upload-pages-artifact@v3

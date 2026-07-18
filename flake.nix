@@ -28,7 +28,7 @@
         src = ./.;
 
         nodejs = pkgs.nodejs_24;
-        npmDepsHash = "sha256-6nR9LLxpGUTowksHv3lq5kSBQ7FxkqowGBTdAevhvQs=";
+        npmDepsHash = "sha256-TRe/VaBbJd18LVBnekXmbxUf8qdIQYfvwlaEww/6cfM=";
         npmDepsFetcherVersion = 2;
         nativeBuildInputs = [pkgs.makeWrapper];
 
@@ -132,6 +132,7 @@
         test -s "$out/protocol/index.html"
         test -s "$out/dashboard-protocol/index.html"
         test -s "$out/dashboard-inventory/index.html"
+        test -s "$out/shadow-tui/index.html"
         test -s "$out/dashboard-api.schema.json"
         test -s "$out/dashboard-api.openapi.json"
       '';

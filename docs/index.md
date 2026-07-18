@@ -25,6 +25,7 @@ neutral service—not a Cacophony component.
 - [Dash browser/backend protocol](dashboard-protocol) — preview-first resources, normalized transcripts, multiplexed Rich/TUI channels, replay, limits, and performance budgets
 - [Dash transcript projection](transcript-projection) — bounded no-hydration JSONL branch rendering, cache, paging, and fingerprints
 - [Dash session inventory](dashboard-inventory) — owner-safe persisted 10k-session index, keyed search, opaque paging, and measured bootstrap
+- [Dash shadow TUI](shadow-tui) — bounded in-process virtual terminal, control stripping, performance proof, and the minimal Pi view seam
 - [Session configuration](session-configuration) — Pi CLI mapping, environment handling, resources, tools, and honest isolation limits
 - [Operations](operations) — install, serve, probe, status, drain, and recovery
 - [Session management CLI](session-cli) — JSON CRUD, tickets, prompts/controls, and endpoint discovery
