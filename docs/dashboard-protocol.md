@@ -6,8 +6,8 @@ title: Dash browser and backend contracts
 # Pi Daemon Dash browser and backend contracts
 
 Status: **Versioned contract, inventory, transcript projection, ownership,
-production SPA/workspace, secure browser server, and the embedded rich backend
-are implemented. Neutral remote APIs and full shadow-TUI browser integration
+production SPA/workspace, secure browser server, authenticated stream router,
+and the embedded rich backend are implemented. Neutral remote APIs and full shadow-TUI browser integration
 continue in dependency-linked slices.**
 
 Pi Daemon Dash has one browser protocol and one transport-neutral backend seam.
@@ -28,6 +28,9 @@ The machine-readable and TypeScript contracts are:
   `src/dashboard-server.ts` / matching package subpaths — credential exchange,
   signed revocable browser sessions, static SPA serving, strict request
   admission, bounded WebSocket handoff, and atomic workspace/settings state;
+- `src/dashboard-stream-router.ts` / package export `./dashboard-stream-router`
+  — explicit backend-to-browser channel routing factory; the server remains
+  fail-closed unless its lifecycle injects this handler after cookie auth;
 - [`dashboard-api.schema.json`](dashboard-api.schema.json) — JSON Schema for
   HTTP resources and multiplexed WebSocket frames;
 - [`dashboard-api.openapi.json`](dashboard-api.openapi.json) — same-origin HTTP
@@ -219,7 +222,10 @@ or seen acknowledgement and never parse or synthesize them.
 A stale host, changed generation, or expired bounded cursor produces
 `replay_gap` with `snapshotFollows: true`. The next
 `subscription_ready` contains a fresh atomic snapshot and new high-water
-cursor. Responses are private to the issuing subscription and are not replayed.
+cursor. Responses are private to the issuing subscription and are not replayed. A
+correlated `extension_ui_response` frame carries only its subscription ID,
+backend request ID, and bounded JSON response; it is accepted only from the
+current rich-channel controller and receives a private command-result acknowledgement.
 A command that lost its response across disconnect is indeterminate; clients
 reconcile state/entries before deciding whether a new idempotency key is safe.
 

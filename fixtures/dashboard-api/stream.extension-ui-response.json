@@ -1,0 +1,12 @@
+{
+  "dashVersion": "1.0",
+  "kind": "extension_ui_response",
+  "clientId": "client-fixture-01",
+  "workspaceId": "workspace-fixture-01",
+  "correlationId": "correlation-extension-ui-01",
+  "subscriptionId": "subscription-fixture-01",
+  "requestId": "extension-request-fixture-01",
+  "response": {
+    "confirmed": true
+  }
+}

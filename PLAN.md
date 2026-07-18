@@ -631,6 +631,8 @@ implementation order. This list is a human-readable crosswalk.
 - [ ] `bd-ba3623` — Pi Daemon Dash: exceptionally fast, polished browser
   session workspace with embedded/dedicated backends and Rich/TUI panes;
   detailed architecture and dependency board in `web/PLAN.md`.
+  - [x] `bd-3a61f7` — authenticated, bounded browser stream router over the
+    transport-neutral DashboardBackend channel seam.
 - [x] `bd-71cfa2` — concise GitHub Pages quickstart for collision-free Home
   Manager instances, authenticated session tickets, Pi RPC, ACP, and the
   `unisolated` trust boundary.

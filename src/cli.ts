@@ -12,6 +12,7 @@ import { bootstrapServicePaths } from "./bootstrap.js";
 import { PiDaemonClient, ProtocolResponseError } from "./client.js";
 import { loadPiDaemonConfig, PiDaemonConfigError } from "./config.js";
 import { createDashboardServerFromConfig, type DashboardServer } from "./dashboard-server.js";
+import { createDashboardStreamHandler } from "./dashboard-stream-router.js";
 import { EmbeddedDashboardServiceRuntime } from "./dashboard-service-runtime.js";
 import { FileDurabilityStore } from "./durability.js";
 import { Multiplexer, type SessionFactory } from "./multiplexer.js";
@@ -436,6 +437,7 @@ async function runServe(
           stateDir,
           backend: dashboardRuntime.backend,
           serverInstanceId: `embedded-${loadedConfig.instance}`,
+          streamHandlerFactory: createDashboardStreamHandler,
         });
       }
     }

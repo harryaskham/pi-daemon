@@ -10,6 +10,7 @@ import {
 } from "../dist/dashboard-backend.js";
 import { asDashboardCursor } from "../dist/dashboard-contract.js";
 import { createDashboardContractFixtures } from "../dist/dashboard-fixtures.js";
+import { createDashboardStreamHandler } from "../dist/dashboard-stream-router.js";
 import { Multiplexer } from "../dist/multiplexer.js";
 import { FileSessionCatalog } from "../dist/session-catalog.js";
 
@@ -115,6 +116,14 @@ function openCommand(sessionId = "session-fixture-01", generation = 3) {
       },
     },
   };
+}
+
+async function waitFor(predicate, message) {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    if (predicate()) return;
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+  assert.fail(message);
 }
 
 function closeCommand(sessionId = "session-fixture-01", generation = 3) {
@@ -371,6 +380,68 @@ test("TUI channel delegation remains transport-neutral and backend-owned leases 
   await channel.close();
   assert.equal(closed, 1);
   assert.equal(multiplexer.residencyLeaseCount(sessionRef, 3), 0);
+});
+
+test("browser stream router conforms against the real in-process backend and fully tears down", async (t) => {
+  const { backend, factory, fixtures, multiplexer } = await harness(t);
+  const sent = [];
+  let onMessage;
+  let onClose;
+  const peer = {
+    send(frame) { sent.push(structuredClone(frame)); return true; },
+    onMessage(listener) { onMessage = listener; return () => {}; },
+    onClose(listener) { onClose = listener; return () => {}; },
+    close() {},
+  };
+  createDashboardStreamHandler({
+    backend,
+    serverInstanceId: "dash-in-process-fixture",
+    limits: {
+      maxSubscriptionsPerConnection: 4,
+      maxInFlightCommandsPerConnection: 2,
+      maxTuiRows: 40,
+      maxTuiColumns: 120,
+    },
+  })({
+    session: {
+      sessionKey: "authenticated-cookie-session",
+      clientId: "client-in-process",
+      workspaceId: "workspace-in-process",
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    },
+    peer,
+  });
+  const frame = (kind, correlationId, extra = {}) => JSON.stringify({
+    dashVersion: "1.0",
+    kind,
+    correlationId,
+    clientId: "client-in-process",
+    workspaceId: "workspace-in-process",
+    ...extra,
+  });
+  await onMessage(frame("hello", "hello-real", { requestedVersion: "1.0" }));
+  await waitFor(() => sent.some((value) => value.kind === "ready"), "stream hello did not become ready");
+  await onMessage(frame("subscribe", "subscribe-real", {
+    subscriptionId: "pane-real",
+    presentation: "rich",
+    sessionRef: fixtures.sessionInfo.managed.sessionId,
+    generation: 3,
+    role: "controller",
+  }));
+  await waitFor(() => sent.some((value) => value.kind === "subscription_ready"), "stream subscription did not become ready");
+  assert.equal(sent.find((value) => value.kind === "subscription_ready").identity.generation, 3);
+  assert.equal(multiplexer.residencyLeaseCount(fixtures.sessionInfo.managed.sessionId, 3), 1);
+  await onMessage(frame("command", "command-real", {
+    subscriptionId: "pane-real",
+    operation: "get_state",
+  }));
+  await waitFor(() => sent.some((value) => value.kind === "command_result" && value.correlationId === "command-real"), "stream command did not complete");
+  assert.equal(sent.find((value) => value.correlationId === "command-real").result.state, "completed");
+  assert.equal(factory.controller.handles.at(-1).type, "get_state");
+  onClose();
+  await waitFor(() => multiplexer.residencyLeaseCount(fixtures.sessionInfo.managed.sessionId, 3) === 0, "stream teardown leaked its residency lease");
+  assert.equal(multiplexer.residencyLeaseCount(fixtures.sessionInfo.managed.sessionId, 3), 0);
+  assert.equal(backend.hasController(fixtures.sessionInfo.managed.sessionId), false);
 });
 
 test("embedded channel hydrates dormant sessions without prompting and releases its lease", async (t) => {

@@ -10,6 +10,7 @@ import type {
   ActivationRequest,
   ActivationTicket,
   DashSessionPresence,
+  DashStreamExtensionUiResponseFrame,
   DashStreamReplayGapFrame,
   DashStreamSessionEventFrame,
   DashStreamSubscribeFrame,
@@ -82,6 +83,7 @@ export interface DashboardContractFixtures {
   transcriptEnvelope: DashboardSuccessEnvelope<TranscriptPage>;
   errorEnvelope: DashboardErrorEnvelope;
   streamSubscribe: DashStreamSubscribeFrame;
+  streamExtensionUiResponse: DashStreamExtensionUiResponseFrame;
   streamReady: DashStreamSubscriptionReadyFrame;
   streamEvent: DashStreamSessionEventFrame;
   streamTuiDelta: DashStreamTuiDeltaFrame;
@@ -491,6 +493,16 @@ export function createDashboardContractFixtures(): DashboardContractFixtures {
     role: "observer",
     cursor: cursor0,
   };
+  const streamExtensionUiResponse: DashStreamExtensionUiResponseFrame = {
+    dashVersion: DASH_API_VERSION,
+    kind: "extension_ui_response",
+    clientId: FIXTURE_CLIENT,
+    workspaceId: FIXTURE_WORKSPACE,
+    correlationId: "correlation-extension-ui-01",
+    subscriptionId: streamSubscribe.subscriptionId,
+    requestId: "extension-request-fixture-01",
+    response: { confirmed: true },
+  };
   const streamContext = {
     dashVersion: DASH_API_VERSION,
     requestId: "req-stream-01",
@@ -641,6 +653,7 @@ export function createDashboardContractFixtures(): DashboardContractFixtures {
     transcriptEnvelope: successEnvelope("req-transcript-01", transcript),
     errorEnvelope,
     streamSubscribe,
+    streamExtensionUiResponse,
     streamReady,
     streamEvent,
     streamTuiDelta,

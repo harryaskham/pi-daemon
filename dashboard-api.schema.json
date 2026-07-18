@@ -1324,6 +1324,21 @@
         }
       ]
     },
+    "streamExtensionUiResponseFrame": {
+      "allOf": [
+        { "$ref": "#/$defs/streamClientBase" },
+        {
+          "type": "object",
+          "required": ["subscriptionId", "requestId", "response"],
+          "properties": {
+            "kind": { "const": "extension_ui_response" },
+            "subscriptionId": { "$ref": "#/$defs/identifier" },
+            "requestId": { "$ref": "#/$defs/requestId" },
+            "response": { "$ref": "#/$defs/jsonObject" }
+          }
+        }
+      ]
+    },
     "streamTuiResizeFrame": {
       "allOf": [
         { "$ref": "#/$defs/streamClientBase" },
@@ -1386,6 +1401,7 @@
         { "$ref": "#/$defs/streamUnsubscribeFrame" },
         { "$ref": "#/$defs/streamCommandFrame" },
         { "$ref": "#/$defs/streamControlFrame" },
+        { "$ref": "#/$defs/streamExtensionUiResponseFrame" },
         { "$ref": "#/$defs/streamTuiResizeFrame" },
         { "$ref": "#/$defs/streamTuiInputFrame" },
         { "$ref": "#/$defs/streamSeenFrame" }

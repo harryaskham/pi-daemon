@@ -127,6 +127,11 @@ export interface DashboardServerFromConfigOptions {
   publicOrigin?: string;
   serverInstanceId?: string;
   streamHandler?: DashboardStreamHandler;
+  streamHandlerFactory?: (options: {
+    backend: DashboardBackend;
+    serverInstanceId: string;
+    limits: DashboardLimits;
+  }) => DashboardStreamHandler;
 }
 
 export class DashboardServerError extends Error {
@@ -194,7 +199,6 @@ export class DashboardServer {
         "dashboard cookie security must match the configured HTTPS public origin",
       );
     }
-    this.#streamHandler = options.streamHandler;
     this.metrics = options.metrics ?? new HostMetrics();
     const { maxHeaderBytes, requestTimeoutMs, maxStaticBytes, ...dashboardOverrides } =
       options.limits ?? {};
@@ -225,6 +229,7 @@ export class DashboardServer {
     ) {
       throw new RangeError("maxWebSocketFrameBytes cannot exceed the outbound connection bound");
     }
+    this.#streamHandler = options.streamHandler;
     this.#server = createServer(
       { maxHeaderSize: this.limits.maxHeaderBytes },
       (request, response) => void this.#handleRequest(request, response),
@@ -769,6 +774,15 @@ export async function createDashboardServerFromConfig(
     limits: dashboardLimits,
     configuredUi: web.ui,
   });
+  if (options.streamHandler !== undefined && options.streamHandlerFactory !== undefined) {
+    throw new Error("configure either streamHandler or streamHandlerFactory, not both");
+  }
+  const serverInstanceId = options.serverInstanceId ?? `dash-${randomUUID()}`;
+  const streamHandler = options.streamHandler ?? options.streamHandlerFactory?.({
+    backend: options.backend,
+    serverInstanceId,
+    limits: dashboardLimits,
+  });
   return new DashboardServer({
     backend: options.backend,
     auth,
@@ -778,9 +792,9 @@ export async function createDashboardServerFromConfig(
     host: web.bind,
     port: web.port,
     ...(publicOrigin === undefined ? {} : { publicOrigin }),
-    ...(options.serverInstanceId === undefined ? {} : { serverInstanceId: options.serverInstanceId }),
+    serverInstanceId,
     limits: dashboardLimits,
-    ...(options.streamHandler === undefined ? {} : { streamHandler: options.streamHandler }),
+    ...(streamHandler === undefined ? {} : { streamHandler }),
   });
 }
 

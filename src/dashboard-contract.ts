@@ -904,6 +904,13 @@ export interface DashStreamControlFrame extends DashStreamClientFrameBase {
   action: "request" | "release";
 }
 
+export interface DashStreamExtensionUiResponseFrame extends DashStreamClientFrameBase {
+  kind: "extension_ui_response";
+  subscriptionId: string;
+  requestId: string;
+  response: JsonObject;
+}
+
 export interface DashStreamTuiResizeFrame extends DashStreamClientFrameBase {
   kind: "tui_resize";
   subscriptionId: string;
@@ -928,6 +935,7 @@ export type DashStreamClientFrame =
   | DashStreamUnsubscribeFrame
   | DashStreamCommandFrame
   | DashStreamControlFrame
+  | DashStreamExtensionUiResponseFrame
   | DashStreamTuiResizeFrame
   | DashStreamTuiInputFrame
   | DashStreamSeenFrame;
