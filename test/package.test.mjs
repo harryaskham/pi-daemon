@@ -111,6 +111,31 @@ const copyPackageSource = async (destination) => {
   );
 };
 
+test("schema conformance uses the audited exact Ajv pin without $data", async () => {
+  const packageManifest = JSON.parse(
+    await readFile(join(repositoryRoot, "package.json"), "utf8"),
+  );
+  const lock = JSON.parse(await readFile(join(repositoryRoot, "package-lock.json"), "utf8"));
+  const lockedAjv = lock.packages["node_modules/ajv"];
+
+  assert.equal(packageManifest.dependencies?.ajv, undefined);
+  assert.equal(packageManifest.devDependencies?.ajv, "8.20.0");
+  assert.equal(lock.packages[""].devDependencies.ajv, "8.20.0");
+  assert.equal(lockedAjv.version, "8.20.0");
+  assert.match(lockedAjv.resolved, /^https:\/\/registry\.npmjs\.org\/ajv\//);
+  assert.match(lockedAjv.integrity, /^sha512-/);
+
+  for (const file of [
+    "test/protocol.test.mjs",
+    "test/session-api-contract.test.mjs",
+    "test/dashboard-contract.test.mjs",
+  ]) {
+    const source = await readFile(join(repositoryRoot, file), "utf8");
+    assert.match(source, /new Ajv2020\(\{ allErrors: true, strict: true \}\)/);
+    assert.doesNotMatch(source, /\$data\s*:/);
+  }
+});
+
 test(
   "clean npm pack builds runtime files and the installed CLI executes through npm bin links",
   { timeout: 180_000 },

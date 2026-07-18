@@ -28,7 +28,7 @@
         src = ./.;
 
         nodejs = pkgs.nodejs_24;
-        npmDepsHash = "sha256-TRe/VaBbJd18LVBnekXmbxUf8qdIQYfvwlaEww/6cfM=";
+        npmDepsHash = "sha256-LeBj2y0g8/F442VhqWwKEIkNuMpAH/JZxpIveUiMTQ0=";
         npmDepsFetcherVersion = 2;
         nativeBuildInputs = [pkgs.makeWrapper];
 

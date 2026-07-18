@@ -70,3 +70,11 @@ path.
 
 A client needing arbitrary code execution or unreviewed extensions must use a
 separate process/security domain.
+
+## Dependency audit baseline
+
+The exact npm lock pins Ajv 8.20.0, outside `GHSA-2g4f-4pwh-qvx6`. Ajv is a
+direct development dependency used only by protocol/schema conformance tests;
+all call sites construct strict draft-2020 validators without enabling `$data`.
+A clean `npm ci --ignore-scripts` followed by the full `npm audit` reports zero
+known vulnerabilities for the locked dependency graph.

@@ -33,7 +33,7 @@ Initial standalone implementation:
 - an operator-safe rolling non-launchd test-instance helper that fast-forwards exact main, Nix-builds/tests to an immutable result, atomically switches, and restarts only its isolated tmux service
 - first-launch private directory bootstrap, stable generated API bearer, and non-overwriting per-instance Pi auth seeding
 - off-device aarch64-linux/Attic package path that avoids native Nix-on-Droid npm crashes and QEMU-only test false failures
-- bounded Linux/macOS CI, release automation, Dependabot, and Docker-free Nix/Pandoc GitHub Pages
+- bounded Linux/macOS CI, release automation, Dependabot, Docker-free Nix/Pandoc GitHub Pages, and an exact Ajv 8.20.0 security-audited schema-test dependency
 - prominent secret-safe operator quickstart for Home Manager instances, session tickets, Pi RPC, and ACP
 - versioned Pi Daemon Dash browser/backend contract with preview-first resources, normalized Pi transcript identities, multiplexed Rich/TUI channels, strict replay/generation semantics, language-neutral fixtures, bounds, and performance budgets
 - exact-pinned Dash frontend foundation with progressive Nord Midnight shell, virtual 10k-session and mixed-transcript viewports, lazy CodeMirror/Vim composer, accessible split-tree controls, deterministic visual artifact, and measured browser/bundle receipts
