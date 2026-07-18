@@ -55,6 +55,10 @@
       "types": "./dist/dashboard-backend.d.ts",
       "import": "./dist/dashboard-backend.js"
     },
+    "./dashboard-remote-backend": {
+      "types": "./dist/dashboard-remote-backend.d.ts",
+      "import": "./dist/dashboard-remote-backend.js"
+    },
     "./dashboard-auth": {
       "types": "./dist/dashboard-auth.d.ts",
       "import": "./dist/dashboard-auth.js"

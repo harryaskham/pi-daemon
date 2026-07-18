@@ -4,7 +4,11 @@ import type { Duplex } from "node:stream";
 
 import type { RpcExtensionUIResponse, RpcResponse } from "@earendil-works/pi-coding-agent";
 
-import { Multiplexer, MultiplexerError } from "./multiplexer.js";
+import {
+  Multiplexer,
+  MultiplexerError,
+  type SessionResidencyLease,
+} from "./multiplexer.js";
 import {
   PI_RPC_HOST_CAPABILITIES,
   type PiRpcController,
@@ -24,6 +28,7 @@ import {
   type SessionRpcSubprotocol,
 } from "./session-api.js";
 import { catalogRecordToSessionResource } from "./session-catalog.js";
+import { ensureSessionResident } from "./session-residency.js";
 import {
   WebSocketHandshakeError,
   WebSocketPeer,
@@ -40,6 +45,7 @@ export interface RpcAttachmentLimits {
   maxOutboundBytesPerConnection: number;
   maxInFlightCommandsPerConnection: number;
   keepAliveMs: number;
+  residencyLeaseTtlMs: number;
 }
 
 export const DEFAULT_RPC_ATTACHMENT_LIMITS: Readonly<RpcAttachmentLimits> = {
@@ -51,6 +57,7 @@ export const DEFAULT_RPC_ATTACHMENT_LIMITS: Readonly<RpcAttachmentLimits> = {
   maxOutboundBytesPerConnection: 4 * 1024 * 1024,
   maxInFlightCommandsPerConnection: 8,
   keepAliveMs: 30_000,
+  residencyLeaseTtlMs: 60_000,
 };
 
 export class RpcAttachmentError extends Error {
@@ -89,6 +96,8 @@ interface RpcConnection {
   role: "controller" | "observer";
   ready: boolean;
   inFlight: number;
+  residencyLease: SessionResidencyLease;
+  residencyRenewal: ReturnType<typeof setInterval>;
 }
 
 interface ParsedCursor {
@@ -154,11 +163,20 @@ export class RpcAttachmentManager {
     const requestedRole = parseRole(url.searchParams.get("role"));
     const requestedGeneration = parseGeneration(url.searchParams.get("generation"));
     const requestedCursor = parseRequestedCursor(url.searchParams.get("cursor"));
+    const hydrate = parseHydrate(url.searchParams.get("hydrate"));
     if (protocol === "pi-rpc.v1" && requestedCursor !== undefined) {
       throw new RpcAttachmentError(400, "cursor_not_supported", "raw Pi RPC attachments do not support cursors");
     }
 
-    const record = await this.#multiplexer.retainedSession(sessionRef);
+    const record = hydrate
+      ? await ensureSessionResident(
+          this.#multiplexer,
+          sessionRef,
+          requestedGeneration,
+        ).catch((error: unknown) => {
+          throw attachmentError(error);
+        })
+      : await this.#multiplexer.retainedSession(sessionRef);
     if (record === undefined) {
       throw new RpcAttachmentError(404, "session_not_found", "session not found");
     }
@@ -177,17 +195,33 @@ export class RpcAttachmentManager {
       throw new RpcAttachmentError(409, "controller_busy", "session already has a controller attachment", true);
     }
 
-    const peer = acceptWebSocket(socket, key, {
-      protocol,
-      limits: {
-        maxMessageBytes: this.limits.maxMessageBytes,
-        maxOutboundBytes: this.limits.maxOutboundBytesPerConnection,
-        keepAliveMs: this.limits.keepAliveMs,
-      },
-    });
-    const initialization = hub.add(peer, protocol, requestedRole, requestedCursor);
-    socket.resume();
-    await initialization;
+    const residencyLease = await this.#multiplexer.acquireResidencyLease(
+      record.sessionId,
+      generation,
+      this.limits.residencyLeaseTtlMs,
+    );
+    try {
+      const peer = acceptWebSocket(socket, key, {
+        protocol,
+        limits: {
+          maxMessageBytes: this.limits.maxMessageBytes,
+          maxOutboundBytes: this.limits.maxOutboundBytesPerConnection,
+          keepAliveMs: this.limits.keepAliveMs,
+        },
+      });
+      const initialization = hub.add(
+        peer,
+        protocol,
+        requestedRole,
+        requestedCursor,
+        residencyLease,
+      );
+      socket.resume();
+      await initialization;
+    } catch (error) {
+      residencyLease.release();
+      throw error;
+    }
   }
 
   dispose(): void {
@@ -281,13 +315,20 @@ class RpcAttachmentHub {
     protocol: SessionRpcSubprotocol,
     requestedRole: "controller" | "observer",
     requestedCursor: ParsedCursor | undefined,
+    residencyLease: SessionResidencyLease,
   ): Promise<void> {
     if (this.#disposed) {
+      residencyLease.release();
       peer.close(1012, "session attachment closed");
       return;
     }
     const id = randomUUID();
     const controllerGranted = requestedRole === "controller" && !this.hasController;
+    const residencyRenewal = setInterval(
+      () => residencyLease.renew(),
+      Math.max(1_000, Math.floor(this.#limits.residencyLeaseTtlMs / 3)),
+    );
+    residencyRenewal.unref?.();
     const connection: RpcConnection = {
       id,
       peer,
@@ -295,6 +336,8 @@ class RpcAttachmentHub {
       role: controllerGranted ? "controller" : "observer",
       ready: protocol === "pi-rpc.v1",
       inFlight: 0,
+      residencyLease,
+      residencyRenewal,
     };
     if (controllerGranted) this.#controllerConnectionId = id;
     this.#connections.set(id, connection);
@@ -325,7 +368,11 @@ class RpcAttachmentHub {
     this.#unsubscribeController();
     if (this.#controllerConnectionId !== undefined) cancelPendingUi(this.#controller);
     this.#controllerConnectionId = undefined;
-    for (const connection of this.#connections.values()) connection.peer.close(code, reason);
+    for (const connection of this.#connections.values()) {
+      clearInterval(connection.residencyRenewal);
+      connection.residencyLease.release();
+      connection.peer.close(code, reason);
+    }
     this.#connections.clear();
     this.#events.length = 0;
     this.#replayBytes = 0;
@@ -583,6 +630,8 @@ class RpcAttachmentHub {
 
   #remove(connection: RpcConnection): void {
     if (!this.#connections.delete(connection.id)) return;
+    clearInterval(connection.residencyRenewal);
+    connection.residencyLease.release();
     if (this.#controllerConnectionId === connection.id) {
       this.#controllerConnectionId = undefined;
       cancelPendingUi(this.#controller);
@@ -686,6 +735,16 @@ function parseGeneration(value: string | null): number | undefined {
     throw new RpcAttachmentError(400, "invalid_generation", "attachment generation is invalid");
   }
   return generation;
+}
+
+function parseHydrate(value: string | null): boolean {
+  if (value === null || value === "false") return false;
+  if (value === "true") return true;
+  throw new RpcAttachmentError(
+    400,
+    "invalid_hydration_mode",
+    "attachment hydration mode is invalid",
+  );
 }
 
 function parseRequestedCursor(value: string | null): ParsedCursor | undefined {

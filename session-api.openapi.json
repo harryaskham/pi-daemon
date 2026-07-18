@@ -221,6 +221,13 @@
           "schema": { "type": "integer", "minimum": 0 }
         },
         {
+          "name": "hydrate",
+          "in": "query",
+          "required": false,
+          "description": "Explicit trusted-service opt-in to reopen a retained durable session without prompting before attach. Omission preserves resident-only RPC behavior.",
+          "schema": { "type": "boolean", "default": false }
+        },
+        {
           "name": "role",
           "in": "query",
           "required": false,
@@ -231,7 +238,7 @@
       "get": {
         "operationId": "attachPiRpc",
         "summary": "Upgrade to a raw or framed Pi RPC WebSocket attachment",
-        "description": "Offer Sec-WebSocket-Protocol pi-rpc.v1 for live-only upstream Pi message shapes or pi-daemon-rpc.v1 for atomic snapshot, bounded replay, host identity, generation, and cursors. Responses are sent only to the issuing connection; AgentSession events fan out to all readers.",
+        "description": "Offer Sec-WebSocket-Protocol pi-rpc.v1 for live-only upstream Pi message shapes or pi-daemon-rpc.v1 for atomic snapshot, bounded replay, host identity, generation, and cursors. Trusted service clients may explicitly hydrate retained durable sessions without prompting; ordinary attaches remain resident-only. Responses are sent only to the issuing connection; AgentSession events fan out to all readers. Reject unacknowledged command replay after disconnect.",
         "parameters": [
           {
             "name": "Sec-WebSocket-Protocol",

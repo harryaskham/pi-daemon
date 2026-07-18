@@ -77,11 +77,15 @@ class FakeController {
 }
 
 class FakeAdapter {
-  constructor(controller) {
+  constructor(controller, persistent = false) {
     this.controller = controller;
+    this.persistent = persistent;
   }
   identity() {
-    return { sessionId: "pi-fixture" };
+    return {
+      sessionId: "pi-fixture",
+      ...(this.persistent ? { sessionFile: "/work/pi-fixture.jsonl" } : {}),
+    };
   }
   async rpcController() {
     return this.controller;
@@ -94,14 +98,16 @@ class FakeAdapter {
 
 class FakeFactory {
   controllers = new Map();
+  opens = [];
   async open(request) {
+    this.opens.push(request);
     const controller = new FakeController();
     this.controllers.set(request.sessionId, controller);
-    return new FakeAdapter(controller);
+    return new FakeAdapter(controller, request.session?.mode !== "memory");
   }
 }
 
-async function startHarness(t, rpcLimits, dashboardTuiAttachments) {
+async function startHarness(t, rpcLimits, dashboardTuiAttachments, sessionMode = "memory") {
   const stateDir = await mkdtemp(join(tmpdir(), "pi-daemon-rpc-attach-"));
   t.after(async () => rm(stateDir, { recursive: true, force: true }));
   const factory = new FakeFactory();
@@ -120,7 +126,7 @@ async function startHarness(t, rpcLimits, dashboardTuiAttachments) {
     generation: 1,
     payload: {
       cwd: "/work/rpc-session",
-      session: { mode: "memory" },
+      session: { mode: sessionMode },
       resources: {
         extensions: "none",
         skills: "none",
@@ -148,6 +154,7 @@ async function startHarness(t, rpcLimits, dashboardTuiAttachments) {
   return {
     server,
     multiplexer,
+    factory,
     controller: factory.controllers.get("rpc-session"),
     rpcAttachments,
     address,
@@ -289,6 +296,7 @@ async function connectWebSocket(address, options = {}) {
   if (options.role !== undefined) query.set("role", options.role);
   if (options.cursor !== undefined) query.set("cursor", options.cursor);
   if (options.generation !== undefined) query.set("generation", String(options.generation));
+  if (options.hydrate !== undefined) query.set("hydrate", String(options.hydrate));
   const suffix = query.size === 0 ? "" : `?${query}`;
   const path = `/v1/session/rpc-session/rpc${suffix}`;
   const socket = await connectWithRetry(address);
@@ -435,7 +443,7 @@ function maskedFrame(opcode, payload) {
 }
 
 async function ready(connection) {
-  assert.equal(connection.status, 101);
+  assert.equal(connection.status, 101, JSON.stringify(connection.body));
   const frame = await connection.websocket.next();
   assert.equal(frame.kind, "attach_ready");
   return frame;
@@ -499,6 +507,42 @@ test("framed attachments route colliding responses privately and replay broadcas
   controllerConnection.websocket.close();
   reconnected.websocket.close();
   assert.equal(harness.multiplexer.status("rpc-session").state, "idle");
+});
+
+test("framed attach hydrates dormant sessions without prompting and holds a renewable residency lease", async (t) => {
+  const harness = await startHarness(
+    t,
+    { residencyLeaseTtlMs: 3_000 },
+    undefined,
+    "new",
+  );
+  await harness.multiplexer.close({
+    protocolVersion: "1.0",
+    requestId: "make-rpc-session-dormant",
+    operation: "close",
+    sessionId: "rpc-session",
+    generation: 1,
+    payload: { retainSession: true },
+  });
+  assert.equal((await harness.multiplexer.retainedSession("rpc-session")).residency, "dormant");
+  assert.equal(harness.factory.opens.length, 1);
+  const ordinary = await connectWebSocket(harness.address, { role: "observer" });
+  assert.equal(ordinary.status, 409);
+  assert.equal(ordinary.body.error.code, "session_not_resident");
+
+  const connection = await connectWebSocket(harness.address, {
+    role: "observer",
+    hydrate: true,
+  });
+  assert.equal((await ready(connection)).snapshot.session.residency, "resident");
+  assert.equal((await harness.multiplexer.retainedSession("rpc-session")).residency, "resident");
+  assert.equal(harness.factory.opens.length, 2);
+  assert.equal(harness.multiplexer.residencyLeaseCount("rpc-session", 1), 1);
+
+  connection.websocket.close();
+  await connection.websocket.waitClosed();
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  assert.equal(harness.multiplexer.residencyLeaseCount("rpc-session", 1), 0);
 });
 
 test("controller ownership and extension UI use explicit first-controller semantics", async (t) => {
@@ -864,6 +908,11 @@ test("upgrade auth, generation, subprotocol, and slow-reader failures stay conne
   assert.equal(unsupported.status, 426);
   const stale = await connectWebSocket(harness.address, { generation: 2 });
   assert.equal(stale.status, 409);
+  const invalidHydration = await connectWebSocket(harness.address, {
+    hydrate: "sometimes",
+  });
+  assert.equal(invalidHydration.status, 400);
+  assert.equal(invalidHydration.body.error.code, "invalid_hydration_mode");
 
   const slow = await connectWebSocket(harness.address, { role: "observer" });
   const healthy = await connectWebSocket(harness.address, { role: "observer" });

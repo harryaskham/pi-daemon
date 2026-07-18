@@ -29,9 +29,10 @@ or Cacophony credentials.
 > content-hashed SPA, preview-only transcript projection, secure browser BFF,
 > signed revocable cookie exchange, revisioned workspace/UI-settings stores,
 > persisted 10k-session inventory, rich transcript rendering, durable direct/fork
-> ownership and export, the neutral service-bearer Dash API, and a bounded
-> in-process shadow-terminal renderer; live channels and full shadow-view
-> lifecycle wiring continue in staged slices.
+> ownership and export, the neutral service-bearer Dash API, coalesced embedded
+> and dedicated Rich/TUI backends with bounded reconnect, and a bounded
+> in-process shadow-terminal host; production browser live-state integration and
+> dedicated process packaging continue in staged slices.
 > Full credential-free install/CRUD/RPC/ACP/restart/security acceptance is green;
 > the repository is a release candidate, but no release tag is cut yet.
 

@@ -452,7 +452,7 @@
         },
         "limits": {
           "type": "object",
-          "required": ["maxHubs", "maxReplayEvents", "maxReplayBytes", "maxTotalReplayBytes", "maxMessageBytes", "maxOutboundBytesPerConnection", "maxInFlightCommandsPerConnection", "keepAliveMs"],
+          "required": ["maxHubs", "maxReplayEvents", "maxReplayBytes", "maxTotalReplayBytes", "maxMessageBytes", "maxOutboundBytesPerConnection", "maxInFlightCommandsPerConnection", "keepAliveMs", "residencyLeaseTtlMs"],
           "properties": {
             "maxHubs": { "type": "integer", "minimum": 1 },
             "maxReplayEvents": { "type": "integer", "minimum": 1 },
@@ -461,7 +461,8 @@
             "maxMessageBytes": { "type": "integer", "minimum": 1 },
             "maxOutboundBytesPerConnection": { "type": "integer", "minimum": 1 },
             "maxInFlightCommandsPerConnection": { "type": "integer", "minimum": 1 },
-            "keepAliveMs": { "type": "integer", "minimum": 1 }
+            "keepAliveMs": { "type": "integer", "minimum": 1 },
+            "residencyLeaseTtlMs": { "type": "integer", "minimum": 1 }
           },
           "additionalProperties": false
         },

@@ -57,7 +57,8 @@
         "maxMessageBytes": 1048576,
         "maxOutboundBytesPerConnection": 4194304,
         "maxInFlightCommandsPerConnection": 8,
-        "keepAliveMs": 30000
+        "keepAliveMs": 30000,
+        "residencyLeaseTtlMs": 60000
       },
       "roles": ["controller", "observer"],
       "replay": true

@@ -287,21 +287,60 @@ export class SessionApiClient {
     );
   }
 
-  async connectDashboardTui(
+  createDashboardRpcSocket(
     sessionRef: string,
-    options: { timeoutMs?: number } = {},
-  ): Promise<WebSocket> {
+    options: {
+      timeoutMs?: number;
+      role?: "controller" | "observer";
+      generation?: number;
+      cursor?: string;
+      hydrate?: boolean;
+    } = {},
+  ): WebSocket {
     const timeoutMs = positiveInteger(options.timeoutMs ?? this.timeoutMs, "timeoutMs");
-    const url = dashboardTuiUrl(this.baseUrl, sessionRef);
-    return new Promise((resolve, reject) => {
-      const socket = new WebSocket(url, DASHBOARD_TUI_SUBPROTOCOL, {
-        headers: { Authorization: `Bearer ${this.#bearerToken}` },
-        handshakeTimeout: timeoutMs,
-        maxPayload: this.maxResponseBytes,
-        perMessageDeflate: false,
-      });
-      socket.once("open", () => resolve(socket));
-      socket.once("error", reject);
+    const url = dashboardRpcUrl(this.baseUrl, sessionRef, options);
+    return this.#createWebSocket(url, "pi-daemon-rpc.v1", timeoutMs);
+  }
+
+  connectDashboardRpc(
+    sessionRef: string,
+    options: Parameters<SessionApiClient["createDashboardRpcSocket"]>[1] = {},
+  ): Promise<WebSocket> {
+    return waitForWebSocketOpen(this.createDashboardRpcSocket(sessionRef, options));
+  }
+
+  createDashboardTuiSocket(
+    sessionRef: string,
+    options: {
+      timeoutMs?: number;
+      role?: "controller" | "observer";
+      generation?: number;
+      cursor?: string;
+      dimensions?: { rows: number; columns: number };
+    } = {},
+  ): WebSocket {
+    const timeoutMs = positiveInteger(options.timeoutMs ?? this.timeoutMs, "timeoutMs");
+    const url = dashboardTuiUrl(this.baseUrl, sessionRef, options);
+    return this.#createWebSocket(url, DASHBOARD_TUI_SUBPROTOCOL, timeoutMs);
+  }
+
+  connectDashboardTui(
+    sessionRef: string,
+    options: Parameters<SessionApiClient["createDashboardTuiSocket"]>[1] = {},
+  ): Promise<WebSocket> {
+    return waitForWebSocketOpen(this.createDashboardTuiSocket(sessionRef, options));
+  }
+
+  #createWebSocket(
+    url: string,
+    subprotocol: "pi-daemon-rpc.v1" | typeof DASHBOARD_TUI_SUBPROTOCOL,
+    timeoutMs: number,
+  ): WebSocket {
+    return new WebSocket(url, subprotocol, {
+      headers: { Authorization: `Bearer ${this.#bearerToken}` },
+      handshakeTimeout: timeoutMs,
+      maxPayload: this.maxResponseBytes,
+      perMessageDeflate: false,
     });
   }
 
@@ -389,6 +428,22 @@ export class SessionApiClient {
   }
 }
 
+function waitForWebSocketOpen(socket: WebSocket): Promise<WebSocket> {
+  if (socket.readyState === WebSocket.OPEN) return Promise.resolve(socket);
+  return new Promise((resolve, reject) => {
+    const onOpen = (): void => {
+      socket.off("error", onError);
+      resolve(socket);
+    };
+    const onError = (error: Error): void => {
+      socket.off("open", onOpen);
+      reject(error);
+    };
+    socket.once("open", onOpen);
+    socket.once("error", onError);
+  });
+}
+
 function parseBaseUrl(value: string, allowInsecureRemote: boolean): URL {
   const url = new URL(value);
   if (!['http:', 'https:'].includes(url.protocol)) throw new Error("session API URL must use http or https");
@@ -403,25 +458,79 @@ function parseBaseUrl(value: string, allowInsecureRemote: boolean): URL {
 }
 
 function websocketUrl(baseUrl: URL, sessionRef: string, generation?: number): string {
+  return dashboardRpcUrl(baseUrl, sessionRef, {
+    role: "controller",
+    ...(generation === undefined ? {} : { generation }),
+  });
+}
+
+function dashboardRpcUrl(
+  baseUrl: URL,
+  sessionRef: string,
+  options: {
+    role?: "controller" | "observer";
+    generation?: number;
+    cursor?: string;
+    hydrate?: boolean;
+  },
+): string {
   const url = new URL(
-    `/v1/session/${encodeURIComponent(sessionReference(sessionRef))}/rpc?role=controller`,
+    `/v1/session/${encodeURIComponent(sessionReference(sessionRef))}/rpc`,
     baseUrl,
   );
-  if (generation !== undefined) {
-    if (!Number.isSafeInteger(generation) || generation < 0) throw new Error("invalid generation");
-    url.searchParams.set("generation", String(generation));
+  url.searchParams.set("role", options.role ?? "observer");
+  if (options.hydrate !== undefined) {
+    url.searchParams.set("hydrate", String(options.hydrate));
+  }
+  appendAttachmentIdentity(url, options.generation, options.cursor);
+  url.protocol = baseUrl.protocol === "https:" ? "wss:" : "ws:";
+  return url.href;
+}
+
+function dashboardTuiUrl(
+  baseUrl: URL,
+  sessionRef: string,
+  options: {
+    role?: "controller" | "observer";
+    generation?: number;
+    cursor?: string;
+    dimensions?: { rows: number; columns: number };
+  },
+): string {
+  const url = new URL(
+    `/v1/dashboard/session/${encodeURIComponent(sessionReference(sessionRef))}/tui`,
+    baseUrl,
+  );
+  url.searchParams.set("role", options.role ?? "observer");
+  appendAttachmentIdentity(url, options.generation, options.cursor);
+  if (options.dimensions !== undefined) {
+    url.searchParams.set("rows", String(dimension(options.dimensions.rows, "rows", 200)));
+    url.searchParams.set("columns", String(dimension(options.dimensions.columns, "columns", 320)));
   }
   url.protocol = baseUrl.protocol === "https:" ? "wss:" : "ws:";
   return url.href;
 }
 
-function dashboardTuiUrl(baseUrl: URL, sessionRef: string): string {
-  const url = new URL(
-    `/v1/dashboard/session/${encodeURIComponent(sessionReference(sessionRef))}/tui`,
-    baseUrl,
-  );
-  url.protocol = baseUrl.protocol === "https:" ? "wss:" : "ws:";
-  return url.href;
+function appendAttachmentIdentity(
+  url: URL,
+  generation: number | undefined,
+  cursor: string | undefined,
+): void {
+  if (generation !== undefined) {
+    if (!Number.isSafeInteger(generation) || generation < 0) throw new Error("invalid generation");
+    url.searchParams.set("generation", String(generation));
+  }
+  if (cursor !== undefined) {
+    if (cursor.length < 1 || cursor.length > 1024) throw new Error("invalid cursor");
+    url.searchParams.set("cursor", cursor);
+  }
+}
+
+function dimension(value: number, name: string, maximum: number): number {
+  if (!Number.isSafeInteger(value) || value < 1 || value > maximum) {
+    throw new Error(`invalid TUI ${name}`);
+  }
+  return value;
 }
 
 function isLoopback(hostname: string): boolean {

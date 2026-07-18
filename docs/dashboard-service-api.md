@@ -19,8 +19,9 @@ a dedicated `DashboardBackend`. It is separate from the same-origin
   backend.
 
 The TypeScript controller is `DashboardNeutralApiController`; `ApiServer`
-accepts it through the optional `dashboardApi` service. The JavaScript client is
-`SessionApiClient`.
+accepts it through the optional `dashboardApi` service. `SessionApiClient`
+provides the authenticated transport and `RemoteDashboardBackend` implements the
+same backend contract as embedded mode without importing in-process services.
 
 ## Routes
 
@@ -65,7 +66,28 @@ It never accepts an arbitrary client path.
 
 Every effective bound is returned by neutral capabilities. Request bodies use
 the existing API body limit; response serialization uses the same pre-allocation
-bound as all other API records.
+bound as all other API records. Because one projected transcript may legitimately
+exceed the per-response HTTP envelope, `RemoteDashboardBackend` intentionally
+fetches at most three bounded records per neutral request and combines opaque
+older/newer pages up to the caller's requested record limit. A single record
+remains below the published record bound; dedicated mode therefore preserves
+valid multi-megabyte transcript output without raising an unbounded client
+response limit.
+
+## Rich attach and prompt-free hydration
+
+Dedicated Rich panes use the existing `pi-daemon-rpc.v1` attachment. The remote
+backend sets `hydrate=true` explicitly: the daemon reopens a retained durable
+session through its persisted catalog/configuration policy, without submitting a
+prompt, and holds a renewable residency lease for the lifetime of the shared
+attachment. Ordinary RPC clients that omit `hydrate` remain resident-only.
+
+One upstream framed socket is coalesced per managed session/generation. Opaque
+cursors survive bounded reconnect; a host/generation/retention mismatch is an
+explicit replay gap followed by a fresh REST-backed transcript plus atomic RPC
+snapshot. Responses are private and never replayed. Any command, extension UI
+answer, TUI input, resize, or control operation sent before a connection loss but
+missing its acknowledgement is indeterminate, not blindly resubmitted.
 
 ## TUI negotiation
 
@@ -94,8 +116,9 @@ writer.
 - `getDashboardTranscript()`;
 - `activateDashboardSession()` / `getDashboardActivation()`;
 - `exportDashboardSession()` / `getDashboardExport()`;
-- `renewDashboardLease()`; and
-- `connectDashboardTui()`.
+- `renewDashboardLease()`;
+- `createDashboardRpcSocket()` / `connectDashboardRpc()`; and
+- `createDashboardTuiSocket()` / `connectDashboardTui()`.
 
 The client retains the existing loopback/plaintext policy, bounded aggregate
 response size, request timeout, service-bearer header, and safe error mapping.

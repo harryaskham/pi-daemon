@@ -294,7 +294,15 @@ uses `get_state`, `get_entries`, and `get_messages` to reconstruct state.
 
 ### `pi-daemon-rpc.v1`
 
-This wraps the same Pi commands, responses, and events in frames:
+This wraps the same Pi commands, responses, and events in frames. Attachments
+remain resident-only by default. A trusted service client may add
+`hydrate=true` to reopen a retained durable session through its persisted
+catalog/configuration policy before attaching; hydration never submits a prompt,
+and the attachment holds a renewable residency lease until disconnect. Invalid
+hydration values fail closed. Memory-only sessions cannot be reopened after
+eviction.
+
+Frames are:
 
 - `command` — one Pi RPC command;
 - `response` — response routed only to the issuing connection;

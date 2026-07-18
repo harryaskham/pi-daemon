@@ -40,19 +40,15 @@ import type {
 } from "./dashboard-contract.js";
 import {
   Multiplexer,
+  MultiplexerError,
   type SessionResidencyLease,
 } from "./multiplexer.js";
 import type {
   PiRpcController,
   PiRpcControllerOutput,
 } from "./pi-rpc-controller.js";
-import type { ProtocolCommand } from "./protocol.js";
 import { catalogRecordToSessionResource } from "./session-catalog.js";
-import {
-  parseSessionConfiguration,
-  requireProvisionedEnvironment,
-  sessionOpenPayloadFromSpec,
-} from "./session-config.js";
+import { ensureSessionResident } from "./session-residency.js";
 import type { JsonObject, JsonValue, PiRpcEvent, SessionResource } from "./session-api.js";
 import type { SessionInventory } from "./session-inventory.js";
 import type { SessionOwnershipService } from "./session-ownership.js";
@@ -388,42 +384,18 @@ export class InProcessDashboardBackend implements DashboardBackend {
   }
 
   async #ensureResident(sessionRef: string, generation: number | undefined) {
-    const retained = await this.#multiplexer.retainedSession(sessionRef);
-    if (retained === undefined) throw new InProcessDashboardBackendError("session_not_found", "managed session does not exist");
-    if (generation !== undefined && retained.generation !== generation) {
-      throw new InProcessDashboardBackendError("stale_generation", "session generation changed");
-    }
-    if (retained.residency === "resident") return retained;
-
-    const prepared = parseSessionConfiguration(retained.spec);
-    requireProvisionedEnvironment(retained.environment, prepared.runtimeOptions.environmentOverlay);
-    let runtimeOptions = prepared.runtimeOptions;
-    if (retained.spec.target.mode === "fork") {
-      const sourceRef = retained.spec.target.sourceSession;
-      const source = sourceRef === undefined ? undefined : await this.#multiplexer.retainedSession(sourceRef);
-      if (source?.conversation?.sessionFile === undefined) {
-        throw new InProcessDashboardBackendError("fork_source_unavailable", "fork source has no retained Pi conversation");
+    try {
+      return await ensureSessionResident(this.#multiplexer, sessionRef, generation);
+    } catch (error) {
+      if (error instanceof MultiplexerError) {
+        throw new InProcessDashboardBackendError(
+          error.code,
+          error.message,
+          error.retryable,
+        );
       }
-      runtimeOptions = { ...runtimeOptions, resolvedSourceSessionPath: source.conversation.sessionFile };
+      throw error;
     }
-    const command: Extract<ProtocolCommand, { operation: "open" }> = {
-      protocolVersion: "1.0",
-      requestId: `dash-hydrate-${randomUUID()}`,
-      operation: "open",
-      sessionId: retained.sessionId,
-      generation: retained.generation,
-      payload: sessionOpenPayloadFromSpec(prepared.persistedSpec),
-    };
-    await this.#multiplexer.open(command, {
-      runtimeOptions,
-      environmentSummary: retained.environment,
-      catalogSpec: retained.spec,
-    });
-    const resident = await this.#multiplexer.retainedSession(retained.sessionId);
-    if (resident === undefined || resident.residency !== "resident") {
-      throw new InProcessDashboardBackendError("hydration_failed", "session did not become resident", true);
-    }
-    return resident;
   }
 
   async #managedPreview(session: SessionResource): Promise<TranscriptPage["records"]> {

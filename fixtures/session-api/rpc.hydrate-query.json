@@ -1,0 +1,10 @@
+{
+  "method": "GET",
+  "path": "/v1/session/session-fixture-01/rpc?role=observer&generation=3&hydrate=true",
+  "subprotocol": "pi-daemon-rpc.v1",
+  "semantics": {
+    "promptSubmitted": false,
+    "residentOnlyWhenOmitted": true,
+    "renewableResidencyLease": true
+  }
+}

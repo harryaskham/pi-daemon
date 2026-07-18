@@ -7,8 +7,9 @@ title: Dash browser and backend contracts
 
 Status: **Versioned contract, inventory, transcript projection, ownership,
 production SPA/workspace, secure browser server, authenticated stream router,
-and the embedded rich backend are implemented. Neutral remote APIs and full shadow-TUI browser integration
-continue in dependency-linked slices.**
+embedded and dedicated backends, neutral remote APIs, and the shadow-TUI
+transport are implemented. Full live browser integration and dedicated
+lifecycle packaging continue in dependency-linked slices.**
 
 Pi Daemon Dash has one browser protocol and one transport-neutral backend seam.
 The same compiled SPA talks to `/dash/v1` whether `DashboardServer` is embedded
@@ -24,6 +25,10 @@ The machine-readable and TypeScript contracts are:
 - `src/dashboard-backend.ts` / package export `./dashboard-backend` — policy-
   preserving `InProcessDashboardBackend`, coalesced rich channels, replay,
   controller arbitration, durable hydration, and renewable residency leases;
+- `src/dashboard-remote-backend.ts` / package export
+  `./dashboard-remote-backend` — service-bearer REST delegation plus coalesced
+  framed-RPC/TUI channels, bounded reconnect, cursor/gap recovery, and
+  indeterminate accepted-command handling for dedicated mode;
 - `src/dashboard-auth.ts`, `src/dashboard-store.ts`, and
   `src/dashboard-server.ts` / matching package subpaths — credential exchange,
   signed revocable browser sessions, static SPA serving, strict request
@@ -70,10 +75,12 @@ assuming the shadow view exists. The embedded backend advertises TUI only when
 a transport-neutral coalesced TUI channel manager is injected; the same
 browser protocol major remains valid.
 
-The embedded Rich implementation opens dormant durable sessions through the
-normal catalog/runtime configuration boundary without prompting, then acquires
-a renewable bounded residency lease. Panes for the same session/generation
-share one controller subscription and replay buffer. Mutating commands remain
+Both Rich implementations open dormant durable sessions through the normal
+catalog/runtime configuration boundary without prompting, then hold a renewable
+bounded residency lease. The remote backend requests this explicitly with the
+framed attachment's `hydrate=true` query; ordinary RPC attaches retain their
+existing resident-only behavior. Panes for the same session/generation share
+one controller subscription, upstream attachment, and replay buffer. Mutating commands remain
 controller-only, read commands remain observer-safe, idempotency keys join only
 semantically identical commands, and host/session/generation cursors produce an
 explicit replay gap plus fresh snapshot when stale. Closing the final pane

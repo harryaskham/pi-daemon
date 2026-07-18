@@ -13,6 +13,10 @@ import { createDashboardContractFixtures } from "../dist/dashboard-fixtures.js";
 import { createDashboardStreamHandler } from "../dist/dashboard-stream-router.js";
 import { Multiplexer } from "../dist/multiplexer.js";
 import { FileSessionCatalog } from "../dist/session-catalog.js";
+import {
+  assertDashboardBackendResourceConformance,
+  assertDashboardRichChannelConformance,
+} from "./dashboard-backend-conformance.mjs";
 
 class FakeRpcController {
   listeners = new Set();
@@ -194,16 +198,9 @@ async function harness(t, options = {}) {
 
 test("embedded backend delegates inventory, preview, ownership and catalog without transport policy", async (t) => {
   const { backend, calls, fixtures } = await harness(t);
-  assert.deepEqual(await backend.listSessions({ limit: 20 }), fixtures.inventory);
-  assert.equal((await backend.getSessionInfo(fixtures.sessionInfo.inventoryId)).inventoryId, fixtures.sessionInfo.inventoryId);
-  assert.deepEqual(await backend.getTranscript(fixtures.sessionInfo.inventoryId, { limit: 20 }), fixtures.transcript);
+  await assertDashboardBackendResourceConformance({ backend, fixtures });
   assert.equal(calls.project[0].path, fixtures.sessionInfo.source.canonicalPath);
   assert.equal(calls.project[0].expectedFingerprint, fixtures.sessionInfo.source.fingerprint.value);
-  assert.deepEqual(await backend.activateSession(fixtures.sessionInfo.inventoryId, fixtures.activationRequest), fixtures.activationTicket);
-  assert.deepEqual(await backend.getActivation(fixtures.activationTicket.ticketId), fixtures.activationTicket);
-  assert.deepEqual(await backend.exportSession(fixtures.sessionInfo.managed.sessionId, fixtures.exportRequest), fixtures.exportTicket);
-  assert.deepEqual(await backend.getExport(fixtures.exportTicket.ticketId), fixtures.exportTicket);
-  assert.equal((await backend.getManagedSession(fixtures.sessionInfo.managed.sessionId)).generation, 3);
   const capabilities = await backend.capabilities();
   assert.equal(capabilities.presentations.rich.available, true);
   assert.equal(capabilities.presentations.tui.available, false);
@@ -212,6 +209,16 @@ test("embedded backend delegates inventory, preview, ownership and catalog witho
     backend.openTuiChannel({ sessionRef: fixtures.sessionInfo.managed.sessionId, role: "observer", dimensions: { rows: 24, columns: 80 } }),
     (error) => error instanceof InProcessDashboardBackendError && error.code === "tui_unavailable",
   );
+});
+
+test("shared Rich-channel conformance passes for the embedded backend", async (t) => {
+  const { backend, factory, fixtures } = await harness(t);
+  await assertDashboardRichChannelConformance({
+    backend,
+    sessionRef: fixtures.sessionInfo.managed.sessionId,
+    emitSessionEvent: async (event) => factory.controller.emit(event),
+    expectedEntries: fixtures.transcript.records.length,
+  });
 });
 
 test("rich channels coalesce controller events, enforce roles, replay and durable identity", async (t) => {

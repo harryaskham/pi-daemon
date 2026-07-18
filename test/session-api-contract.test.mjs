@@ -112,6 +112,18 @@ test("session target and framed event invariants reject ambiguous records", asyn
   assert.equal(validateEvent(event), false);
 });
 
+test("explicit RPC hydration fixture remains prompt-free and opt-in", async () => {
+  const request = await fixture("rpc.hydrate-query.json");
+  assert.equal(request.method, "GET");
+  assert.equal(request.subprotocol, "pi-daemon-rpc.v1");
+  assert.match(request.path, /[?&]hydrate=true(?:&|$)/);
+  assert.deepEqual(request.semantics, {
+    promptSubmitted: false,
+    residentOnlyWhenOmitted: true,
+    renewableResidencyLease: true,
+  });
+});
+
 test("Pi RPC compatibility inventory is exact and includes settled-era commands", async () => {
   const schema = await readJson("session-api.schema.json");
   const capabilities = await fixture("capabilities.response.json");
@@ -149,6 +161,9 @@ test("OpenAPI publishes every route, service bearer auth, and resolvable contrac
     ],
     DASHBOARD_TUI_SUBPROTOCOL,
   );
+  const rpcParameters = openapi.paths["/session/{sessionRef}/rpc"].parameters;
+  const hydrate = rpcParameters.find((parameter) => parameter.name === "hydrate");
+  assert.deepEqual(hydrate.schema, { type: "boolean", default: false });
 
   const visit = (value) => {
     if (Array.isArray(value)) {
