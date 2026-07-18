@@ -1,0 +1,487 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Pi Daemon Dash browser API",
+    "version": "1.0.0",
+    "description": "One same-origin browser protocol for embedded and dedicated Pi Daemon Dash servers. The daemon service bearer is server-to-server only and never appears on this wire."
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:7464/dash/v1",
+      "description": "Provisional authenticated loopback Dash endpoint; non-loopback deployments require HTTPS or explicit insecure-development policy."
+    }
+  ],
+  "security": [{ "dashSession": [] }],
+  "paths": {
+    "/login": {
+      "post": {
+        "operationId": "loginDashboard",
+        "summary": "Exchange an input-only web credential for an HttpOnly browser session",
+        "security": [],
+        "x-origin-check-required": true,
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "./dashboard-api.schema.json#/$defs/loginRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Authenticated browser session metadata; the session cookie is emitted only as Set-Cookie",
+            "headers": { "Set-Cookie": { "$ref": "#/components/headers/SetCookie" } },
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "./dashboard-api.schema.json#/$defs/loginEnvelope" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/InvalidRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "429": { "$ref": "#/components/responses/Capacity" }
+        }
+      }
+    },
+    "/logout": {
+      "post": {
+        "operationId": "logoutDashboard",
+        "summary": "Revoke the current browser session",
+        "security": [{ "dashSession": [], "csrfHeader": [] }],
+        "x-origin-check-required": true,
+        "responses": {
+          "204": { "description": "Browser session revoked" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" }
+        }
+      }
+    },
+    "/bootstrap": {
+      "get": {
+        "operationId": "getDashboardBootstrap",
+        "summary": "Fetch capabilities, effective settings, one workspace, and persisted-index rows without hydrating a Pi runtime",
+        "parameters": [
+          { "$ref": "#/components/parameters/RequestId" },
+          { "$ref": "#/components/parameters/ClientId" },
+          { "$ref": "#/components/parameters/WorkspaceId" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Bounded preview-first bootstrap",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "./dashboard-api.schema.json#/$defs/bootstrapEnvelope" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "503": { "$ref": "#/components/responses/Unavailable" }
+        }
+      }
+    },
+    "/sessions": {
+      "get": {
+        "operationId": "listDashboardSessions",
+        "summary": "List the merged managed/external inventory without canonical source paths",
+        "parameters": [
+          { "$ref": "#/components/parameters/RequestId" },
+          { "$ref": "#/components/parameters/ClientId" },
+          { "$ref": "#/components/parameters/WorkspaceId" },
+          { "$ref": "#/components/parameters/PageCursor" },
+          { "$ref": "#/components/parameters/PageLimit" },
+          { "name": "search", "in": "query", "schema": { "type": "string", "maxLength": 1024 } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Stable bounded inventory page",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "./dashboard-api.schema.json#/$defs/inventoryEnvelope" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/InvalidRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/sessions/{inventoryId}": {
+      "parameters": [
+        { "$ref": "#/components/parameters/InventoryId" },
+        { "$ref": "#/components/parameters/RequestId" },
+        { "$ref": "#/components/parameters/ClientId" },
+        { "$ref": "#/components/parameters/WorkspaceId" }
+      ],
+      "get": {
+        "operationId": "getDashboardSessionInfo",
+        "summary": "Get authenticated safe metadata, ownership, and diagnostics for one inventory item",
+        "responses": {
+          "200": {
+            "description": "Full information resource; unlike inventory pages it may include an authenticated canonical source path",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "./dashboard-api.schema.json#/$defs/sessionInfoEnvelope" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/sessions/{inventoryId}/transcript": {
+      "parameters": [
+        { "$ref": "#/components/parameters/InventoryId" },
+        { "$ref": "#/components/parameters/RequestId" },
+        { "$ref": "#/components/parameters/ClientId" },
+        { "$ref": "#/components/parameters/WorkspaceId" },
+        { "$ref": "#/components/parameters/PageCursor" },
+        { "$ref": "#/components/parameters/TranscriptLimit" }
+      ],
+      "get": {
+        "operationId": "getDashboardTranscript",
+        "summary": "Read a cached or bounded cold projection without provider auth, extension loading, runtime hydration, or a model turn",
+        "responses": {
+          "200": {
+            "description": "Normalized active-branch transcript page keyed by Pi entry/message/tool identities",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "./dashboard-api.schema.json#/$defs/transcriptEnvelope" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "413": { "$ref": "#/components/responses/TooLarge" }
+        }
+      }
+    },
+    "/sessions/{inventoryId}/activate": {
+      "parameters": [
+        { "$ref": "#/components/parameters/InventoryId" },
+        { "$ref": "#/components/parameters/ClientId" },
+        { "$ref": "#/components/parameters/WorkspaceId" },
+        { "$ref": "#/components/parameters/IdempotencyKey" }
+      ],
+      "post": {
+        "operationId": "activateDashboardSession",
+        "summary": "Durably admit explicit reuse, direct/co-opt, fork/import, or preview-only activation",
+        "security": [{ "dashSession": [], "csrfHeader": [] }],
+        "x-origin-check-required": true,
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "./dashboard-api.schema.json#/$defs/activationRequest" }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Activation admitted or joined by idempotency key",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "./dashboard-api.schema.json#/$defs/activationTicketEnvelope" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "412": { "$ref": "#/components/responses/Precondition" },
+          "429": { "$ref": "#/components/responses/Capacity" }
+        }
+      }
+    },
+    "/activation/{ticketId}": {
+      "get": {
+        "operationId": "getDashboardActivation",
+        "summary": "Inspect a retained activation ticket",
+        "parameters": [
+          { "$ref": "#/components/parameters/TicketId" },
+          { "$ref": "#/components/parameters/RequestId" },
+          { "$ref": "#/components/parameters/ClientId" },
+          { "$ref": "#/components/parameters/WorkspaceId" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Current activation state",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "./dashboard-api.schema.json#/$defs/activationTicketEnvelope" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/sessions/{sessionRef}/export": {
+      "post": {
+        "operationId": "exportDashboardSession",
+        "summary": "Durably export as a new Pi session or guarded unchanged-prefix append",
+        "security": [{ "dashSession": [], "csrfHeader": [] }],
+        "x-origin-check-required": true,
+        "parameters": [
+          { "$ref": "#/components/parameters/SessionRef" },
+          { "$ref": "#/components/parameters/ClientId" },
+          { "$ref": "#/components/parameters/WorkspaceId" },
+          { "$ref": "#/components/parameters/IdempotencyKey" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "./dashboard-api.schema.json#/$defs/exportRequest" }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Export admitted or joined by idempotency key",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "./dashboard-api.schema.json#/$defs/exportTicketEnvelope" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "412": { "$ref": "#/components/responses/Precondition" }
+        }
+      }
+    },
+    "/export/{ticketId}": {
+      "get": {
+        "operationId": "getDashboardExport",
+        "summary": "Inspect a retained export ticket",
+        "parameters": [
+          { "$ref": "#/components/parameters/TicketId" },
+          { "$ref": "#/components/parameters/RequestId" },
+          { "$ref": "#/components/parameters/ClientId" },
+          { "$ref": "#/components/parameters/WorkspaceId" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Current export state",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "./dashboard-api.schema.json#/$defs/exportTicketEnvelope" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/workspaces/{workspaceId}": {
+      "parameters": [
+        { "$ref": "#/components/parameters/WorkspacePathId" },
+        { "$ref": "#/components/parameters/ClientId" }
+      ],
+      "get": {
+        "operationId": "getDashboardWorkspace",
+        "summary": "Read the authoritative split-tree workspace and seen cursors",
+        "responses": {
+          "200": {
+            "description": "Current workspace",
+            "headers": { "ETag": { "$ref": "#/components/headers/ETag" } },
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "./dashboard-api.schema.json#/$defs/workspaceEnvelope" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
+      "put": {
+        "operationId": "updateDashboardWorkspace",
+        "summary": "Optimistically replace one bounded split-tree workspace",
+        "security": [{ "dashSession": [], "csrfHeader": [] }],
+        "x-origin-check-required": true,
+        "parameters": [
+          { "$ref": "#/components/parameters/IfMatch" },
+          { "$ref": "#/components/parameters/IdempotencyKey" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "./dashboard-api.schema.json#/$defs/workspaceUpdateRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated workspace",
+            "headers": { "ETag": { "$ref": "#/components/headers/ETag" } },
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "./dashboard-api.schema.json#/$defs/workspaceEnvelope" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "412": { "$ref": "#/components/responses/Precondition" },
+          "413": { "$ref": "#/components/responses/TooLarge" }
+        }
+      }
+    },
+    "/settings": {
+      "get": {
+        "operationId": "getDashboardSettings",
+        "summary": "Read effective UI settings and source provenance",
+        "parameters": [
+          { "$ref": "#/components/parameters/RequestId" },
+          { "$ref": "#/components/parameters/ClientId" },
+          { "$ref": "#/components/parameters/WorkspaceId" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Effective UI settings",
+            "headers": { "ETag": { "$ref": "#/components/headers/ETag" } },
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "./dashboard-api.schema.json#/$defs/settingsEnvelope" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      },
+      "patch": {
+        "operationId": "patchDashboardSettings",
+        "summary": "Update only the allowlisted mutable UI overlay",
+        "security": [{ "dashSession": [], "csrfHeader": [] }],
+        "x-origin-check-required": true,
+        "parameters": [
+          { "$ref": "#/components/parameters/IfMatch" },
+          { "$ref": "#/components/parameters/IdempotencyKey" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "./dashboard-api.schema.json#/$defs/settingsPatchRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated effective settings",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "./dashboard-api.schema.json#/$defs/settingsEnvelope" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "412": { "$ref": "#/components/responses/Precondition" },
+          "422": { "$ref": "#/components/responses/Unsupported" }
+        }
+      },
+      "delete": {
+        "operationId": "resetDashboardSettings",
+        "summary": "Delete the mutable UI overlay and restore configured defaults",
+        "security": [{ "dashSession": [], "csrfHeader": [] }],
+        "x-origin-check-required": true,
+        "parameters": [{ "$ref": "#/components/parameters/IfMatch" }],
+        "responses": {
+          "200": {
+            "description": "Configured defaults after reset",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "./dashboard-api.schema.json#/$defs/settingsEnvelope" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "412": { "$ref": "#/components/responses/Precondition" }
+        }
+      }
+    },
+    "/stream": {
+      "get": {
+        "operationId": "attachDashboardStream",
+        "summary": "Upgrade to one bounded browser stream multiplexing pane subscriptions",
+        "x-websocket-subprotocol": "pi-daemon-dash.v1",
+        "x-daemon-service-bearer-exposed": false,
+        "parameters": [
+          { "$ref": "#/components/parameters/ClientId" },
+          { "$ref": "#/components/parameters/WorkspaceId" }
+        ],
+        "responses": {
+          "101": {
+            "description": "Authenticated multiplexed browser WebSocket; messages validate as streamClientFrame or streamServerFrame"
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "426": { "$ref": "#/components/responses/UpgradeRequired" },
+          "429": { "$ref": "#/components/responses/Capacity" }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "dashSession": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "__Host-pi-daemon-dash",
+        "description": "Opaque revocable HttpOnly SameSite=Strict browser session. Never returned in JSON or JavaScript-readable storage."
+      },
+      "csrfHeader": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-Pi-Daemon-CSRF"
+      }
+    },
+    "parameters": {
+      "RequestId": { "name": "X-Request-Id", "in": "header", "schema": { "type": "string", "minLength": 1, "maxLength": 128 } },
+      "ClientId": { "name": "X-Pi-Daemon-Client-Id", "in": "header", "required": true, "schema": { "type": "string", "minLength": 1, "maxLength": 256 } },
+      "WorkspaceId": { "name": "X-Pi-Daemon-Workspace-Id", "in": "header", "required": true, "schema": { "type": "string", "minLength": 1, "maxLength": 256 } },
+      "PageCursor": { "name": "cursor", "in": "query", "schema": { "type": "string", "minLength": 1, "maxLength": 1024 } },
+      "PageLimit": { "name": "limit", "in": "query", "schema": { "type": "integer", "minimum": 1, "maximum": 100, "default": 50 } },
+      "TranscriptLimit": { "name": "limit", "in": "query", "schema": { "type": "integer", "minimum": 1, "maximum": 200, "default": 100 } },
+      "InventoryId": { "name": "inventoryId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1, "maxLength": 256 } },
+      "SessionRef": { "name": "sessionRef", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1, "maxLength": 256 } },
+      "TicketId": { "name": "ticketId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1, "maxLength": 256 } },
+      "WorkspacePathId": { "name": "workspaceId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1, "maxLength": 256 } },
+      "IdempotencyKey": { "name": "Idempotency-Key", "in": "header", "required": true, "schema": { "type": "string", "minLength": 1, "maxLength": 512 } },
+      "IfMatch": { "name": "If-Match", "in": "header", "required": true, "schema": { "type": "string", "minLength": 1, "maxLength": 256 } }
+    },
+    "headers": {
+      "ETag": { "description": "Strong nonsecret resource revision tag", "schema": { "type": "string", "minLength": 1, "maxLength": 256 } },
+      "SetCookie": { "description": "Owner-private opaque browser session cookie; Secure is required whenever TLS is used", "schema": { "type": "string" } }
+    },
+    "responses": {
+      "InvalidRequest": { "$ref": "#/components/responses/Error" },
+      "Unauthorized": { "$ref": "#/components/responses/Error" },
+      "Forbidden": { "$ref": "#/components/responses/Error" },
+      "NotFound": { "$ref": "#/components/responses/Error" },
+      "Conflict": { "$ref": "#/components/responses/Error" },
+      "Precondition": { "$ref": "#/components/responses/Error" },
+      "TooLarge": { "$ref": "#/components/responses/Error" },
+      "Unsupported": { "$ref": "#/components/responses/Error" },
+      "Capacity": { "$ref": "#/components/responses/Error" },
+      "UpgradeRequired": { "$ref": "#/components/responses/Error" },
+      "Unavailable": { "$ref": "#/components/responses/Error" },
+      "Error": {
+        "description": "Safe typed error envelope; authentication failures reveal no session existence",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "./dashboard-api.schema.json#/$defs/errorEnvelope" }
+          }
+        }
+      }
+    }
+  }
+}

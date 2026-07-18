@@ -1,0 +1,7 @@
+{
+  "requestId": "req-export-01",
+  "idempotencyKey": "export-fixture-01",
+  "mode": "as-new",
+  "expectedSourceFingerprint": "sha256:fixture-source-fingerprint",
+  "releaseAfterExport": false
+}

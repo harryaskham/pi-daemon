@@ -1,0 +1,23 @@
+{
+  "dashVersion": "1.0",
+  "requestId": "req-stream-01",
+  "serverInstanceId": "dash-fixture-01",
+  "clientId": "client-fixture-01",
+  "workspaceId": "workspace-fixture-01",
+  "kind": "replay_gap",
+  "correlationId": "correlation-gap-01",
+  "subscriptionId": "subscription-fixture-01",
+  "gap": {
+    "kind": "replay_gap",
+    "identity": {
+      "hostInstanceId": "host-fixture-01",
+      "sessionId": "session-fixture-01",
+      "generation": 3
+    },
+    "reason": "cursor-expired",
+    "requestedCursor": "dash:fixture:expired",
+    "highWaterCursor": "dash:fixture:host-fixture-01:session-fixture-01:3:41",
+    "oldestAvailableCursor": "dash:fixture:host-fixture-01:session-fixture-01:3:40",
+    "snapshotFollows": true
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "reuseSucceeded": {
+    "ticketId": "activation-fixture-01",
+    "requestId": "req-activation-01",
+    "idempotencyKey": "activation-fixture-01",
+    "inventoryId": "inventory-fixture-01",
+    "mode": "reuse",
+    "state": "succeeded",
+    "submittedAt": "2026-07-18T12:00:00.000Z",
+    "updatedAt": "2026-07-18T12:00:00.000Z",
+    "managedSession": {
+      "sessionId": "session-fixture-01",
+      "generation": 3
+    }
+  },
+  "directQueued": {
+    "ticketId": "activation-direct-fixture-01",
+    "requestId": "req-activation-direct-01",
+    "idempotencyKey": "activation-direct-fixture-01",
+    "inventoryId": "inventory-fixture-01",
+    "mode": "direct",
+    "state": "queued",
+    "submittedAt": "2026-07-18T12:00:00.000Z",
+    "updatedAt": "2026-07-18T12:00:00.000Z"
+  },
+  "forkRunning": {
+    "ticketId": "activation-fork-fixture-01",
+    "requestId": "req-activation-fork-01",
+    "idempotencyKey": "activation-fork-fixture-01",
+    "inventoryId": "inventory-fixture-01",
+    "mode": "fork",
+    "state": "running",
+    "submittedAt": "2026-07-18T12:00:00.000Z",
+    "updatedAt": "2026-07-18T12:00:00.000Z"
+  }
+}

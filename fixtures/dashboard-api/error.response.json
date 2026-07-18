@@ -1,0 +1,13 @@
+{
+  "dashVersion": "1.0",
+  "requestId": "req-error-01",
+  "serverInstanceId": "dash-fixture-01",
+  "clientId": "client-fixture-01",
+  "workspaceId": "workspace-fixture-01",
+  "ok": false,
+  "error": {
+    "code": "controller_required",
+    "message": "controller role is required",
+    "retryable": true
+  }
+}

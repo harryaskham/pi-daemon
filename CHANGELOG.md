@@ -31,6 +31,7 @@ Initial standalone implementation:
 - off-device aarch64-linux/Attic package path that avoids native Nix-on-Droid npm crashes and QEMU-only test false failures
 - bounded Linux/macOS CI, release automation, Dependabot, and Docker-free Nix/Pandoc GitHub Pages
 - prominent secret-safe operator quickstart for Home Manager instances, session tickets, Pi RPC, and ACP
+- versioned Pi Daemon Dash browser/backend contract with preview-first resources, normalized Pi transcript identities, multiplexed Rich/TUI channels, strict replay/generation semantics, language-neutral fixtures, bounds, and performance budgets
 - hermetic Linux/Nix installed-bin checks that resolve npm links through the pinned Node runtime
 - credential-free full-host acceptance across installed artifacts, configured CRUD, RPC/ACP/stdio, restart/replay, security, and zero per-session child processes
 - optional live-provider two-session zero-child-process acceptance harness

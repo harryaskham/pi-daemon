@@ -9,6 +9,8 @@ for (const contract of [
   "protocol.schema.json",
   "session-api.schema.json",
   "session-api.openapi.json",
+  "dashboard-api.schema.json",
+  "dashboard-api.openapi.json",
 ]) {
   await copyFile(new URL(`../${contract}`, import.meta.url), new URL(`../dist/${contract}`, import.meta.url));
 }

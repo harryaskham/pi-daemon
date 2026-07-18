@@ -52,7 +52,8 @@
           packageRoot="$out/lib/node_modules/@harryaskham/pi-daemon"
           mkdir -p "$packageRoot" "$out/bin"
           cp -R dist node_modules package.json CHANGELOG.md README.md SECURITY.md LICENSE \
-            protocol.schema.json session-api.schema.json session-api.openapi.json "$packageRoot/"
+            protocol.schema.json session-api.schema.json session-api.openapi.json \
+            dashboard-api.schema.json dashboard-api.openapi.json "$packageRoot/"
           makeWrapper ${pkgs.nodejs_24}/bin/node "$out/bin/pi-daemon" \
             --add-flags "$packageRoot/dist/cli.js"
           makeWrapper ${pkgs.nodejs_24}/bin/node "$out/bin/pi-daemon-rpc" \
@@ -120,10 +121,15 @@
         cp ${./protocol.schema.json} "$out/protocol.schema.json"
         cp ${./session-api.schema.json} "$out/session-api.schema.json"
         cp ${./session-api.openapi.json} "$out/session-api.openapi.json"
+        cp ${./dashboard-api.schema.json} "$out/dashboard-api.schema.json"
+        cp ${./dashboard-api.openapi.json} "$out/dashboard-api.openapi.json"
         touch "$out/.nojekyll"
         test -s "$out/index.html"
         test -s "$out/quickstart/index.html"
         test -s "$out/protocol/index.html"
+        test -s "$out/dashboard-protocol/index.html"
+        test -s "$out/dashboard-api.schema.json"
+        test -s "$out/dashboard-api.openapi.json"
       '';
     in {
       default = package;

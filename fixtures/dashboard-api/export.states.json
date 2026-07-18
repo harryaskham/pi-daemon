@@ -1,0 +1,25 @@
+{
+  "asNewSucceeded": {
+    "ticketId": "export-fixture-01",
+    "requestId": "req-export-01",
+    "idempotencyKey": "export-fixture-01",
+    "sessionRef": "session-fixture-01",
+    "mode": "as-new",
+    "state": "succeeded",
+    "submittedAt": "2026-07-18T12:00:00.000Z",
+    "updatedAt": "2026-07-18T12:00:00.000Z",
+    "exportedInventoryId": "inventory-exported-fixture-01",
+    "sourceFingerprint": "sha256:fixture-source-fingerprint"
+  },
+  "appendIndeterminate": {
+    "ticketId": "export-append-fixture-01",
+    "requestId": "req-export-append-01",
+    "idempotencyKey": "export-append-fixture-01",
+    "sessionRef": "session-fixture-01",
+    "mode": "append-to-origin",
+    "state": "indeterminate",
+    "submittedAt": "2026-07-18T12:00:00.000Z",
+    "updatedAt": "2026-07-18T12:00:00.000Z",
+    "sourceFingerprint": "sha256:fixture-source-fingerprint"
+  }
+}

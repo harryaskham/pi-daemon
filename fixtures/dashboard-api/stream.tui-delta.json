@@ -1,0 +1,44 @@
+{
+  "dashVersion": "1.0",
+  "requestId": "req-stream-01",
+  "serverInstanceId": "dash-fixture-01",
+  "clientId": "client-fixture-01",
+  "workspaceId": "workspace-fixture-01",
+  "kind": "tui_delta",
+  "correlationId": "correlation-tui-01",
+  "subscriptionId": "subscription-tui-fixture-01",
+  "delta": {
+    "kind": "tui_delta",
+    "identity": {
+      "hostInstanceId": "host-fixture-01",
+      "sessionId": "session-fixture-01",
+      "generation": 3
+    },
+    "cursor": "dash:fixture:host-fixture-01:session-fixture-01:3:41",
+    "sequence": 41,
+    "dimensions": {
+      "rows": 24,
+      "columns": 80
+    },
+    "changedRows": [
+      {
+        "row": 0,
+        "runs": [
+          {
+            "text": "Pi fixture",
+            "style": {
+              "bold": true
+            }
+          }
+        ]
+      }
+    ],
+    "cursorState": {
+      "row": 1,
+      "column": 0,
+      "visible": true,
+      "shape": "block"
+    },
+    "title": "Pi fixture"
+  }
+}

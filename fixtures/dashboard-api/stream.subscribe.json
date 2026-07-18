@@ -1,0 +1,14 @@
+{
+  "dashVersion": "1.0",
+  "kind": "subscribe",
+  "clientId": "client-fixture-01",
+  "workspaceId": "workspace-fixture-01",
+  "correlationId": "correlation-subscribe-01",
+  "subscriptionId": "subscription-fixture-01",
+  "presentation": "rich",
+  "inventoryId": "inventory-fixture-01",
+  "sessionRef": "session-fixture-01",
+  "generation": 3,
+  "role": "observer",
+  "cursor": "dash:fixture:host-fixture-01:session-fixture-01:3:40"
+}

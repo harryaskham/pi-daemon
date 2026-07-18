@@ -1,0 +1,23 @@
+{
+  "dashVersion": "1.0",
+  "requestId": "req-stream-01",
+  "serverInstanceId": "dash-fixture-01",
+  "clientId": "client-fixture-01",
+  "workspaceId": "workspace-fixture-01",
+  "kind": "session_event",
+  "correlationId": "correlation-event-01",
+  "subscriptionId": "subscription-fixture-01",
+  "event": {
+    "kind": "session_event",
+    "identity": {
+      "hostInstanceId": "host-fixture-01",
+      "sessionId": "session-fixture-01",
+      "generation": 3
+    },
+    "cursor": "dash:fixture:host-fixture-01:session-fixture-01:3:41",
+    "sequence": 41,
+    "event": {
+      "type": "agent_settled"
+    }
+  }
+}

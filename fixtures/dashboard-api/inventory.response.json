@@ -1,0 +1,56 @@
+{
+  "dashVersion": "1.0",
+  "requestId": "req-inventory-01",
+  "serverInstanceId": "dash-fixture-01",
+  "clientId": "client-fixture-01",
+  "workspaceId": "workspace-fixture-01",
+  "ok": true,
+  "data": {
+    "sessions": [
+      {
+        "inventoryId": "inventory-fixture-01",
+        "sourceKind": "direct",
+        "title": "Contract fixture",
+        "cwdBasename": "fixture",
+        "projectLabel": "fixture",
+        "piSessionId": "pi-session-fixture-01",
+        "createdAt": "2026-07-18T11:00:00.000Z",
+        "modifiedAt": "2026-07-18T12:00:00.000Z",
+        "messageCount": 2,
+        "entryCount": 4,
+        "toolCallCount": 1,
+        "currentLeafId": "entry-assistant-01",
+        "managed": {
+          "sessionId": "session-fixture-01",
+          "name": "Contract fixture",
+          "generation": 3,
+          "revision": 7,
+          "residency": "resident",
+          "state": "idle"
+        },
+        "activation": {
+          "eligible": true,
+          "modes": [
+            "reuse",
+            "fork"
+          ]
+        },
+        "presence": {
+          "runtime": "resident-idle",
+          "activation": "user-turn",
+          "focusedPaneCount": 1,
+          "lastSettledCursor": "dash:fixture:host-fixture-01:session-fixture-01:3:40",
+          "seenCursor": "dash:fixture:host-fixture-01:session-fixture-01:3:40",
+          "unread": false
+        }
+      }
+    ],
+    "index": {
+      "formatVersion": 1,
+      "loadedAt": "2026-07-18T12:00:00.000Z",
+      "reconciledAt": "2026-07-18T12:00:00.000Z",
+      "stale": false,
+      "reconciling": false
+    }
+  }
+}

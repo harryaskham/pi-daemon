@@ -1,0 +1,19 @@
+{
+  "workspaceId": "workspace-fixture-01",
+  "revision": 2,
+  "createdAt": "2026-07-18T11:00:00.000Z",
+  "updatedAt": "2026-07-18T12:00:00.000Z",
+  "selectedPaneId": "pane-fixture-01",
+  "layout": {
+    "type": "leaf",
+    "paneId": "pane-fixture-01",
+    "content": {
+      "type": "chat",
+      "inventoryId": "inventory-fixture-01",
+      "presentation": "rich"
+    }
+  },
+  "seenCursors": {
+    "inventory-fixture-01": "dash:fixture:host-fixture-01:session-fixture-01:3:40"
+  }
+}

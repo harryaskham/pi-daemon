@@ -34,6 +34,23 @@ test("Pages workflow uses the pinned Nix site build without Docker actions", asy
   assert.match(flake, /pages = self\.packages\.\$\{system\}\.pages/);
 });
 
+test("Pages publishes the Dash protocol, schema, and OpenAPI from the pinned site build", async () => {
+  const [workflow, flake, index, protocol] = await Promise.all([
+    readFile(join(repositoryRoot, ".github/workflows/pages.yml"), "utf8"),
+    readFile(join(repositoryRoot, "flake.nix"), "utf8"),
+    readFile(join(repositoryRoot, "docs/index.md"), "utf8"),
+    readFile(join(repositoryRoot, "docs/dashboard-protocol.md"), "utf8"),
+  ]);
+  assert.match(workflow, /- "dashboard-api\.schema\.json"/);
+  assert.match(workflow, /- "dashboard-api\.openapi\.json"/);
+  assert.match(workflow, /test -s _site\/dashboard-protocol\/index\.html/);
+  assert.match(flake, /cp \$\{\.\/dashboard-api\.schema\.json\} "\$out\/dashboard-api\.schema\.json"/);
+  assert.match(flake, /test -s "\$out\/dashboard-protocol\/index\.html"/);
+  assert.match(index, /\[Dash browser\/backend protocol\]\(dashboard-protocol\)/);
+  assert.match(protocol, /daemon service bearer is \*\*server-to-server only\*\*/);
+  assert.match(protocol, /snapshotFollows: true/);
+});
+
 test("flake publishes the collision-safe multi-instance Home Manager service module", async () => {
   const [flake, module] = await Promise.all([
     readFile(join(repositoryRoot, "flake.nix"), "utf8"),

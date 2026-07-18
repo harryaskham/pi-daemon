@@ -1,0 +1,154 @@
+{
+  "gap": {
+    "dashVersion": "1.0",
+    "requestId": "req-stream-01",
+    "serverInstanceId": "dash-fixture-01",
+    "clientId": "client-fixture-01",
+    "workspaceId": "workspace-fixture-01",
+    "kind": "replay_gap",
+    "correlationId": "correlation-gap-01",
+    "subscriptionId": "subscription-fixture-01",
+    "gap": {
+      "kind": "replay_gap",
+      "identity": {
+        "hostInstanceId": "host-fixture-01",
+        "sessionId": "session-fixture-01",
+        "generation": 3
+      },
+      "reason": "cursor-expired",
+      "requestedCursor": "dash:fixture:expired",
+      "highWaterCursor": "dash:fixture:host-fixture-01:session-fixture-01:3:41",
+      "oldestAvailableCursor": "dash:fixture:host-fixture-01:session-fixture-01:3:40",
+      "snapshotFollows": true
+    }
+  },
+  "freshSnapshot": {
+    "dashVersion": "1.0",
+    "requestId": "req-stream-recovery-01",
+    "serverInstanceId": "dash-fixture-01",
+    "clientId": "client-fixture-01",
+    "workspaceId": "workspace-fixture-01",
+    "kind": "subscription_ready",
+    "correlationId": "correlation-gap-01",
+    "subscriptionId": "subscription-fixture-01",
+    "presentation": "rich",
+    "role": "observer",
+    "identity": {
+      "hostInstanceId": "host-fixture-01",
+      "sessionId": "session-fixture-01",
+      "generation": 3
+    },
+    "highWaterCursor": "dash:fixture:host-fixture-01:session-fixture-01:3:41",
+    "snapshot": {
+      "identity": {
+        "hostInstanceId": "host-fixture-01",
+        "sessionId": "session-fixture-01",
+        "generation": 3
+      },
+      "session": {
+        "sessionId": "session-fixture-01",
+        "name": "Contract fixture",
+        "generation": 3,
+        "revision": 7,
+        "residency": "resident",
+        "state": "idle",
+        "createdAt": "2026-07-18T11:00:00.000Z",
+        "updatedAt": "2026-07-18T12:00:00.000Z",
+        "lastUsedAt": "2026-07-18T12:00:00.000Z",
+        "spec": {
+          "cwd": "/srv/work/fixture",
+          "target": {
+            "mode": "open",
+            "path": "/srv/state/session-fixture.jsonl"
+          },
+          "isolation": {
+            "mode": "unisolated"
+          }
+        },
+        "environment": {
+          "keys": [],
+          "persistence": "memory-only",
+          "provisioned": true
+        },
+        "lastTerminal": {
+          "state": "succeeded",
+          "at": "2026-07-18T12:00:00.000Z",
+          "requestId": "req-turn-01"
+        },
+        "links": {
+          "self": "/v1/session/session-fixture-01",
+          "rpc": "/v1/session/session-fixture-01/rpc",
+          "apc": "/v1/session/session-fixture-01/apc"
+        }
+      },
+      "rpcState": {
+        "isStreaming": false
+      },
+      "requestState": {
+        "queued": 0
+      },
+      "entries": [
+        {
+          "recordId": "entry:entry-user-01",
+          "key": {
+            "entryId": "entry-user-01",
+            "messageId": "message-user-01"
+          },
+          "kind": "message",
+          "role": "user",
+          "state": "complete",
+          "source": "persisted",
+          "timestamp": "2026-07-18T11:59:58.000Z",
+          "content": [
+            {
+              "type": "text",
+              "text": "Show the contract fixture."
+            }
+          ]
+        },
+        {
+          "recordId": "tool:tool-call-01",
+          "key": {
+            "entryId": "entry-assistant-01",
+            "messageId": "message-assistant-01",
+            "toolCallId": "tool-call-01"
+          },
+          "kind": "tool",
+          "toolName": "read",
+          "state": "success",
+          "source": "persisted",
+          "timestamp": "2026-07-18T11:59:59.000Z",
+          "arguments": {
+            "path": "fixture.txt"
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "bounded fixture output"
+            }
+          ]
+        },
+        {
+          "recordId": "entry:entry-assistant-01",
+          "key": {
+            "entryId": "entry-assistant-01",
+            "messageId": "message-assistant-01"
+          },
+          "kind": "message",
+          "role": "assistant",
+          "state": "complete",
+          "source": "persisted",
+          "timestamp": "2026-07-18T12:00:00.000Z",
+          "content": [
+            {
+              "type": "markdown",
+              "text": "The fixture is ready."
+            }
+          ]
+        }
+      ],
+      "currentLeafId": "entry-assistant-01",
+      "highWaterCursor": "dash:fixture:host-fixture-01:session-fixture-01:3:41"
+    }
+  }
+}

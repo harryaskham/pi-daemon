@@ -1,0 +1,37 @@
+[
+  {
+    "runtime": "resident-idle",
+    "activation": "user-turn",
+    "focusedPaneCount": 1,
+    "lastSettledCursor": "dash:fixture:host-fixture-01:session-fixture-01:3:40",
+    "seenCursor": "dash:fixture:host-fixture-01:session-fixture-01:3:40",
+    "unread": false
+  },
+  {
+    "runtime": "dormant",
+    "activation": "scheduled-turn",
+    "scheduled": {
+      "nextWakeAt": "2026-07-18T13:00:00.000Z",
+      "source": "native-schedule"
+    },
+    "focusedPaneCount": 0,
+    "lastSettledCursor": "dash:fixture:host-fixture-01:session-fixture-01:3:41",
+    "seenCursor": "dash:fixture:host-fixture-01:session-fixture-01:3:40",
+    "unread": true
+  },
+  {
+    "runtime": "dormant",
+    "activation": "user-turn",
+    "focusedPaneCount": 0,
+    "lastSettledCursor": "dash:fixture:host-fixture-01:session-fixture-01:3:41",
+    "seenCursor": "dash:fixture:host-fixture-01:session-fixture-01:3:40",
+    "unread": true
+  },
+  {
+    "runtime": "running",
+    "activation": "running-at-dash-start",
+    "focusedPaneCount": 1,
+    "seenCursor": "dash:fixture:host-fixture-01:session-fixture-01:3:40",
+    "unread": false
+  }
+]

@@ -22,6 +22,7 @@ neutral service—not a Cacophony component.
 - **[Operator quickstart](quickstart)** — run collision-free Home Manager instances, create/delete sessions, wait on tickets, and attach RPC or ACP clients
 - [Protocol](protocol) — NDJSON operations, event flow, generations, and retry semantics
 - [Session API](session-api) — additive CRUD, multi-reader Pi RPC attach, and `/apc` ACP contract
+- [Dash browser/backend protocol](dashboard-protocol) — preview-first resources, normalized transcripts, multiplexed Rich/TUI channels, replay, limits, and performance budgets
 - [Session configuration](session-configuration) — Pi CLI mapping, environment handling, resources, tools, and honest isolation limits
 - [Operations](operations) — install, serve, probe, status, drain, and recovery
 - [Session management CLI](session-cli) — JSON CRUD, tickets, prompts/controls, and endpoint discovery
@@ -35,6 +36,7 @@ neutral service—not a Cacophony component.
 - [Release](release) — tag, artifact, and rollback checklist
 - [NDJSON JSON Schema](protocol.schema.json) — language-neutral local protocol contract
 - [Session API JSON Schema](session-api.schema.json) and [OpenAPI](session-api.openapi.json)
+- [Dash API JSON Schema](dashboard-api.schema.json) and [OpenAPI](dashboard-api.openapi.json)
 - [Source repository](https://github.com/harryaskham/pi-daemon)
 
 ## Status

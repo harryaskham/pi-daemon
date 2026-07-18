@@ -1,0 +1,6 @@
+{
+  "requestId": "req-activation-01",
+  "idempotencyKey": "activation-fixture-01",
+  "mode": "reuse",
+  "expectedFingerprint": "sha256:fixture-source-fingerprint"
+}
