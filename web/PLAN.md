@@ -1294,11 +1294,11 @@ These lanes intentionally begin in parallel:
 
 ### Core data and browser shell
 
-- [ ] `bd-93e857` — persisted 10k-session inventory and instant search/order;
+- [x] `bd-93e857` — persisted 10k-session inventory and instant search/order;
   depends on `bd-933f1e`.
-- [ ] `bd-3a8261` — bounded active-branch JSONL transcript projector/cache;
+- [x] `bd-3a8261` — bounded active-branch JSONL transcript projector/cache;
   depends on `bd-933f1e`.
-- [ ] `bd-50d480` — browser auth/static server/workspace/settings persistence;
+- [x] `bd-50d480` — browser auth/static server/workspace/settings persistence;
   depends on `bd-933f1e`, `bd-e25765`.
 - [x] `bd-cc87cb` — production SPA shell/sidebar/info/theme foundation; depends
   on `bd-933f1e`, `bd-493121`.

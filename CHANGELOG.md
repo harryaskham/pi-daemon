@@ -29,6 +29,7 @@ Initial standalone implementation:
 - reproducible Nix package/app/dev shell, multi-instance Home Manager service module, and npm package
 - strict bounded per-instance YAML configuration at `~/.config/pi/daemon/<instance>/config.yaml`, with CLI/environment selection, CLI-over-file precedence, secret-path-only policy, and Home Manager support
 - preview-only Dash transcript projection for bounded Pi v1/v2/v3 JSONL active branches, semantic messages/tools/custom records, opaque paging, exact fingerprints, and owner-private cache
+- packaged content-hashed Dash SPA plus a loopback-only browser server with strict CSP/static admission, digest-only web credential exchange, HMAC-signed revocable HttpOnly sessions, exact Host/Origin/CSRF policy, bounded WebSocket handoff, and atomic revisioned workspace/UI-settings persistence
 - first-launch private directory bootstrap, stable generated API bearer, and non-overwriting per-instance Pi auth seeding
 - off-device aarch64-linux/Attic package path that avoids native Nix-on-Droid npm crashes and QEMU-only test false failures
 - bounded Linux/macOS CI, release automation, Dependabot, and Docker-free Nix/Pandoc GitHub Pages

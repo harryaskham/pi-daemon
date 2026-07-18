@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -71,6 +71,23 @@ test("Dash transcript projector is exported, documented, and included in clean b
   assert.match(readme, /docs\/transcript-projection\.md/);
   assert.match(docs, /hydration: "not-requested"/);
   assert.match(docs, /sha256:<base64url digest>/);
+});
+
+test("clean package builds include the content-hashed Dash SPA and secure server exports", async () => {
+  const [manifest, index, assets] = await Promise.all([
+    readFile(join(repositoryRoot, "package.json"), "utf8").then(JSON.parse),
+    readFile(join(repositoryRoot, "dist/dashboard/index.html"), "utf8"),
+    readdir(join(repositoryRoot, "dist/dashboard/assets")),
+  ]);
+  for (const name of ["dashboard-auth", "dashboard-store", "dashboard-server"]) {
+    assert.equal(manifest.exports[`./${name}`].import, `./dist/${name}.js`);
+  }
+  assert.match(manifest.scripts.build, /npm run web:build/);
+  assert.match(index, /\/dash\/assets\/[A-Za-z0-9_.-]+-[A-Za-z0-9_-]{8,}\.js/);
+  assert.equal(
+    assets.some((name) => /-[A-Za-z0-9_-]{8,}\.js$/.test(name)),
+    true,
+  );
 });
 
 test("flake publishes the collision-safe multi-instance Home Manager service module", async () => {

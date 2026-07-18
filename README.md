@@ -24,7 +24,11 @@ or Cacophony credentials.
 > asynchronous mutation/prompt tickets, exact Pi conversation recovery, bounded
 > serialization, per-session runtime configuration, truthful bounded
 > recovery/shutdown, full multi-reader Pi RPC attachment, the remote
-> `pi-daemon-rpc` stdio bridge, and in-process ACP translation are implemented.
+> `pi-daemon-rpc` stdio bridge, in-process ACP translation, and the first Pi
+> Daemon Dash foundation are implemented. Dash now includes a packaged
+> content-hashed SPA, preview-only transcript projection, secure browser BFF,
+> signed revocable cookie exchange, and revisioned workspace/UI-settings stores;
+> inventory, ownership/live channels, and shadow TUI continue in staged slices.
 > Full credential-free install/CRUD/RPC/ACP/restart/security acceptance is green;
 > the repository is a release candidate, but no release tag is cut yet.
 

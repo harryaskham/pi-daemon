@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "vite",
     "preview": "vite preview",
-    "build": "tsc --noEmit -p tsconfig.json && vite build",
+    "build": "tsc --noEmit -p tsconfig.json && vite build --logLevel error",
     "test": "vitest run src/test",
     "e2e": "playwright test",
     "bundle:report": "node scripts/bundle-report.mjs",

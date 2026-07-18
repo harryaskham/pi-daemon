@@ -43,5 +43,22 @@ overwritten or rotated. Seed and bearer bytes never enter argv, logs, status,
 Nix evaluation, manifests, or responses; symlinked, foreign-owned, permissive,
 invalid, oversized, or conflicting inputs fail closed.
 
+Pi Daemon Dash has a separate browser authentication boundary. Its absent
+default web credential is generated atomically at the owner-only
+`STATE_DIR/web-token` and reused; configured credential files receive the same
+owner/symlink/size checks. The daemon API service bearer is never sent to
+JavaScript, a URL, cookie, workspace, browser
+cache, response, or static asset. A dedicated owner-only web credential is
+exchanged over an exact same-origin login for a bounded server-side session;
+the browser receives only an HMAC-signed opaque `HttpOnly`, `SameSite=Strict`
+cookie and a per-session CSRF token. Private routes authenticate before route
+matching, mutations require exact Host/Origin/CSRF checks, and restart revokes
+all browser sessions. The initial browser listener is loopback-only; remote use
+must terminate TLS at a loopback reverse proxy. Packaged hash-named assets use a
+deny-by-default CSP and traversal/symlink/writable-file rejection. Workspace
+and UI-only overlays are owner-private, byte/count/depth bounded, revisioned,
+atomically written, and cannot mutate bind/auth/roots/credentials/resource
+policy.
+
 A client needing arbitrary code execution or unreviewed extensions must use a
 separate process/security domain.

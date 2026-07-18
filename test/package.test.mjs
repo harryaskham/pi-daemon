@@ -103,6 +103,7 @@ const copyPackageSource = async (destination) => {
   }
   await cp(join(repositoryRoot, "scripts"), join(destination, "scripts"), { recursive: true });
   await cp(join(repositoryRoot, "src"), join(destination, "src"), { recursive: true });
+  await cp(join(repositoryRoot, "web"), join(destination, "web"), { recursive: true });
   await symlink(
     join(repositoryRoot, "node_modules"),
     join(destination, "node_modules"),
@@ -172,6 +173,13 @@ test(
       "dist/dashboard-contract.d.ts",
       "dist/dashboard-fixtures.js",
       "dist/dashboard-fixtures.d.ts",
+      "dist/dashboard-auth.js",
+      "dist/dashboard-auth.d.ts",
+      "dist/dashboard-store.js",
+      "dist/dashboard-store.d.ts",
+      "dist/dashboard-server.js",
+      "dist/dashboard-server.d.ts",
+      "dist/dashboard/index.html",
       "dist/session-inventory.js",
       "dist/session-inventory.d.ts",
       "dist/source-fingerprint.js",
@@ -184,6 +192,11 @@ test(
     ]) {
       assert.equal(packageFiles.has(required), true, `packed artifact omitted ${required}`);
     }
+    assert.equal(
+      [...packageFiles].some((file) => /^dist\/dashboard\/assets\/.+-[A-Za-z0-9_-]{8,}\.js$/.test(file)),
+      true,
+      "packed artifact omitted content-hashed Dash JavaScript",
+    );
 
     const tarball = join(tarballs, metadata[0].filename);
     await writeFile(
@@ -283,6 +296,9 @@ test(
         'import openapi from "@harryaskham/pi-daemon/session-api.openapi.json" with { type: "json" };',
         'import { DASH_API_VERSION, DASH_DEFAULT_LIMITS } from "@harryaskham/pi-daemon/dashboard-contract";',
         'import { createDashboardContractFixtures } from "@harryaskham/pi-daemon/dashboard-fixtures";',
+        'import { DashboardBrowserAuth } from "@harryaskham/pi-daemon/dashboard-auth";',
+        'import { DashboardWorkspaceStore } from "@harryaskham/pi-daemon/dashboard-store";',
+        'import { DashboardServer } from "@harryaskham/pi-daemon/dashboard-server";',
         'import { DEFAULT_SESSION_INVENTORY_LIMITS } from "@harryaskham/pi-daemon/session-inventory";',
         'import { formatSessionSourceFingerprint } from "@harryaskham/pi-daemon/source-fingerprint";',
         'import { TranscriptProjector } from "@harryaskham/pi-daemon/transcript-projector";',
@@ -291,14 +307,14 @@ test(
         'const isolation = parseSessionConfiguration({ cwd: process.cwd(), target: { mode: "memory" } }).persistedSpec.isolation?.mode;',
         'const dashFixture = createDashboardContractFixtures();',
         'const fingerprint = formatSessionSourceFingerprint(new Uint8Array(32));',
-        'process.stdout.write(`${PI_DAEMON_VERSION} ${SESSION_API_VERSION} ${isolation} ${DEFAULT_RPC_STDIO_BRIDGE_LIMITS.reconnectAttempts} ${typeof SessionApiClient} ${schema.title} ${sessionSchema.title} ${openapi.openapi} ${DASH_API_VERSION} ${DASH_DEFAULT_LIMITS.maxInventoryPageItems} ${dashFixture.transcript.hydration} ${dashSchema.title} ${dashOpenapi.openapi} ${DEFAULT_SESSION_INVENTORY_LIMITS.maxSessions} ${fingerprint.slice(0, 7)} ${typeof TranscriptProjector}\\n`);',
+        'process.stdout.write(`${PI_DAEMON_VERSION} ${SESSION_API_VERSION} ${isolation} ${DEFAULT_RPC_STDIO_BRIDGE_LIMITS.reconnectAttempts} ${typeof SessionApiClient} ${schema.title} ${sessionSchema.title} ${openapi.openapi} ${DASH_API_VERSION} ${DASH_DEFAULT_LIMITS.maxInventoryPageItems} ${dashFixture.transcript.hydration} ${dashSchema.title} ${dashOpenapi.openapi} ${DEFAULT_SESSION_INVENTORY_LIMITS.maxSessions} ${fingerprint.slice(0, 7)} ${typeof TranscriptProjector} ${typeof DashboardBrowserAuth} ${typeof DashboardWorkspaceStore} ${typeof DashboardServer}\\n`);',
         "",
       ].join("\n"),
     );
     const imported = await run(process.execPath, [basename(importCheck)], { cwd: consumer });
     assert.equal(
       imported.stdout,
-      `${packageVersion} 1.0 unisolated 8 function Pi Daemon protocol v1 Pi Daemon additive session API v1 3.1.0 1.0 100 not-requested Pi Daemon Dash browser API v1 3.1.0 10000 sha256: function\n`,
+      `${packageVersion} 1.0 unisolated 8 function Pi Daemon protocol v1 Pi Daemon additive session API v1 3.1.0 1.0 100 not-requested Pi Daemon Dash browser API v1 3.1.0 10000 sha256: function function function function\n`,
     );
   },
 );

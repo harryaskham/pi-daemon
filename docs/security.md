@@ -51,6 +51,12 @@ project code or tools.
 - the remote stdio client accepts bearer material only through a bounded private file, inherited fd, or environment
 - client bearer bytes exist only for the authenticated handshake and never enter URL, argv, stdout, stderr, or reconnect status
 - remote WebSocket use requires TLS or an operator-owned authenticated loopback proxy
+- Dash uses a separate owner-only web credential; the daemon service bearer is server-to-server and never enters browser state
+- Dash browser sessions are bounded, revocable, server-side records addressed by an HMAC-signed opaque `HttpOnly`, `SameSite=Strict` cookie
+- Dash private routes authenticate before route matching; mutations require exact Host, Origin, and per-session CSRF validation
+- the initial Dash HTTP listener is loopback-only; an HTTPS public origin sets a `Secure` `__Host-` cookie through a loopback TLS proxy
+- packaged Dash assets are hash-named and regular/non-writable, with traversal/symlink rejection and a deny-by-default CSP
+- Dash workspace/settings files are owner-only, atomic, bounded, revision/ETag checked, and UI overlays cannot mutate service authority
 
 Prompts and terminal results are necessarily retained in the private durable
 request journal so a queued request can be replayed and a duplicate terminal

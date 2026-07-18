@@ -5,8 +5,9 @@ title: Dash browser and backend contracts
 
 # Pi Daemon Dash browser and backend contracts
 
-Status: **Phase 0 versioned contract; server and SPA implementation follow in
-separate slices**.
+Status: **Versioned contract, bounded transcript projector, production SPA
+shell, and secure browser-server foundation are implemented. Inventory,
+ownership, live channels, and shadow TUI continue in dependency-linked slices.**
 
 Pi Daemon Dash has one browser protocol and one transport-neutral backend seam.
 The same compiled SPA talks to `/dash/v1` whether `DashboardServer` is embedded
@@ -19,6 +20,10 @@ The machine-readable and TypeScript contracts are:
   channel, resource, frame, limit, and performance types;
 - `src/dashboard-fixtures.ts` / package export `./dashboard-fixtures` — fresh,
   deterministic fixture builders for backend and frontend conformance suites;
+- `src/dashboard-auth.ts`, `src/dashboard-store.ts`, and
+  `src/dashboard-server.ts` / matching package subpaths — credential exchange,
+  signed revocable browser sessions, static SPA serving, strict request
+  admission, bounded WebSocket handoff, and atomic workspace/settings state;
 - [`dashboard-api.schema.json`](dashboard-api.schema.json) — JSON Schema for
   HTTP resources and multiplexed WebSocket frames;
 - [`dashboard-api.openapi.json`](dashboard-api.openapi.json) — same-origin HTTP
@@ -71,8 +76,27 @@ authentication.
 
 The cookie itself is not represented by a TypeScript response resource or
 language-neutral browser-storable fixture. Capability negotiation states
-`daemonBearerExposed: false`. Authentication failures must not reveal whether an
-inventory or managed session exists.
+`daemonBearerExposed: false`. Authentication failures happen before private
+route matching, so they do not reveal whether an inventory, ticket, workspace,
+or managed session exists.
+
+The implemented exchange stores only a digest of the configured web credential
+and CSRF value. When no `web.auth.tokenFile` is configured, first launch
+atomically creates and reuses an owner-only credential at `STATE_DIR/web-token`;
+a configured path is held to the same owner/symlink/size checks. The browser
+cookie contains a random lookup key plus an HMAC;
+all client/workspace/expiry state stays server-side and is bounded and revocable.
+It is `HttpOnly`, `SameSite=Strict`, scoped to `/dash/`, and uses the `__Host-`
+form with `Secure` behind an HTTPS public origin. Restart intentionally revokes
+all ephemeral browser sessions. The initial direct HTTP listener is
+loopback-only; remote deployments terminate TLS at a loopback reverse proxy
+until native TLS support lands.
+
+`GET /dash/` and content-hashed `/dash/assets/*` are served from the packaged
+SPA with a deny-by-default CSP, no-sniff/frame/referrer/permissions policy,
+non-symlink regular-file checks, immutable caching only for hash-named assets,
+and no SPA-injected credential or configuration. Traversal, unhashed asset
+names, oversized files, and writable/untrusted files fail closed.
 
 ## HTTP resources and envelopes
 
@@ -224,6 +248,14 @@ overlay. The overlay may change presentation preferences such as theme, editor,
 sidebar, transcript expansion, reduced motion, and bounded browser cache. It
 cannot change bind/auth/TLS, roots, credential references, daemon resource
 limits, or trusted runtime policy.
+
+The implemented stores use owner-only directories and atomic owner-only JSON
+files under `STATE_DIR/web`. Workspace layout/seen cursors and settings overlays
+have strong ETags, explicit revisions, bounded retained idempotency receipts,
+strict unknown-field rejection, count/depth/record byte limits, serialized
+updates, and corruption quarantine followed by safe configured defaults.
+Runtime settings report the source of every effective leaf (`default`,
+`config`, or `runtime`); reset removes only the runtime overlay.
 
 ## Negotiated default limits
 

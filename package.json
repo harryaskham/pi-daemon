@@ -43,6 +43,18 @@
       "types": "./dist/dashboard-contract.d.ts",
       "import": "./dist/dashboard-contract.js"
     },
+    "./dashboard-auth": {
+      "types": "./dist/dashboard-auth.d.ts",
+      "import": "./dist/dashboard-auth.js"
+    },
+    "./dashboard-store": {
+      "types": "./dist/dashboard-store.d.ts",
+      "import": "./dist/dashboard-store.js"
+    },
+    "./dashboard-server": {
+      "types": "./dist/dashboard-server.d.ts",
+      "import": "./dist/dashboard-server.js"
+    },
     "./dashboard-fixtures": {
       "types": "./dist/dashboard-fixtures.d.ts",
       "import": "./dist/dashboard-fixtures.js"
@@ -76,7 +88,7 @@
   ],
   "scripts": {
     "clean": "node scripts/clean.mjs",
-    "build": "npm run clean && tsc -p tsconfig.json && node scripts/postbuild.mjs",
+    "build": "npm run clean && tsc -p tsconfig.json && npm run web:build && node scripts/postbuild.mjs",
     "prepack": "npm run build",
     "check": "tsc -p tsconfig.json --noEmit",
     "test": "npm run build && node --test --test-concurrency=1 test/*.test.mjs",
