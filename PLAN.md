@@ -633,6 +633,8 @@ implementation order. This list is a human-readable crosswalk.
   `unisolated` trust boundary.
 - [x] `bd-367ec5` — first-launch private service directories, stable generated
   API bearer, and non-overwriting per-instance Pi auth seeding.
+- [x] `bd-df5f19` — prebuild/cache aarch64-linux packages off-device so
+  Nix-on-Droid never falls back to its native npm double-free path.
 
 All standalone delivery and acceptance blockers are landed. Cutting the first
 release tag is an explicit operator action under `docs/release.md`; the remaining

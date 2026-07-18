@@ -33,7 +33,13 @@
         nativeBuildInputs = [pkgs.makeWrapper];
 
         npmBuildScript = "build";
-        doCheck = true;
+        # Nix-on-Droid cannot safely run npm, so aarch64-linux artifacts are
+        # prebuilt on x86_64 NixOS through binfmt and served from Attic. The full
+        # Node suite is not QEMU-stable (RSS reports zero and bounded subprocess
+        # tests exceed their real-hardware deadlines); Linux x86_64 and macOS CI
+        # remain the authoritative test gates. Installed binaries still run in
+        # doInstallCheck below on every platform.
+        doCheck = system != "aarch64-linux";
         checkPhase = ''
           runHook preCheck
           npm test

@@ -42,6 +42,7 @@ test("flake publishes the collision-safe multi-instance Home Manager service mod
   assert.match(flake, /homeManagerModules\.pi-daemon = import \.\/nix\/home-manager-module\.nix/);
   assert.match(flake, /homeManagerModules\.default = self\.homeManagerModules\.pi-daemon/);
   assert.match(flake, /home-manager-module = import \.\/nix\/home-manager-module-check\.nix/);
+  assert.match(flake, /doCheck = system != "aarch64-linux"/);
   assert.match(module, /systemd\.user\.services/);
   assert.match(module, /launchd\.agents/);
   assert.match(module, /supervisord\.programs/);

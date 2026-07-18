@@ -163,6 +163,33 @@ port are required when those surfaces are enabled. An optional external
 bearer bytes. `extraArgs` may set resource limits but
 cannot override module-managed identity, root, path, or API arguments.
 
+## Nix-on-Droid cache bootstrap
+
+Pi Daemon remains a Node service even though the interactive Pi CLI can be
+packaged as a Bun binary. Its pinned SDK dependencies are installed by npm at
+build time. Node/npm can abort with `double free or corruption` when that build
+runs natively inside Nix-on-Droid, so Android devices must consume a prebuilt
+`aarch64-linux` closure rather than fall back to a local build.
+
+Build the exact locked flake package on an off-device NixOS host with
+`aarch64-linux` binfmt support, then push the output closure to the private
+Attic cache used by the devices:
+
+```console
+out=$(nix build --no-link --print-out-paths \
+  github:harryaskham/pi-daemon/REV#packages.aarch64-linux.pi-daemon)
+attic push -j1 SERVER:collective "$out"
+```
+
+The aarch64 package still builds, prunes, and runs both installed version checks
+under emulation. The full Node test suite is intentionally gated on Linux
+x86_64 and macOS: under QEMU, RSS can report zero and bounded subprocess tests
+exceed their real-hardware deadlines. Skipping the emulated package check is not
+a native-Android fallback; cache population is required before switching Astra,
+SGU24, or another Nix-on-Droid consumer. A cache miss that starts `npm ci` on the
+device is an operational error—stop it, prebuild the same derivation off-device,
+push it, and retry the unchanged generation.
+
 ## High-level session management
 
 `pi-daemon session`, `ticket`, `prompt`, `control`, `rpc`, and `acp` provide
