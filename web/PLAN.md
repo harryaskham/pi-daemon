@@ -1300,7 +1300,7 @@ These lanes intentionally begin in parallel:
   depends on `bd-933f1e`.
 - [ ] `bd-50d480` — browser auth/static server/workspace/settings persistence;
   depends on `bd-933f1e`, `bd-e25765`.
-- [ ] `bd-cc87cb` — production SPA shell/sidebar/info/theme foundation; depends
+- [x] `bd-cc87cb` — production SPA shell/sidebar/info/theme foundation; depends
   on `bd-933f1e`, `bd-493121`.
 - [ ] `bd-fd9f22` — direct co-opt/fork/import/conflict/export session ownership;
   depends on `bd-93e857`, `bd-3a8261`, `bd-e25765`.

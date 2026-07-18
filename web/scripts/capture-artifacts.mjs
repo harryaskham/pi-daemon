@@ -78,6 +78,10 @@ const browserMetrics = await page.evaluate(() => ({
 }));
 await page.getByRole("button", { name: "ready" }).click();
 await page.screenshot({ path: new URL("nord-midnight-reference.png", artifactDir).pathname, fullPage: true });
+await page.getByText("Browse by state and source").click();
+await page.getByRole("button", { name: /Open information for/ }).first().focus();
+await page.getByRole("tooltip").waitFor();
+await page.screenshot({ path: new URL("nord-midnight-sidebar-details.png", artifactDir).pathname, fullPage: true });
 await browser.close();
 await new Promise((resolveClose, reject) => {
   if (!staticServer) return resolveClose();

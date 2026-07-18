@@ -1,8 +1,11 @@
 # Dash frontend stack decision — bd-493121
 
-Status: selected for the production Dash shell
+Status: selected and promoted into the production Dash shell by `bd-cc87cb`
 
-Reference capture: [`artifacts/nord-midnight-reference.png`](artifacts/nord-midnight-reference.png)
+Reference captures:
+
+- [`artifacts/nord-midnight-reference.png`](artifacts/nord-midnight-reference.png) — default shell
+- [`artifacts/nord-midnight-sidebar-details.png`](artifacts/nord-midnight-sidebar-details.png) — expandable source/state filters and keyboard-focus metadata tooltip
 
 Machine-readable receipt: [`artifacts/performance.json`](artifacts/performance.json)
 
@@ -41,14 +44,14 @@ The checked-in receipt was produced from a Vite production build and Playwright 
 
 | Measure | Result | Budget | Outcome |
 | --- | ---: | ---: | --- |
-| Navigation to first bounded rows | 123.0 ms | <150 ms | pass |
-| App/module-ready to first rows | 33.0 ms | <150 ms | pass |
-| In-app 10k search work | <1 ms | <100 ms | pass |
-| Streaming update commit work, max observed | 8.1 ms | <16 ms | pass |
+| Navigation to first bounded rows | 116.4 ms | <150 ms | pass |
+| App/module-ready to first rows | 46.9 ms | <150 ms | pass |
+| In-app 10k search work | 0.5 ms | <100 ms | pass |
+| Streaming update commit work, max observed | 6.6 ms | <16 ms | pass |
 | Mounted session rows | 17 / 10,000 | not O(total) | pass |
 | Mounted transcript rows | 15 / 1,200 | not O(total) | pass |
-| Initial production gzip | 89,063 bytes | <1.5 MiB | pass |
-| Complete production asset gzip, including lazy editor | 331,122 bytes | <1.5 MiB | pass |
+| Initial production gzip | 90,952 bytes | <1.5 MiB | pass |
+| Complete production asset gzip, including lazy editor | 333,014 bytes | <1.5 MiB | pass |
 
 `animationFrameCadenceP95Ms` in the receipt is display cadence (about 16.7 ms at 60 Hz), not JavaScript work. `streamFrameWorkMaxMs` is the measured React commit path compared with the 16 ms frame-work budget.
 
@@ -59,7 +62,8 @@ The reference artifact contains the reusable shell, virtual session list, rich m
 Focused browser acceptance proves:
 
 - 10k sidebar and long transcript DOM bounds;
-- search and all deliberate visual states;
+- search, functional expandable state/source filters, and all deliberate visual states;
+- hover/focus metadata tooltip, information-pane selection, loading/error recovery, and mobile drawer controls;
 - settings modal and semantic theme preview;
 - mouse/keyboard split resizing in the component contract;
 - `Ctrl-h/j/k/l` spatial focus and focus-preserving `Ctrl-Shift-h/j/k/l` target swaps outside the editor;

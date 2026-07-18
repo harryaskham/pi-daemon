@@ -3,9 +3,10 @@ import { ChatPane } from "./components/ChatPane";
 import { EmptyPane } from "./components/EmptyPane";
 import { InfoPane } from "./components/InfoPane";
 import { SettingsModal } from "./components/SettingsModal";
-import { Sidebar } from "./components/Sidebar";
+import { Sidebar, type SidebarStatus } from "./components/Sidebar";
 import { Workspace } from "./components/Workspace";
 import { fixtureBackend } from "./fixture-backend";
+import { Menu } from "./icons";
 import { createSessionFixtures, createTranscriptFixtures } from "./fixtures";
 import { INITIAL_LAYOUT, updatePaneTarget } from "./layout";
 import type { DemoState, InventoryId, LayoutNode, SessionFixture, TranscriptRecord } from "./model";
@@ -31,6 +32,12 @@ function initialDemoState(): DemoState {
     : "streaming";
 }
 
+function initialSidebarStatus(): SidebarStatus {
+  const state = new URLSearchParams(window.location.search).get("sidebar");
+  if (state === "loading" || state === "empty" || state === "error") return state;
+  return "ready";
+}
+
 function DashWorkspace() {
   const [sessions, setSessions] = useState<SessionFixture[]>(BOOTSTRAP_SESSIONS);
   const firstSession = useMemo(initialSession, []);
@@ -44,6 +51,8 @@ function DashWorkspace() {
     ),
   );
   const [query, setQuery] = useState("");
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarStatus, setSidebarStatus] = useState<SidebarStatus>(initialSidebarStatus);
   const [demoState, setDemoState] = useState<DemoState>(initialDemoState);
   const [streamIndex, setStreamIndex] = useState(0);
   const streamWorkStartedAt = useRef<number | undefined>(undefined);
@@ -99,6 +108,7 @@ function DashWorkspace() {
 
   const openTarget = useCallback((session: SessionFixture, type: "chat" | "info") => {
     setSelectedInventoryId(session.inventoryId);
+    setSidebarOpen(false);
     setLayout((current) => updatePaneTarget(
       current,
       selectedPaneId,
@@ -157,19 +167,30 @@ function DashWorkspace() {
   }, [demoState, records, sessionById, streamText, vimEnabled]);
 
   return (
-    <div className="dash-app" data-density={density} data-reduced-motion={reducedMotion ? "true" : "false"}>
+    <div className="dash-app" data-density={density} data-reduced-motion={reducedMotion ? "true" : "false"} data-sidebar-open={sidebarOpen ? "true" : "false"}>
       <a className="skip-link" href="#dash-workspace">Skip to workspace</a>
       <Sidebar
         sessions={sessions}
         query={query}
         selectedInventoryId={selectedInventoryId}
+        status={sidebarStatus}
+        reconciling={sessions.length < FIXTURE_SESSION_COUNT}
         onQueryChange={setQuery}
         onOpenChat={(session) => openTarget(session, "chat")}
         onOpenInfo={(session) => openTarget(session, "info")}
         onOpenSettings={() => setSettingsOpen(true)}
+        onRequestClose={() => setSidebarOpen(false)}
+        onRetry={() => {
+          setSidebarStatus("loading");
+          window.setTimeout(() => setSidebarStatus("ready"), 360);
+        }}
       />
+      <button type="button" className="sidebar-scrim" aria-label="Close session drawer" onClick={() => setSidebarOpen(false)} />
       <div id="dash-workspace" className="workspace-shell">
-        <div className="workspace-notice" aria-live="polite"><i />{notice}<span>Ctrl-hjkl focus · Ctrl-Shift-hjkl swap</span></div>
+        <div className="workspace-notice" aria-live="polite">
+          <button type="button" className="mobile-menu-button" aria-label="Open session drawer" onClick={() => setSidebarOpen(true)}><Menu size={15} /></button>
+          <i />{notice}<span>Ctrl-hjkl focus · Ctrl-Shift-hjkl swap</span>
+        </div>
         <Workspace
           layout={layout}
           selectedPaneId={selectedPaneId}
