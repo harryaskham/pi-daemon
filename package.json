@@ -43,6 +43,10 @@
       "types": "./dist/dashboard-contract.d.ts",
       "import": "./dist/dashboard-contract.js"
     },
+    "./dashboard-backend": {
+      "types": "./dist/dashboard-backend.d.ts",
+      "import": "./dist/dashboard-backend.js"
+    },
     "./dashboard-auth": {
       "types": "./dist/dashboard-auth.d.ts",
       "import": "./dist/dashboard-auth.js"

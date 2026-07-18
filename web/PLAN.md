@@ -1311,7 +1311,7 @@ These lanes intentionally begin in parallel:
 
 - [ ] `bd-246c6e` — neutral authenticated inventory/transcript/ownership/export/
   TUI API; depends on contract, inventory, projector, and ownership.
-- [ ] `bd-e1e692` — embedded backend over direct shared services; depends on
+- [x] `bd-e1e692` — embedded backend over direct shared services; depends on
   contract, inventory, projector, and ownership.
 - [ ] `bd-ad4630` — dedicated REST/framed-RPC backend and reconnect parity;
   depends on `bd-933f1e`, `bd-246c6e`.

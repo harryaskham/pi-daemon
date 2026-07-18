@@ -306,6 +306,15 @@ class Semaphore {
 
 export type EventListener = (event: EventEnvelope) => void;
 
+export interface SessionResidencyLease {
+  readonly sessionId: string;
+  readonly generation: number;
+  renew(): void;
+  release(): void;
+}
+
+const MAX_RESIDENCY_LEASES = 256;
+
 /**
  * In-process registry and scheduler for independent logical Pi sessions.
  *
@@ -328,6 +337,7 @@ export class Multiplexer {
   readonly #lifecycleTails = new Map<string, Promise<void>>();
   readonly #recoveryBlockedSessions = new Set<string>();
   readonly #listeners = new Set<EventListener>();
+  readonly #residencyLeases = new Map<string, Map<string, { generation: number; expiresAt: number }>>();
   readonly #logger: StructuredLogger;
   readonly #now: () => number;
   readonly #startedAt: number;
@@ -406,6 +416,70 @@ export class Multiplexer {
   subscribe(listener: EventListener): () => void {
     this.#listeners.add(listener);
     return () => this.#listeners.delete(listener);
+  }
+
+  async acquireResidencyLease(
+    sessionRef: string,
+    generation: number,
+    ttlMs = 60_000,
+  ): Promise<SessionResidencyLease> {
+    const ttl = positiveInteger(ttlMs, "residencyLeaseTtlMs");
+    const retained = await this.retainedSession(sessionRef);
+    const sessionId = retained?.sessionId ?? sessionRef;
+    const slot = this.#sessions.get(sessionId);
+    if (slot === undefined) {
+      throw new MultiplexerError("session_not_resident", "session must be resident before leasing", {
+        retryable: true,
+      });
+    }
+    this.#assertGeneration(slot, generation);
+    const leaseCount = [...this.#residencyLeases.values()].reduce(
+      (count, leases) => count + leases.size,
+      0,
+    );
+    if (leaseCount >= MAX_RESIDENCY_LEASES) {
+      throw new MultiplexerError("residency_lease_capacity", "residency lease capacity reached", {
+        retryable: true,
+      });
+    }
+    const token = randomUUID();
+    const leases = this.#residencyLeases.get(sessionId) ?? new Map();
+    leases.set(token, { generation, expiresAt: this.#now() + ttl });
+    this.#residencyLeases.set(sessionId, leases);
+    let released = false;
+    return {
+      sessionId,
+      generation,
+      renew: () => {
+        if (released) return;
+        const current = this.#residencyLeases.get(sessionId)?.get(token);
+        if (current?.generation !== generation) return;
+        current.expiresAt = this.#now() + ttl;
+      },
+      release: () => {
+        if (released) return;
+        released = true;
+        const current = this.#residencyLeases.get(sessionId);
+        current?.delete(token);
+        if (current?.size === 0) this.#residencyLeases.delete(sessionId);
+      },
+    };
+  }
+
+  residencyLeaseCount(sessionId: string, generation?: number): number {
+    const leases = this.#residencyLeases.get(sessionId);
+    if (leases === undefined) return 0;
+    const now = this.#now();
+    let count = 0;
+    for (const [token, lease] of leases) {
+      if (lease.expiresAt <= now) {
+        leases.delete(token);
+        continue;
+      }
+      if (generation === undefined || lease.generation === generation) count += 1;
+    }
+    if (leases.size === 0) this.#residencyLeases.delete(sessionId);
+    return count;
   }
 
   async recover(options: RecoveryOptions = {}): Promise<RecoveryReport> {
@@ -826,6 +900,7 @@ export class Multiplexer {
         existing.state = "closing";
         await existing.adapter.dispose();
         this.#sessions.delete(command.sessionId);
+        this.#residencyLeases.delete(command.sessionId);
       } else if (this.#sessions.size >= this.limits.maxSessions) {
         throw new MultiplexerError("session_capacity", "logical session capacity reached", {
           retryable: true,
@@ -1266,6 +1341,7 @@ export class Multiplexer {
       await this.#durability?.closeSession(command.sessionId, retainArtifacts);
       this.#emit(slot, "sessionClosed", command.requestId, { retainSession: retainArtifacts });
       this.#sessions.delete(command.sessionId);
+      this.#residencyLeases.delete(command.sessionId);
       this.metrics.increment("sessions_closed");
       this.#logger.write("info", "session_closed", {
         sessionId: command.sessionId,
@@ -1525,6 +1601,7 @@ export class Multiplexer {
       if (
         slot.state !== "idle" ||
         slot.pendingTurns > 0 ||
+        this.residencyLeaseCount(slot.sessionId, slot.generation) > 0 ||
         now - slot.lastUsedAt < this.idleSessionTtlMs
       ) {
         continue;
@@ -1536,6 +1613,7 @@ export class Multiplexer {
             current !== slot ||
             current.state !== "idle" ||
             current.pendingTurns > 0 ||
+            this.residencyLeaseCount(current.sessionId, current.generation) > 0 ||
             now - current.lastUsedAt < this.idleSessionTtlMs
           ) {
             return;
@@ -1565,6 +1643,7 @@ export class Multiplexer {
             idleForMs: now - current.lastUsedAt,
           });
           this.#sessions.delete(current.sessionId);
+          this.#residencyLeases.delete(current.sessionId);
           evicted.push(current.sessionId);
           this.metrics.increment("sessions_evicted");
           this.#logger.write("info", "session_evicted", {
@@ -1630,6 +1709,7 @@ export class Multiplexer {
       }),
     );
     this.#sessions.clear();
+    this.#residencyLeases.clear();
   }
 
   async #runWake(

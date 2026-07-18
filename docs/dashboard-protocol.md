@@ -5,9 +5,10 @@ title: Dash browser and backend contracts
 
 # Pi Daemon Dash browser and backend contracts
 
-Status: **Versioned contract, bounded transcript projector, production SPA
-shell, and secure browser-server foundation are implemented. Inventory,
-ownership, live channels, and shadow TUI continue in dependency-linked slices.**
+Status: **Versioned contract, inventory, transcript projection, ownership,
+production SPA/workspace, secure browser server, and the embedded rich backend
+are implemented. Neutral remote APIs and full shadow-TUI browser integration
+continue in dependency-linked slices.**
 
 Pi Daemon Dash has one browser protocol and one transport-neutral backend seam.
 The same compiled SPA talks to `/dash/v1` whether `DashboardServer` is embedded
@@ -20,6 +21,9 @@ The machine-readable and TypeScript contracts are:
   channel, resource, frame, limit, and performance types;
 - `src/dashboard-fixtures.ts` / package export `./dashboard-fixtures` — fresh,
   deterministic fixture builders for backend and frontend conformance suites;
+- `src/dashboard-backend.ts` / package export `./dashboard-backend` — policy-
+  preserving `InProcessDashboardBackend`, coalesced rich channels, replay,
+  controller arbitration, durable hydration, and renewable residency leases;
 - `src/dashboard-auth.ts`, `src/dashboard-store.ts`, and
   `src/dashboard-server.ts` / matching package subpaths — credential exchange,
   signed revocable browser sessions, static SPA serving, strict request
@@ -59,8 +63,18 @@ resource, or event-order policy.
 A server advertises each presentation independently. The initial fixture makes
 Rich available and reports TUI unavailable with
 `interactive-view-seam-required`, proving clients must negotiate instead of
-assuming the shadow view exists. A later implementation may advertise TUI as
-available without changing the browser protocol major.
+assuming the shadow view exists. The embedded backend advertises TUI only when
+a transport-neutral coalesced TUI channel manager is injected; the same
+browser protocol major remains valid.
+
+The embedded Rich implementation opens dormant durable sessions through the
+normal catalog/runtime configuration boundary without prompting, then acquires
+a renewable bounded residency lease. Panes for the same session/generation
+share one controller subscription and replay buffer. Mutating commands remain
+controller-only, read commands remain observer-safe, idempotency keys join only
+semantically identical commands, and host/session/generation cursors produce an
+explicit replay gap plus fresh snapshot when stale. Closing the final pane
+releases controller UI, listeners, replay memory, and residency leases.
 
 ## Browser authentication boundary
 

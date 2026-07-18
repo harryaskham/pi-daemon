@@ -404,6 +404,25 @@ test("hung adapter disposal is bounded during idle sweep and shutdown", async ()
   assert.equal(mux.status().metrics.counters.adapter_dispose_timeouts, 1);
 });
 
+test("renewable residency leases defer idle eviction and release capacity", async () => {
+  let now = 0;
+  const factory = new ControlledFactory();
+  const mux = new Multiplexer({ factory, now: () => now, idleSessionTtlMs: 100 });
+  await mux.open(openCommand("leased"));
+  const lease = await mux.acquireResidencyLease("leased", 1, 60);
+  assert.equal(mux.residencyLeaseCount("leased", 1), 1);
+  now = 50;
+  lease.renew();
+  now = 100;
+  assert.deepEqual(await mux.sweepIdleSessions(), []);
+  now = 109;
+  assert.deepEqual(await mux.sweepIdleSessions(), []);
+  lease.release();
+  assert.equal(mux.residencyLeaseCount("leased", 1), 0);
+  assert.deepEqual(await mux.sweepIdleSessions(), ["leased"]);
+  assert.equal(factory.adapter("leased").disposed, 1);
+});
+
 test("idle sweep evicts only expired inactive sessions and records metrics", async () => {
   let now = 0;
   const factory = new ControlledFactory();
