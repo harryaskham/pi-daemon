@@ -1,4 +1,10 @@
-import { constants } from "node:fs";
+import {
+  closeSync,
+  constants,
+  fstatSync,
+  openSync,
+  readFileSync,
+} from "node:fs";
 import {
   lstat,
   open,
@@ -338,12 +344,38 @@ export class SessionInventory {
   }
 
   async #runInitialize(): Promise<void> {
-    const headBytes = await stateFileSize(this.#headPath);
-    if (headBytes === undefined) {
+    let head: PersistedInventoryHead | undefined;
+    try {
+      const value = readInventoryHeadSync(
+        this.#headPath,
+        this.limits.maxRecordBytes * (DASH_DEFAULT_LIMITS.maxInventoryPageItems + 2),
+      );
+      if (value !== undefined) {
+        validateInventoryHead(value);
+        head = value;
+      }
+    } catch {
+      await this.#quarantine(this.#headPath, "head-corrupt");
+      this.#lastErrorCode = "corrupt_inventory_head";
+    }
+    if (head === undefined) {
       await ensurePrivateDirectory(this.stateDir, "state directory");
       await ensurePrivateDirectory(this.#webDir, "dashboard state directory");
+    } else {
+      const emptyBloom = Buffer.alloc(this.limits.searchBloomBytes).toString("base64url");
+      this.#installRecords(
+        head.records.map((inventory) => ({
+          inventory,
+          cwd: inventory.cwdBasename ?? "(unknown)",
+          ownership: { mode: "none" },
+          diagnostics: [],
+          searchBloom: emptyBloom,
+        })),
+        true,
+      );
+      this.#revision = head.revision;
+      this.#reconciledAt = head.reconciledAt;
     }
-    await this.#loadHead(headBytes);
     this.#loadedAt = this.#timestamp();
     this.#initialized = true;
     this.#scheduleFullIndexLoad();
@@ -868,36 +900,6 @@ export class SessionInventory {
     }
     this.#searchKey = Buffer.from(value.key, "hex");
     this.#searchKeyDigest = createHash("sha256").update(this.#searchKey).digest("hex");
-  }
-
-  async #loadHead(knownBytes?: number): Promise<void> {
-    const bytes = knownBytes ?? (await stateFileSize(this.#headPath));
-    if (bytes === undefined) return;
-    if (bytes > this.limits.maxRecordBytes * (DASH_DEFAULT_LIMITS.maxInventoryPageItems + 2)) {
-      await this.#quarantine(this.#headPath, "head-too-large");
-      return;
-    }
-    try {
-      const value = await readPrivateJsonIfExists<unknown>(this.#headPath);
-      if (value === undefined) return;
-      validateInventoryHead(value);
-      const emptyBloom = Buffer.alloc(this.limits.searchBloomBytes).toString("base64url");
-      this.#installRecords(
-        value.records.map((inventory) => ({
-          inventory,
-          cwd: inventory.cwdBasename ?? "(unknown)",
-          ownership: { mode: "none" },
-          diagnostics: [],
-          searchBloom: emptyBloom,
-        })),
-        true,
-      );
-      this.#revision = value.revision;
-      this.#reconciledAt = value.reconciledAt;
-    } catch {
-      await this.#quarantine(this.#headPath, "head-corrupt");
-      this.#lastErrorCode = "corrupt_inventory_head";
-    }
   }
 
   #scheduleFullIndexLoad(): void {
@@ -1452,6 +1454,54 @@ function inventoryRevision(records: StoredInventoryRecord[]): string {
     hash.update("\n");
   }
   return hash.digest("base64url").slice(0, 32);
+}
+
+function readInventoryHeadSync(path: string, maxBytes: number): unknown | undefined {
+  let descriptor: number;
+  try {
+    descriptor = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+  } catch (error) {
+    if (isNodeError(error) && error.code === "ENOENT") return undefined;
+    throw error;
+  }
+  try {
+    const info = fstatSync(descriptor);
+    if (!info.isFile()) {
+      throw new SessionInventoryError(
+        "insecure_inventory_head",
+        "inventory hot head must be a regular file",
+      );
+    }
+    const getuid = process.getuid;
+    if (getuid !== undefined && info.uid !== getuid()) {
+      throw new SessionInventoryError(
+        "insecure_inventory_head",
+        "inventory hot head must be owned by current user",
+      );
+    }
+    if ((info.mode & 0o077) !== 0) {
+      throw new SessionInventoryError(
+        "insecure_inventory_head",
+        "inventory hot head must be owner-only",
+      );
+    }
+    if (info.size < 1 || info.size > maxBytes) {
+      throw new SessionInventoryError(
+        "inventory_head_too_large",
+        "inventory hot head exceeds byte limit",
+      );
+    }
+    const encoded = readFileSync(descriptor);
+    if (encoded.byteLength < 1 || encoded.byteLength > maxBytes) {
+      throw new SessionInventoryError(
+        "inventory_head_too_large",
+        "inventory hot head exceeds byte limit",
+      );
+    }
+    return JSON.parse(encoded.toString("utf8")) as unknown;
+  } finally {
+    closeSync(descriptor);
+  }
 }
 
 function validateInventoryHead(value: unknown): asserts value is PersistedInventoryHead {
