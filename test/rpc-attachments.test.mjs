@@ -9,6 +9,7 @@ import test from "node:test";
 import { ServiceBearerAuthenticator } from "../dist/api-auth.js";
 import { ApiServer } from "../dist/api-server.js";
 import { Multiplexer } from "../dist/multiplexer.js";
+import { RpcAttachmentManager } from "../dist/rpc-attachments.js";
 import { ShadowTuiAttachmentManager } from "../dist/shadow-tui-attachments.js";
 import { FileSessionCatalog } from "../dist/session-catalog.js";
 
@@ -130,12 +131,13 @@ async function startHarness(t, rpcLimits, dashboardTuiAttachments) {
       },
     },
   });
+  const rpcAttachments = new RpcAttachmentManager(multiplexer, rpcLimits);
   const server = new ApiServer({
     multiplexer,
     authenticator: new ServiceBearerAuthenticator(TOKEN),
     host: "::1",
     port: 0,
-    rpcLimits,
+    rpcAttachments,
     ...(dashboardTuiAttachments === undefined ? {} : { dashboardTuiAttachments }),
   });
   const address = await server.start();
@@ -147,6 +149,7 @@ async function startHarness(t, rpcLimits, dashboardTuiAttachments) {
     server,
     multiplexer,
     controller: factory.controllers.get("rpc-session"),
+    rpcAttachments,
     address,
   };
 }
@@ -500,10 +503,12 @@ test("framed attachments route colliding responses privately and replay broadcas
 
 test("controller ownership and extension UI use explicit first-controller semantics", async (t) => {
   const harness = await startHarness(t);
+  assert.equal(harness.rpcAttachments.hasController("rpc-session"), false);
   const first = await connectWebSocket(harness.address, { role: "controller" });
   const second = await connectWebSocket(harness.address, { role: "controller" });
   assert.equal((await ready(first)).role, "controller");
   assert.equal((await ready(second)).role, "observer");
+  assert.equal(harness.rpcAttachments.hasController("rpc-session"), true);
   const denied = await second.websocket.next();
   assert.equal(denied.action, "control_denied");
   second.websocket.send({ kind: "control", action: "request_control" });
@@ -512,6 +517,7 @@ test("controller ownership and extension UI use explicit first-controller semant
   first.websocket.terminate();
   second.websocket.send({ kind: "control", action: "request_control" });
   assert.equal((await second.websocket.next()).action, "control_granted");
+  assert.equal(harness.rpcAttachments.hasController("rpc-session"), true);
 
   const observer = await connectWebSocket(harness.address, { role: "observer" });
   await ready(observer);
@@ -552,6 +558,7 @@ test("controller ownership and extension UI use explicit first-controller semant
   await observer.websocket.next();
   second.websocket.terminate();
   await new Promise((resolve) => setTimeout(resolve, 10));
+  assert.equal(harness.rpcAttachments.hasController("rpc-session"), false);
   assert.ok(harness.controller.cancelledUi >= 1);
   observer.websocket.close();
 });

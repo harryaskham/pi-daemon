@@ -133,6 +133,14 @@ export class RpcAttachmentManager {
     };
   }
 
+  /** Read-only ownership guard across all active generation-scoped hubs. */
+  hasController(sessionId: string): boolean {
+    for (const hub of this.#hubs.values()) {
+      if (hub.sessionId === sessionId && hub.hasController) return true;
+    }
+    return false;
+  }
+
   async attach(
     request: IncomingMessage,
     socket: Duplex,

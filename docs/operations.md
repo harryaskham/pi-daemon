@@ -83,9 +83,11 @@ symlinks to immutable Nix-store targets are supported. Configuration contains
 only non-secret values and secret **paths**: literal tokens, passwords, bearers,
 and API keys are rejected from the forward-compatible `web.ui` map. Runtime web
 preferences are a separate allowlisted overlay under `STATE_DIR/web`; they
-cannot change bind/auth/root/credential/resource authority. The loader validates
-and preserves `web`/`sessionStorage` now; those fields become active only as the
-corresponding Dash/ownership beads land.
+cannot change bind/auth/root/credential/resource authority. `sessionStorage` is
+used by the ownership service. A present, enabled `web` block in `embedded` mode
+starts the packaged browser BFF with the in-process backend; omitting the block
+preserves the socket/API-only service lifecycle. Dedicated mode remains a
+separate `pi-daemon web` lifecycle.
 
 To enable the additive authenticated JSON listener, either set `api.enabled`
 in YAML or pass `--api-port` (optionally make enablement explicit with
@@ -238,7 +240,7 @@ cannot override module-managed identity, root, path, or API arguments.
 `scripts/pi-daemon-test-instance.sh` maintains an operator-owned test instance
 without creating or modifying a launchd/systemd unit. It keeps a separate Git
 checkout, Nix GC root, config, state, Pi agent directory, socket, tmux session,
-log, API bearer, and future Dash web credential. `update` fast-forwards only to
+log, API bearer, and Dash web credential. `update` fast-forwards only to
 `origin/main`, refuses tracked source changes, runs the exact Nix package/test
 gate, atomically switches to the immutable result, and restarts only its named
 tmux session after a successful build. A failed build leaves the running result
@@ -259,16 +261,19 @@ Default paths are `~/.local/share/pi-daemon-test/source`,
 of the script override them. The config must still provide explicit isolated
 values. The ms-mac developer instance uses socket
 `~/.local/state/pi-daemon/test/run/pi-daemon.sock`, API `127.0.0.1:7473`, and
-reserved Dash endpoint `127.0.0.1:7474`, while the Home Manager primary remains
-on API port 7463. No token is placed in the script, argv, Git, or output: service
-bootstrap creates `STATE_DIR/api-token`, and the DashboardServer factory creates
-`STATE_DIR/web-token` when its lifecycle is enabled.
+embedded Dash endpoint `127.0.0.1:7474`, while the Home Manager primary remains
+on API port 7463. No token is placed in the script, argv, Git, browser URL, or
+output: service bootstrap creates `STATE_DIR/api-token`, and the DashboardServer
+factory creates `STATE_DIR/web-token` when its lifecycle is enabled.
 
-The current `serve` lifecycle starts the owner-only socket and session API and
-records the validated `web` namespace. The packaged SPA and DashboardServer are
-already in the Nix result, but the `web` listener itself remains absent until
-the embedded/dedicated backend lifecycle slice lands; status must not claim
-port 7474 is live before then.
+An enabled embedded `web` block starts the same packaged content-hashed SPA and
+browser BFF after the owner socket and authenticated API are ready. Open
+`http://127.0.0.1:7474/dash/` for the ms-mac rolling instance. The browser
+credential is exchanged only through the same-origin login and becomes an
+opaque `HttpOnly`, `SameSite=Strict` cookie; the daemon service bearer never
+reaches JavaScript. Startup is atomic across all listeners and shutdown shares
+the daemon's existing whole deadline. Dedicated `pi-daemon web` remains in the
+final dual-mode lifecycle slice.
 
 ## Nix-on-Droid cache bootstrap
 

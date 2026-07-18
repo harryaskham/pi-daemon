@@ -193,6 +193,14 @@ export class InProcessDashboardBackend implements DashboardBackend {
     return structuredClone(this.#capabilities);
   }
 
+  /** Read-only ownership guard; controller authority remains inside each hub. */
+  hasController(sessionId: string): boolean {
+    for (const hub of this.#richHubs.values()) {
+      if (hub.identity.sessionId === sessionId && hub.hasController) return true;
+    }
+    return false;
+  }
+
   async listSessions(query: SessionInventoryQuery): Promise<SessionInventoryPage> {
     this.#assertOpen();
     return this.#inventory.list(query);
@@ -460,6 +468,10 @@ class InProcessRichHub {
 
   get channelCount(): number {
     return this.#channels.size;
+  }
+
+  get hasController(): boolean {
+    return this.#controllerChannelId !== undefined;
   }
 
   open(

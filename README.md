@@ -80,6 +80,11 @@ pi-daemon-rpc --url http://127.0.0.1:7463 --session exact-id-or-name \
   --token-file ~/.local/state/pi-daemon/api-token
 ```
 
+With an enabled embedded `web` block, the same `serve` process starts the
+packaged browser BFF after its owner socket/API are ready. Open `/dash/` on the
+configured loopback web port (for example `http://127.0.0.1:7464/dash/`); never
+put either service or web credentials in the URL.
+
 Both executables treat an `EPIPE` from stdout or stderr as a normal early-closing
 Unix pipeline consumer and exit quietly with status 0. Other stream errors remain
 fatal and are never hidden by the closed-pipe guard.

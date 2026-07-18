@@ -208,8 +208,10 @@ test("embedded backend delegates inventory, preview, ownership and catalog witho
 test("rich channels coalesce controller events, enforce roles, replay and durable identity", async (t) => {
   const { backend, factory, fixtures, multiplexer } = await harness(t);
   const sessionRef = fixtures.sessionInfo.managed.sessionId;
+  assert.equal(backend.hasController(sessionRef), false);
   const controller = await backend.openSessionChannel({ sessionRef, generation: 3, role: "controller" });
   assert.equal(controller.role, "controller");
+  assert.equal(backend.hasController(sessionRef), true);
   assert.equal(controller.snapshot.entries.length, fixtures.transcript.records.length);
   assert.deepEqual(controller.identity, { hostInstanceId: "host-fixture-01", sessionId: sessionRef, generation: 3 });
   assert.equal(multiplexer.residencyLeaseCount(sessionRef, 3), 1);
@@ -298,13 +300,16 @@ test("rich channels coalesce controller events, enforce roles, replay and durabl
   assert.equal(contender.role, "observer");
   assert.equal((await contender.requestControl("control-busy")).state, "rejected");
   assert.equal((await controller.releaseControl("release-control")).state, "completed");
+  assert.equal(backend.hasController(sessionRef), false);
   assert.equal((await contender.requestControl("control-grant")).state, "completed");
   assert.equal(contender.role, "controller");
+  assert.equal(backend.hasController(sessionRef), true);
 
   await controller.close();
   await observer.close();
   await stale.close();
   await contender.close();
+  assert.equal(backend.hasController(sessionRef), false);
   assert.equal(multiplexer.residencyLeaseCount(sessionRef, 3), 0);
 });
 

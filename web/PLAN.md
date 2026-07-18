@@ -1304,12 +1304,12 @@ These lanes intentionally begin in parallel:
   depends on `bd-933f1e`, `bd-e25765`.
 - [x] `bd-cc87cb` — production SPA shell/sidebar/info/theme foundation; depends
   on `bd-933f1e`, `bd-493121`.
-- [ ] `bd-fd9f22` — direct co-opt/fork/import/conflict/export session ownership;
+- [x] `bd-fd9f22` — direct co-opt/fork/import/conflict/export session ownership;
   depends on `bd-93e857`, `bd-3a8261`, `bd-e25765`.
 
 ### Dual backends and neutral API
 
-- [ ] `bd-246c6e` — neutral authenticated inventory/transcript/ownership/export/
+- [x] `bd-246c6e` — neutral authenticated inventory/transcript/ownership/export/
   TUI API; depends on contract, inventory, projector, and ownership.
 - [x] `bd-e1e692` — embedded backend over direct shared services; depends on
   contract, inventory, projector, and ownership.
@@ -1328,8 +1328,11 @@ These lanes intentionally begin in parallel:
   depends on TUI/frontend spikes, contract, and SPA shell.
 - [ ] `bd-ea2019` — live preview/hydration/RPC/liveness/extension UI integration;
   depends on SPA shell, rich transcript, browser server, and both backends.
-- [ ] `bd-31ee8f` — embedded/dedicated lifecycle, self-contained assets, CLI,
-  npm/Nix and Home Manager packaging; depends on config/server/backends/SPA.
+- [ ] `bd-b9d8e6` — operator-directed embedded `serve` browser lifecycle slice;
+  starts the packaged SPA/BFF now without waiting for the dedicated backend.
+- [ ] `bd-31ee8f` — dedicated lifecycle, final dual-mode packaging, CLI, npm/Nix
+  and Home Manager closure; depends on config/server/backends/SPA and the
+  embedded lifecycle slice.
 
 ### V1 closure
 

@@ -11,12 +11,15 @@ import { ApiServer } from "./api-server.js";
 import { bootstrapServicePaths } from "./bootstrap.js";
 import { PiDaemonClient, ProtocolResponseError } from "./client.js";
 import { loadPiDaemonConfig, PiDaemonConfigError } from "./config.js";
+import { createDashboardServerFromConfig, type DashboardServer } from "./dashboard-server.js";
+import { EmbeddedDashboardServiceRuntime } from "./dashboard-service-runtime.js";
 import { FileDurabilityStore } from "./durability.js";
 import { Multiplexer, type SessionFactory } from "./multiplexer.js";
 import { JsonLineLogger } from "./observability.js";
 import { PiSessionFactory } from "./pi-adapter.js";
 import { installProcessStdioErrorHandlers } from "./process-stdio.js";
 import { parseCommand } from "./protocol.js";
+import { RpcAttachmentManager } from "./rpc-attachments.js";
 import { ProtocolServer } from "./server.js";
 import {
   SessionCliUsageError,
@@ -219,6 +222,10 @@ async function runServe(
     ...(cliInstance === undefined ? {} : { cliInstance }),
   });
   const config = loadedConfig.config;
+  const embeddedWebEnabled =
+    config.web !== undefined &&
+    config.web.enabled !== false &&
+    (config.web.mode ?? "embedded") === "embedded";
   const configuredPath = (cliName: string, value: string | undefined): string | undefined => {
     const cliValue = options.get(cliName);
     if (cliValue !== undefined) return resolve(cliValue);
@@ -359,6 +366,10 @@ async function runServe(
       ),
     ),
   });
+  const rpcAttachments = apiEnabled ? new RpcAttachmentManager(multiplexer) : undefined;
+  let dashboardRuntime: EmbeddedDashboardServiceRuntime | undefined;
+  let dashboardServer: DashboardServer | undefined;
+
   const server = new ProtocolServer({
     socketPath,
     multiplexer,
@@ -406,8 +417,28 @@ async function runServe(
   });
   let apiServer: ApiServer | undefined;
   let apiAddress: { host: string; port: number } | undefined;
+  let dashboardAddress: { host: string; port: number; origin: string } | undefined;
   try {
     await server.start();
+    if (apiEnabled || embeddedWebEnabled) {
+      dashboardRuntime = await EmbeddedDashboardServiceRuntime.create({
+        loadedConfig,
+        stateDir,
+        agentDir,
+        allowedRoots,
+        catalog,
+        multiplexer,
+        ...(rpcAttachments === undefined ? {} : { rpcAttachments }),
+      });
+      if (embeddedWebEnabled) {
+        dashboardServer = await createDashboardServerFromConfig({
+          loadedConfig,
+          stateDir,
+          backend: dashboardRuntime.backend,
+          serverInstanceId: `embedded-${loadedConfig.instance}`,
+        });
+      }
+    }
     if (apiEnabled) {
       const loaded = loadServiceBearer({
         ...(apiTokenFile === undefined ? {} : { tokenFile: apiTokenFile }),
@@ -417,6 +448,8 @@ async function runServe(
         multiplexer,
         authenticator: loaded.authenticator,
         tickets,
+        ...(rpcAttachments === undefined ? {} : { rpcAttachments }),
+        ...(dashboardRuntime === undefined ? {} : { dashboardApi: dashboardRuntime.neutralApi }),
         host: options.get("api-bind") ?? config.api?.bind ?? "127.0.0.1",
         port: configuredApiPort!,
         allowInsecureRemote:
@@ -428,9 +461,13 @@ async function runServe(
       });
       apiAddress = await apiServer.start();
     }
+    dashboardAddress = await dashboardServer?.start();
   } catch (error) {
+    await dashboardServer?.stop().catch(() => {});
     await apiServer?.stop().catch(() => {});
+    rpcAttachments?.dispose();
     await server.stop().catch(() => {});
+    await dashboardRuntime?.stop().catch(() => {});
     await multiplexer.dispose(1_000).catch(() => {});
     throw error;
   }
@@ -448,6 +485,17 @@ async function runServe(
       apiAddress === undefined
         ? { enabled: false }
         : { enabled: true, host: apiAddress.host, port: apiAddress.port },
+    dashboard:
+      dashboardAddress === undefined
+        ? { enabled: false }
+        : {
+            enabled: true,
+            host: dashboardAddress.host,
+            port: dashboardAddress.port,
+            origin: dashboardAddress.origin,
+            inventory: dashboardRuntime?.inventory.status(),
+          },
+    ownershipRecovery: dashboardRuntime?.recovery,
     configuration: {
       instance: loadedConfig.instance,
       fileLoaded: loadedConfig.present,
@@ -511,7 +559,12 @@ async function runServe(
       multiplexer.beginDrain();
       const transportBudget = Math.max(0, deadline - Date.now());
       const transportsStopped = await completesWithin(
-        Promise.allSettled([apiServer?.stop(), server.stop()]),
+        Promise.allSettled([
+          dashboardServer?.stop(),
+          apiServer?.stop(),
+          server.stop(),
+          dashboardRuntime?.stop(),
+        ]),
         transportBudget,
       );
       if (!transportsStopped) {
@@ -765,6 +818,7 @@ Service configuration:
   PI_DAEMON_CONFIG            Config path fallback; CLI --config takes precedence
   PI_DAEMON_INSTANCE          Instance fallback; CLI --instance takes precedence
   Individual CLI values override YAML; existing flag-only invocation remains supported.
+  An enabled web.mode=embedded block serves the packaged Dash at /dash/ on web.port.
   Secrets are file/fd/environment references, never literal YAML values.
 
 Recovery limits:

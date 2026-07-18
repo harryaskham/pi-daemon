@@ -59,6 +59,10 @@
       "types": "./dist/dashboard-server.d.ts",
       "import": "./dist/dashboard-server.js"
     },
+    "./dashboard-service-runtime": {
+      "types": "./dist/dashboard-service-runtime.d.ts",
+      "import": "./dist/dashboard-service-runtime.js"
+    },
     "./dashboard-neutral-api": {
       "types": "./dist/dashboard-neutral-api.d.ts",
       "import": "./dist/dashboard-neutral-api.js"
