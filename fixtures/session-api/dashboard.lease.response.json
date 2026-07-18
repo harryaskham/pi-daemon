@@ -1,0 +1,17 @@
+{
+  "apiVersion": "1.0",
+  "requestId": "req-service-lease-01",
+  "hostInstanceId": "host-fixture-01",
+  "ok": true,
+  "data": {
+    "sessionRef": "session-fixture-01",
+    "leaseId": "lease-fixture-01",
+    "expiresAt": "2026-07-18T12:01:00.000Z",
+    "ownership": {
+      "mode": "direct",
+      "leaseId": "lease-fixture-01",
+      "sourceInventoryId": "inventory-fixture-01",
+      "exportedInventoryIds": []
+    }
+  }
+}

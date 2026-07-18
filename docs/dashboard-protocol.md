@@ -33,7 +33,9 @@ The machine-readable and TypeScript contracts are:
 The contract is additive to the existing owner-only NDJSON protocol and the
 authenticated `/v1` session API. It does not replace Pi RPC, expose Pi SDK
 objects, or introduce a second session state machine. The first concrete core
-implementation is the [owner-safe persisted session inventory](dashboard-inventory).
+implementation is the [owner-safe persisted session inventory](dashboard-inventory),
+and dedicated backends consume it through the
+[neutral service-bearer Dash API](dashboard-service-api).
 
 ## Behavioral backend seam
 

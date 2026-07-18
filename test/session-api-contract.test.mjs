@@ -5,6 +5,7 @@ import Ajv2020 from "ajv/dist/2020.js";
 
 import {
   CONTROL_MODE_EQUIVALENCE,
+  DASHBOARD_TUI_SUBPROTOCOL,
   PI_RPC_COMMAND_TYPES,
   SESSION_API_PATHS,
   SESSION_API_VERSION,
@@ -17,8 +18,12 @@ const readJson = async (path) =>
 const fixture = (name) => readJson(`fixtures/session-api/${name}`);
 
 async function contractValidator() {
-  const schema = await readJson("session-api.schema.json");
+  const [schema, dashboardSchema] = await Promise.all([
+    readJson("session-api.schema.json"),
+    readJson("dashboard-api.schema.json"),
+  ]);
   const ajv = new Ajv2020({ allErrors: true, strict: true });
+  ajv.addSchema(dashboardSchema);
   ajv.addSchema(schema);
   const validate = (definition, value) => {
     const compiled = ajv.getSchema(`${schema.$id}#/$defs/${definition}`);
@@ -53,8 +58,29 @@ test("session API fixtures validate against their published definitions", async 
     ["rpc.replay-gap.frame.json", "rpcReplayGapFrame"],
     ["apc.initialize.json", "jsonRpcMessage"],
     ["error.response.json", "apiErrorEnvelope"],
+    ["dashboard.capabilities.response.json", "dashboardServiceCapabilitiesEnvelope"],
+    ["dashboard.inventory.response.json", "dashboardInventoryEnvelope"],
+    ["dashboard.info.response.json", "dashboardSessionInfoEnvelope"],
+    ["dashboard.transcript.response.json", "dashboardTranscriptEnvelope"],
+    ["dashboard.activation.response.json", "dashboardActivationEnvelope"],
+    ["dashboard.export.response.json", "dashboardExportEnvelope"],
+    ["dashboard.lease.response.json", "dashboardLeaseEnvelope"],
   ]) {
     validate(definition, await fixture(name));
+  }
+});
+
+test("invalid neutral Dashboard fixtures fail strict public definitions", async () => {
+  const { schema, ajv } = await contractValidator();
+  for (const [name, definition] of [
+    ["dashboard.capabilities.invalid.json", "dashboardServiceCapabilities"],
+    ["dashboard.lease.invalid.json", "dashboardLeaseRequest"],
+  ]) {
+    const validate = ajv.getSchema(
+      `https://a.skh.am/pi-daemon/dashboard-api.schema.json#/$defs/${definition}`,
+    );
+    assert.ok(validate, `${schema.$id}: missing ${definition}`);
+    assert.equal(validate(await fixture(name)), false, name);
   }
 });
 
@@ -99,8 +125,11 @@ test("Pi RPC compatibility inventory is exact and includes settled-era commands"
 });
 
 test("OpenAPI publishes every route, service bearer auth, and resolvable contract refs", async () => {
-  const schema = await readJson("session-api.schema.json");
-  const openapi = await readJson("session-api.openapi.json");
+  const [schema, dashboardSchema, openapi] = await Promise.all([
+    readJson("session-api.schema.json"),
+    readJson("dashboard-api.schema.json"),
+    readJson("session-api.openapi.json"),
+  ]);
   assert.equal(openapi.openapi, "3.1.0");
   assert.equal(openapi.info.version, "1.0.0");
   assert.deepEqual(openapi.security, [{ serviceBearer: [] }]);
@@ -114,6 +143,12 @@ test("OpenAPI publishes every route, service bearer auth, and resolvable contrac
     openapi.paths["/session/{sessionRef}/apc"].get["x-upstream-protocol"],
     "Agent Client Protocol JSON-RPC 2.0",
   );
+  assert.equal(
+    openapi.paths["/dashboard/session/{sessionRef}/tui"].get[
+      "x-websocket-subprotocol"
+    ],
+    DASHBOARD_TUI_SUBPROTOCOL,
+  );
 
   const visit = (value) => {
     if (Array.isArray(value)) {
@@ -121,9 +156,18 @@ test("OpenAPI publishes every route, service bearer auth, and resolvable contrac
       return;
     }
     if (value === null || typeof value !== "object") return;
-    if (typeof value.$ref === "string" && value.$ref.startsWith("./session-api.schema.json#/$defs/")) {
-      const definition = value.$ref.slice(value.$ref.lastIndexOf("/") + 1);
-      assert.ok(schema.$defs[definition], `unresolved external schema ref: ${value.$ref}`);
+    if (typeof value.$ref === "string") {
+      if (value.$ref.startsWith("./session-api.schema.json#/$defs/")) {
+        const definition = value.$ref.slice(value.$ref.lastIndexOf("/") + 1);
+        assert.ok(schema.$defs[definition], `unresolved external schema ref: ${value.$ref}`);
+      }
+      if (value.$ref.startsWith("./dashboard-api.schema.json#/$defs/")) {
+        const definition = value.$ref.slice(value.$ref.lastIndexOf("/") + 1);
+        assert.ok(
+          dashboardSchema.$defs[definition],
+          `unresolved Dashboard schema ref: ${value.$ref}`,
+        );
+      }
     }
     for (const child of Object.values(value)) visit(child);
   };

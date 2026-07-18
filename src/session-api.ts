@@ -10,7 +10,19 @@ export const SESSION_API_PATHS = {
   tickets: "/v1/ticket",
   ticket: "/v1/ticket/{ticketId}",
   reconcileTicket: "/v1/ticket/{ticketId}/reconcile",
+  dashboardCapabilities: "/v1/dashboard/capabilities",
+  dashboardInventory: "/v1/dashboard/inventory",
+  dashboardInventoryItem: "/v1/dashboard/inventory/{inventoryId}",
+  dashboardTranscript: "/v1/dashboard/inventory/{inventoryId}/transcript",
+  dashboardActivate: "/v1/dashboard/inventory/{inventoryId}/activate",
+  dashboardActivation: "/v1/dashboard/activation/{ticketId}",
+  dashboardExport: "/v1/dashboard/session/{sessionRef}/export",
+  dashboardExportTicket: "/v1/dashboard/export/{ticketId}",
+  dashboardLease: "/v1/dashboard/session/{sessionRef}/lease",
+  dashboardTui: "/v1/dashboard/session/{sessionRef}/tui",
 } as const;
+
+export const DASHBOARD_TUI_SUBPROTOCOL = "pi-daemon-tui.v1" as const;
 
 /**
  * `pi-rpc.v1` preserves Pi's JSONL RPC message shapes. `pi-daemon-rpc.v1`
@@ -181,7 +193,7 @@ export interface ApiErrorBody {
   details?: JsonObject;
 }
 
-export interface ApiSuccessEnvelope<T extends JsonValue | SessionResource = JsonValue> {
+export interface ApiSuccessEnvelope<T = JsonValue> {
   apiVersion: typeof SESSION_API_VERSION;
   requestId: string;
   hostInstanceId: string;

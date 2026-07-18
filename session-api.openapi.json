@@ -301,6 +301,188 @@
         "x-upstream-protocol": "Agent Client Protocol JSON-RPC 2.0"
       }
     },
+    "/dashboard/capabilities": {
+      "get": {
+        "operationId": "getDashboardServiceCapabilities",
+        "summary": "Negotiate neutral inventory, preview, ownership/export, lease, and TUI service capabilities",
+        "responses": {
+          "200": {
+            "description": "Authenticated neutral Dash service capabilities",
+            "content": { "application/json": { "schema": { "$ref": "./session-api.schema.json#/$defs/dashboardServiceCapabilitiesEnvelope" } } }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/dashboard/inventory": {
+      "get": {
+        "operationId": "listDashboardInventory",
+        "summary": "List bounded preview-only managed and external Pi sessions",
+        "parameters": [
+          { "$ref": "#/components/parameters/PageCursor" },
+          { "$ref": "#/components/parameters/PageLimit" },
+          { "name": "search", "in": "query", "schema": { "type": "string", "maxLength": 1024 } },
+          { "name": "sourceKind", "in": "query", "schema": { "type": "string", "maxLength": 512 } },
+          { "name": "runtime", "in": "query", "schema": { "type": "string", "maxLength": 512 } },
+          { "name": "unread", "in": "query", "schema": { "type": "boolean" } },
+          { "name": "modifiedAfter", "in": "query", "schema": { "type": "string", "maxLength": 64 } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Stable opaque-cursor inventory page without canonical paths",
+            "content": { "application/json": { "schema": { "$ref": "./session-api.schema.json#/$defs/dashboardInventoryEnvelope" } } }
+          },
+          "400": { "$ref": "#/components/responses/InvalidRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/dashboard/inventory/{inventoryId}": {
+      "parameters": [
+        { "name": "inventoryId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1, "maxLength": 256 } }
+      ],
+      "get": {
+        "operationId": "getDashboardInventoryInfo",
+        "summary": "Get authenticated source, ownership, runtime and diagnostics metadata",
+        "responses": {
+          "200": {
+            "description": "Full safe inventory information; may include canonical source path",
+            "content": { "application/json": { "schema": { "$ref": "./session-api.schema.json#/$defs/dashboardSessionInfoEnvelope" } } }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/dashboard/inventory/{inventoryId}/transcript": {
+      "parameters": [
+        { "name": "inventoryId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1, "maxLength": 256 } }
+      ],
+      "get": {
+        "operationId": "getDashboardInventoryTranscript",
+        "summary": "Project a bounded active-branch transcript without runtime hydration",
+        "parameters": [
+          { "$ref": "#/components/parameters/PageCursor" },
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "minimum": 1, "maximum": 200 } },
+          { "name": "direction", "in": "query", "schema": { "enum": ["older", "newer"] } },
+          { "name": "leafId", "in": "query", "schema": { "type": "string", "maxLength": 256 } },
+          { "name": "fingerprint", "in": "query", "schema": { "$ref": "./dashboard-api.schema.json#/$defs/fingerprint" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Normalized preview-only transcript page",
+            "content": { "application/json": { "schema": { "$ref": "./session-api.schema.json#/$defs/dashboardTranscriptEnvelope" } } }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "413": { "$ref": "#/components/responses/TooLarge" }
+        }
+      }
+    },
+    "/dashboard/inventory/{inventoryId}/activate": {
+      "parameters": [
+        { "name": "inventoryId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1, "maxLength": 256 } },
+        { "$ref": "#/components/parameters/IdempotencyKey" }
+      ],
+      "post": {
+        "operationId": "activateDashboardInventorySession",
+        "summary": "Durably admit preview-only, reuse, direct co-opt, or fork/import activation",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "./dashboard-api.schema.json#/$defs/activationRequest" } } }
+        },
+        "responses": {
+          "202": {
+            "description": "Durable activation ticket",
+            "content": { "application/json": { "schema": { "$ref": "./session-api.schema.json#/$defs/dashboardActivationEnvelope" } } }
+          },
+          "400": { "$ref": "#/components/responses/InvalidRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "413": { "$ref": "#/components/responses/TooLarge" },
+          "429": { "$ref": "#/components/responses/Capacity" }
+        }
+      }
+    },
+    "/dashboard/activation/{ticketId}": {
+      "parameters": [{ "$ref": "#/components/parameters/TicketId" }],
+      "get": {
+        "operationId": "getDashboardActivationTicket",
+        "summary": "Inspect a durable activation ticket",
+        "responses": {
+          "200": { "description": "Activation ticket", "content": { "application/json": { "schema": { "$ref": "./session-api.schema.json#/$defs/dashboardActivationEnvelope" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/dashboard/session/{sessionRef}/export": {
+      "parameters": [
+        { "$ref": "#/components/parameters/SessionRef" },
+        { "$ref": "#/components/parameters/IdempotencyKey" }
+      ],
+      "post": {
+        "operationId": "exportDashboardSession",
+        "summary": "Durably export as new or guarded append-to-origin",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "./dashboard-api.schema.json#/$defs/exportRequest" } } }
+        },
+        "responses": {
+          "202": { "description": "Durable export ticket", "content": { "application/json": { "schema": { "$ref": "./session-api.schema.json#/$defs/dashboardExportEnvelope" } } } },
+          "400": { "$ref": "#/components/responses/InvalidRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "413": { "$ref": "#/components/responses/TooLarge" }
+        }
+      }
+    },
+    "/dashboard/export/{ticketId}": {
+      "parameters": [{ "$ref": "#/components/parameters/TicketId" }],
+      "get": {
+        "operationId": "getDashboardExportTicket",
+        "summary": "Inspect a durable export ticket",
+        "responses": {
+          "200": { "description": "Export ticket", "content": { "application/json": { "schema": { "$ref": "./session-api.schema.json#/$defs/dashboardExportEnvelope" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/dashboard/session/{sessionRef}/lease": {
+      "parameters": [{ "$ref": "#/components/parameters/SessionRef" }],
+      "post": {
+        "operationId": "renewDashboardOwnershipLease",
+        "summary": "Renew the exact active cooperative ownership lease",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "./dashboard-api.schema.json#/$defs/dashboardLeaseRequest" } } }
+        },
+        "responses": {
+          "200": { "description": "Renewed lease", "content": { "application/json": { "schema": { "$ref": "./session-api.schema.json#/$defs/dashboardLeaseEnvelope" } } } },
+          "400": { "$ref": "#/components/responses/InvalidRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    },
+    "/dashboard/session/{sessionRef}/tui": {
+      "parameters": [{ "$ref": "#/components/parameters/SessionRef" }],
+      "get": {
+        "operationId": "attachDashboardTuiChannel",
+        "summary": "Capability-gated server-side TUI channel",
+        "x-websocket-subprotocol": "pi-daemon-tui.v1",
+        "responses": {
+          "101": { "description": "Authenticated TUI WebSocket attachment" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "426": { "$ref": "#/components/responses/UpgradeRequired" },
+          "501": { "$ref": "#/components/responses/NotImplemented" }
+        }
+      }
+    },
     "/ticket": {
       "get": {
         "operationId": "getTicketByIdempotency",
@@ -529,6 +711,10 @@
       },
       "UpgradeRequired": {
         "description": "WebSocket upgrade or supported subprotocol required",
+        "content": { "application/json": { "schema": { "$ref": "./session-api.schema.json#/$defs/apiErrorEnvelope" } } }
+      },
+      "NotImplemented": {
+        "description": "Capability is known but unavailable in this host configuration",
         "content": { "application/json": { "schema": { "$ref": "./session-api.schema.json#/$defs/apiErrorEnvelope" } } }
       },
       "Unavailable": {

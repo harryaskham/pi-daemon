@@ -15,6 +15,24 @@ import {
   type AcpAdapterLimits,
 } from "./acp-adapter.js";
 import { ServiceBearerAuthenticator } from "./api-auth.js";
+import {
+  asDashboardCursor,
+  asDashboardFingerprint,
+  type ActivationRequest,
+  type DashboardLeaseRequest,
+  type SessionExportRequest,
+  type SessionInventoryQuery,
+  type TranscriptQuery,
+} from "./dashboard-contract.js";
+import {
+  normalizeDashboardNeutralError,
+  type DashboardNeutralApi,
+} from "./dashboard-neutral-api.js";
+import {
+  DashboardTuiAttachmentError,
+  dashboardTuiUpgradeHeaders,
+  type DashboardTuiAttachmentManager,
+} from "./dashboard-tui-attachments.js";
 import { Multiplexer, MultiplexerError } from "./multiplexer.js";
 import {
   ProtocolSerializationError,
@@ -22,6 +40,7 @@ import {
   type ProtocolCommand,
 } from "./protocol.js";
 import {
+  DASHBOARD_TUI_SUBPROTOCOL,
   SESSION_API_VERSION,
   type ApiErrorBody,
   type SessionEnvironmentSummary,
@@ -79,6 +98,8 @@ export interface ApiServerOptions {
   rpcAttachments?: RpcAttachmentManager;
   acpLimits?: Partial<AcpAdapterLimits>;
   acpAdapters?: AcpAdapterManager;
+  dashboardApi?: DashboardNeutralApi;
+  dashboardTuiAttachments?: DashboardTuiAttachmentManager;
 }
 
 export interface ApiServerAddress {
@@ -126,6 +147,8 @@ export class ApiServer {
   readonly #tickets: MutationTicketController | undefined;
   readonly #rpcAttachments: RpcAttachmentManager;
   readonly #acpAdapters: AcpAdapterManager;
+  readonly #dashboardApi: DashboardNeutralApi | undefined;
+  readonly #dashboardTuiAttachments: DashboardTuiAttachmentManager | undefined;
   readonly #server: Server;
   readonly #upgradeSockets = new Set<Duplex>();
   #started = false;
@@ -147,6 +170,8 @@ export class ApiServer {
       options.rpcAttachments ?? new RpcAttachmentManager(this.#multiplexer, options.rpcLimits);
     this.#acpAdapters =
       options.acpAdapters ?? new AcpAdapterManager(this.#multiplexer, options.acpLimits);
+    this.#dashboardApi = options.dashboardApi;
+    this.#dashboardTuiAttachments = options.dashboardTuiAttachments;
     this.limits = {
       maxConnections: positiveInteger(
         options.limits?.maxConnections ?? DEFAULT_API_SERVER_LIMITS.maxConnections,
@@ -281,8 +306,18 @@ export class ApiServer {
             acp: this.#acpAdapters.capabilities,
             isolationModes: ["unisolated"],
             authentication: "service-bearer",
+            ...(this.#dashboardApi === undefined
+              ? {}
+              : { dashboard: await this.#dashboardApi.capabilities() }),
           },
         });
+        return;
+      }
+
+      if (
+        this.#dashboardApi !== undefined &&
+        (await this.#handleDashboardRequest(request, response, url, requestId))
+      ) {
         return;
       }
 
@@ -486,6 +521,150 @@ export class ApiServer {
         response,
         normalized.status,
         errorEnvelope(requestId, this.#multiplexer.hostInstanceId, normalized.body),
+      );
+    }
+  }
+
+  async #handleDashboardRequest(
+    request: IncomingMessage,
+    response: ServerResponse,
+    url: URL,
+    requestId: string,
+  ): Promise<boolean> {
+    if (!url.pathname.startsWith("/v1/dashboard/")) return false;
+    const api = this.#dashboardApi!;
+    const send = (
+      status: number,
+      data: unknown,
+      headers: Record<string, string> = {},
+      responseRequestId = requestId,
+    ): void =>
+      sendJson(
+        response,
+        status,
+        {
+          apiVersion: SESSION_API_VERSION,
+          requestId: responseRequestId,
+          hostInstanceId: this.#multiplexer.hostInstanceId,
+          ok: true,
+          data,
+        },
+        headers,
+      );
+    try {
+      if (request.method === "GET" && url.pathname === "/v1/dashboard/capabilities") {
+        send(200, await api.capabilities());
+        return true;
+      }
+      if (request.method === "GET" && url.pathname === "/v1/dashboard/inventory") {
+        send(200, await api.listSessions(dashboardInventoryQuery(url)));
+        return true;
+      }
+      if (request.method === "GET") {
+        const transcriptRef = dashboardPathRef(
+          url.pathname,
+          "/v1/dashboard/inventory/",
+          "/transcript",
+        );
+        if (transcriptRef !== undefined) {
+          const query = dashboardTranscriptQuery(url);
+          const fingerprint = optionalFingerprint(url.searchParams.get("fingerprint"));
+          send(200, await api.getTranscript(transcriptRef, query, fingerprint));
+          return true;
+        }
+        const inventoryRef = dashboardPathRef(
+          url.pathname,
+          "/v1/dashboard/inventory/",
+        );
+        if (inventoryRef !== undefined) {
+          send(200, await api.getSessionInfo(inventoryRef));
+          return true;
+        }
+        const activationTicket = dashboardPathRef(
+          url.pathname,
+          "/v1/dashboard/activation/",
+        );
+        if (activationTicket !== undefined) {
+          send(200, await api.getActivation(activationTicket));
+          return true;
+        }
+        const exportTicket = dashboardPathRef(
+          url.pathname,
+          "/v1/dashboard/export/",
+        );
+        if (exportTicket !== undefined) {
+          send(200, await api.getExport(exportTicket));
+          return true;
+        }
+      }
+      if (request.method === "POST") {
+        const activateRef = dashboardPathRef(
+          url.pathname,
+          "/v1/dashboard/inventory/",
+          "/activate",
+        );
+        if (activateRef !== undefined) {
+          const body = parseDashboardActivation(
+            await readBoundedJson(request, this.limits.maxBodyBytes),
+          );
+          assertMatchingRequestId(request.headers["x-request-id"], body.requestId);
+          assertDashboardIdempotency(request, body.idempotencyKey);
+          const ticket = await api.activateSession(activateRef, body);
+          send(
+            202,
+            ticket,
+            {
+              Location: `/v1/dashboard/activation/${encodeURIComponent(ticket.ticketId)}`,
+            },
+            body.requestId,
+          );
+          return true;
+        }
+        const exportRef = dashboardPathRef(
+          url.pathname,
+          "/v1/dashboard/session/",
+          "/export",
+        );
+        if (exportRef !== undefined) {
+          const body = parseDashboardExport(
+            await readBoundedJson(request, this.limits.maxBodyBytes),
+          );
+          assertMatchingRequestId(request.headers["x-request-id"], body.requestId);
+          assertDashboardIdempotency(request, body.idempotencyKey);
+          const ticket = await api.exportSession(exportRef, body);
+          send(
+            202,
+            ticket,
+            {
+              Location: `/v1/dashboard/export/${encodeURIComponent(ticket.ticketId)}`,
+            },
+            body.requestId,
+          );
+          return true;
+        }
+        const leaseRef = dashboardPathRef(
+          url.pathname,
+          "/v1/dashboard/session/",
+          "/lease",
+        );
+        if (leaseRef !== undefined) {
+          const body = parseDashboardLease(
+            await readBoundedJson(request, this.limits.maxBodyBytes),
+          );
+          assertMatchingRequestId(request.headers["x-request-id"], body.requestId);
+          send(200, await api.renewLease(leaseRef, body.leaseId), {}, body.requestId);
+          return true;
+        }
+      }
+      return false;
+    } catch (error) {
+      if (error instanceof ApiRequestError) throw error;
+      const normalized = normalizeDashboardNeutralError(error);
+      throw new ApiRequestError(
+        normalized.status,
+        normalized.code,
+        normalized.message,
+        normalized.retryable,
       );
     }
   }
@@ -937,6 +1116,50 @@ export class ApiServer {
       }
       return;
     }
+    let dashboardTuiRef: string | undefined;
+    try {
+      dashboardTuiRef = dashboardPathRef(
+        url.pathname,
+        "/v1/dashboard/session/",
+        "/tui",
+      );
+    } catch (error) {
+      const normalized = normalizeAttachmentError(error);
+      sendRawHttp(
+        socket,
+        normalized.status,
+        errorEnvelope(requestId, this.#multiplexer.hostInstanceId, normalized.body),
+      );
+      return;
+    }
+    if (dashboardTuiRef !== undefined) {
+      try {
+        if (request.headers["sec-websocket-protocol"] !== DASHBOARD_TUI_SUBPROTOCOL) {
+          throw new DashboardTuiAttachmentError(
+            426,
+            "tui_subprotocol_required",
+            "dashboard TUI WebSocket subprotocol is required",
+          );
+        }
+        if (this.#dashboardTuiAttachments === undefined) {
+          throw new DashboardTuiAttachmentError(
+            501,
+            "tui_unavailable",
+            "dashboard TUI attachment service is unavailable",
+          );
+        }
+        await this.#dashboardTuiAttachments.attach(request, socket, dashboardTuiRef, url);
+      } catch (error) {
+        const normalized = normalizeDashboardTuiError(error);
+        sendRawHttp(
+          socket,
+          normalized.status,
+          errorEnvelope(requestId, this.#multiplexer.hostInstanceId, normalized.body),
+          normalized.status === 426 ? dashboardTuiUpgradeHeaders() : {},
+        );
+      }
+      return;
+    }
     sendRawHttp(
       socket,
       404,
@@ -987,6 +1210,194 @@ function requestUrl(request: IncomingMessage): URL {
   } catch {
     throw new ApiRequestError(400, "invalid_request_target", "request target is invalid");
   }
+}
+
+function dashboardPathRef(
+  pathname: string,
+  prefix: string,
+  suffix = "",
+): string | undefined {
+  if (!pathname.startsWith(prefix) || (suffix !== "" && !pathname.endsWith(suffix))) {
+    return undefined;
+  }
+  const end = suffix === "" ? pathname.length : pathname.length - suffix.length;
+  const encoded = pathname.slice(prefix.length, end);
+  if (encoded.length === 0 || encoded.includes("/")) return undefined;
+  try {
+    const value = decodeURIComponent(encoded);
+    if (value.length === 0 || value.length > 256 || value.includes("\u0000")) {
+      throw new Error("invalid dashboard reference");
+    }
+    return value;
+  } catch {
+    throw new ApiRequestError(
+      400,
+      "invalid_dashboard_reference",
+      "dashboard resource reference is invalid",
+    );
+  }
+}
+
+function dashboardInventoryQuery(url: URL): SessionInventoryQuery {
+  const limit = optionalBoundedInteger(url.searchParams.get("limit"), 1, 100);
+  const cursor = optionalCursor(url.searchParams.get("cursor"));
+  const search = optionalQueryString(url.searchParams.get("search"), 1024);
+  const sourceKinds = optionalCsv(url.searchParams.get("sourceKind"));
+  const runtime = optionalCsv(url.searchParams.get("runtime"));
+  const unread = optionalBooleanQuery(url.searchParams.get("unread"));
+  const modifiedAfter = optionalQueryString(url.searchParams.get("modifiedAfter"), 64);
+  return {
+    ...(limit === undefined ? {} : { limit }),
+    ...(cursor === undefined ? {} : { cursor }),
+    ...(search === undefined ? {} : { search }),
+    ...(sourceKinds === undefined
+      ? {}
+      : {
+          sourceKinds: sourceKinds as NonNullable<SessionInventoryQuery["sourceKinds"]>,
+        }),
+    ...(runtime === undefined
+      ? {}
+      : { runtime: runtime as NonNullable<SessionInventoryQuery["runtime"]> }),
+    ...(unread === undefined ? {} : { unread }),
+    ...(modifiedAfter === undefined ? {} : { modifiedAfter }),
+  };
+}
+
+function dashboardTranscriptQuery(url: URL): TranscriptQuery {
+  const limit = optionalBoundedInteger(url.searchParams.get("limit"), 1, 200);
+  const cursor = optionalCursor(url.searchParams.get("cursor"));
+  const direction = url.searchParams.get("direction");
+  if (direction !== null && direction !== "older" && direction !== "newer") {
+    throw new ApiRequestError(400, "invalid_transcript_query", "transcript direction is invalid");
+  }
+  const leafId = optionalQueryString(url.searchParams.get("leafId"), 256);
+  return {
+    ...(limit === undefined ? {} : { limit }),
+    ...(cursor === undefined ? {} : { cursor }),
+    ...(direction === null ? {} : { direction }),
+    ...(leafId === undefined ? {} : { leafId }),
+  };
+}
+
+function parseDashboardActivation(value: unknown): ActivationRequest {
+  const body = apiRecord(value, "dashboard activation request");
+  const mode = apiString(body.mode, "mode", 32);
+  if (!["reuse", "direct", "fork", "preview-only"].includes(mode)) {
+    throw new ApiRequestError(400, "invalid_activation_mode", "activation mode is invalid");
+  }
+  return {
+    requestId: apiString(body.requestId, "requestId", 128),
+    idempotencyKey: apiString(body.idempotencyKey, "idempotencyKey", 512),
+    mode: mode as ActivationRequest["mode"],
+    ...(body.expectedFingerprint === undefined
+      ? {}
+      : {
+          expectedFingerprint: asDashboardFingerprint(
+            apiString(body.expectedFingerprint, "expectedFingerprint", 512),
+          ),
+        }),
+    ...(body.desiredSessionName === undefined
+      ? {}
+      : { desiredSessionName: apiString(body.desiredSessionName, "desiredSessionName", 128) }),
+    ...(body.policyRef === undefined
+      ? {}
+      : { policyRef: apiString(body.policyRef, "policyRef", 256) }),
+  };
+}
+
+function parseDashboardExport(value: unknown): SessionExportRequest {
+  const body = apiRecord(value, "dashboard export request");
+  const mode = apiString(body.mode, "mode", 32);
+  if (mode !== "as-new" && mode !== "append-to-origin") {
+    throw new ApiRequestError(400, "invalid_export_mode", "export mode is invalid");
+  }
+  if (body.releaseAfterExport !== undefined && typeof body.releaseAfterExport !== "boolean") {
+    throw new ApiRequestError(400, "invalid_export_request", "releaseAfterExport is invalid");
+  }
+  return {
+    requestId: apiString(body.requestId, "requestId", 128),
+    idempotencyKey: apiString(body.idempotencyKey, "idempotencyKey", 512),
+    mode,
+    ...(body.expectedSourceFingerprint === undefined
+      ? {}
+      : {
+          expectedSourceFingerprint: asDashboardFingerprint(
+            apiString(body.expectedSourceFingerprint, "expectedSourceFingerprint", 512),
+          ),
+        }),
+    ...(body.releaseAfterExport === undefined
+      ? {}
+      : { releaseAfterExport: body.releaseAfterExport }),
+  };
+}
+
+function parseDashboardLease(value: unknown): DashboardLeaseRequest {
+  const body = apiRecord(value, "dashboard lease request");
+  return {
+    requestId: apiString(body.requestId, "requestId", 128),
+    leaseId: apiString(body.leaseId, "leaseId", 256),
+  };
+}
+
+function assertDashboardIdempotency(
+  request: IncomingMessage,
+  bodyKey: string,
+): void {
+  const header = requiredIdempotencyKey(request.headers["idempotency-key"]);
+  if (header !== bodyKey) {
+    throw new ApiRequestError(
+      400,
+      "idempotency_key_mismatch",
+      "Idempotency-Key must match the request body",
+    );
+  }
+}
+
+function optionalCursor(value: string | null) {
+  return value === null ? undefined : asDashboardCursor(apiString(value, "cursor", 1024));
+}
+
+function optionalFingerprint(value: string | null) {
+  return value === null
+    ? undefined
+    : asDashboardFingerprint(apiString(value, "fingerprint", 512));
+}
+
+function optionalQueryString(value: string | null, max: number): string | undefined {
+  return value === null ? undefined : apiString(value, "query", max, true);
+}
+
+function optionalCsv(value: string | null): string[] | undefined {
+  if (value === null) return undefined;
+  const values = value.split(",");
+  if (
+    values.length === 0 ||
+    values.length > 16 ||
+    values.some((entry) => entry.length === 0 || entry.length > 64)
+  ) {
+    throw new ApiRequestError(400, "invalid_dashboard_filter", "dashboard filter is invalid");
+  }
+  return values;
+}
+
+function optionalBooleanQuery(value: string | null): boolean | undefined {
+  if (value === null) return undefined;
+  if (value === "true") return true;
+  if (value === "false") return false;
+  throw new ApiRequestError(400, "invalid_dashboard_filter", "boolean filter is invalid");
+}
+
+function optionalBoundedInteger(
+  value: string | null,
+  minimum: number,
+  maximum: number,
+): number | undefined {
+  if (value === null) return undefined;
+  const parsed = /^\d+$/.test(value) ? Number(value) : Number.NaN;
+  if (!Number.isSafeInteger(parsed) || parsed < minimum || parsed > maximum) {
+    throw new ApiRequestError(400, "invalid_dashboard_limit", "dashboard limit is invalid");
+  }
+  return parsed;
 }
 
 function ticketEnvelope(
@@ -1363,6 +1774,30 @@ function normalizeAttachmentError(error: unknown): { status: number; body: ApiEr
   return {
     status: 500,
     body: { code: "stream_attach_failed", message: "stream attachment failed", retryable: false },
+  };
+}
+
+function normalizeDashboardTuiError(error: unknown): {
+  status: number;
+  body: ApiErrorBody;
+} {
+  if (error instanceof DashboardTuiAttachmentError) {
+    return {
+      status: error.status,
+      body: {
+        code: error.code,
+        message: error.message,
+        retryable: error.retryable,
+      },
+    };
+  }
+  return {
+    status: 500,
+    body: {
+      code: "tui_attach_failed",
+      message: "dashboard TUI attachment failed",
+      retryable: false,
+    },
   };
 }
 

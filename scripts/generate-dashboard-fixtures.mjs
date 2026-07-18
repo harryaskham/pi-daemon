@@ -4,7 +4,11 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { createDashboardContractFixtures } from "../dist/dashboard-fixtures.js";
 
 const output = new URL("../fixtures/dashboard-api/", import.meta.url);
-await mkdir(output, { recursive: true });
+const sessionOutput = new URL("../fixtures/session-api/", import.meta.url);
+await Promise.all([
+  mkdir(output, { recursive: true }),
+  mkdir(sessionOutput, { recursive: true }),
+]);
 const fixtures = createDashboardContractFixtures();
 const files = {
   "capabilities.response.json": fixtures.capabilitiesEnvelope,
@@ -31,4 +35,28 @@ const files = {
 };
 for (const [name, value] of Object.entries(files)) {
   await writeFile(new URL(name, output), `${JSON.stringify(value, null, 2)}\n`, "utf8");
+}
+const serviceFiles = {
+  "dashboard.capabilities.response.json": fixtures.serviceCapabilitiesEnvelope,
+  "dashboard.inventory.response.json": fixtures.serviceInventoryEnvelope,
+  "dashboard.info.response.json": fixtures.serviceInfoEnvelope,
+  "dashboard.transcript.response.json": fixtures.serviceTranscriptEnvelope,
+  "dashboard.activation.response.json": fixtures.serviceActivationEnvelope,
+  "dashboard.export.response.json": fixtures.serviceExportEnvelope,
+  "dashboard.lease.response.json": fixtures.serviceLeaseEnvelope,
+  "dashboard.capabilities.invalid.json": {
+    ...fixtures.serviceCapabilities,
+    authentication: "browser-cookie",
+  },
+  "dashboard.lease.invalid.json": {
+    requestId: "",
+    leaseId: "",
+  },
+};
+for (const [name, value] of Object.entries(serviceFiles)) {
+  await writeFile(
+    new URL(name, sessionOutput),
+    `${JSON.stringify(value, null, 2)}\n`,
+    "utf8",
+  );
 }

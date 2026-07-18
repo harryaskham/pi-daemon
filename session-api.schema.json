@@ -8,6 +8,13 @@
     { "$ref": "#/$defs/sessionUpdateRequest" },
     { "$ref": "#/$defs/sessionResource" },
     { "$ref": "#/$defs/ticketResource" },
+    { "$ref": "#/$defs/dashboardServiceCapabilitiesEnvelope" },
+    { "$ref": "#/$defs/dashboardInventoryEnvelope" },
+    { "$ref": "#/$defs/dashboardSessionInfoEnvelope" },
+    { "$ref": "#/$defs/dashboardTranscriptEnvelope" },
+    { "$ref": "#/$defs/dashboardActivationEnvelope" },
+    { "$ref": "#/$defs/dashboardExportEnvelope" },
+    { "$ref": "#/$defs/dashboardLeaseEnvelope" },
     { "$ref": "#/$defs/sessionRpcFrame" },
     { "$ref": "#/$defs/jsonRpcMessage" }
   ],
@@ -524,7 +531,10 @@
           "items": { "const": "unisolated" },
           "uniqueItems": true
         },
-        "authentication": { "const": "service-bearer" }
+        "authentication": { "const": "service-bearer" },
+        "dashboard": {
+          "$ref": "https://a.skh.am/pi-daemon/dashboard-api.schema.json#/$defs/dashboardServiceCapabilities"
+        }
       },
       "additionalProperties": false
     },
@@ -537,6 +547,97 @@
           "properties": {
             "ok": { "const": true },
             "data": { "$ref": "#/$defs/capabilities" }
+          }
+        }
+      ]
+    },
+    "dashboardServiceCapabilitiesEnvelope": {
+      "allOf": [
+        { "$ref": "#/$defs/apiEnvelopeBase" },
+        {
+          "type": "object",
+          "required": ["data"],
+          "properties": {
+            "ok": { "const": true },
+            "data": { "$ref": "https://a.skh.am/pi-daemon/dashboard-api.schema.json#/$defs/dashboardServiceCapabilities" }
+          }
+        }
+      ]
+    },
+    "dashboardInventoryEnvelope": {
+      "allOf": [
+        { "$ref": "#/$defs/apiEnvelopeBase" },
+        {
+          "type": "object",
+          "required": ["data"],
+          "properties": {
+            "ok": { "const": true },
+            "data": { "$ref": "https://a.skh.am/pi-daemon/dashboard-api.schema.json#/$defs/inventoryPage" }
+          }
+        }
+      ]
+    },
+    "dashboardSessionInfoEnvelope": {
+      "allOf": [
+        { "$ref": "#/$defs/apiEnvelopeBase" },
+        {
+          "type": "object",
+          "required": ["data"],
+          "properties": {
+            "ok": { "const": true },
+            "data": { "$ref": "https://a.skh.am/pi-daemon/dashboard-api.schema.json#/$defs/sessionInfo" }
+          }
+        }
+      ]
+    },
+    "dashboardTranscriptEnvelope": {
+      "allOf": [
+        { "$ref": "#/$defs/apiEnvelopeBase" },
+        {
+          "type": "object",
+          "required": ["data"],
+          "properties": {
+            "ok": { "const": true },
+            "data": { "$ref": "https://a.skh.am/pi-daemon/dashboard-api.schema.json#/$defs/transcriptPage" }
+          }
+        }
+      ]
+    },
+    "dashboardActivationEnvelope": {
+      "allOf": [
+        { "$ref": "#/$defs/apiEnvelopeBase" },
+        {
+          "type": "object",
+          "required": ["data"],
+          "properties": {
+            "ok": { "const": true },
+            "data": { "$ref": "https://a.skh.am/pi-daemon/dashboard-api.schema.json#/$defs/activationTicket" }
+          }
+        }
+      ]
+    },
+    "dashboardExportEnvelope": {
+      "allOf": [
+        { "$ref": "#/$defs/apiEnvelopeBase" },
+        {
+          "type": "object",
+          "required": ["data"],
+          "properties": {
+            "ok": { "const": true },
+            "data": { "$ref": "https://a.skh.am/pi-daemon/dashboard-api.schema.json#/$defs/exportTicket" }
+          }
+        }
+      ]
+    },
+    "dashboardLeaseEnvelope": {
+      "allOf": [
+        { "$ref": "#/$defs/apiEnvelopeBase" },
+        {
+          "type": "object",
+          "required": ["data"],
+          "properties": {
+            "ok": { "const": true },
+            "data": { "$ref": "https://a.skh.am/pi-daemon/dashboard-api.schema.json#/$defs/dashboardLeaseResource" }
           }
         }
       ]

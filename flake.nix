@@ -134,6 +134,7 @@
         test -s "$out/dashboard-inventory/index.html"
         test -s "$out/shadow-tui/index.html"
         test -s "$out/dashboard-ownership/index.html"
+        test -s "$out/dashboard-service-api/index.html"
         test -s "$out/dashboard-api.schema.json"
         test -s "$out/dashboard-api.openapi.json"
       '';

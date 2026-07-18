@@ -1,0 +1,84 @@
+{
+  "apiVersion": "1.0",
+  "requestId": "req-service-transcript-01",
+  "hostInstanceId": "host-fixture-01",
+  "ok": true,
+  "data": {
+    "inventoryId": "inventory-fixture-01",
+    "piSessionId": "pi-session-fixture-01",
+    "managedSession": {
+      "sessionId": "session-fixture-01",
+      "generation": 3
+    },
+    "currentLeafId": "entry-assistant-01",
+    "sourceFingerprint": "sha256:fixture-source-fingerprint",
+    "records": [
+      {
+        "recordId": "entry:entry-user-01",
+        "key": {
+          "entryId": "entry-user-01",
+          "messageId": "message-user-01"
+        },
+        "kind": "message",
+        "role": "user",
+        "state": "complete",
+        "source": "persisted",
+        "timestamp": "2026-07-18T11:59:58.000Z",
+        "content": [
+          {
+            "type": "text",
+            "text": "Show the contract fixture."
+          }
+        ]
+      },
+      {
+        "recordId": "tool:tool-call-01",
+        "key": {
+          "entryId": "entry-assistant-01",
+          "messageId": "message-assistant-01",
+          "toolCallId": "tool-call-01"
+        },
+        "kind": "tool",
+        "toolName": "read",
+        "state": "success",
+        "source": "persisted",
+        "timestamp": "2026-07-18T11:59:59.000Z",
+        "arguments": {
+          "path": "fixture.txt"
+        },
+        "content": [
+          {
+            "type": "text",
+            "text": "bounded fixture output"
+          }
+        ]
+      },
+      {
+        "recordId": "entry:entry-assistant-01",
+        "key": {
+          "entryId": "entry-assistant-01",
+          "messageId": "message-assistant-01"
+        },
+        "kind": "message",
+        "role": "assistant",
+        "state": "complete",
+        "source": "persisted",
+        "timestamp": "2026-07-18T12:00:00.000Z",
+        "content": [
+          {
+            "type": "markdown",
+            "text": "The fixture is ready."
+          }
+        ]
+      }
+    ],
+    "order": "chronological",
+    "projection": {
+      "formatVersion": 1,
+      "cached": true,
+      "truncated": false,
+      "builtAt": "2026-07-18T12:00:00.000Z"
+    },
+    "hydration": "not-requested"
+  }
+}

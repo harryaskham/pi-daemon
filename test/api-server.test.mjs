@@ -8,11 +8,14 @@ import test from "node:test";
 
 import { SERVICE_BEARER_ENV, ServiceBearerAuthenticator } from "../dist/api-auth.js";
 import { ApiServer } from "../dist/api-server.js";
+import { DASH_DEFAULT_LIMITS } from "../dist/dashboard-contract.js";
+import { DASHBOARD_TUI_SUBPROTOCOL } from "../dist/session-api.js";
 import { runCli } from "../dist/cli.js";
 import { PiDaemonClient } from "../dist/client.js";
 import { FileDurabilityStore, wakeTicketId } from "../dist/durability.js";
 import { Multiplexer } from "../dist/multiplexer.js";
 import { FileSessionCatalog } from "../dist/session-catalog.js";
+import { SessionApiClient } from "../dist/session-client.js";
 import {
   FileMutationTicketStore,
   MutationTicketController,
@@ -42,7 +45,7 @@ class SessionFactory {
   }
 }
 
-const startApi = async (limits, suppliedMultiplexer, tickets) => {
+const startApi = async (limits, suppliedMultiplexer, tickets, extra = {}) => {
   const multiplexer =
     suppliedMultiplexer ??
     new Multiplexer({
@@ -56,6 +59,7 @@ const startApi = async (limits, suppliedMultiplexer, tickets) => {
     host: "::1",
     port: 0,
     limits,
+    ...extra,
   });
   const address = await server.start();
   return { multiplexer, server, address };
@@ -823,6 +827,273 @@ test("serve CLI generates and uses a stable default bearer when no external sour
     access(socketPath),
     (error) => error instanceof Error && "code" in error && error.code === "ENOENT",
   );
+});
+
+test("authenticated neutral Dashboard API preserves resources, idempotency, paths and TUI gating", async (t) => {
+  const calls = [];
+  const capabilities = {
+    apiVersion: "1.0",
+    authentication: "service-bearer",
+    resources: {
+      inventory: true,
+      transcriptPreview: true,
+      activation: true,
+      ownership: true,
+      export: true,
+      leases: true,
+    },
+    presentations: {
+      rich: { available: true },
+      tui: {
+        available: false,
+        subprotocol: DASHBOARD_TUI_SUBPROTOCOL,
+        unavailableReason: "view-seam-required",
+      },
+    },
+    limits: { ...DASH_DEFAULT_LIMITS },
+  };
+  const dashboardApi = {
+    async capabilities() {
+      return capabilities;
+    },
+    async listSessions(query) {
+      calls.push(["list", query]);
+      return {
+        sessions: [],
+        index: {
+          formatVersion: 1,
+          loadedAt: "2026-07-18T12:00:00.000Z",
+          stale: false,
+          reconciling: false,
+        },
+      };
+    },
+    async getSessionInfo(inventoryId) {
+      calls.push(["info", inventoryId]);
+      return { inventoryId, cwd: "/private/work", source: { aliases: [] } };
+    },
+    async getTranscript(inventoryId, query, fingerprint) {
+      calls.push(["transcript", inventoryId, query, fingerprint]);
+      return {
+        inventoryId,
+        sourceFingerprint: fingerprint,
+        records: [],
+        order: "chronological",
+        projection: {
+          formatVersion: 1,
+          cached: true,
+          truncated: false,
+          builtAt: "2026-07-18T12:00:00.000Z",
+        },
+        hydration: "not-requested",
+      };
+    },
+    async activateSession(inventoryId, request) {
+      calls.push(["activate", inventoryId, request]);
+      return {
+        ticketId: "activation-ticket",
+        requestId: request.requestId,
+        idempotencyKey: request.idempotencyKey,
+        inventoryId,
+        mode: request.mode,
+        state: "queued",
+        submittedAt: "2026-07-18T12:00:00.000Z",
+        updatedAt: "2026-07-18T12:00:00.000Z",
+      };
+    },
+    async getActivation(ticketId) {
+      calls.push(["activation", ticketId]);
+      return {
+        ticketId,
+        requestId: "activation-request",
+        idempotencyKey: "activation-key",
+        inventoryId: "inventory-private",
+        mode: "fork",
+        state: "succeeded",
+        submittedAt: "2026-07-18T12:00:00.000Z",
+        updatedAt: "2026-07-18T12:00:00.000Z",
+      };
+    },
+    async exportSession(sessionRef, request) {
+      calls.push(["export", sessionRef, request]);
+      return {
+        ticketId: "export-ticket",
+        requestId: request.requestId,
+        idempotencyKey: request.idempotencyKey,
+        sessionRef,
+        mode: request.mode,
+        state: "queued",
+        submittedAt: "2026-07-18T12:00:00.000Z",
+        updatedAt: "2026-07-18T12:00:00.000Z",
+      };
+    },
+    async getExport(ticketId) {
+      calls.push(["export-ticket", ticketId]);
+      return {
+        ticketId,
+        requestId: "export-request",
+        idempotencyKey: "export-key",
+        sessionRef: "managed-private",
+        mode: "as-new",
+        state: "succeeded",
+        submittedAt: "2026-07-18T12:00:00.000Z",
+        updatedAt: "2026-07-18T12:00:00.000Z",
+      };
+    },
+    async renewLease(sessionRef, leaseId) {
+      calls.push(["lease", sessionRef, leaseId]);
+      return {
+        sessionRef,
+        leaseId,
+        ownership: {
+          mode: "direct",
+          leaseId,
+          sourceInventoryId: "inventory-private",
+        },
+      };
+    },
+  };
+  const harness = await startApi(undefined, undefined, undefined, { dashboardApi });
+  t.after(async () => harness.server.stop());
+  const authorization = { Authorization: `Bearer ${TOKEN}` };
+
+  const denied = await requestJson(harness.address, {
+    path: "/v1/dashboard/inventory/inventory-private",
+  });
+  assert.equal(denied.status, 401);
+  assert.equal(JSON.stringify(denied.value).includes("inventory-private"), false);
+
+  const rootCapabilities = await requestJson(harness.address, {
+    path: "/v1/capabilities",
+    headers: authorization,
+  });
+  assert.equal(rootCapabilities.value.data.dashboard.authentication, "service-bearer");
+  const dashCapabilities = await requestJson(harness.address, {
+    path: "/v1/dashboard/capabilities",
+    headers: authorization,
+  });
+  assert.deepEqual(dashCapabilities.value.data, capabilities);
+
+  const list = await requestJson(harness.address, {
+    path: "/v1/dashboard/inventory?limit=25&search=work&sourceKind=external,direct&unread=false",
+    headers: authorization,
+  });
+  assert.equal(list.status, 200);
+  assert.deepEqual(calls.at(-1), [
+    "list",
+    { limit: 25, search: "work", sourceKinds: ["external", "direct"], unread: false },
+  ]);
+
+  const info = await requestJson(harness.address, {
+    path: "/v1/dashboard/inventory/inventory-private",
+    headers: authorization,
+  });
+  assert.equal(info.value.data.source.aliases.length, 0);
+  const transcript = await requestJson(harness.address, {
+    path: "/v1/dashboard/inventory/inventory-private/transcript?limit=50&direction=older&fingerprint=sha256%3Afixture",
+    headers: authorization,
+  });
+  assert.equal(transcript.value.data.hydration, "not-requested");
+  assert.deepEqual(calls.at(-1), [
+    "transcript",
+    "inventory-private",
+    { limit: 50, direction: "older" },
+    "sha256:fixture",
+  ]);
+
+  const activationBody = {
+    requestId: "activation-request",
+    idempotencyKey: "activation-key",
+    mode: "fork",
+    expectedFingerprint: "sha256:fixture",
+  };
+  const activation = await requestJson(harness.address, {
+    method: "POST",
+    path: "/v1/dashboard/inventory/inventory-private/activate",
+    headers: { ...authorization, "Idempotency-Key": "activation-key" },
+    body: JSON.stringify(activationBody),
+  });
+  assert.equal(activation.status, 202);
+  assert.equal(activation.value.requestId, "activation-request");
+  assert.equal(activation.headers.location, "/v1/dashboard/activation/activation-ticket");
+  const mismatch = await requestJson(harness.address, {
+    method: "POST",
+    path: "/v1/dashboard/inventory/inventory-private/activate",
+    headers: { ...authorization, "Idempotency-Key": "wrong" },
+    body: JSON.stringify(activationBody),
+  });
+  assert.equal(mismatch.status, 400);
+  assert.equal(mismatch.value.error.code, "idempotency_key_mismatch");
+
+  const exported = await requestJson(harness.address, {
+    method: "POST",
+    path: "/v1/dashboard/session/managed-private/export",
+    headers: { ...authorization, "Idempotency-Key": "export-key" },
+    body: JSON.stringify({
+      requestId: "export-request",
+      idempotencyKey: "export-key",
+      mode: "as-new",
+      expectedSourceFingerprint: "sha256:managed",
+    }),
+  });
+  assert.equal(exported.status, 202);
+  assert.equal(exported.value.requestId, "export-request");
+  assert.equal(exported.headers.location, "/v1/dashboard/export/export-ticket");
+  const lease = await requestJson(harness.address, {
+    method: "POST",
+    path: "/v1/dashboard/session/managed-private/lease",
+    headers: authorization,
+    body: JSON.stringify({ requestId: "lease-request", leaseId: "lease-private" }),
+  });
+  assert.equal(lease.status, 200);
+  assert.equal(lease.value.requestId, "lease-request");
+  assert.equal(lease.value.data.ownership.mode, "direct");
+
+  const client = new SessionApiClient({
+    baseUrl: `http://[${harness.address.host}]:${harness.address.port}`,
+    bearerToken: TOKEN,
+  });
+  assert.equal((await client.dashboardCapabilities()).data.authentication, "service-bearer");
+  assert.equal((await client.listDashboardSessions({ limit: 5 })).data.sessions.length, 0);
+  assert.equal(
+    (
+      await client.activateDashboardSession("inventory-private", {
+        requestId: "client-activation",
+        idempotencyKey: "client-activation-key",
+        mode: "fork",
+        expectedFingerprint: "sha256:fixture",
+      })
+    ).data.ticketId,
+    "activation-ticket",
+  );
+  assert.equal(
+    (
+      await client.renewDashboardLease("managed-private", {
+        requestId: "client-lease",
+        leaseId: "lease-private",
+      })
+    ).data.leaseId,
+    "lease-private",
+  );
+  await assert.rejects(
+    client.connectDashboardTui("managed-private"),
+    /Unexpected server response: 501/,
+  );
+
+  const noProtocol = await rawUpgrade(
+    harness.address,
+    "/v1/dashboard/session/managed-private/tui",
+    `Authorization: Bearer ${TOKEN}\r\n`,
+  );
+  assert.match(noProtocol, /^HTTP\/1\.1 426 Upgrade Required/);
+  assert.match(noProtocol, /pi-daemon-tui\.v1/);
+  const unavailable = await rawUpgrade(
+    harness.address,
+    "/v1/dashboard/session/managed-private/tui",
+    `Authorization: Bearer ${TOKEN}\r\nSec-WebSocket-Protocol: ${DASHBOARD_TUI_SUBPROTOCOL}\r\n`,
+  );
+  assert.match(unavailable, /^HTTP\/1\.1 501 Not Implemented/);
+  assert.match(unavailable, /tui_unavailable/);
 });
 
 test("WebSocket upgrades fail closed on bearer auth before stream routing", async (t) => {

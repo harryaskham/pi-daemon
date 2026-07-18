@@ -1,0 +1,72 @@
+{
+  "apiVersion": "1.0",
+  "requestId": "req-service-info-01",
+  "hostInstanceId": "host-fixture-01",
+  "ok": true,
+  "data": {
+    "inventoryId": "inventory-fixture-01",
+    "sourceKind": "direct",
+    "title": "Contract fixture",
+    "cwdBasename": "fixture",
+    "projectLabel": "fixture",
+    "piSessionId": "pi-session-fixture-01",
+    "createdAt": "2026-07-18T11:00:00.000Z",
+    "modifiedAt": "2026-07-18T12:00:00.000Z",
+    "messageCount": 2,
+    "entryCount": 4,
+    "toolCallCount": 1,
+    "currentLeafId": "entry-assistant-01",
+    "managed": {
+      "sessionId": "session-fixture-01",
+      "name": "Contract fixture",
+      "generation": 3,
+      "revision": 7,
+      "residency": "resident",
+      "state": "idle"
+    },
+    "activation": {
+      "eligible": true,
+      "modes": [
+        "reuse",
+        "fork"
+      ]
+    },
+    "presence": {
+      "runtime": "resident-idle",
+      "activation": "user-turn",
+      "focusedPaneCount": 1,
+      "lastSettledCursor": "dash:fixture:host-fixture-01:session-fixture-01:3:40",
+      "seenCursor": "dash:fixture:host-fixture-01:session-fixture-01:3:40",
+      "unread": false
+    },
+    "cwd": "/srv/work/fixture",
+    "source": {
+      "canonicalPath": "/srv/state/session-fixture.jsonl",
+      "fingerprint": {
+        "value": "sha256:fixture-source-fingerprint",
+        "sizeBytes": 4096,
+        "modifiedAt": "2026-07-18T12:00:00.000Z",
+        "device": "fixture-device",
+        "inode": "fixture-inode"
+      },
+      "aliases": []
+    },
+    "ownership": {
+      "mode": "direct",
+      "leaseId": "lease-fixture-01",
+      "sourceInventoryId": "inventory-fixture-01"
+    },
+    "diagnostics": [],
+    "runtime": {
+      "model": {
+        "provider": "fixture",
+        "id": "fixture-model",
+        "thinkingLevel": "medium"
+      },
+      "controllerConnectionId": "connection-fixture-01",
+      "readerCount": 2,
+      "warmLeaseCount": 1,
+      "isolation": "unisolated"
+    }
+  }
+}

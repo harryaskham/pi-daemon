@@ -43,6 +43,7 @@ Initial standalone implementation:
 - responsive browser TUI pane with generation/sequence-fenced snapshot and delta reduction, virtual styled rows, controller-only measured resize/key/paste input, canonical read-only mirrors, replay/conflict recovery, overlays, safe image placeholders, accessible text, persistent Rich/TUI switching, and Nord visual/performance receipts
 - durable Dash session ownership with explicit direct confirmation, safe fork/import, cooperative leases, write-conflict guards, crash-safe idempotent tickets, atomic export-as-new, guarded append-back, release, and narrow normal-Pi session storage authority
 - revisioned persistent Dash split workspaces with mouse/keyboard resize, focus-preserving directional swaps, close promotion, shared session stores, source-aware UI settings/reset, hot semantic themes, keyboard help, and Vim/multiline completion/history
+- neutral service-bearer Dash API for bounded inventory/info/transcript resources, activation/export/lease tickets, typed client methods, and capability-gated `pi-daemon-tui.v1` negotiation
 - hermetic Linux/Nix installed-bin checks that resolve npm links through the pinned Node runtime
 - credential-free full-host acceptance across installed artifacts, configured CRUD, RPC/ACP/stdio, restart/replay, security, and zero per-session child processes
 - optional live-provider two-session zero-child-process acceptance harness

@@ -176,6 +176,13 @@ for the exact supported mapping and limitations.
 | `POST /v1/ticket/{ticketId}/reconcile` | resolve indeterminate work with retained Pi entry evidence | `200` ticket envelope |
 | `GET /v1/session/{sessionRef}/rpc` | WebSocket Pi RPC attach | `101` |
 | `GET /v1/session/{sessionRef}/apc` | WebSocket upstream ACP attach | `101` |
+| `GET|POST /v1/dashboard/*` | neutral inventory, preview, ownership/export/lease resources for dedicated Dash backends | versioned service envelopes/tickets |
+| `GET /v1/dashboard/session/{sessionRef}/tui` | capability-gated server-side TUI WebSocket (`pi-daemon-tui.v1`) | `101` or typed unavailable response |
+
+The complete neutral route set, idempotency rules, client methods, and separation
+from browser authentication are documented in the
+[Neutral Dash service API](dashboard-service-api). The daemon service bearer
+never crosses from the dedicated backend into browser storage.
 
 List ordering is stable by canonical session ID and includes both resident and
 dormant retained sessions. `limit` defaults to 50 and is bounded to 100.

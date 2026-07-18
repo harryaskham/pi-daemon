@@ -218,6 +218,40 @@ export interface DashboardPresentationCapability {
   unavailableReason?: string;
 }
 
+export interface DashboardServiceCapabilities {
+  apiVersion: typeof DASH_API_VERSION;
+  authentication: "service-bearer";
+  resources: {
+    inventory: true;
+    transcriptPreview: true;
+    activation: true;
+    ownership: true;
+    export: true;
+    leases: true;
+  };
+  presentations: {
+    rich: { available: true };
+    tui: {
+      available: boolean;
+      subprotocol: "pi-daemon-tui.v1";
+      unavailableReason?: string;
+    };
+  };
+  limits: DashboardLimits;
+}
+
+export interface DashboardLeaseRequest {
+  requestId: string;
+  leaseId: string;
+}
+
+export interface DashboardLeaseResource {
+  sessionRef: string;
+  leaseId: string;
+  expiresAt?: string;
+  ownership: SessionOwnershipInfo;
+}
+
 export interface DashboardCapabilities {
   apiVersion: typeof DASH_API_VERSION;
   streamSubprotocol: typeof DASH_STREAM_SUBPROTOCOL;

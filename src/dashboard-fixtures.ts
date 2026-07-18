@@ -17,6 +17,8 @@ import type {
   DashStreamTuiDeltaFrame,
   DashboardCapabilities,
   DashboardErrorEnvelope,
+  DashboardLeaseResource,
+  DashboardServiceCapabilities,
   DashboardSettingsResource,
   DashboardSuccessEnvelope,
   DashboardWorkspaceResource,
@@ -26,7 +28,11 @@ import type {
   SessionInventoryPage,
   TranscriptPage,
 } from "./dashboard-contract.js";
-import type { SessionResource } from "./session-api.js";
+import {
+  SESSION_API_VERSION,
+  type ApiSuccessEnvelope,
+  type SessionResource,
+} from "./session-api.js";
 
 const FIXTURE_TIME = "2026-07-18T12:00:00.000Z";
 const FIXTURE_CLIENT = "client-fixture-01";
@@ -82,6 +88,15 @@ export interface DashboardContractFixtures {
   streamReplayGap: DashStreamReplayGapFrame;
   replayRecovery: DashboardReplayRecoveryFixture;
   multiplex: DashboardMultiplexFixture;
+  serviceCapabilities: DashboardServiceCapabilities;
+  lease: DashboardLeaseResource;
+  serviceCapabilitiesEnvelope: ApiSuccessEnvelope<DashboardServiceCapabilities>;
+  serviceInventoryEnvelope: ApiSuccessEnvelope<SessionInventoryPage>;
+  serviceInfoEnvelope: ApiSuccessEnvelope<SessionInfoResource>;
+  serviceTranscriptEnvelope: ApiSuccessEnvelope<TranscriptPage>;
+  serviceActivationEnvelope: ApiSuccessEnvelope<ActivationTicket>;
+  serviceExportEnvelope: ApiSuccessEnvelope<SessionExportTicket>;
+  serviceLeaseEnvelope: ApiSuccessEnvelope<DashboardLeaseResource>;
 }
 
 export function createDashboardCapabilitiesFixture(): DashboardCapabilities {
@@ -174,6 +189,16 @@ function successEnvelope<T>(requestId: string, data: T): DashboardSuccessEnvelop
     serverInstanceId: FIXTURE_SERVER,
     clientId: FIXTURE_CLIENT,
     workspaceId: FIXTURE_WORKSPACE,
+    ok: true,
+    data,
+  };
+}
+
+function serviceEnvelope<T>(requestId: string, data: T): ApiSuccessEnvelope<T> {
+  return {
+    apiVersion: SESSION_API_VERSION,
+    requestId,
+    hostInstanceId: FIXTURE_HOST,
     ok: true,
     data,
   };
@@ -551,6 +576,38 @@ export function createDashboardContractFixtures(): DashboardContractFixtures {
     correlationId: secondSubscribe.correlationId,
     subscriptionId: secondSubscribe.subscriptionId,
   };
+  const serviceCapabilities: DashboardServiceCapabilities = {
+    apiVersion: DASH_API_VERSION,
+    authentication: "service-bearer",
+    resources: {
+      inventory: true,
+      transcriptPreview: true,
+      activation: true,
+      ownership: true,
+      export: true,
+      leases: true,
+    },
+    presentations: {
+      rich: { available: true },
+      tui: {
+        available: false,
+        subprotocol: "pi-daemon-tui.v1",
+        unavailableReason: "interactive-view-seam-required",
+      },
+    },
+    limits: { ...DASH_DEFAULT_LIMITS },
+  };
+  const lease: DashboardLeaseResource = {
+    sessionRef: FIXTURE_SESSION,
+    leaseId: "lease-fixture-01",
+    expiresAt: "2026-07-18T12:01:00.000Z",
+    ownership: {
+      mode: "direct",
+      leaseId: "lease-fixture-01",
+      sourceInventoryId: FIXTURE_INVENTORY,
+      exportedInventoryIds: [],
+    },
+  };
   const errorEnvelope: DashboardErrorEnvelope = {
     dashVersion: DASH_API_VERSION,
     requestId: "req-error-01",
@@ -593,5 +650,17 @@ export function createDashboardContractFixtures(): DashboardContractFixtures {
       subscriptions: [streamSubscribe, secondSubscribe],
       ready: [streamReady, secondReady],
     },
+    serviceCapabilities,
+    lease,
+    serviceCapabilitiesEnvelope: serviceEnvelope(
+      "req-service-capabilities-01",
+      serviceCapabilities,
+    ),
+    serviceInventoryEnvelope: serviceEnvelope("req-service-inventory-01", inventory),
+    serviceInfoEnvelope: serviceEnvelope("req-service-info-01", sessionInfo),
+    serviceTranscriptEnvelope: serviceEnvelope("req-service-transcript-01", transcript),
+    serviceActivationEnvelope: serviceEnvelope("req-service-activation-01", activationTicket),
+    serviceExportEnvelope: serviceEnvelope("req-service-export-01", exportTicket),
+    serviceLeaseEnvelope: serviceEnvelope("req-service-lease-01", lease),
   };
 }

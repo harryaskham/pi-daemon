@@ -8,6 +8,9 @@
     { "$ref": "#/$defs/loginEnvelope" },
     { "$ref": "#/$defs/bootstrapEnvelope" },
     { "$ref": "#/$defs/capabilitiesEnvelope" },
+    { "$ref": "#/$defs/dashboardServiceCapabilities" },
+    { "$ref": "#/$defs/dashboardLeaseRequest" },
+    { "$ref": "#/$defs/dashboardLeaseResource" },
     { "$ref": "#/$defs/inventoryEnvelope" },
     { "$ref": "#/$defs/sessionInfoEnvelope" },
     { "$ref": "#/$defs/transcriptEnvelope" },
@@ -271,6 +274,97 @@
         },
         "limits": { "$ref": "#/$defs/limits" },
         "performanceBudgets": { "$ref": "#/$defs/performanceBudgets" }
+      },
+      "additionalProperties": true
+    },
+    "dashboardServiceCapabilities": {
+      "type": "object",
+      "required": ["apiVersion", "authentication", "resources", "presentations", "limits"],
+      "properties": {
+        "apiVersion": { "$ref": "#/$defs/apiVersion" },
+        "authentication": { "const": "service-bearer" },
+        "resources": {
+          "type": "object",
+          "required": ["inventory", "transcriptPreview", "activation", "ownership", "export", "leases"],
+          "properties": {
+            "inventory": { "const": true },
+            "transcriptPreview": { "const": true },
+            "activation": { "const": true },
+            "ownership": { "const": true },
+            "export": { "const": true },
+            "leases": { "const": true }
+          },
+          "additionalProperties": true
+        },
+        "presentations": {
+          "type": "object",
+          "required": ["rich", "tui"],
+          "properties": {
+            "rich": {
+              "type": "object",
+              "required": ["available"],
+              "properties": { "available": { "const": true } },
+              "additionalProperties": true
+            },
+            "tui": {
+              "type": "object",
+              "required": ["available", "subprotocol"],
+              "properties": {
+                "available": { "type": "boolean" },
+                "subprotocol": { "const": "pi-daemon-tui.v1" },
+                "unavailableReason": { "type": "string", "minLength": 1, "maxLength": 256 }
+              },
+              "additionalProperties": true
+            }
+          },
+          "additionalProperties": true
+        },
+        "limits": { "$ref": "#/$defs/limits" }
+      },
+      "additionalProperties": true
+    },
+    "ownershipInfo": {
+      "type": "object",
+      "required": ["mode"],
+      "properties": {
+        "mode": { "enum": ["none", "direct", "imported", "exported"] },
+        "leaseId": { "$ref": "#/$defs/identifier" },
+        "sourceInventoryId": { "$ref": "#/$defs/identifier" },
+        "exportedInventoryIds": {
+          "type": "array",
+          "maxItems": 10000,
+          "items": { "$ref": "#/$defs/identifier" },
+          "uniqueItems": true
+        },
+        "conflict": {
+          "type": "object",
+          "required": ["code", "detectedAt"],
+          "properties": {
+            "code": { "type": "string", "minLength": 1, "maxLength": 128 },
+            "detectedAt": { "$ref": "#/$defs/timestamp" }
+          },
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": true
+    },
+    "dashboardLeaseRequest": {
+      "type": "object",
+      "required": ["requestId", "leaseId"],
+      "properties": {
+        "requestId": { "$ref": "#/$defs/requestId" },
+        "leaseId": { "$ref": "#/$defs/identifier" }
+      },
+      "additionalProperties": true
+    },
+    "dashboardLeaseResource": {
+      "type": "object",
+      "required": ["sessionRef", "leaseId", "ownership"],
+      "properties": {
+        "sessionRef": { "$ref": "#/$defs/identifier" },
+        "leaseId": { "$ref": "#/$defs/identifier" },
+        "expiresAt": { "$ref": "#/$defs/timestamp" },
+        "ownership": { "$ref": "#/$defs/ownershipInfo" }
       },
       "additionalProperties": true
     },

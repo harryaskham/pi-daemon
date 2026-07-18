@@ -1,0 +1,18 @@
+{
+  "apiVersion": "1.0",
+  "requestId": "req-service-export-01",
+  "hostInstanceId": "host-fixture-01",
+  "ok": true,
+  "data": {
+    "ticketId": "export-fixture-01",
+    "requestId": "req-export-01",
+    "idempotencyKey": "export-fixture-01",
+    "sessionRef": "session-fixture-01",
+    "mode": "as-new",
+    "state": "succeeded",
+    "submittedAt": "2026-07-18T12:00:00.000Z",
+    "updatedAt": "2026-07-18T12:00:00.000Z",
+    "exportedInventoryId": "inventory-exported-fixture-01",
+    "sourceFingerprint": "sha256:fixture-source-fingerprint"
+  }
+}

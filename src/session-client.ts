@@ -4,7 +4,27 @@ import { isIP } from "node:net";
 
 import WebSocket, { type RawData } from "ws";
 
-import type { ApiErrorBody, PiRpcResponse, SessionResource, TicketResource } from "./session-api.js";
+import type {
+  ActivationRequest,
+  ActivationTicket,
+  DashboardFingerprint,
+  DashboardLeaseResource,
+  DashboardServiceCapabilities,
+  SessionExportRequest,
+  SessionExportTicket,
+  SessionInfoResource,
+  SessionInventoryPage,
+  SessionInventoryQuery,
+  TranscriptPage,
+  TranscriptQuery,
+} from "./dashboard-contract.js";
+import {
+  DASHBOARD_TUI_SUBPROTOCOL,
+  type ApiErrorBody,
+  type PiRpcResponse,
+  type SessionResource,
+  type TicketResource,
+} from "./session-api.js";
 
 export const DEFAULT_SESSION_CLIENT_TIMEOUT_MS = 30_000;
 export const DEFAULT_SESSION_CLIENT_RESPONSE_BYTES = 2 * 1024 * 1024;
@@ -164,6 +184,127 @@ export class SessionApiClient {
     }
   }
 
+  dashboardCapabilities(): Promise<SessionApiResult<DashboardServiceCapabilities>> {
+    return this.request("GET", "/v1/dashboard/capabilities");
+  }
+
+  listDashboardSessions(
+    query: SessionInventoryQuery = {},
+  ): Promise<SessionApiResult<SessionInventoryPage>> {
+    const parameters = new URLSearchParams();
+    if (query.limit !== undefined) parameters.set("limit", String(query.limit));
+    if (query.cursor !== undefined) parameters.set("cursor", query.cursor);
+    if (query.search !== undefined) parameters.set("search", query.search);
+    if (query.sourceKinds !== undefined) parameters.set("sourceKind", query.sourceKinds.join(","));
+    if (query.runtime !== undefined) parameters.set("runtime", query.runtime.join(","));
+    if (query.unread !== undefined) parameters.set("unread", String(query.unread));
+    if (query.modifiedAfter !== undefined) parameters.set("modifiedAfter", query.modifiedAfter);
+    const suffix = parameters.size === 0 ? "" : `?${parameters}`;
+    return this.request("GET", `/v1/dashboard/inventory${suffix}`);
+  }
+
+  getDashboardSession(inventoryId: string): Promise<SessionApiResult<SessionInfoResource>> {
+    return this.request(
+      "GET",
+      `/v1/dashboard/inventory/${encodeURIComponent(sessionReference(inventoryId))}`,
+    );
+  }
+
+  getDashboardTranscript(
+    inventoryId: string,
+    query: TranscriptQuery = {},
+    expectedFingerprint?: DashboardFingerprint,
+  ): Promise<SessionApiResult<TranscriptPage>> {
+    const parameters = new URLSearchParams();
+    if (query.limit !== undefined) parameters.set("limit", String(query.limit));
+    if (query.cursor !== undefined) parameters.set("cursor", query.cursor);
+    if (query.direction !== undefined) parameters.set("direction", query.direction);
+    if (query.leafId !== undefined) parameters.set("leafId", query.leafId);
+    if (expectedFingerprint !== undefined) parameters.set("fingerprint", expectedFingerprint);
+    const suffix = parameters.size === 0 ? "" : `?${parameters}`;
+    return this.request(
+      "GET",
+      `/v1/dashboard/inventory/${encodeURIComponent(sessionReference(inventoryId))}/transcript${suffix}`,
+    );
+  }
+
+  activateDashboardSession(
+    inventoryId: string,
+    request: ActivationRequest,
+  ): Promise<SessionApiResult<ActivationTicket>> {
+    return this.request(
+      "POST",
+      `/v1/dashboard/inventory/${encodeURIComponent(sessionReference(inventoryId))}/activate`,
+      {
+        body: request,
+        headers: {
+          "Idempotency-Key": request.idempotencyKey,
+          "X-Request-Id": request.requestId,
+        },
+      },
+    );
+  }
+
+  getDashboardActivation(ticketId: string): Promise<SessionApiResult<ActivationTicket>> {
+    return this.request(
+      "GET",
+      `/v1/dashboard/activation/${encodeURIComponent(ticketReference(ticketId))}`,
+    );
+  }
+
+  exportDashboardSession(
+    sessionRef: string,
+    request: SessionExportRequest,
+  ): Promise<SessionApiResult<SessionExportTicket>> {
+    return this.request(
+      "POST",
+      `/v1/dashboard/session/${encodeURIComponent(sessionReference(sessionRef))}/export`,
+      {
+        body: request,
+        headers: {
+          "Idempotency-Key": request.idempotencyKey,
+          "X-Request-Id": request.requestId,
+        },
+      },
+    );
+  }
+
+  getDashboardExport(ticketId: string): Promise<SessionApiResult<SessionExportTicket>> {
+    return this.request(
+      "GET",
+      `/v1/dashboard/export/${encodeURIComponent(ticketReference(ticketId))}`,
+    );
+  }
+
+  renewDashboardLease(
+    sessionRef: string,
+    request: { requestId: string; leaseId: string },
+  ): Promise<SessionApiResult<DashboardLeaseResource>> {
+    return this.request(
+      "POST",
+      `/v1/dashboard/session/${encodeURIComponent(sessionReference(sessionRef))}/lease`,
+      { body: request, headers: { "X-Request-Id": request.requestId } },
+    );
+  }
+
+  async connectDashboardTui(
+    sessionRef: string,
+    options: { timeoutMs?: number } = {},
+  ): Promise<WebSocket> {
+    const timeoutMs = positiveInteger(options.timeoutMs ?? this.timeoutMs, "timeoutMs");
+    const url = dashboardTuiUrl(this.baseUrl, sessionRef);
+    return new Promise((resolve, reject) => {
+      const socket = new WebSocket(url, DASHBOARD_TUI_SUBPROTOCOL, {
+        headers: { Authorization: `Bearer ${this.#bearerToken}` },
+        handshakeTimeout: timeoutMs,
+        maxPayload: this.maxResponseBytes,
+        perMessageDeflate: false,
+      });
+      socket.once("open", () => resolve(socket));
+      socket.once("error", reject);
+    });
+  }
+
   async rpcCommand(
     sessionRef: string,
     command: Record<string, unknown>,
@@ -270,6 +411,15 @@ function websocketUrl(baseUrl: URL, sessionRef: string, generation?: number): st
     if (!Number.isSafeInteger(generation) || generation < 0) throw new Error("invalid generation");
     url.searchParams.set("generation", String(generation));
   }
+  url.protocol = baseUrl.protocol === "https:" ? "wss:" : "ws:";
+  return url.href;
+}
+
+function dashboardTuiUrl(baseUrl: URL, sessionRef: string): string {
+  const url = new URL(
+    `/v1/dashboard/session/${encodeURIComponent(sessionReference(sessionRef))}/tui`,
+    baseUrl,
+  );
   url.protocol = baseUrl.protocol === "https:" ? "wss:" : "ws:";
   return url.href;
 }

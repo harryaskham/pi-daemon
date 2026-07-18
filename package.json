@@ -55,6 +55,14 @@
       "types": "./dist/dashboard-server.d.ts",
       "import": "./dist/dashboard-server.js"
     },
+    "./dashboard-neutral-api": {
+      "types": "./dist/dashboard-neutral-api.d.ts",
+      "import": "./dist/dashboard-neutral-api.js"
+    },
+    "./dashboard-tui-attachments": {
+      "types": "./dist/dashboard-tui-attachments.d.ts",
+      "import": "./dist/dashboard-tui-attachments.js"
+    },
     "./dashboard-fixtures": {
       "types": "./dist/dashboard-fixtures.d.ts",
       "import": "./dist/dashboard-fixtures.js"
