@@ -1,0 +1,93 @@
+{
+  "measuredAt": "2026-07-18T15:02:34.572Z",
+  "source": "vite production output",
+  "budget": {
+    "initialGzipBytes": 1572864
+  },
+  "totals": {
+    "allBytes": 1022082,
+    "allGzipBytes": 331122,
+    "scriptGzipBytes": 324205,
+    "initialGzipBytes": 89063,
+    "lazyGzipBytes": 242059
+  },
+  "files": [
+    {
+      "file": "assets/Composer-b3hBxcuc.js",
+      "bytes": 727560,
+      "gzipBytes": 241711
+    },
+    {
+      "file": "assets/react-DOZsxdTL.js",
+      "bytes": 182204,
+      "gzipBytes": 56700
+    },
+    {
+      "file": "assets/index-BforVj-i.js",
+      "bytes": 39382,
+      "gzipBytes": 12311
+    },
+    {
+      "file": "assets/virtual-CUcG1Z8v.js",
+      "bytes": 23377,
+      "gzipBytes": 7137
+    },
+    {
+      "file": "assets/index-D4kN42lQ.css",
+      "bytes": 31384,
+      "gzipBytes": 6188
+    },
+    {
+      "file": "assets/icons-wyvDUDZ6.js",
+      "bytes": 15397,
+      "gzipBytes": 5983
+    },
+    {
+      "file": "index.html",
+      "bytes": 844,
+      "gzipBytes": 381
+    },
+    {
+      "file": "assets/rolldown-runtime-Bh1tDfsg.js",
+      "bytes": 567,
+      "gzipBytes": 363
+    },
+    {
+      "file": ".vite/manifest.json",
+      "bytes": 1367,
+      "gzipBytes": 348
+    }
+  ],
+  "browser": {
+    "measuredAt": "2026-07-18T15:02:51.146Z",
+    "browser": "Playwright Chromium 149 headless",
+    "viewport": "1440x960",
+    "fixtureSessions": 10000,
+    "harnessNavigationMs": 859.46,
+    "appFirstRowsMs": 33,
+    "navigationFirstRowsMs": 123,
+    "harnessSearchMs": 171.84,
+    "appSearchMs": 0,
+    "animationFrameCadenceP95Ms": 13.4,
+    "animationFrameCadenceMaxMs": 17,
+    "streamFrameWorkMaxMs": 8.1,
+    "app": {
+      "generatedAt": "2026-07-18T15:02:49.192Z",
+      "fixtureSessions": 10000,
+      "visibleSessionRows": 8,
+      "visibleTranscriptRows": 0,
+      "frameWorkSamples": [
+        6.7,
+        3.7,
+        8.1
+      ],
+      "firstRowsMs": 33,
+      "navigationFirstRowsMs": 123,
+      "lastSearchMs": 0,
+      "maxFrameWorkMs": 8.1,
+      "heapBytes": 10000000
+    },
+    "visibleSessionRows": 17,
+    "visibleTranscriptRows": 15
+  }
+}

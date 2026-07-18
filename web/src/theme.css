@@ -1,0 +1,63 @@
+:root {
+  color-scheme: dark;
+  --dash-bg-canvas: #0b101a;
+  --dash-bg-deep: #080c14;
+  --dash-bg-surface: #111827;
+  --dash-bg-raised: #172133;
+  --dash-bg-elevated: #1d293d;
+  --dash-bg-overlay: #222f45;
+  --dash-bg-code: #0d1420;
+  --dash-fg-primary: #edf3f8;
+  --dash-fg-muted: #a9b7c9;
+  --dash-fg-dim: #718096;
+  --dash-fg-inverse: #071018;
+  --dash-accent-primary: #8fceda;
+  --dash-accent-strong: #6bbacb;
+  --dash-accent-soft: #213d4b;
+  --dash-accent-secondary: #8eaee1;
+  --dash-accent-violet: #b29acb;
+  --dash-state-success: #a7c58e;
+  --dash-state-running: #8fceda;
+  --dash-state-scheduled: #bd93c2;
+  --dash-state-warning: #e7c781;
+  --dash-state-error: #d87983;
+  --dash-state-unread: #f5f7fa;
+  --dash-border-subtle: #263348;
+  --dash-border-muted: #34445d;
+  --dash-border-strong: #4a5e7b;
+  --dash-focus: #9ed8e2;
+  --dash-selection: #2a5060;
+  --dash-shadow-color: rgb(2 8 18 / 54%);
+  --dash-glow-color: rgb(107 186 203 / 24%);
+  --dash-scrim: rgb(3 7 14 / 76%);
+  --dash-surface-tint: linear-gradient(145deg, color-mix(in srgb, var(--dash-bg-raised) 94%, var(--dash-accent-primary)), var(--dash-bg-surface));
+  --dash-font-sans: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --dash-font-mono: "SFMono-Regular", "Cascadia Code", "Roboto Mono", ui-monospace, monospace;
+  --dash-radius-xs: 5px;
+  --dash-radius-sm: 8px;
+  --dash-radius-md: 12px;
+  --dash-radius-lg: 16px;
+  --dash-radius-pill: 999px;
+  --dash-space-1: 4px;
+  --dash-space-2: 8px;
+  --dash-space-3: 12px;
+  --dash-space-4: 16px;
+  --dash-space-5: 20px;
+  --dash-space-6: 24px;
+  --dash-space-8: 32px;
+  --dash-sidebar-width: 306px;
+  --dash-header-height: 58px;
+  --dash-transition-fast: 120ms;
+  --dash-transition-normal: 220ms;
+  --dash-shadow-panel: 0 16px 50px var(--dash-shadow-color);
+  --dash-shadow-focus: 0 0 0 1px var(--dash-accent-strong), 0 0 22px var(--dash-glow-color);
+}
+
+@media (prefers-contrast: more) {
+  :root {
+    --dash-border-subtle: #4b5f7c;
+    --dash-border-muted: #637795;
+    --dash-fg-muted: #cad4df;
+    --dash-fg-dim: #a2afbf;
+  }
+}

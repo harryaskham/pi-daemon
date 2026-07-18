@@ -7,4 +7,6 @@ result-*
 *.log
 *.tgz
 coverage/
+playwright-report/
+test-results/
 .pi-daemon-state/

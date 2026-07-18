@@ -5,6 +5,9 @@
   "type": "module",
   "license": "MIT",
   "private": false,
+  "workspaces": [
+    "web"
+  ],
   "engines": {
     "node": ">=22.19.0"
   },
@@ -74,7 +77,12 @@
     "test:live": "npm run build && node scripts/live-sdk-smoke.mjs",
     "fixtures:dashboard": "npm run build && node scripts/generate-dashboard-fixtures.mjs",
     "pack:check": "npm pack --dry-run",
-    "release:check": "node scripts/check-release.mjs"
+    "release:check": "node scripts/check-release.mjs",
+    "web:dev": "npm run dev --workspace @harryaskham/pi-daemon-dash",
+    "web:build": "npm run build --workspace @harryaskham/pi-daemon-dash",
+    "web:test": "npm run test --workspace @harryaskham/pi-daemon-dash",
+    "web:e2e": "npm run e2e --workspace @harryaskham/pi-daemon-dash",
+    "web:bundle-report": "npm run bundle:report --workspace @harryaskham/pi-daemon-dash"
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "1.2.0",

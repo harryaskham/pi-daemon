@@ -1283,11 +1283,11 @@ Parent epic: `bd-ba3623`. Final v1 gate: `bd-7de9ec`.
 
 These lanes intentionally begin in parallel:
 
-- [ ] `bd-933f1e` — browser/backend protocol, normalized transcript types,
+- [x] `bd-933f1e` — browser/backend protocol, normalized transcript types,
   fixtures, capabilities, limits, and measurable performance budgets.
-- [ ] `bd-493121` — production-representative beautiful 60fps SPA/Nord Midnight
+- [x] `bd-493121` — production-representative beautiful 60fps SPA/Nord Midnight
   stack, editor, virtualization, split and accessibility spike.
-- [ ] `bd-e25765` — instance YAML convention, safe precedence, current CLI
+- [x] `bd-e25765` — instance YAML convention, safe precedence, current CLI
   mapping, and Home Manager configuration foundation.
 - [ ] `bd-2756e4` — VirtualTerminal/headless-grid performance spike and supported
   Pi `InteractiveSessionView`/UI-broker seam.

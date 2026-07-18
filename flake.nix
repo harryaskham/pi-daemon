@@ -28,7 +28,7 @@
         src = ./.;
 
         nodejs = pkgs.nodejs_24;
-        npmDepsHash = "sha256-hhuLkuKsUq3lKqlyDY59JRxbT9Pqo5uDSBed5/OO+Ro=";
+        npmDepsHash = "sha256-6nR9LLxpGUTowksHv3lq5kSBQ7FxkqowGBTdAevhvQs=";
         npmDepsFetcherVersion = 2;
         nativeBuildInputs = [pkgs.makeWrapper];
 
@@ -49,6 +49,9 @@
         installPhase = ''
           runHook preInstall
           npm prune --omit=dev --ignore-scripts
+          # The private Dash workspace is build-time source until bd-31ee8f
+          # packages its compiled assets; never copy npm's source-tree symlink.
+          rm -f node_modules/@harryaskham/pi-daemon-dash
           packageRoot="$out/lib/node_modules/@harryaskham/pi-daemon"
           mkdir -p "$packageRoot" "$out/bin"
           cp -R dist node_modules package.json CHANGELOG.md README.md SECURITY.md LICENSE \
