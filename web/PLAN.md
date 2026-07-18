@@ -1320,7 +1320,7 @@ These lanes intentionally begin in parallel:
 
 - [x] `bd-c0df45` — beautiful virtualized rich transcript and built-in/custom
   tool rendering; depends on contract, frontend spike, and projector.
-- [ ] `bd-5f9ca1` — persistent mouse-resizable splits, focus/swaps, settings and
+- [x] `bd-5f9ca1` — persistent mouse-resizable splits, focus/swaps, settings and
   Vim composer; depends on SPA shell and browser server.
 - [ ] `bd-da9e31` — one injected daemon shadow-TUI runtime/grid channel; depends
   on TUI spike, contract, embedded backend, and neutral API.

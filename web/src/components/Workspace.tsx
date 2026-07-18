@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef } from "react";
 import { findDirectionalNeighbor, swapPaneTargets, updateSplitRatio, type Direction, type PaneRect } from "../layout";
+import { Columns3, SplitSquareHorizontal, X } from "../icons";
 import type { LayoutNode } from "../model";
 
 interface WorkspaceProps {
@@ -7,6 +8,10 @@ interface WorkspaceProps {
   selectedPaneId: string;
   onLayoutChange(layout: LayoutNode): void;
   onSelectedPaneChange(paneId: string): void;
+  onSplitPane(paneId: string, direction: "horizontal" | "vertical"): void;
+  onClosePane(paneId: string): void;
+  paneCount: number;
+  maxPanes?: number;
   renderPane(node: Extract<LayoutNode, { type: "leaf" }>): React.ReactNode;
 }
 
@@ -39,6 +44,10 @@ export function Workspace({
   selectedPaneId,
   onLayoutChange,
   onSelectedPaneChange,
+  onSplitPane,
+  onClosePane,
+  paneCount,
+  maxPanes = 8,
   renderPane,
 }: WorkspaceProps) {
   const rootRef = useRef<HTMLDivElement>(null);
@@ -73,7 +82,14 @@ export function Workspace({
           tabIndex={-1}
           onPointerDown={() => onSelectedPaneChange(node.paneId)}
           aria-label={`Workspace pane ${node.paneId}`}
-        >{renderPane(node)}</section>
+        >
+          <div className="pane-chrome-actions" aria-label={`Pane ${node.paneId} layout controls`}>
+            <button type="button" onClick={() => onSplitPane(node.paneId, "horizontal")} aria-label="Split pane horizontally" disabled={paneCount >= maxPanes}><Columns3 size={13} /></button>
+            <button type="button" onClick={() => onSplitPane(node.paneId, "vertical")} aria-label="Split pane vertically" disabled={paneCount >= maxPanes}><SplitSquareHorizontal size={13} /></button>
+            <button type="button" onClick={() => onClosePane(node.paneId)} aria-label="Close pane" disabled={paneCount <= 1}><X size={13} /></button>
+          </div>
+          {renderPane(node)}
+        </section>
       );
     }
 
@@ -124,7 +140,7 @@ export function Workspace({
         {renderNode(splitNode.second)}
       </div>
     );
-  }, [layout, onLayoutChange, onSelectedPaneChange, renderPane, selectedPaneId]);
+  }, [layout, maxPanes, onClosePane, onLayoutChange, onSelectedPaneChange, onSplitPane, paneCount, renderPane, selectedPaneId]);
 
   return <main ref={rootRef} className="workspace" data-testid="workspace">{renderNode(layout)}</main>;
 }

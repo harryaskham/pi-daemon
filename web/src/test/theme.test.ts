@@ -43,5 +43,7 @@ describe("semantic Nord Midnight theme", () => {
     expect(contrast("#edf3f8", "#0b101a")).toBeGreaterThan(12);
     expect(contrast("#a9b7c9", "#111827")).toBeGreaterThan(7);
     expect(contrast("#8fceda", "#0b101a")).toBeGreaterThan(8);
+    expect(contrast("#edf3f8", "#0c1320")).toBeGreaterThan(12);
+    expect(contrast("#9bd8e7", "#0c1320")).toBeGreaterThan(8);
   });
 });

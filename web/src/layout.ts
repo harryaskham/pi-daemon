@@ -1,3 +1,4 @@
+import type { DashboardLayoutNode } from "@harryaskham/pi-daemon/dashboard-contract";
 import type { LayoutNode, PaneTarget } from "./model";
 
 export interface PaneRect {
@@ -50,16 +51,90 @@ export function updatePaneTarget(node: LayoutNode, paneId: string, target: PaneT
   };
 }
 
-function findTarget(node: LayoutNode, paneId: string): PaneTarget | undefined {
+export function findPaneTarget(node: LayoutNode, paneId: string): PaneTarget | undefined {
   if (node.type === "leaf") return node.paneId === paneId ? node.target : undefined;
-  return findTarget(node.first, paneId) ?? findTarget(node.second, paneId);
+  return findPaneTarget(node.first, paneId) ?? findPaneTarget(node.second, paneId);
 }
 
 export function swapPaneTargets(node: LayoutNode, firstPaneId: string, secondPaneId: string): LayoutNode {
-  const firstTarget = findTarget(node, firstPaneId);
-  const secondTarget = findTarget(node, secondPaneId);
+  const firstTarget = findPaneTarget(node, firstPaneId);
+  const secondTarget = findPaneTarget(node, secondPaneId);
   if (!firstTarget || !secondTarget || firstPaneId === secondPaneId) return node;
   return updatePaneTarget(updatePaneTarget(node, firstPaneId, secondTarget), secondPaneId, firstTarget);
+}
+
+export function collectPaneIds(node: LayoutNode): string[] {
+  if (node.type === "leaf") return [node.paneId];
+  return [...collectPaneIds(node.first), ...collectPaneIds(node.second)];
+}
+
+export function splitPane(
+  node: LayoutNode,
+  paneId: string,
+  direction: "horizontal" | "vertical",
+  newPaneId: string,
+): LayoutNode {
+  if (node.type === "leaf") {
+    if (node.paneId !== paneId) return node;
+    return {
+      type: "split",
+      splitId: `split-${paneId}-${newPaneId}`,
+      direction,
+      ratio: 0.5,
+      first: node,
+      second: { type: "leaf", paneId: newPaneId, target: { type: "empty" } },
+    };
+  }
+  return {
+    ...node,
+    first: splitPane(node.first, paneId, direction, newPaneId),
+    second: splitPane(node.second, paneId, direction, newPaneId),
+  };
+}
+
+function removePane(node: LayoutNode, paneId: string): LayoutNode | undefined {
+  if (node.type === "leaf") return node.paneId === paneId ? undefined : node;
+  const first = removePane(node.first, paneId);
+  const second = removePane(node.second, paneId);
+  if (!first) return second;
+  if (!second) return first;
+  return { ...node, first, second };
+}
+
+export function closePane(node: LayoutNode, paneId: string): LayoutNode {
+  if (node.type === "leaf") return node;
+  return removePane(node, paneId) ?? node;
+}
+
+export function toDashboardLayout(node: LayoutNode): DashboardLayoutNode {
+  if (node.type === "leaf") {
+    return {
+      type: "leaf",
+      paneId: node.paneId,
+      ...(node.target.type === "empty" ? {} : { content: node.target }),
+    };
+  }
+  return {
+    type: "split",
+    direction: node.direction,
+    ratio: node.ratio,
+    first: toDashboardLayout(node.first),
+    second: toDashboardLayout(node.second),
+  };
+}
+
+export function fromDashboardLayout(node: DashboardLayoutNode, path = "root"): LayoutNode {
+  if (node.type === "leaf") {
+    return { type: "leaf", paneId: node.paneId, target: node.content ?? { type: "empty" } };
+  }
+  return {
+    type: "split",
+    splitId: `split-${path}`,
+    direction: node.direction,
+    ratio: clampRatio(node.ratio),
+    first: fromDashboardLayout(node.first, `${path}-first`),
+    second: fromDashboardLayout(node.second, `${path}-second`),
+  };
 }
 
 function center(rect: PaneRect): { x: number; y: number } {

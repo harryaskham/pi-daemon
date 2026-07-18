@@ -1,5 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { clampRatio, findDirectionalNeighbor, INITIAL_LAYOUT, swapPaneTargets, updatePaneTarget, updateSplitRatio } from "../layout";
+import {
+  clampRatio,
+  closePane,
+  collectPaneIds,
+  findDirectionalNeighbor,
+  fromDashboardLayout,
+  INITIAL_LAYOUT,
+  splitPane,
+  swapPaneTargets,
+  toDashboardLayout,
+  updatePaneTarget,
+  updateSplitRatio,
+} from "../layout";
 import type { InventoryId } from "../model";
 
 const alpha = "inv_alpha" as InventoryId;
@@ -28,6 +40,32 @@ describe("split-tree workspace", () => {
       first: { type: "leaf", paneId: "primary", target: { type: "info", inventoryId: beta } },
       second: { type: "leaf", paneId: "inspector", target: { type: "chat", inventoryId: alpha, presentation: "rich" } },
     });
+  });
+
+  it("splits a populated leaf and closes by promoting its sibling", () => {
+    const populated = updatePaneTarget(INITIAL_LAYOUT, "primary", { type: "chat", inventoryId: alpha, presentation: "rich" });
+    const split = splitPane(populated, "primary", "vertical", "third");
+    expect(collectPaneIds(split)).toEqual(["primary", "third", "inspector"]);
+    expect(split).toMatchObject({
+      type: "split",
+      first: {
+        type: "split",
+        direction: "vertical",
+        first: { type: "leaf", paneId: "primary", target: { type: "chat", inventoryId: alpha } },
+        second: { type: "leaf", paneId: "third", target: { type: "empty" } },
+      },
+    });
+    expect(collectPaneIds(closePane(split, "primary"))).toEqual(["third", "inspector"]);
+    expect(collectPaneIds(closePane(INITIAL_LAYOUT, "primary"))).toEqual(["inspector"]);
+  });
+
+  it("round-trips through the public revisioned workspace layout shape", () => {
+    const populated = updatePaneTarget(INITIAL_LAYOUT, "primary", { type: "chat", inventoryId: alpha, presentation: "rich" });
+    const wire = toDashboardLayout(populated);
+    expect(wire).not.toHaveProperty("splitId");
+    const restored = fromDashboardLayout(wire);
+    expect(collectPaneIds(restored)).toEqual(["primary", "inspector"]);
+    expect(restored).toMatchObject({ type: "split", direction: "horizontal", ratio: 0.68 });
   });
 
   it("chooses the nearest spatial pane in the requested direction", () => {

@@ -53,6 +53,22 @@
   --dash-shadow-focus: 0 0 0 1px var(--dash-accent-strong), 0 0 22px var(--dash-glow-color);
 }
 
+[data-theme="nord-frost"] {
+  --dash-bg-canvas: #0c1320;
+  --dash-bg-deep: #09101b;
+  --dash-bg-surface: #132033;
+  --dash-bg-raised: #192942;
+  --dash-bg-elevated: #203452;
+  --dash-bg-overlay: #29405f;
+  --dash-accent-primary: #9bd8e7;
+  --dash-accent-strong: #78c8da;
+  --dash-accent-soft: #234555;
+  --dash-accent-secondary: #9bbbf0;
+  --dash-selection: #315b70;
+  --dash-border-subtle: #2b3e59;
+  --dash-border-muted: #3d5574;
+}
+
 @media (prefers-contrast: more) {
   :root {
     --dash-border-subtle: #4b5f7c;

@@ -19,6 +19,7 @@ interface ChatPaneProps {
   demoState: DemoState;
   streamText: string;
   vimEnabled: boolean;
+  composerHistory: string[];
   needsReconcile: boolean;
   droppedRecords: number;
   onDemoStateChange(state: DemoState): void;
@@ -36,6 +37,7 @@ export function ChatPane({
   demoState,
   streamText,
   vimEnabled,
+  composerHistory,
   needsReconcile,
   droppedRecords,
   onDemoStateChange,
@@ -58,7 +60,7 @@ export function ChatPane({
   }, [session.inventoryId, shownRecords.length]);
 
   return (
-    <div className="chat-pane">
+    <div className="chat-pane" data-session-store={`${session.sessionId}:${session.generation}`}>
       <header className="pane-header">
         <div className="pane-title">
           <span className={`presence-dot presence-dot--${session.presence.runtime}`} />
@@ -124,7 +126,7 @@ export function ChatPane({
 
       <footer className="chat-pane__footer">
         <Suspense fallback={<div className="composer composer--loading"><i /><span>Loading the editor chunk…</span></div>}>
-          <Composer vimEnabled={vimEnabled} disabled={demoState === "error"} onToggleVim={onToggleVim} onSubmit={onSubmit} />
+          <Composer vimEnabled={vimEnabled} history={composerHistory} disabled={demoState === "error"} onToggleVim={onToggleVim} onSubmit={onSubmit} />
         </Suspense>
         <div className="context-chips" aria-label="Session context">
           <span>{session.cwd}</span><span>{session.contextPercent}% context</span><span>{session.model}</span><span>{session.thinking} thinking</span><span>tools: trusted</span>

@@ -1,11 +1,13 @@
 # Dash frontend stack decision — bd-493121
 
-Status: selected and promoted into the production Dash shell by `bd-cc87cb`
+Status: selected and promoted through production shell, rich transcript, and revisioned workspace milestones (`bd-cc87cb`, `bd-c0df45`, `bd-5f9ca1`)
 
 Reference captures:
 
 - [`artifacts/nord-midnight-reference.png`](artifacts/nord-midnight-reference.png) — default shell
 - [`artifacts/nord-midnight-sidebar-details.png`](artifacts/nord-midnight-sidebar-details.png) — expandable source/state filters and keyboard-focus metadata tooltip
+- [`artifacts/nord-frost-settings.png`](artifacts/nord-frost-settings.png) — source-aware revisioned settings and hot semantic theme switch
+- [`artifacts/nord-midnight-workspace-split.png`](artifacts/nord-midnight-workspace-split.png) — persisted nested split, pane controls, and promoted empty sibling
 
 Machine-readable receipt: [`artifacts/performance.json`](artifacts/performance.json)
 
@@ -44,14 +46,14 @@ The checked-in receipt was produced from a Vite production build and Playwright 
 
 | Measure | Result | Budget | Outcome |
 | --- | ---: | ---: | --- |
-| Navigation to first bounded rows | 78.9 ms | <150 ms | pass |
-| App/module-ready to first rows | 5.8 ms | <150 ms | pass |
-| In-app 10k search work | 0.8 ms | <100 ms | pass |
-| Streaming update commit work, max observed | 4.1 ms | <16 ms | pass |
+| Navigation to first bounded rows, 20-run p95 | 67.6 ms | <150 ms | pass |
+| App/module-ready to first rows, 20-run p95 | 3.7 ms | <150 ms | pass |
+| In-app 10k search work | 1.9 ms | <100 ms | pass |
+| Streaming/resize commit work, max observed | 3.8 ms | <16 ms | pass |
 | Mounted session rows | 17 / 10,000 | not O(total) | pass |
 | Mounted transcript rows | 18 / 1,200 | not O(total) | pass |
-| Initial production gzip | 94,524 bytes | <1.5 MiB | pass |
-| Complete production asset gzip, including lazy editor and rich renderer | 340,952 bytes | <1.5 MiB | pass |
+| Initial production gzip | 98,477 bytes | <1.5 MiB | pass |
+| Complete production asset gzip, including lazy editor and rich renderer | 345,290 bytes | <1.5 MiB | pass |
 
 `animationFrameCadenceP95Ms` in the receipt is display cadence (about 16.7 ms at 60 Hz), not JavaScript work. `streamFrameWorkMaxMs` is the measured React commit path compared with the 16 ms frame-work budget.
 
@@ -64,10 +66,12 @@ Focused browser acceptance proves:
 - 10k sidebar and long transcript DOM bounds;
 - search, functional expandable state/source filters, and all deliberate visual states;
 - hover/focus metadata tooltip, information-pane selection, loading/error recovery, and mobile drawer controls;
-- settings modal and semantic theme preview;
-- mouse/keyboard split resizing in the component contract;
+- revisioned settings patch/reset with effective source badges and hot Nord theme switching;
+- nested split creation, mouse/keyboard resize, close-and-promote, eight-pane bound, and persisted revision receipts;
 - `Ctrl-h/j/k/l` spatial focus and focus-preserving `Ctrl-Shift-h/j/k/l` target swaps outside the editor;
-- CodeMirror/Vim lazy loading and IME-shaped Unicode input without pane-focus leakage; and
+- shared session transcript-store reuse across panes;
+- CodeMirror/Vim lazy loading, command completion, 50-entry history, multiline paste, and IME-shaped Unicode input without pane-focus leakage;
+- discoverable keyboard help and screen-reader-labelled dialogs/controls; and
 - narrow responsive structure in CSS with reduced-motion and increased-contrast policies.
 
 ## Architecture handoff
@@ -82,7 +86,9 @@ Follow-on shell, transcript, workspace, and live-integration beads should preser
 6. Retain progressive first paint and byte/count-bounded viewport caches when replacing fixtures with the embedded and remote backends.
 7. Keep CodeMirror/Vim and rich markdown/syntax rendering out of the first-row dependency graph; their lazy chunks are intentionally measurable.
 8. Keep colors and visual states in `theme.css`. Component CSS may consume semantic tokens but must not introduce literal presentation colors.
-9. Until `bd-31ee8f` packages compiled assets, Nix deliberately removes npm's private-workspace source symlink during server-only installation; that later bead must copy the Vite manifest/assets into the final artifact rather than preserving a source-tree link.
+9. Persist layout and UI settings only through public revisioned workspace/settings resources. Coalesce drag updates, use expected revisions and idempotency keys, and reconcile conflicts from server truth.
+10. Reuse one transcript/session store for duplicate pane targets; a visual split must never create a second runtime or channel.
+11. Until `bd-31ee8f` packages compiled assets, Nix deliberately removes npm's private-workspace source symlink during server-only installation; that later bead must copy the Vite manifest/assets into the final artifact rather than preserving a source-tree link.
 
 ## Security receipt
 

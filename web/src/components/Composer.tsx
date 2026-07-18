@@ -6,8 +6,11 @@ import { EditorView, keymap, placeholder } from "@codemirror/view";
 import { vim } from "@replit/codemirror-vim";
 import { Keyboard, Send } from "../icons";
 
+const BUILTIN_COMMANDS = ["/model", "/thinking", "/compact", "/name", "/new", "/tree", "/fork", "/clone", "/abort"] as const;
+
 export interface ComposerProps {
   vimEnabled: boolean;
+  history: string[];
   disabled?: boolean;
   onSubmit(value: string): void;
   onToggleVim(): void;
@@ -15,6 +18,7 @@ export interface ComposerProps {
 
 export default function Composer({
   vimEnabled,
+  history,
   disabled = false,
   onSubmit,
   onToggleVim,
@@ -22,7 +26,10 @@ export default function Composer({
   const hostRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const valueRef = useRef("");
+  const historyIndexRef = useRef(-1);
+  const [draft, setDraft] = useState("");
   const [hasValue, setHasValue] = useState(false);
+  const suggestions = draft.startsWith("/") ? BUILTIN_COMMANDS.filter((command) => command.startsWith(draft.split(/\s/, 1)[0] ?? "")) : [];
 
   useEffect(() => {
     const host = hostRef.current;
@@ -42,11 +49,42 @@ export default function Composer({
         placeholder("Ask Pi to inspect, build, explain, or refine…"),
         keymap.of([
           {
+            key: "Alt-ArrowUp",
+            run: (view) => {
+              if (history.length === 0) return false;
+              historyIndexRef.current = Math.min(history.length - 1, historyIndexRef.current + 1);
+              const value = history[history.length - 1 - historyIndexRef.current] ?? "";
+              view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: value }, selection: { anchor: value.length } });
+              return true;
+            },
+          },
+          {
+            key: "Alt-ArrowDown",
+            run: (view) => {
+              historyIndexRef.current = Math.max(-1, historyIndexRef.current - 1);
+              const value = historyIndexRef.current < 0 ? "" : history[history.length - 1 - historyIndexRef.current] ?? "";
+              view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: value }, selection: { anchor: value.length } });
+              return true;
+            },
+          },
+          {
+            key: "Tab",
+            run: (view) => {
+              const value = view.state.doc.toString();
+              if (!value.startsWith("/")) return false;
+              const command = BUILTIN_COMMANDS.find((candidate) => candidate.startsWith(value.split(/\s/, 1)[0] ?? ""));
+              if (!command) return false;
+              view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: `${command} ` }, selection: { anchor: command.length + 1 } });
+              return true;
+            },
+          },
+          {
             key: "Mod-Enter",
             run: (view) => {
               const value = view.state.doc.toString().trim();
               if (!value || disabled) return true;
               onSubmit(value);
+              historyIndexRef.current = -1;
               view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: "" } });
               return true;
             },
@@ -55,6 +93,7 @@ export default function Composer({
         EditorView.updateListener.of((update) => {
           if (!update.docChanged) return;
           valueRef.current = update.state.doc.toString();
+          setDraft(valueRef.current);
           setHasValue(valueRef.current.trim().length > 0);
         }),
         EditorView.theme({
@@ -78,7 +117,7 @@ export default function Composer({
       view.destroy();
       viewRef.current = null;
     };
-  }, [disabled, onSubmit, vimEnabled]);
+  }, [disabled, history, onSubmit, vimEnabled]);
 
   function submit(): void {
     const view = viewRef.current;
@@ -86,12 +125,32 @@ export default function Composer({
     const value = view.state.doc.toString().trim();
     if (!value) return;
     onSubmit(value);
+    historyIndexRef.current = -1;
     view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: "" } });
   }
 
   return (
     <div className={`composer${disabled ? " composer--disabled" : ""}`} data-editor-root>
       <div ref={hostRef} className="composer__editor" />
+      {suggestions.length > 0 ? (
+        <div className="composer-completions" role="listbox" aria-label="Command completions">
+          {suggestions.slice(0, 6).map((command, index) => (
+            <button
+              key={command}
+              type="button"
+              role="option"
+              aria-selected={index === 0}
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => {
+                const view = viewRef.current;
+                if (!view) return;
+                view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: `${command} ` }, selection: { anchor: command.length + 1 } });
+                view.focus();
+              }}
+            >{command}</button>
+          ))}
+        </div>
+      ) : null}
       <div className="composer__toolbar">
         <button
           type="button"

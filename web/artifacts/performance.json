@@ -1,61 +1,61 @@
 {
-  "measuredAt": "2026-07-18T17:55:03.273Z",
+  "measuredAt": "2026-07-18T18:40:08.351Z",
   "source": "vite production output",
   "budget": {
     "initialGzipBytes": 1572864
   },
   "totals": {
-    "allBytes": 1057602,
-    "allGzipBytes": 340952,
-    "scriptGzipBytes": 332343,
-    "initialGzipBytes": 94524,
-    "lazyGzipBytes": 246428
+    "allBytes": 1075035,
+    "allGzipBytes": 345290,
+    "scriptGzipBytes": 336007,
+    "initialGzipBytes": 98477,
+    "lazyGzipBytes": 246813
   },
   "files": [
     {
-      "file": "assets/Composer-CwNygEUV.js",
-      "bytes": 727560,
-      "gzipBytes": 241710
+      "file": "assets/Composer-CfzfmYVt.js",
+      "bytes": 728928,
+      "gzipBytes": 242096
     },
     {
-      "file": "assets/react-Cnbc--vW.js",
+      "file": "assets/react-D1XEZSKN.js",
       "bytes": 182204,
-      "gzipBytes": 56698
+      "gzipBytes": 56701
     },
     {
-      "file": "assets/index-B7aACz1U.js",
-      "bytes": 51134,
-      "gzipBytes": 15844
+      "file": "assets/index-DKiSwBN2.js",
+      "bytes": 62085,
+      "gzipBytes": 18941
     },
     {
-      "file": "assets/index-DY8VKf0B.css",
-      "bytes": 42248,
-      "gzipBytes": 7779
+      "file": "assets/index-n40Kh-fm.css",
+      "bytes": 46786,
+      "gzipBytes": 8456
     },
     {
-      "file": "assets/virtual-JqRwGQxa.js",
+      "file": "assets/virtual-BM2yknIP.js",
       "bytes": 23377,
-      "gzipBytes": 7135
+      "gzipBytes": 7137
     },
     {
-      "file": "assets/icons-CFrejP05.js",
-      "bytes": 16241,
-      "gzipBytes": 6323
+      "file": "assets/icons-B6DrvTT4.js",
+      "bytes": 16817,
+      "gzipBytes": 6497
     },
     {
-      "file": "assets/RichTranscriptRecord-BivqShhR.js",
+      "file": "assets/RichTranscriptRecord-XmVD9__3.js",
       "bytes": 9242,
-      "gzipBytes": 3253
+      "gzipBytes": 3251
     },
     {
-      "file": "assets/SyntaxCodeBlock-XQEukY56.js",
+      "file": "assets/SyntaxCodeBlock-hKrZQgEu.js",
       "bytes": 2011,
-      "gzipBytes": 1017
+      "gzipBytes": 1021
     },
     {
       "file": ".vite/manifest.json",
       "bytes": 2174,
-      "gzipBytes": 448
+      "gzipBytes": 445
     },
     {
       "file": "index.html",
@@ -69,32 +69,100 @@
     }
   ],
   "browser": {
-    "measuredAt": "2026-07-18T17:55:06.665Z",
+    "measuredAt": "2026-07-18T18:41:48.752Z",
     "browser": "Playwright Chromium 149 headless",
     "viewport": "1440x960",
     "fixtureSessions": 10000,
-    "harnessNavigationMs": 955.04,
-    "appFirstRowsMs": 5.8,
-    "navigationFirstRowsMs": 78.9,
-    "harnessSearchMs": 25.7,
-    "appSearchMs": 0.8,
-    "animationFrameCadenceP95Ms": 10.6,
-    "animationFrameCadenceMaxMs": 13.5,
-    "streamFrameWorkMaxMs": 4.1,
+    "harnessNavigationP95Ms": 789.03,
+    "appFirstRowsP95Ms": 3.7,
+    "navigationFirstRowsP95Ms": 67.6,
+    "firstRowsSamples": {
+      "harness": [
+        882.25,
+        747.75,
+        656.14,
+        747.18,
+        745.19,
+        714.73,
+        687.38,
+        735.45,
+        737.94,
+        665.21,
+        695.7,
+        699.73,
+        707.91,
+        704.5,
+        734.86,
+        726.18,
+        675.49,
+        716.05,
+        789.03,
+        786.87
+      ],
+      "app": [
+        14.5,
+        2,
+        2.8,
+        3.5,
+        2.3,
+        2.3,
+        2.6,
+        1.3,
+        1.8,
+        1.9,
+        0.9,
+        3.7,
+        1.3,
+        3.1,
+        2.3,
+        1.2,
+        2.7,
+        1.3,
+        1.9,
+        0.9
+      ],
+      "navigation": [
+        67.6,
+        14.6,
+        31,
+        44.8,
+        34.1,
+        18,
+        61.5,
+        46.6,
+        87.1,
+        15,
+        13.3,
+        14.1,
+        17.1,
+        28.6,
+        15.2,
+        9.9,
+        22,
+        17.1,
+        16.2,
+        12.3
+      ]
+    },
+    "harnessSearchMs": 88.44,
+    "appSearchMs": 1.9,
+    "animationFrameCadenceP95Ms": 11.9,
+    "animationFrameCadenceMaxMs": 14.3,
+    "streamFrameWorkMaxMs": 3.8,
     "app": {
-      "generatedAt": "2026-07-18T17:55:04.543Z",
+      "generatedAt": "2026-07-18T18:41:45.230Z",
       "fixtureSessions": 10000,
       "visibleSessionRows": 8,
       "visibleTranscriptRows": 0,
       "frameWorkSamples": [
-        1.5,
-        4.1,
-        1.5
+        1.4,
+        3.8,
+        3
       ],
-      "firstRowsMs": 5.8,
-      "navigationFirstRowsMs": 78.9,
-      "lastSearchMs": 0.8,
-      "maxFrameWorkMs": 4.1,
+      "firstRowsMs": 0.9,
+      "navigationFirstRowsMs": 12.3,
+      "lastSearchMs": 1.9,
+      "maxFrameWorkMs": 3.8,
       "heapBytes": 10000000
     },
     "visibleSessionRows": 17,

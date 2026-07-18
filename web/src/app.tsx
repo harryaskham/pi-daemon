@@ -1,19 +1,25 @@
 import { startTransition, useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from "react";
 import { asDashboardCursor } from "@harryaskham/pi-daemon/dashboard-contract";
-import type { DashboardSessionIdentity } from "@harryaskham/pi-daemon/dashboard-contract";
+import type {
+  DashboardSessionIdentity,
+  DashboardSettingsResource,
+  DashboardWorkspaceResource,
+} from "@harryaskham/pi-daemon/dashboard-contract";
 import { ChatPane } from "./components/ChatPane";
 import { EmptyPane } from "./components/EmptyPane";
 import { InfoPane } from "./components/InfoPane";
+import { KeyboardHelp } from "./components/KeyboardHelp";
 import { SettingsModal } from "./components/SettingsModal";
 import { Sidebar, type SidebarStatus } from "./components/Sidebar";
 import { Workspace } from "./components/Workspace";
 import { fixtureBackend } from "./fixture-backend";
-import { Menu } from "./icons";
+import { CircleHelp, Menu } from "./icons";
 import { createSessionFixtures, createTranscriptFixtures, createTranscriptShowcaseFixtures } from "./fixtures";
-import { INITIAL_LAYOUT, updatePaneTarget } from "./layout";
+import { closePane, collectPaneIds, INITIAL_LAYOUT, splitPane, toDashboardLayout, updatePaneTarget } from "./layout";
 import type { DemoState, InventoryId, LayoutNode, SessionFixture, TranscriptRecord } from "./model";
 import { markFirstRows, recordFrameWork, setFixtureCount } from "./performance";
 import { createTranscriptStore, transcriptStoreReducer } from "./transcript-store";
+import { createLocalPreferencesBackend, useDashboardSettings, useDashboardWorkspace } from "./use-dashboard-preferences";
 
 const FIXTURE_SESSION_COUNT = 10_000;
 const BOOTSTRAP_SESSIONS = createSessionFixtures(100);
@@ -56,25 +62,60 @@ function initialSidebarStatus(): SidebarStatus {
 function DashWorkspace() {
   const [sessions, setSessions] = useState<SessionFixture[]>(BOOTSTRAP_SESSIONS);
   const firstSession = useMemo(initialSession, []);
+  const initialLayout = useMemo(() => updatePaneTarget(
+    updatePaneTarget(INITIAL_LAYOUT, "primary", { type: "chat", inventoryId: firstSession.inventoryId, presentation: "rich" }),
+    "inspector",
+    { type: "info", inventoryId: firstSession.inventoryId },
+  ), [firstSession.inventoryId]);
+  const preferencesBackend = useMemo(() => {
+    const now = new Date().toISOString();
+    const workspace: DashboardWorkspaceResource = {
+      workspaceId: "workspace-fixture-01",
+      revision: 1,
+      createdAt: now,
+      updatedAt: now,
+      selectedPaneId: "primary",
+      layout: toDashboardLayout(initialLayout),
+      seenCursors: {},
+    };
+    const settings: DashboardSettingsResource = {
+      revision: 1,
+      effective: {
+        theme: { name: "nord-midnight", density: "comfortable" },
+        editor: { mode: "vim" },
+        sidebar: { initialLimit: 100, showProject: true, groupBy: "none" },
+        transcript: { expandTools: false, expandThinking: false },
+        motion: { reduced: window.matchMedia("(prefers-reduced-motion: reduce)").matches },
+        cache: { transcriptBytes: 32 * 1024 * 1024, transcriptEntries: 64 },
+      },
+      runtimeOverlay: {},
+      sources: {
+        "theme.name": "config",
+        "theme.density": "config",
+        "editor.mode": "config",
+        "motion.reduced": "default",
+      },
+    };
+    return createLocalPreferencesBackend(workspace, settings);
+  }, [initialLayout]);
+  const workspace = useDashboardWorkspace(preferencesBackend, preferencesBackend.workspaceSnapshot());
+  const settings = useDashboardSettings(preferencesBackend, preferencesBackend.settingsSnapshot());
+  const { layout, setLayout, selectedPaneId, setSelectedPaneId } = workspace;
+  const vimEnabled = settings.resource.effective.editor.mode === "vim";
+  const reducedMotion = settings.resource.effective.motion.reduced;
+  const density = settings.resource.effective.theme.density;
   const [selectedInventoryId, setSelectedInventoryId] = useState<InventoryId>(firstSession.inventoryId);
-  const [selectedPaneId, setSelectedPaneId] = useState("primary");
-  const [layout, setLayout] = useState<LayoutNode>(() =>
-    updatePaneTarget(
-      updatePaneTarget(INITIAL_LAYOUT, "primary", { type: "chat", inventoryId: firstSession.inventoryId, presentation: "rich" }),
-      "inspector",
-      { type: "info", inventoryId: firstSession.inventoryId },
-    ),
-  );
+  const paneSequence = useRef(2);
   const [query, setQuery] = useState("");
+  const [composerHistory, setComposerHistory] = useState<string[]>([]);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [sidebarStatus, setSidebarStatus] = useState<SidebarStatus>(initialSidebarStatus);
   const [demoState, setDemoState] = useState<DemoState>(initialDemoState);
   const [streamIndex, setStreamIndex] = useState(0);
   const streamWorkStartedAt = useRef<number | undefined>(undefined);
-  const [vimEnabled, setVimEnabled] = useState(true);
+  const workspaceWorkStartedAt = useRef<number | undefined>(undefined);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [reducedMotion, setReducedMotion] = useState(() => window.matchMedia("(prefers-reduced-motion: reduce)").matches);
-  const [density, setDensity] = useState<"comfortable" | "compact">("comfortable");
+  const [keyboardHelpOpen, setKeyboardHelpOpen] = useState(false);
   const [transcriptState, dispatchTranscript] = useReducer(
     transcriptStoreReducer,
     undefined,
@@ -111,6 +152,13 @@ function DashWorkspace() {
   }, [demoState, reducedMotion]);
 
   useLayoutEffect(() => {
+    const startedAt = workspaceWorkStartedAt.current;
+    if (startedAt === undefined) return;
+    recordFrameWork(performance.now() - startedAt);
+    workspaceWorkStartedAt.current = undefined;
+  }, [layout]);
+
+  useLayoutEffect(() => {
     const startedAt = streamWorkStartedAt.current;
     if (startedAt === undefined) return;
     recordFrameWork(performance.now() - startedAt);
@@ -122,6 +170,9 @@ function DashWorkspace() {
       if ((event.metaKey || event.ctrlKey) && event.key === ",") {
         event.preventDefault();
         setSettingsOpen(true);
+      } else if (event.key === "?" && !(event.target instanceof Element && event.target.closest("[data-editor-root]"))) {
+        event.preventDefault();
+        setKeyboardHelpOpen(true);
       }
     }
     window.addEventListener("keydown", onKeyDown);
@@ -148,17 +199,22 @@ function DashWorkspace() {
     });
   }, [selectedInventoryId, sessionById, transcriptState.identity]);
 
+  const commitLayout = useCallback((next: LayoutNode) => {
+    workspaceWorkStartedAt.current = performance.now();
+    setLayout(next);
+  }, [setLayout]);
+
   const openTarget = useCallback((session: SessionFixture, type: "chat" | "info") => {
     setSelectedInventoryId(session.inventoryId);
     setSidebarOpen(false);
-    setLayout((current) => updatePaneTarget(
-      current,
+    commitLayout(updatePaneTarget(
+      layout,
       selectedPaneId,
       type === "chat"
         ? { type, inventoryId: session.inventoryId, presentation: "rich" }
         : { type, inventoryId: session.inventoryId },
     ));
-  }, [selectedPaneId]);
+  }, [commitLayout, layout, selectedPaneId]);
 
   const renderPane = useCallback((node: Extract<LayoutNode, { type: "leaf" }>) => {
     if (node.target.type === "empty") return <EmptyPane />;
@@ -172,6 +228,7 @@ function DashWorkspace() {
         demoState={demoState}
         streamText={streamText}
         vimEnabled={vimEnabled}
+        composerHistory={composerHistory}
         needsReconcile={transcriptState.needsReconcile}
         droppedRecords={transcriptState.droppedRecords}
         onDemoStateChange={(state) => {
@@ -192,8 +249,9 @@ function DashWorkspace() {
             });
           }
         }}
-        onToggleVim={() => setVimEnabled((enabled) => !enabled)}
+        onToggleVim={() => settings.patch({ editor: { mode: vimEnabled ? "multiline" : "vim" } })}
         onSubmit={(value) => {
+          setComposerHistory((current) => [...current.slice(-49), value]);
           const timestamp = new Date().toISOString();
           const suffix = Date.now().toString(36);
           const userRecord = {
@@ -242,10 +300,10 @@ function DashWorkspace() {
         }}
       />
     );
-  }, [demoState, records, sessionById, streamText, transcriptState.droppedRecords, transcriptState.identity, transcriptState.needsReconcile, vimEnabled]);
+  }, [composerHistory, demoState, records, sessionById, settings, streamText, transcriptState.droppedRecords, transcriptState.identity, transcriptState.needsReconcile, vimEnabled]);
 
   return (
-    <div className="dash-app" data-density={density} data-reduced-motion={reducedMotion ? "true" : "false"} data-sidebar-open={sidebarOpen ? "true" : "false"}>
+    <div className="dash-app" data-theme={settings.resource.effective.theme.name} data-density={density} data-reduced-motion={reducedMotion ? "true" : "false"} data-sidebar-open={sidebarOpen ? "true" : "false"}>
       <a className="skip-link" href="#dash-workspace">Skip to workspace</a>
       <Sidebar
         sessions={sessions}
@@ -267,25 +325,46 @@ function DashWorkspace() {
       <div id="dash-workspace" className="workspace-shell">
         <div className="workspace-notice" aria-live="polite">
           <button type="button" className="mobile-menu-button" aria-label="Open session drawer" onClick={() => setSidebarOpen(true)}><Menu size={15} /></button>
-          <i />{notice}<span>Ctrl-hjkl focus · Ctrl-Shift-hjkl swap</span>
+          <i />{notice}
+          <button type="button" className="keyboard-help-button" aria-label="Open keyboard guide" onClick={() => setKeyboardHelpOpen(true)}><CircleHelp size={13} /> Keys</button>
+          <span>{workspace.syncState === "synced" ? `workspace r${workspace.resource.revision}` : `workspace ${workspace.syncState}`} · Ctrl-hjkl focus · Ctrl-Shift-hjkl swap</span>
         </div>
         <Workspace
           layout={layout}
           selectedPaneId={selectedPaneId}
-          onLayoutChange={setLayout}
+          onLayoutChange={commitLayout}
           onSelectedPaneChange={setSelectedPaneId}
+          paneCount={collectPaneIds(layout).length}
+          onSplitPane={(paneId, direction) => {
+            const newPaneId = `pane-${++paneSequence.current}`;
+            commitLayout(splitPane(layout, paneId, direction, newPaneId));
+            setSelectedPaneId(newPaneId);
+          }}
+          onClosePane={(paneId) => {
+            const next = closePane(layout, paneId);
+            const panes = collectPaneIds(next);
+            commitLayout(next);
+            if (paneId === selectedPaneId) setSelectedPaneId(panes[0] ?? selectedPaneId);
+          }}
           renderPane={renderPane}
         />
       </div>
+      <KeyboardHelp open={keyboardHelpOpen} onClose={() => setKeyboardHelpOpen(false)} />
       <SettingsModal
         open={settingsOpen}
         vimEnabled={vimEnabled}
         reducedMotion={reducedMotion}
         density={density}
+        themeName={settings.resource.effective.theme.name}
+        revision={settings.resource.revision}
+        sources={settings.resource.sources}
+        syncState={settings.syncState}
         onClose={() => setSettingsOpen(false)}
-        onVimChange={setVimEnabled}
-        onReducedMotionChange={setReducedMotion}
-        onDensityChange={setDensity}
+        onVimChange={(enabled) => settings.patch({ editor: { mode: enabled ? "vim" : "multiline" } })}
+        onReducedMotionChange={(enabled) => settings.patch({ motion: { reduced: enabled } })}
+        onDensityChange={(nextDensity) => settings.patch({ theme: { density: nextDensity } })}
+        onThemeChange={(theme) => settings.patch({ theme: { name: theme } })}
+        onReset={settings.reset}
       />
     </div>
   );

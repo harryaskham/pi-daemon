@@ -103,6 +103,95 @@ test("rich transcript renders semantic markdown, tools, images, summaries, custo
   await expect(page.getByRole("button", { name: "Hide details for Edit web/src/transcript-store.ts" })).toHaveAttribute("aria-expanded", "true");
 });
 
+test("split creation, keyboard resize, close promotion, and revision persistence stay coherent", async ({ page }) => {
+  await page.goto("./?state=ready");
+  const panes = page.locator("[data-pane-id]");
+  await expect(panes).toHaveCount(2);
+  const workspaceRevision = async () => {
+    const text = await page.locator(".workspace-notice").textContent();
+    return Number(/workspace r(\d+)/.exec(text ?? "")?.[1] ?? 0);
+  };
+  await page.locator('[data-pane-id="primary"]').getByRole("button", { name: "Split pane vertically" }).click();
+  await expect(panes).toHaveCount(3);
+  await page.locator(".session-row").first().click();
+  await expect(page.locator('[data-session-store="session-00000:1"]')).toHaveCount(2);
+  await expect.poll(workspaceRevision).toBeGreaterThan(1);
+  const splitRevision = await workspaceRevision();
+
+  const verticalSeparator = page.getByRole("separator", { name: "Resize vertical split" });
+  const box = await verticalSeparator.boundingBox();
+  expect(box).not.toBeNull();
+  if (box) {
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2 + 42, { steps: 4 });
+    await page.mouse.up();
+  }
+  const before = Number(await verticalSeparator.getAttribute("aria-valuenow"));
+  expect(before).not.toBe(50);
+  await verticalSeparator.focus();
+  await page.keyboard.press("ArrowDown");
+  await expect(verticalSeparator).toHaveAttribute("aria-valuenow", String(before + 3));
+  await expect.poll(workspaceRevision).toBeGreaterThan(splitRevision);
+  const resizeRevision = await workspaceRevision();
+
+  const selected = page.locator(".workspace-pane--selected");
+  await selected.getByRole("button", { name: "Close pane" }).click();
+  await expect(panes).toHaveCount(2);
+  await expect.poll(workspaceRevision).toBeGreaterThan(resizeRevision);
+});
+
+test("settings hot-switch, source reporting, reset, and keyboard guide are revisioned", async ({ page }) => {
+  await page.goto("./?state=ready");
+  await page.getByRole("button", { name: "Settings" }).click();
+  const settings = page.locator(".settings-dialog");
+  await expect(settings).toBeVisible();
+  await settings.getByRole("radio", { name: /Nord Frost/ }).click();
+  await expect(page.locator(".dash-app")).toHaveAttribute("data-theme", "nord-frost");
+  await expect(settings.getByText("runtime", { exact: true }).first()).toBeVisible();
+  await settings.getByRole("button", { name: "compact" }).click();
+  await expect(page.locator(".dash-app")).toHaveAttribute("data-density", "compact");
+  await settings.getByRole("switch", { name: "Vim composer" }).click();
+  await settings.getByRole("switch", { name: "Reduce motion" }).click();
+  await expect(page.locator(".dash-app")).toHaveAttribute("data-reduced-motion", "true");
+  await settings.getByRole("button", { name: "Revert to configured defaults" }).click();
+  await expect(page.locator(".dash-app")).toHaveAttribute("data-theme", "nord-midnight");
+  await expect(page.locator(".dash-app")).toHaveAttribute("data-density", "comfortable");
+  await settings.getByRole("button", { name: "Done" }).click();
+
+  await page.keyboard.press("?");
+  const help = page.getByRole("dialog", { name: "Keyboard guide" });
+  await expect(help).toContainText("Ctrl-Shift-h / j / k / l");
+  await expect(help).toContainText("Alt-Up / Alt-Down");
+  await help.getByRole("button", { name: "Done" }).click();
+});
+
+test("composer completion and bounded history work outside Vim mode", async ({ page }) => {
+  await page.goto("./?state=ready");
+  await page.getByRole("button", { name: /VIM · INSERT/ }).click();
+  const editor = page.getByTestId("composer-editor");
+  await editor.click();
+  await page.keyboard.type("/th");
+  await expect(page.getByRole("option", { name: "/thinking" })).toBeVisible();
+  await page.keyboard.press("Tab");
+  await expect(editor).toContainText("/thinking");
+  await page.keyboard.press("ControlOrMeta+A");
+  await page.keyboard.press("Backspace");
+  await page.keyboard.type("first history message");
+  await page.getByRole("button", { name: "Send message" }).click();
+  await editor.click();
+  await page.keyboard.type("second history message");
+  await page.getByRole("button", { name: "Send message" }).click();
+  await editor.click();
+  await page.keyboard.press("Alt+ArrowUp");
+  await expect(editor).toContainText("second history message");
+  await page.keyboard.press("ControlOrMeta+A");
+  await page.keyboard.press("Backspace");
+  await page.keyboard.insertText("pasted line one\npasted line two");
+  await expect(editor).toContainText("pasted line one");
+  await expect(editor).toContainText("pasted line two");
+});
+
 test("lazy composer accepts IME-shaped text without triggering pane shortcuts", async ({ page }) => {
   await page.goto("./?state=ready");
   const editor = page.getByTestId("composer-editor");

@@ -49,10 +49,18 @@ const url = process.env.DASH_CAPTURE_URL ?? staticServer?.url;
 if (!url) throw new Error("Dash capture URL could not be resolved");
 const browser = await chromium.launch({ headless: true });
 const page = await browser.newPage({ viewport: { width: 1440, height: 960 }, colorScheme: "dark" });
-const startedAt = performance.now();
-await page.goto(url, { waitUntil: "networkidle" });
-await page.locator("[data-session-row]").first().waitFor();
-const harnessNavigationMs = performance.now() - startedAt;
+const harnessNavigationSamples = [];
+const appFirstRowsSamples = [];
+const navigationFirstRowsSamples = [];
+for (let index = 0; index < 20; index += 1) {
+  const startedAt = performance.now();
+  await page.goto(url, { waitUntil: "networkidle" });
+  await page.locator("[data-session-row]").first().waitFor();
+  harnessNavigationSamples.push(performance.now() - startedAt);
+  const metrics = await page.evaluate(() => window.__DASH_METRICS__);
+  if (metrics?.firstRowsMs !== undefined) appFirstRowsSamples.push(metrics.firstRowsMs);
+  if (metrics?.navigationFirstRowsMs !== undefined) navigationFirstRowsSamples.push(metrics.navigationFirstRowsMs);
+}
 const search = page.getByTestId("session-search");
 const searchStartedAt = performance.now();
 await search.fill("session-09999");
@@ -82,13 +90,26 @@ await page.getByText("Browse by state and source").click();
 await page.getByRole("button", { name: /Open information for/ }).first().focus();
 await page.getByRole("tooltip").waitFor();
 await page.screenshot({ path: new URL("nord-midnight-sidebar-details.png", artifactDir).pathname, fullPage: true });
+await page.getByRole("button", { name: "Settings" }).click();
+const settingsDialog = page.getByRole("dialog", { name: "Settings" });
+await settingsDialog.getByRole("radio", { name: /Nord Frost/ }).click();
+await page.screenshot({ path: new URL("nord-frost-settings.png", artifactDir).pathname, fullPage: true });
+await settingsDialog.getByRole("button", { name: "Revert to configured defaults" }).click();
+await settingsDialog.getByRole("button", { name: "Done" }).click();
+await page.locator('[data-pane-id="primary"]').getByRole("button", { name: "Split pane vertically" }).click();
+await page.waitForFunction(() => /workspace r(?:[2-9]|\d{2,})/.test(document.querySelector(".workspace-notice")?.textContent ?? ""));
+await page.waitForTimeout(180);
+await page.screenshot({ path: new URL("nord-midnight-workspace-split.png", artifactDir).pathname, fullPage: true });
 await browser.close();
 await new Promise((resolveClose, reject) => {
   if (!staticServer) return resolveClose();
   staticServer.server.close((error) => error ? reject(error) : resolveClose());
 });
-const sorted = [...frameIntervals].sort((a, b) => a - b);
-const p95 = sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.95))] ?? 0;
+const percentile95 = (values) => {
+  const sorted = [...values].sort((a, b) => a - b);
+  return sorted[Math.max(0, Math.ceil(sorted.length * 0.95) - 1)] ?? 0;
+};
+const frameP95 = percentile95(frameIntervals);
 let existing = {};
 try { existing = JSON.parse(await readFile(new URL("performance.json", artifactDir), "utf8")); } catch {}
 const report = {
@@ -98,12 +119,17 @@ const report = {
     browser: "Playwright Chromium 149 headless",
     viewport: "1440x960",
     fixtureSessions: 10_000,
-    harnessNavigationMs: Number(harnessNavigationMs.toFixed(2)),
-    appFirstRowsMs: browserMetrics.app?.firstRowsMs,
-    navigationFirstRowsMs: browserMetrics.app?.navigationFirstRowsMs,
+    harnessNavigationP95Ms: Number(percentile95(harnessNavigationSamples).toFixed(2)),
+    appFirstRowsP95Ms: Number(percentile95(appFirstRowsSamples).toFixed(2)),
+    navigationFirstRowsP95Ms: Number(percentile95(navigationFirstRowsSamples).toFixed(2)),
+    firstRowsSamples: {
+      harness: harnessNavigationSamples.map((value) => Number(value.toFixed(2))),
+      app: appFirstRowsSamples,
+      navigation: navigationFirstRowsSamples,
+    },
     harnessSearchMs: Number(harnessSearchMs.toFixed(2)),
     appSearchMs: browserMetrics.app?.lastSearchMs,
-    animationFrameCadenceP95Ms: Number(p95.toFixed(2)),
+    animationFrameCadenceP95Ms: Number(frameP95.toFixed(2)),
     animationFrameCadenceMaxMs: Number(Math.max(...frameIntervals).toFixed(2)),
     streamFrameWorkMaxMs: browserMetrics.app?.maxFrameWorkMs,
     ...browserMetrics,
