@@ -1,0 +1,31 @@
+{
+  "contractVersion": "1.0",
+  "scheduleId": "daily-review",
+  "sessionRef": "session-01",
+  "revision": 3,
+  "enabled": true,
+  "cron": "30 9 * * 1-5",
+  "timezone": "Europe/London",
+  "prompt": "Review the current project status and produce a concise action list.",
+  "execution": {
+    "model": { "provider": "github-copilot", "id": "gpt-5-mini" },
+    "thinkingLevel": "medium"
+  },
+  "overlapPolicy": "queue-one",
+  "missedWakePolicy": { "mode": "bounded-catch-up", "maxRuns": 2 },
+  "jitterMs": 30000,
+  "maxAdmissionDelayMs": 600000,
+  "nextTriggerAt": "2026-07-20T08:30:00.000Z",
+  "lastTrigger": {
+    "scheduledFor": "2026-07-18T08:30:00.000Z",
+    "observedAt": "2026-07-18T08:30:12.000Z",
+    "disposition": "admitted",
+    "terminalTicket": {
+      "ticketId": "ticket-schedule-01",
+      "state": "completed",
+      "updatedAt": "2026-07-18T08:31:00.000Z"
+    }
+  },
+  "createdAt": "2026-07-01T10:00:00.000Z",
+  "updatedAt": "2026-07-18T08:31:00.000Z"
+}

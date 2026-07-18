@@ -10,6 +10,7 @@ on:
       - "session-api.openapi.json"
       - "dashboard-api.schema.json"
       - "dashboard-api.openapi.json"
+      - "schedule.schema.json"
       - ".github/workflows/pages.yml"
       - "flake.nix"
   workflow_dispatch:
@@ -46,6 +47,8 @@ jobs:
           test -s _site/dashboard-service-api/index.html
           test -s _site/dashboard-api.schema.json
           test -s _site/dashboard-api.openapi.json
+          test -s _site/schedules/index.html
+          test -s _site/schedule.schema.json
       - uses: actions/upload-pages-artifact@v3
         with:
           path: ./_site

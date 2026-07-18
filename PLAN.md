@@ -642,6 +642,9 @@ implementation order. This list is a human-readable crosswalk.
   Nix-on-Droid never falls back to its native npm double-free path.
 - [ ] `bd-4e10da` — future neutral persisted per-session cron/prompt scheduler
   and durable wakes; detailed alongside Dash in `web/PLAN.md`.
+  - [x] `bd-6d96bb` — v1 schedule resource/schema/fixtures, bounded owner-private
+    persistence recovery, optimistic revisions, clock/DST and secrecy contract;
+    timer admission and execution remain deferred.
 
 All standalone delivery and acceptance blockers are landed. Cutting the first
 release tag is an explicit operator action under `docs/release.md`; the remaining

@@ -48,12 +48,17 @@ test("Pages publishes the Dash protocol, schema, and OpenAPI from the pinned sit
     ]);
   assert.match(workflow, /- "dashboard-api\.schema\.json"/);
   assert.match(workflow, /- "dashboard-api\.openapi\.json"/);
+  assert.match(workflow, /- "schedule\.schema\.json"/);
+  assert.match(workflow, /test -s _site\/schedules\/index\.html/);
+  assert.match(workflow, /test -s _site\/schedule\.schema\.json/);
   assert.match(workflow, /test -s _site\/dashboard-protocol\/index\.html/);
   assert.match(workflow, /test -s _site\/dashboard-inventory\/index\.html/);
   assert.match(workflow, /test -s _site\/dashboard-ownership\/index\.html/);
   assert.match(workflow, /test -s _site\/dashboard-service-api\/index\.html/);
   assert.match(workflow, /test -s _site\/shadow-tui\/index\.html/);
   assert.match(flake, /cp \$\{\.\/dashboard-api\.schema\.json\} "\$out\/dashboard-api\.schema\.json"/);
+  assert.match(flake, /cp \$\{\.\/schedule\.schema\.json\} "\$out\/schedule\.schema\.json"/);
+  assert.match(flake, /test -s "\$out\/schedules\/index\.html"/);
   assert.match(flake, /test -s "\$out\/dashboard-protocol\/index\.html"/);
   assert.match(flake, /test -s "\$out\/dashboard-ownership\/index\.html"/);
   assert.match(flake, /test -s "\$out\/dashboard-service-api\/index\.html"/);
@@ -63,6 +68,7 @@ test("Pages publishes the Dash protocol, schema, and OpenAPI from the pinned sit
   assert.match(index, /\[Dash session ownership\]\(dashboard-ownership\)/);
   assert.match(index, /\[Neutral Dash service API\]\(dashboard-service-api\)/);
   assert.match(index, /\[Dash shadow TUI\]\(shadow-tui\)/);
+  assert.match(index, /\[Schedule contract\]\(schedules\)/);
   assert.match(protocol, /daemon service bearer is \*\*server-to-server only\*\*/);
   assert.match(inventory, /31\.58 ms/);
   assert.match(inventory, /formatSessionSourceFingerprint/);
