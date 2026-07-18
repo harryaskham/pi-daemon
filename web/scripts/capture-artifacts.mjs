@@ -100,6 +100,10 @@ await page.locator('[data-pane-id="primary"]').getByRole("button", { name: "Spli
 await page.waitForFunction(() => /workspace r(?:[2-9]|\d{2,})/.test(document.querySelector(".workspace-notice")?.textContent ?? ""));
 await page.waitForTimeout(180);
 await page.screenshot({ path: new URL("nord-midnight-workspace-split.png", artifactDir).pathname, fullPage: true });
+await page.locator('[data-pane-id="primary"]').getByRole("button", { name: "Switch to TUI presentation" }).click();
+await page.locator('[data-pane-id="primary"] .tui-grid__row').first().waitFor();
+await page.waitForTimeout(120);
+await page.screenshot({ path: new URL("nord-midnight-tui-grid.png", artifactDir).pathname, fullPage: true });
 await browser.close();
 await new Promise((resolveClose, reject) => {
   if (!staticServer) return resolveClose();

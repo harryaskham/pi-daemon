@@ -6,6 +6,7 @@ import {
   Clock3,
   MoreHorizontal,
   Play,
+  TerminalSquare,
   Zap,
 } from "../icons";
 import type { DemoState, SessionFixture, TranscriptRecord } from "../model";
@@ -22,6 +23,7 @@ interface ChatPaneProps {
   composerHistory: string[];
   needsReconcile: boolean;
   droppedRecords: number;
+  onPresentationChange(presentation: "rich" | "tui"): void;
   onDemoStateChange(state: DemoState): void;
   onToggleVim(): void;
   onSubmit(value: string): void;
@@ -40,6 +42,7 @@ export function ChatPane({
   composerHistory,
   needsReconcile,
   droppedRecords,
+  onPresentationChange,
   onDemoStateChange,
   onToggleVim,
   onSubmit,
@@ -67,6 +70,7 @@ export function ChatPane({
           <div><p className="eyebrow">{session.project} · Rich</p><h2>{session.title}</h2></div>
         </div>
         <div className="pane-actions">
+          <button type="button" className="tui-presentation-button" aria-label="Switch to TUI presentation" onClick={() => onPresentationChange("tui")}><TerminalSquare size={13} /> TUI</button>
           <div className="demo-states" role="group" aria-label="Preview state">
             {(["ready", "streaming", "skeleton", "empty", "error"] as const).map((state) => (
               <button key={state} type="button" className={demoState === state ? "is-active" : ""} onClick={() => onDemoStateChange(state)} aria-pressed={demoState === state}>{state}</button>

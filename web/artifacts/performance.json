@@ -1,15 +1,15 @@
 {
-  "measuredAt": "2026-07-18T18:40:08.351Z",
+  "measuredAt": "2026-07-18T20:04:15.834Z",
   "source": "vite production output",
   "budget": {
     "initialGzipBytes": 1572864
   },
   "totals": {
-    "allBytes": 1075035,
-    "allGzipBytes": 345290,
-    "scriptGzipBytes": 336007,
-    "initialGzipBytes": 98477,
-    "lazyGzipBytes": 246813
+    "allBytes": 1101992,
+    "allGzipBytes": 352707,
+    "scriptGzipBytes": 342319,
+    "initialGzipBytes": 105893,
+    "lazyGzipBytes": 246814
   },
   "files": [
     {
@@ -23,14 +23,14 @@
       "gzipBytes": 56701
     },
     {
-      "file": "assets/index-DKiSwBN2.js",
-      "bytes": 62085,
-      "gzipBytes": 18941
+      "file": "assets/index-3VNX2NjU.js",
+      "bytes": 82067,
+      "gzipBytes": 25253
     },
     {
-      "file": "assets/index-n40Kh-fm.css",
-      "bytes": 46786,
-      "gzipBytes": 8456
+      "file": "assets/index-CQlhpZQP.css",
+      "bytes": 53761,
+      "gzipBytes": 9558
     },
     {
       "file": "assets/virtual-BM2yknIP.js",
@@ -43,7 +43,7 @@
       "gzipBytes": 6497
     },
     {
-      "file": "assets/RichTranscriptRecord-XmVD9__3.js",
+      "file": "assets/RichTranscriptRecord-sieV2-3G.js",
       "bytes": 9242,
       "gzipBytes": 3251
     },
@@ -55,12 +55,12 @@
     {
       "file": ".vite/manifest.json",
       "bytes": 2174,
-      "gzipBytes": 445
+      "gzipBytes": 446
     },
     {
       "file": "index.html",
       "bytes": 844,
-      "gzipBytes": 382
+      "gzipBytes": 384
     },
     {
       "file": "assets/rolldown-runtime-Bh1tDfsg.js",
@@ -69,100 +69,99 @@
     }
   ],
   "browser": {
-    "measuredAt": "2026-07-18T18:41:48.752Z",
+    "measuredAt": "2026-07-18T20:04:29.466Z",
     "browser": "Playwright Chromium 149 headless",
     "viewport": "1440x960",
     "fixtureSessions": 10000,
-    "harnessNavigationP95Ms": 789.03,
-    "appFirstRowsP95Ms": 3.7,
-    "navigationFirstRowsP95Ms": 67.6,
+    "harnessNavigationP95Ms": 571.24,
+    "appFirstRowsP95Ms": 1.3,
+    "navigationFirstRowsP95Ms": 11.1,
     "firstRowsSamples": {
       "harness": [
-        882.25,
-        747.75,
-        656.14,
-        747.18,
-        745.19,
-        714.73,
-        687.38,
-        735.45,
-        737.94,
-        665.21,
-        695.7,
-        699.73,
-        707.91,
-        704.5,
-        734.86,
-        726.18,
-        675.49,
-        716.05,
-        789.03,
-        786.87
+        644.05,
+        570.62,
+        562.42,
+        571.24,
+        562.73,
+        562.39,
+        562.46,
+        560.61,
+        556.49,
+        560.8,
+        562.75,
+        559.43,
+        564.98,
+        564.22,
+        568.65,
+        566.9,
+        565.86,
+        559.01,
+        558.79,
+        557.9
       ],
       "app": [
-        14.5,
-        2,
-        2.8,
-        3.5,
-        2.3,
-        2.3,
-        2.6,
-        1.3,
-        1.8,
-        1.9,
-        0.9,
-        3.7,
-        1.3,
         3.1,
-        2.3,
         1.2,
-        2.7,
+        0.9,
         1.3,
-        1.9,
-        0.9
+        1,
+        0.7,
+        1.2,
+        1.2,
+        1.1,
+        1.1,
+        0.9,
+        1,
+        0.9,
+        1.2,
+        1.2,
+        0.8,
+        1,
+        1,
+        1,
+        1
       ],
       "navigation": [
-        67.6,
-        14.6,
-        31,
-        44.8,
-        34.1,
-        18,
-        61.5,
-        46.6,
-        87.1,
-        15,
-        13.3,
-        14.1,
-        17.1,
-        28.6,
-        15.2,
-        9.9,
-        22,
-        17.1,
-        16.2,
-        12.3
+        23.7,
+        11.1,
+        8.8,
+        10.2,
+        9.7,
+        8.3,
+        9.4,
+        10.7,
+        10.4,
+        10,
+        9.6,
+        10.3,
+        10.4,
+        8.5,
+        9.2,
+        8.6,
+        9.3,
+        9.3,
+        10.1,
+        8.6
       ]
     },
-    "harnessSearchMs": 88.44,
-    "appSearchMs": 1.9,
-    "animationFrameCadenceP95Ms": 11.9,
-    "animationFrameCadenceMaxMs": 14.3,
-    "streamFrameWorkMaxMs": 3.8,
+    "harnessSearchMs": 20.02,
+    "appSearchMs": 0.3,
+    "animationFrameCadenceP95Ms": 9.9,
+    "animationFrameCadenceMaxMs": 10.1,
+    "streamFrameWorkMaxMs": 1.9,
     "app": {
-      "generatedAt": "2026-07-18T18:41:45.230Z",
+      "generatedAt": "2026-07-18T20:04:27.038Z",
       "fixtureSessions": 10000,
       "visibleSessionRows": 8,
       "visibleTranscriptRows": 0,
       "frameWorkSamples": [
-        1.4,
-        3.8,
-        3
+        1.2,
+        1.9
       ],
-      "firstRowsMs": 0.9,
-      "navigationFirstRowsMs": 12.3,
-      "lastSearchMs": 1.9,
-      "maxFrameWorkMs": 3.8,
+      "firstRowsMs": 1,
+      "navigationFirstRowsMs": 8.6,
+      "lastSearchMs": 0.3,
+      "maxFrameWorkMs": 1.9,
       "heapBytes": 10000000
     },
     "visibleSessionRows": 17,

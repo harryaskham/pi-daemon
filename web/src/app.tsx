@@ -3,7 +3,9 @@ import { asDashboardCursor } from "@harryaskham/pi-daemon/dashboard-contract";
 import type {
   DashboardSessionIdentity,
   DashboardSettingsResource,
+  DashboardTuiInput,
   DashboardWorkspaceResource,
+  TuiDimensions,
 } from "@harryaskham/pi-daemon/dashboard-contract";
 import { ChatPane } from "./components/ChatPane";
 import { EmptyPane } from "./components/EmptyPane";
@@ -11,14 +13,17 @@ import { InfoPane } from "./components/InfoPane";
 import { KeyboardHelp } from "./components/KeyboardHelp";
 import { SettingsModal } from "./components/SettingsModal";
 import { Sidebar, type SidebarStatus } from "./components/Sidebar";
+import { TuiPane } from "./components/TuiPane";
 import { Workspace } from "./components/Workspace";
 import { fixtureBackend } from "./fixture-backend";
 import { CircleHelp, Menu } from "./icons";
 import { createSessionFixtures, createTranscriptFixtures, createTranscriptShowcaseFixtures } from "./fixtures";
+import { createTuiInputRuns, createTuiSnapshot, TUI_FIXTURE_OVERLAYS, TUI_FIXTURE_SELECTION } from "./tui-fixtures";
 import { closePane, collectPaneIds, INITIAL_LAYOUT, splitPane, toDashboardLayout, updatePaneTarget } from "./layout";
 import type { DemoState, InventoryId, LayoutNode, SessionFixture, TranscriptRecord } from "./model";
 import { markFirstRows, recordFrameWork, setFixtureCount } from "./performance";
 import { createTranscriptStore, transcriptStoreReducer } from "./transcript-store";
+import { createTuiFrameStore, TuiFrameCache, tuiFrameStoreReducer, type TuiFrameStoreState } from "./tui-frame-store";
 import { createLocalPreferencesBackend, useDashboardSettings, useDashboardWorkspace } from "./use-dashboard-preferences";
 
 const FIXTURE_SESSION_COUNT = 10_000;
@@ -33,6 +38,16 @@ function transcriptIdentity(session: SessionFixture): DashboardSessionIdentity {
     hostInstanceId: "fixture-host-01",
     sessionId: session.sessionId,
     generation: session.generation,
+  };
+}
+
+function tuiSnapshotFor(session: SessionFixture, dimensions: TuiDimensions = { rows: 24, columns: 80 }) {
+  const snapshot = createTuiSnapshot(dimensions.rows, dimensions.columns);
+  return {
+    ...snapshot,
+    identity: transcriptIdentity(session),
+    title: `${session.project} · ${session.title}`,
+    highWaterCursor: asDashboardCursor(`fixture:tui:${session.generation}:snapshot`),
   };
 }
 
@@ -113,6 +128,7 @@ function DashWorkspace() {
   const [demoState, setDemoState] = useState<DemoState>(initialDemoState);
   const [streamIndex, setStreamIndex] = useState(0);
   const streamWorkStartedAt = useRef<number | undefined>(undefined);
+  const tuiWorkStartedAt = useRef<number | undefined>(undefined);
   const workspaceWorkStartedAt = useRef<number | undefined>(undefined);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [keyboardHelpOpen, setKeyboardHelpOpen] = useState(false);
@@ -127,6 +143,13 @@ function DashWorkspace() {
     ),
   );
   const records: TranscriptRecord[] = transcriptState.records;
+  const [tuiStores] = useState(() => {
+    const cache = new TuiFrameCache<InventoryId>();
+    cache.set(firstSession.inventoryId, createTuiFrameStore(tuiSnapshotFor(firstSession), "controller"));
+    return cache;
+  });
+  const [tuiStoreRevision, setTuiStoreRevision] = useState(0);
+  const [mountedTuiPanes, setMountedTuiPanes] = useState<ReadonlySet<string>>(() => new Set());
   const [notice, setNotice] = useState("Preview ready · runtime hydration remains separate");
 
   useEffect(() => {
@@ -164,6 +187,13 @@ function DashWorkspace() {
     recordFrameWork(performance.now() - startedAt);
     streamWorkStartedAt.current = undefined;
   }, [streamIndex]);
+
+  useLayoutEffect(() => {
+    const startedAt = tuiWorkStartedAt.current;
+    if (startedAt === undefined) return;
+    recordFrameWork(performance.now() - startedAt);
+    tuiWorkStartedAt.current = undefined;
+  }, [tuiStoreRevision]);
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent): void {
@@ -204,6 +234,59 @@ function DashWorkspace() {
     setLayout(next);
   }, [setLayout]);
 
+  const getTuiState = useCallback((session: SessionFixture): TuiFrameStoreState => {
+    const existing = tuiStores.get(session.inventoryId);
+    if (existing) return existing;
+    const created = createTuiFrameStore(tuiSnapshotFor(session));
+    tuiStores.set(session.inventoryId, created);
+    return created;
+  }, []);
+
+  const replaceTuiState = useCallback((session: SessionFixture, state: TuiFrameStoreState) => {
+    tuiStores.set(session.inventoryId, state);
+    setTuiStoreRevision((revision) => revision + 1);
+  }, []);
+
+  const resizeTui = useCallback((session: SessionFixture, dimensions: TuiDimensions) => {
+    tuiWorkStartedAt.current = performance.now();
+    replaceTuiState(session, createTuiFrameStore(tuiSnapshotFor(session, dimensions), "controller"));
+    setNotice(`Canonical TUI resized · ${dimensions.columns}×${dimensions.rows}`);
+  }, [replaceTuiState]);
+
+  const sendTuiInput = useCallback((session: SessionFixture, input: DashboardTuiInput) => {
+    tuiWorkStartedAt.current = performance.now();
+    const current = getTuiState(session);
+    const sequence = current.sequence + 1;
+    const text = input.type === "key"
+      ? `key ${[...(input.modifiers ?? []), input.key].join("+")}`
+      : `${input.type} ${input.text.replaceAll("\n", "↵").slice(0, 96)}`;
+    const row = Math.max(0, current.dimensions.rows - 3);
+    const next = tuiFrameStoreReducer(current, {
+      type: "delta",
+      delta: {
+        kind: "tui_delta",
+        identity: current.identity,
+        cursor: asDashboardCursor(`fixture:tui:${session.generation}:${sequence}`),
+        sequence,
+        dimensions: current.dimensions,
+        changedRows: [{ row, runs: createTuiInputRuns(text) }],
+        cursorState: { row, column: Math.min(current.dimensions.columns - 1, 17 + text.length), visible: true, shape: "bar" },
+        ...(current.title ? { title: current.title } : {}),
+      },
+    });
+    replaceTuiState(session, next);
+    setNotice("Fixture TUI input projected locally · no provider request was sent");
+  }, [getTuiState, replaceTuiState]);
+
+  const setPanePresentation = useCallback((node: Extract<LayoutNode, { type: "leaf" }>, presentation: "rich" | "tui") => {
+    if (node.target.type !== "chat") return;
+    if (presentation === "tui") {
+      setMountedTuiPanes((current) => current.has(node.paneId) ? current : new Set([...current, node.paneId]));
+    }
+    commitLayout(updatePaneTarget(layout, node.paneId, { ...node.target, presentation }));
+    setNotice(`${presentation === "tui" ? "Terminal" : "Rich"} presentation selected · session state preserved`);
+  }, [commitLayout, layout]);
+
   const openTarget = useCallback((session: SessionFixture, type: "chat" | "info") => {
     setSelectedInventoryId(session.inventoryId);
     setSidebarOpen(false);
@@ -221,7 +304,15 @@ function DashWorkspace() {
     const session = sessionById.get(node.target.inventoryId);
     if (!session) return <EmptyPane />;
     if (node.target.type === "info") return <InfoPane session={session} />;
+    const presentation = node.target.presentation;
+    const canonicalTui = getTuiState(session);
+    const tuiState: TuiFrameStoreState = {
+      ...canonicalTui,
+      role: presentation === "tui" && selectedPaneId === node.paneId ? "controller" : "observer",
+    };
     return (
+      <div className="pane-presentations" data-presentation={presentation}>
+        <div className="pane-presentation-layer" hidden={presentation !== "rich"}>
       <ChatPane
         session={session}
         records={records}
@@ -229,6 +320,7 @@ function DashWorkspace() {
         streamText={streamText}
         vimEnabled={vimEnabled}
         composerHistory={composerHistory}
+        onPresentationChange={(next) => setPanePresentation(node, next)}
         needsReconcile={transcriptState.needsReconcile}
         droppedRecords={transcriptState.droppedRecords}
         onDemoStateChange={(state) => {
@@ -299,8 +391,25 @@ function DashWorkspace() {
           setNotice("Fixture command accepted · no provider request was sent");
         }}
       />
+        </div>
+        {presentation === "tui" || mountedTuiPanes.has(node.paneId) ? <div className="pane-presentation-layer" hidden={presentation !== "tui"}>
+          <TuiPane
+            session={session}
+            state={tuiState}
+            selected={selectedPaneId === node.paneId}
+            active={presentation === "tui"}
+            overlays={TUI_FIXTURE_OVERLAYS}
+            selection={TUI_FIXTURE_SELECTION}
+            onPresentationChange={(next) => setPanePresentation(node, next)}
+            onResize={(dimensions) => resizeTui(session, dimensions)}
+            onInput={(input) => sendTuiInput(session, input)}
+            onRequestSnapshot={() => replaceTuiState(session, createTuiFrameStore(tuiSnapshotFor(session), tuiState.role))}
+            onRequestControl={() => setSelectedPaneId(node.paneId)}
+          />
+        </div> : null}
+      </div>
     );
-  }, [composerHistory, demoState, records, sessionById, settings, streamText, transcriptState.droppedRecords, transcriptState.identity, transcriptState.needsReconcile, vimEnabled]);
+  }, [composerHistory, demoState, getTuiState, mountedTuiPanes, records, replaceTuiState, resizeTui, selectedPaneId, sendTuiInput, sessionById, setPanePresentation, settings, streamText, transcriptState.droppedRecords, transcriptState.identity, transcriptState.needsReconcile, tuiStoreRevision, vimEnabled]);
 
   return (
     <div className="dash-app" data-theme={settings.resource.effective.theme.name} data-density={density} data-reduced-motion={reducedMotion ? "true" : "false"} data-sidebar-open={sidebarOpen ? "true" : "false"}>

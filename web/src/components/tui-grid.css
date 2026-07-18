@@ -1,0 +1,285 @@
+.pane-presentations, .pane-presentation-layer {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+}
+
+.pane-presentation-layer[hidden] { display: none; }
+
+.tui-presentation-button {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 7px;
+  border: 1px solid var(--dash-border-subtle);
+  border-radius: var(--dash-radius-sm);
+  background: var(--dash-bg-deep);
+  color: var(--dash-fg-dim);
+  font-size: 8px;
+  cursor: pointer;
+}
+
+.tui-presentation-button:hover, .tui-presentation-button:focus-visible {
+  border-color: var(--dash-accent-strong);
+  color: var(--dash-accent-primary);
+}
+
+.tui-pane {
+  display: grid;
+  grid-template-rows: var(--dash-header-height) 31px minmax(0, 1fr) auto;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  background: var(--dash-bg-canvas);
+}
+
+.tui-pane__presentation {
+  display: flex;
+  gap: 2px;
+  margin-right: 120px;
+  padding: 2px;
+  border: 1px solid var(--dash-border-subtle);
+  border-radius: var(--dash-radius-sm);
+  background: var(--dash-bg-deep);
+}
+
+.tui-pane__presentation button {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 7px;
+  border-radius: var(--dash-radius-xs);
+  background: transparent;
+  color: var(--dash-fg-dim);
+  font-size: 8px;
+  cursor: pointer;
+}
+
+.tui-pane__presentation button[aria-pressed="true"] {
+  background: var(--dash-bg-overlay);
+  color: var(--dash-accent-primary);
+}
+
+.tui-pane__footer {
+  display: flex;
+  gap: 6px;
+  overflow: hidden;
+  padding: 7px 10px;
+  border-top: 1px solid var(--dash-border-subtle);
+  background: var(--dash-bg-surface);
+}
+
+.tui-pane__footer span {
+  overflow: hidden;
+  padding: 3px 6px;
+  border: 1px solid var(--dash-border-subtle);
+  border-radius: var(--dash-radius-pill);
+  color: var(--dash-fg-dim);
+  font: 8px/1 var(--dash-font-mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tui-pane__footer span:first-child { flex: 1 1 auto; }
+.tui-pane .tui-grid__status { display: none; }
+
+.tui-grid {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  isolation: isolate;
+  background:
+    radial-gradient(circle at 70% -20%, color-mix(in srgb, var(--dash-accent-soft) 32%, transparent), transparent 38%),
+    var(--dash-bg-deep);
+  color: var(--dash-fg-primary);
+  font: 500 var(--tui-row-height) / 1 var(--dash-font-mono);
+  font-variant-ligatures: none;
+  scrollbar-color: var(--dash-border-muted) transparent;
+  scrollbar-width: thin;
+  tab-size: 4;
+  outline: 0;
+}
+
+.tui-grid:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--dash-focus);
+}
+
+.tui-grid__probe {
+  position: absolute;
+  visibility: hidden;
+  pointer-events: none;
+  white-space: pre;
+}
+
+.tui-grid__viewport {
+  position: relative;
+  min-width: 100%;
+  min-height: 100%;
+  overflow: hidden;
+  background-image:
+    linear-gradient(color-mix(in srgb, var(--dash-border-subtle) 20%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--dash-border-subtle) 14%, transparent) 1px, transparent 1px);
+  background-size: calc(var(--tui-cell-width) * 8) calc(var(--tui-row-height) * 4);
+}
+
+.tui-grid__row {
+  position: absolute;
+  left: 0;
+  min-width: 100%;
+  overflow: hidden;
+  white-space: pre;
+  contain: layout paint style;
+}
+
+.tui-grid__row > span {
+  white-space: pre;
+}
+
+.tui-grid__selection {
+  position: absolute;
+  z-index: 2;
+  border-radius: 2px;
+  background: var(--dash-selection);
+  mix-blend-mode: screen;
+  pointer-events: none;
+}
+
+.tui-grid__cursor {
+  position: absolute;
+  z-index: 4;
+  display: block;
+  background: color-mix(in srgb, var(--dash-accent-primary) 78%, transparent);
+  box-shadow: 0 0 9px color-mix(in srgb, var(--dash-accent-primary) 36%, transparent);
+  pointer-events: none;
+  animation: tui-cursor-blink 1.05s steps(2, start) infinite;
+}
+
+.tui-grid__cursor--bar { width: max(2px, calc(var(--tui-cell-width) * .16)) !important; }
+.tui-grid__cursor--underline { height: 2px !important; transform: translateY(calc(var(--tui-row-height) - 2px)); }
+.tui-grid[data-role="observer"] .tui-grid__cursor { opacity: .52; animation: none; }
+
+@keyframes tui-cursor-blink { 50% { opacity: .28; } }
+
+.tui-grid__overlay {
+  position: absolute;
+  z-index: 8;
+  display: grid;
+  place-items: center;
+  gap: var(--dash-space-2);
+  overflow: hidden;
+  padding: var(--dash-space-2);
+  border: 1px solid color-mix(in srgb, var(--dash-accent-primary) 52%, var(--dash-border-muted));
+  border-radius: var(--dash-radius-sm);
+  background: color-mix(in srgb, var(--dash-bg-overlay) 94%, transparent);
+  box-shadow: var(--dash-shadow-panel);
+  color: var(--dash-fg-muted);
+  font: 9px/1.35 var(--dash-font-sans);
+  text-align: center;
+  pointer-events: none;
+}
+
+.tui-grid__overlay--status { place-items: start; border-color: var(--dash-border-muted); }
+.tui-grid__overlay--image-placeholder {
+  background:
+    linear-gradient(135deg, transparent 46%, color-mix(in srgb, var(--dash-accent-violet) 22%, transparent) 47% 53%, transparent 54%),
+    var(--dash-bg-code);
+  color: var(--dash-accent-secondary);
+}
+.tui-grid__overlay--image-placeholder > i { width: 28px; height: 20px; border: 1px solid currentColor; border-radius: var(--dash-radius-xs); opacity: .7; }
+
+.tui-grid__status {
+  position: sticky;
+  z-index: 12;
+  left: 7px;
+  bottom: 7px;
+  display: flex;
+  width: max-content;
+  max-width: calc(100% - 14px);
+  gap: 8px;
+  align-items: center;
+  margin: -25px 7px 7px;
+  padding: 5px 7px;
+  border: 1px solid var(--dash-border-subtle);
+  border-radius: var(--dash-radius-pill);
+  background: color-mix(in srgb, var(--dash-bg-overlay) 88%, transparent);
+  box-shadow: 0 5px 18px var(--dash-shadow-color);
+  color: var(--dash-fg-dim);
+  font: 8px/1 var(--dash-font-mono);
+  pointer-events: none;
+  backdrop-filter: blur(8px);
+}
+
+.tui-grid__role { color: var(--dash-state-success); font-weight: 700; }
+.tui-grid__role--observer { color: var(--dash-fg-muted); }
+
+.tui-grid__fault {
+  position: sticky;
+  z-index: 14;
+  left: 50%;
+  bottom: 42px;
+  display: grid;
+  width: min(380px, calc(100% - 24px));
+  gap: 6px;
+  margin: -90px auto 12px;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, var(--dash-state-warning) 52%, var(--dash-border-muted));
+  border-radius: var(--dash-radius-md);
+  background: color-mix(in srgb, var(--dash-bg-overlay) 96%, var(--dash-state-warning));
+  box-shadow: var(--dash-shadow-panel);
+  color: var(--dash-fg-muted);
+  font: 10px/1.45 var(--dash-font-sans);
+}
+.tui-grid__fault--conflict { border-color: color-mix(in srgb, var(--dash-state-error) 55%, var(--dash-border-muted)); }
+.tui-grid__fault strong { color: var(--dash-fg-primary); font-size: 11px; }
+.tui-grid__fault button, .tui-grid__control {
+  width: max-content;
+  padding: 6px 9px;
+  border-radius: var(--dash-radius-sm);
+  background: var(--dash-accent-soft);
+  color: var(--dash-accent-primary);
+  font-size: 9px;
+  cursor: pointer;
+}
+
+.tui-grid__control {
+  position: sticky;
+  z-index: 13;
+  right: 8px;
+  bottom: 8px;
+  float: right;
+  margin-top: -35px;
+  margin-right: 8px;
+  border: 1px solid color-mix(in srgb, var(--dash-accent-primary) 32%, var(--dash-border-subtle));
+  background: color-mix(in srgb, var(--dash-bg-overlay) 92%, transparent);
+}
+
+.tui-grid__input-error {
+  position: sticky;
+  z-index: 15;
+  left: 50%;
+  bottom: 42px;
+  width: max-content;
+  max-width: calc(100% - 24px);
+  margin: -29px auto 8px;
+  padding: 6px 9px;
+  border: 1px solid color-mix(in srgb, var(--dash-state-error) 45%, var(--dash-border-muted));
+  border-radius: var(--dash-radius-sm);
+  background: var(--dash-bg-overlay);
+  color: var(--dash-state-error);
+  font: 9px/1.4 var(--dash-font-sans);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tui-grid__cursor { animation: none; }
+}
+
+@media (forced-colors: active) {
+  .tui-grid__cursor { background: Highlight; }
+  .tui-grid__selection { border: 1px solid Highlight; background: transparent; }
+  .tui-grid__overlay, .tui-grid__status, .tui-grid__fault { border: 1px solid CanvasText; background: Canvas; }
+}

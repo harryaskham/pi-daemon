@@ -1324,7 +1324,7 @@ These lanes intentionally begin in parallel:
   Vim composer; depends on SPA shell and browser server.
 - [ ] `bd-da9e31` — one injected daemon shadow-TUI runtime/grid channel; depends
   on TUI spike, contract, embedded backend, and neutral API.
-- [ ] `bd-0b804d` — responsive interactive browser TUI grid and Rich/TUI toggle;
+- [x] `bd-0b804d` — responsive interactive browser TUI grid and Rich/TUI toggle;
   depends on TUI/frontend spikes, contract, and SPA shell.
 - [ ] `bd-ea2019` — live preview/hydration/RPC/liveness/extension UI integration;
   depends on SPA shell, rich transcript, browser server, and both backends.

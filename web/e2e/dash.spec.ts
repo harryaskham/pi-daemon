@@ -192,6 +192,52 @@ test("composer completion and bounded history work outside Vim mode", async ({ p
   await expect(editor).toContainText("pasted line two");
 });
 
+test("TUI presentation streams one canonical controller grid to read-only pane mirrors", async ({ page }) => {
+  await page.goto("./?state=ready");
+  const primary = page.locator('[data-pane-id="primary"]');
+  const richScroller = primary.locator(".transcript");
+  const richScrollTop = await richScroller.evaluate((element) => element.scrollTop);
+  await primary.getByRole("button", { name: "Switch to TUI presentation" }).click();
+  await expect(primary.locator(".tui-grid")).toHaveAttribute("data-role", "controller");
+  await expect(primary.locator(".tui-grid__row").first()).toContainText("Pi Daemon Dash");
+  await expect(primary.locator(".tui-grid__role")).toHaveText("Controller");
+
+  const grid = primary.locator(".tui-grid");
+  await grid.focus();
+  await page.keyboard.press("x");
+  await expect(primary.locator(".tui-grid__row").filter({ hasText: "terminal input · key x" })).toHaveCount(1);
+  await grid.evaluate((element) => {
+    const data = new DataTransfer();
+    data.setData("text/plain", "bounded paste");
+    element.dispatchEvent(new ClipboardEvent("paste", { bubbles: true, cancelable: true, clipboardData: data }));
+  });
+  await expect(primary.locator(".tui-grid__row").filter({ hasText: "terminal input · paste bounded paste" })).toHaveCount(1);
+  await primary.getByRole("button", { name: "Rich" }).click();
+  await expect(primary.locator(".transcript")).toBeVisible();
+  expect(await primary.locator(".transcript").evaluate((element) => element.scrollTop)).toBe(richScrollTop);
+  await primary.getByRole("button", { name: "Switch to TUI presentation" }).click();
+
+  await primary.getByRole("button", { name: "Split pane horizontally" }).click();
+  await page.locator(".session-row").first().click();
+  const selectedPaneId = await page.locator(".workspace-pane--selected").getAttribute("data-pane-id");
+  expect(selectedPaneId).not.toBeNull();
+  const secondary = page.locator(`[data-pane-id="${selectedPaneId}"]`);
+  await secondary.getByRole("button", { name: "Switch to TUI presentation" }).click();
+  await expect(page.locator('[data-tui-session-store="session-00000:1"]')).toHaveCount(2);
+  await expect(primary.locator(".tui-grid")).toHaveAttribute("data-role", "observer");
+  await expect(secondary.locator(".tui-grid")).toHaveAttribute("data-role", "controller");
+  await secondary.locator(".tui-grid").focus();
+  await page.keyboard.press("z");
+  await expect(page.locator(".tui-grid__row").filter({ hasText: "terminal input · key z" })).toHaveCount(2);
+
+  await page.keyboard.press("Control+h");
+  await expect(primary).toHaveClass(/workspace-pane--selected/);
+  await expect(primary.locator(".tui-grid")).toHaveAttribute("data-role", "controller");
+  await expect(secondary.locator(".tui-grid")).toHaveAttribute("data-role", "observer");
+  await primary.getByRole("button", { name: "Rich" }).click();
+  await expect(primary.locator(".transcript")).toBeVisible();
+});
+
 test("lazy composer accepts IME-shaped text without triggering pane shortcuts", async ({ page }) => {
   await page.goto("./?state=ready");
   const editor = page.getByTestId("composer-editor");

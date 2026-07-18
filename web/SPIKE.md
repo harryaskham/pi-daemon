@@ -1,6 +1,6 @@
 # Dash frontend stack decision — bd-493121
 
-Status: selected and promoted through production shell, rich transcript, and revisioned workspace milestones (`bd-cc87cb`, `bd-c0df45`, `bd-5f9ca1`)
+Status: selected and promoted through production shell, rich transcript, revisioned workspace, and responsive TUI-pane milestones (`bd-cc87cb`, `bd-c0df45`, `bd-5f9ca1`, `bd-0b804d`)
 
 Reference captures:
 
@@ -8,6 +8,7 @@ Reference captures:
 - [`artifacts/nord-midnight-sidebar-details.png`](artifacts/nord-midnight-sidebar-details.png) — expandable source/state filters and keyboard-focus metadata tooltip
 - [`artifacts/nord-frost-settings.png`](artifacts/nord-frost-settings.png) — source-aware revisioned settings and hot semantic theme switch
 - [`artifacts/nord-midnight-workspace-split.png`](artifacts/nord-midnight-workspace-split.png) — persisted nested split, pane controls, and promoted empty sibling
+- [`artifacts/nord-midnight-tui-grid.png`](artifacts/nord-midnight-tui-grid.png) — responsive styled terminal grid, canonical controller state, extension overlay, and safe image placeholder
 
 Machine-readable receipt: [`artifacts/performance.json`](artifacts/performance.json)
 
@@ -46,14 +47,14 @@ The checked-in receipt was produced from a Vite production build and Playwright 
 
 | Measure | Result | Budget | Outcome |
 | --- | ---: | ---: | --- |
-| Navigation to first bounded rows, 20-run p95 | 67.6 ms | <150 ms | pass |
-| App/module-ready to first rows, 20-run p95 | 3.7 ms | <150 ms | pass |
-| In-app 10k search work | 1.9 ms | <100 ms | pass |
-| Streaming/resize commit work, max observed | 3.8 ms | <16 ms | pass |
+| Navigation to first bounded rows, 20-run p95 | 11.1 ms | <150 ms | pass |
+| App/module-ready to first rows, 20-run p95 | 1.3 ms | <150 ms | pass |
+| In-app 10k search work | 0.3 ms | <100 ms | pass |
+| Streaming/workspace/TUI resize commit work, max observed | 1.9 ms | <16 ms | pass |
 | Mounted session rows | 17 / 10,000 | not O(total) | pass |
 | Mounted transcript rows | 18 / 1,200 | not O(total) | pass |
-| Initial production gzip | 98,477 bytes | <1.5 MiB | pass |
-| Complete production asset gzip, including lazy editor and rich renderer | 345,290 bytes | <1.5 MiB | pass |
+| Initial production gzip | 105,893 bytes | <1.5 MiB | pass |
+| Complete production asset gzip, including lazy editor and rich renderer | 352,707 bytes | <1.5 MiB | pass |
 
 `animationFrameCadenceP95Ms` in the receipt is display cadence (about 16.7 ms at 60 Hz), not JavaScript work. `streamFrameWorkMaxMs` is the measured React commit path compared with the 16 ms frame-work budget.
 
@@ -70,6 +71,9 @@ Focused browser acceptance proves:
 - nested split creation, mouse/keyboard resize, close-and-promote, eight-pane bound, and persisted revision receipts;
 - `Ctrl-h/j/k/l` spatial focus and focus-preserving `Ctrl-Shift-h/j/k/l` target swaps outside the editor;
 - shared session transcript-store reuse across panes;
+- persistent Rich/TUI presentation switching with retained Rich scroll state;
+- one canonical styled TUI frame store mirrored across panes, controller transfer on spatial focus, read-only observers, measured bounded resize, keyboard/paste input, safe placeholders, and accessible full-text mirror;
+- snapshot/delta sequence and generation fencing, replay-gap/conflict states, virtual row DOM bounds, and a <16 ms reducer/browser commit gate;
 - CodeMirror/Vim lazy loading, command completion, 50-entry history, multiline paste, and IME-shaped Unicode input without pane-focus leakage;
 - discoverable keyboard help and screen-reader-labelled dialogs/controls; and
 - narrow responsive structure in CSS with reduced-motion and increased-contrast policies.
@@ -81,14 +85,15 @@ Follow-on shell, transcript, workspace, and live-integration beads should preser
 1. Consume `SessionInventoryPage` and `TranscriptPage` as public data; do not import server implementation state.
 2. Keep preview `hydration: "not-requested"` and reconcile live records by Pi IDs, never rendered text or array position.
 3. Fence every live subscription by `hostInstanceId + sessionId + generation` and return opaque cursors unchanged.
-4. Keep rich and TUI presentations capability-gated peers. This spike does not fabricate TUI availability.
+4. Keep rich and TUI presentations capability-gated peers. The fixture TUI reducer/grid is production-shaped, but real availability still comes only from `DashboardBackend.openTuiChannel()`.
 5. Route snapshot/live/`entry_appended`/gap transitions through `transcript-store.ts`; persisted records outrank live and optimistic records by Pi identities, stale host/generation frames are ignored, and gaps never append duplicates.
 6. Retain progressive first paint and byte/count-bounded viewport caches when replacing fixtures with the embedded and remote backends.
 7. Keep CodeMirror/Vim and rich markdown/syntax rendering out of the first-row dependency graph; their lazy chunks are intentionally measurable.
 8. Keep colors and visual states in `theme.css`. Component CSS may consume semantic tokens but must not introduce literal presentation colors.
 9. Persist layout and UI settings only through public revisioned workspace/settings resources. Coalesce drag updates, use expected revisions and idempotency keys, and reconcile conflicts from server truth.
-10. Reuse one transcript/session store for duplicate pane targets; a visual split must never create a second runtime or channel.
-11. Until `bd-31ee8f` packages compiled assets, Nix deliberately removes npm's private-workspace source symlink during server-only installation; that later bead must copy the Vite manifest/assets into the final artifact rather than preserving a source-tree link.
+10. Reuse one transcript and one canonical TUI frame store for duplicate pane targets; a visual split must never create a second runtime or channel. Only the focused controller may size or send input; observers consume the same frame revision.
+11. Apply TUI snapshots/deltas only after identity, generation, sequence, row/run/text, style, cursor, count, and byte checks. A gap or conflict requests a fresh snapshot rather than guessing or replaying input.
+12. Until `bd-31ee8f` packages compiled assets, Nix deliberately removes npm's private-workspace source symlink during server-only installation; that later bead must copy the Vite manifest/assets into the final artifact rather than preserving a source-tree link.
 
 ## Security receipt
 
