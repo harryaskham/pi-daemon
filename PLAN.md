@@ -628,6 +628,9 @@ implementation order. This list is a human-readable crosswalk.
 
 ### Post-completion operator surfaces
 
+- [ ] `bd-ba3623` — Pi Daemon Dash: exceptionally fast, polished browser
+  session workspace with embedded/dedicated backends and Rich/TUI panes;
+  detailed architecture and dependency board in `web/PLAN.md`.
 - [x] `bd-71cfa2` — concise GitHub Pages quickstart for collision-free Home
   Manager instances, authenticated session tickets, Pi RPC, ACP, and the
   `unisolated` trust boundary.
@@ -635,6 +638,8 @@ implementation order. This list is a human-readable crosswalk.
   API bearer, and non-overwriting per-instance Pi auth seeding.
 - [x] `bd-df5f19` — prebuild/cache aarch64-linux packages off-device so
   Nix-on-Droid never falls back to its native npm double-free path.
+- [ ] `bd-4e10da` — future neutral persisted per-session cron/prompt scheduler
+  and durable wakes; detailed alongside Dash in `web/PLAN.md`.
 
 All standalone delivery and acceptance blockers are landed. Cutting the first
 release tag is an explicit operator action under `docs/release.md`; the remaining
