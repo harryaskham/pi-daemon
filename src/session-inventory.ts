@@ -104,6 +104,12 @@ export const DEFAULT_SESSION_INVENTORY_LIMITS = {
   maxEntriesPerSession: DASH_DEFAULT_LIMITS.maxProjectionEntries,
 } as const satisfies SessionInventoryLimits;
 
+const EMPTY_INVENTORY_QUERY_DIGEST = digestJson({
+  search: "",
+  sourceKinds: [],
+  runtime: [],
+});
+
 export interface ResolvedSessionInventoryConfig {
   roots: string[];
   limits: Pick<SessionInventoryLimits, "maxSessions" | "reconcileIntervalMs">;
@@ -420,54 +426,60 @@ export class SessionInventory {
   async list(query: SessionInventoryQuery = {}): Promise<SessionInventoryPage> {
     await this.initialize();
     const limit = pageLimit(query.limit ?? 50, this.limits.maxSessions);
-    const normalized = normalizeInventoryQuery(query);
-    const queryDigest = digestJson(normalized);
-    const after =
-      query.cursor === undefined
-        ? undefined
-        : decodeInventoryCursor(query.cursor, this.#revision, queryDigest);
-    if (after !== undefined) {
-      const position = this.#orderedPositions.get(after.inventoryId);
-      const record = position === undefined ? undefined : this.#orderedRecords[position];
-      if (record?.inventory.modifiedAt !== after.modifiedAt) {
-        throw new SessionInventoryError(
-          "invalid_inventory_cursor",
-          "inventory cursor does not identify a retained row",
-        );
-      }
-    }
-    if (normalized.search.length > 0) {
-      await this.waitForFullIndex();
-      await this.#ensureSearchKey();
-    }
-    const searchBits =
-      normalized.search.length === 0
-        ? []
-        : searchBitPositions(
-            normalized.search,
-            this.#requireSearchKey(),
-            this.limits.searchBloomBytes,
-            512,
+    let queryDigest = EMPTY_INVENTORY_QUERY_DIGEST;
+    let selected: StoredInventoryRecord[];
+    if (isUnfilteredInventoryQuery(query)) {
+      selected = this.#orderedRecords.slice(0, limit + 1);
+    } else {
+      const normalized = normalizeInventoryQuery(query);
+      queryDigest = digestJson(normalized);
+      const after =
+        query.cursor === undefined
+          ? undefined
+          : decodeInventoryCursor(query.cursor, this.#revision, queryDigest);
+      if (after !== undefined) {
+        const position = this.#orderedPositions.get(after.inventoryId);
+        const record = position === undefined ? undefined : this.#orderedRecords[position];
+        if (record?.inventory.modifiedAt !== after.modifiedAt) {
+          throw new SessionInventoryError(
+            "invalid_inventory_cursor",
+            "inventory cursor does not identify a retained row",
           );
-
-    const selected: StoredInventoryRecord[] = [];
-    const start =
-      after === undefined
-        ? 0
-        : (this.#orderedPositions.get(after.inventoryId) ?? -1) + 1;
-    let visited = 0;
-    for (let index = start; index < this.#orderedRecords.length; index += 1) {
-      const record = this.#orderedRecords[index]!;
-      if (recordMatches(record, normalized, searchBits, this.limits.searchBloomBytes)) {
-        selected.push(record);
-        if (selected.length > limit) break;
+        }
       }
-      visited += 1;
-      if (visited % 512 === 0) await yieldEventLoop();
+      if (normalized.search.length > 0) {
+        await this.waitForFullIndex();
+        await this.#ensureSearchKey();
+      }
+      const searchBits =
+        normalized.search.length === 0
+          ? []
+          : searchBitPositions(
+              normalized.search,
+              this.#requireSearchKey(),
+              this.limits.searchBloomBytes,
+              512,
+            );
+
+      selected = [];
+      const start =
+        after === undefined
+          ? 0
+          : (this.#orderedPositions.get(after.inventoryId) ?? -1) + 1;
+      let visited = 0;
+      for (let index = start; index < this.#orderedRecords.length; index += 1) {
+        const record = this.#orderedRecords[index]!;
+        if (recordMatches(record, normalized, searchBits, this.limits.searchBloomBytes)) {
+          selected.push(record);
+          if (selected.length > limit) break;
+        }
+        visited += 1;
+        if (visited % 512 === 0) await yieldEventLoop();
+      }
     }
     const pageRecords = selected.slice(0, limit);
     const page: SessionInventoryPage = {
-      sessions: pageRecords.map((record) => structuredClone(record.inventory)),
+      sessions: pageRecords.map((record) => cloneInventoryRecord(record.inventory)),
       index: {
         formatVersion: SESSION_INVENTORY_FORMAT_VERSION,
         loadedAt: this.#loadedAt ?? this.#timestamp(),
@@ -1730,6 +1742,17 @@ function validateActivation(value: SessionInventoryActivation): void {
   }
 }
 
+function isUnfilteredInventoryQuery(query: SessionInventoryQuery): boolean {
+  return (
+    query.cursor === undefined &&
+    (query.search === undefined || query.search.length === 0) &&
+    (query.sourceKinds === undefined || query.sourceKinds.length === 0) &&
+    (query.runtime === undefined || query.runtime.length === 0) &&
+    query.unread === undefined &&
+    query.modifiedAfter === undefined
+  );
+}
+
 function normalizeInventoryQuery(query: SessionInventoryQuery): {
   search: string;
   sourceKinds: DashboardSourceKind[];
@@ -1892,6 +1915,23 @@ function normalizeSingleLine(value: string, maxChars: number): string {
 function cwdBasename(cwd: string): string {
   if (cwd === "(unknown)") return "Unknown project";
   return basename(resolve(cwd)) || cwd;
+}
+
+function cloneInventoryRecord(record: SessionInventoryRecord): SessionInventoryRecord {
+  return {
+    ...record,
+    ...(record.managed === undefined ? {} : { managed: { ...record.managed } }),
+    activation: {
+      ...record.activation,
+      modes: [...record.activation.modes],
+    },
+    presence: {
+      ...record.presence,
+      ...(record.presence.scheduled === undefined
+        ? {}
+        : { scheduled: { ...record.presence.scheduled } }),
+    },
+  };
 }
 
 function compareStoredRecords(left: StoredInventoryRecord, right: StoredInventoryRecord): number {
