@@ -245,6 +245,7 @@ export class VirtualTerminal implements Terminal {
   private _progress = false;
   private writeCount = 0;
   private acceptedByteCount = 0;
+  private readonly framePendingListeners = new Set<() => void>();
   private readonly strippedCounts: MutableStrippedSequences = {
     osc52: 0,
     oscOther: 0,
@@ -286,6 +287,11 @@ export class VirtualTerminal implements Terminal {
 
   get progress(): boolean {
     return this._progress;
+  }
+
+  subscribeFramePending(listener: () => void): () => void {
+    this.framePendingListeners.add(listener);
+    return () => this.framePendingListeners.delete(listener);
   }
 
   start(onInput: (data: string) => void, onResize: () => void): void {
@@ -348,6 +354,7 @@ export class VirtualTerminal implements Terminal {
     this.dimensionsChanged = true;
     this.markAllDirty();
     if (this.started) this.resizeHandler?.();
+    this.notifyFramePending();
   }
 
   write(data: string): void {
@@ -358,6 +365,7 @@ export class VirtualTerminal implements Terminal {
     this.writeCount += 1;
     this.acceptedByteCount += bytes;
     this.consume(this.pendingEscape + data);
+    if (this.pendingEscape.length === 0) this.notifyFramePending();
   }
 
   moveBy(lines: number): void {
@@ -390,10 +398,12 @@ export class VirtualTerminal implements Terminal {
   setTitle(title: string): void {
     const sanitized = title.replace(/[\u0000-\u001f\u007f-\u009f]/gu, "");
     this._title = truncateUtf8(sanitized, this.limits.maxTitleBytes);
+    this.notifyFramePending();
   }
 
   setProgress(active: boolean): void {
     this._progress = active;
+    this.notifyFramePending();
   }
 
   takeFrame(options: { readonly force?: boolean } = {}): VirtualTerminalFrame {
@@ -882,6 +892,10 @@ export class VirtualTerminal implements Terminal {
     }
     flush();
     return { row: rowIndex, text: plainText, runs };
+  }
+
+  private notifyFramePending(): void {
+    for (const listener of this.framePendingListeners) listener();
   }
 
   private markAllDirty(): void {

@@ -4,10 +4,12 @@ Pi Daemon can present Pi's terminal UI in a browser without starting a second
 `pi` process. The reusable foundation is `VirtualTerminal`, exported from
 `@harryaskham/pi-daemon/virtual-terminal`.
 
-This document records the result of the Pi 0.80.6 shadow-TUI spike. It is an
-implementation and upstream-integration contract, not a claim that the current
-Dashboard lifecycle already exposes a TUI WebSocket. That lifecycle is a later
-Dash milestone.
+This document records the Pi 0.80.6 shadow-TUI spike and the implemented
+canonical host/channel substrate. `ShadowTuiHost` and
+`ShadowTuiAttachmentManager` are exported, bounded, and conformance tested, but
+production capability remains unavailable until Pi exposes the host-safe
+`InteractiveSessionView` factory below. No private/process-owning fallback is
+used.
 
 ## Proven rendering path
 
@@ -140,6 +142,37 @@ interactive extension compatibility needs the small supported seam below.
 Pi Daemon does not patch package internals or call private methods in product
 code. A test invokes the pinned private differential renderer only to measure
 its work until the public view seam exists.
+
+## Implemented canonical host and transport adapters
+
+`ShadowTuiHost` accepts only an injected factory with the proposed public view
+shape plus an external extension-UI broker and runtime resolver. With that seam
+present it owns exactly one `(hostInstanceId, sessionId, generation)` view,
+`VirtualTerminal`, extension broker binding, replay buffer, and channel set.
+Concurrent embedded panes are wrappers over that canonical state; controller
+role is orthogonal and observers cannot resize or send input.
+
+Terminal write/resize/title/progress notifications coalesce through one
+immediate publication boundary. The first forced terminal frame becomes the
+channel snapshot; later publications use a separate contiguous dashboard
+sequence and opaque replay cursor. Generation invalidation stops the view,
+unbinds extension UI, closes peers, and discards retained frames before a new
+view can be created.
+
+The mapper drops terminal-only columns and hyperlink metadata, converts indexed
+and RGB ANSI colors to deterministic lowercase browser hex, and preserves only
+the bounded style vocabulary. Semantic key input rejects unsupported/meta
+combinations; text is limited to one terminal input event and paste is chunked
+on UTF-8 boundaries under both browser and terminal ceilings.
+
+`ShadowTuiAttachmentManager` exposes the same canonical `DashboardTuiChannel`
+through the authenticated service API's `pi-daemon-tui.v1` WebSocket seam. It
+validates role/generation/dimensions/input, sends snapshot/delta/gap/control
+frames, bounds both directions, and closes the underlying channel on every
+socket/error path. Embedded `InProcessDashboardBackend` delegates through the
+same host manager and owns renewable residency leases. Without an injected
+public view factory, callers continue to use
+`UnavailableDashboardTuiAttachments` and advertise TUI unavailable.
 
 ## Minimal upstream API proposal
 

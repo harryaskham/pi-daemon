@@ -9,6 +9,7 @@ import test from "node:test";
 import { ServiceBearerAuthenticator } from "../dist/api-auth.js";
 import { ApiServer } from "../dist/api-server.js";
 import { Multiplexer } from "../dist/multiplexer.js";
+import { ShadowTuiAttachmentManager } from "../dist/shadow-tui-attachments.js";
 import { FileSessionCatalog } from "../dist/session-catalog.js";
 
 const TOKEN = "fixture-service-bearer-0123456789";
@@ -99,7 +100,7 @@ class FakeFactory {
   }
 }
 
-async function startHarness(t, rpcLimits) {
+async function startHarness(t, rpcLimits, dashboardTuiAttachments) {
   const stateDir = await mkdtemp(join(tmpdir(), "pi-daemon-rpc-attach-"));
   t.after(async () => rm(stateDir, { recursive: true, force: true }));
   const factory = new FakeFactory();
@@ -135,6 +136,7 @@ async function startHarness(t, rpcLimits) {
     host: "::1",
     port: 0,
     rpcLimits,
+    ...(dashboardTuiAttachments === undefined ? {} : { dashboardTuiAttachments }),
   });
   const address = await server.start();
   t.after(async () => {
@@ -311,6 +313,39 @@ async function connectWebSocket(address, options = {}) {
     ...response,
     websocket: new TestWebSocket(socket, response.leftover),
   };
+}
+
+async function connectTuiWebSocket(address, options = {}) {
+  const query = new URLSearchParams({
+    role: options.role ?? "observer",
+    rows: String(options.rows ?? 24),
+    columns: String(options.columns ?? 80),
+  });
+  if (options.cursor !== undefined) query.set("cursor", options.cursor);
+  if (options.generation !== undefined) query.set("generation", String(options.generation));
+  const path = `/v1/dashboard/session/rpc-session/tui?${query}`;
+  const socket = await connectWithRetry(address);
+  const key = randomBytes(16).toString("base64");
+  socket.write(
+    [
+      `GET ${path} HTTP/1.1`,
+      `Host: ${address.host}:${address.port}`,
+      "Upgrade: websocket",
+      "Connection: Upgrade",
+      "Sec-WebSocket-Version: 13",
+      `Sec-WebSocket-Key: ${key}`,
+      "Sec-WebSocket-Protocol: pi-daemon-tui.v1",
+      `Authorization: Bearer ${options.token ?? TOKEN}`,
+      "",
+      "",
+    ].join("\r\n"),
+  );
+  const response = await readHandshake(socket);
+  if (response.status !== 101) {
+    socket.destroy();
+    return response;
+  }
+  return { ...response, websocket: new TestWebSocket(socket, response.leftover) };
 }
 
 async function connectWithRetry(address) {
@@ -686,6 +721,127 @@ test("malformed, unmasked, and oversized client frames close only their reader",
   const healthy = await connectWebSocket(harness.address, { role: "observer" });
   assert.equal((await ready(healthy)).snapshot.requestState.sessionId, "rpc-session");
   healthy.websocket.close();
+});
+
+test("authenticated neutral TUI attachment adapts snapshot, input, resize, control and deltas", async (t) => {
+  const listeners = new Set();
+  const calls = { opens: [], resizes: [], inputs: [], controls: [], closes: 0 };
+  let role = "controller";
+  const identity = { hostInstanceId: "host-tui", sessionId: "rpc-session", generation: 1 };
+  const channel = {
+    presentation: "tui",
+    identity,
+    get role() { return role; },
+    snapshot: {
+      identity,
+      dimensions: { rows: 30, columns: 100 },
+      rows: [{ row: 0, runs: [{ text: "TUI ready" }] }],
+      cursor: { row: 0, column: 9, visible: true, shape: "block" },
+      title: "Fixture TUI",
+      highWaterCursor: "tui:0",
+    },
+    async resize(value) { calls.resizes.push(value); },
+    async sendInput(value) { calls.inputs.push(value); },
+    async requestControl(correlationId) {
+      calls.controls.push(["request", correlationId]);
+      role = "controller";
+      return { correlationId, state: "completed" };
+    },
+    async releaseControl(correlationId) {
+      calls.controls.push(["release", correlationId]);
+      role = "observer";
+      return { correlationId, state: "completed" };
+    },
+    subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
+    async close() { calls.closes += 1; },
+  };
+  const backend = {
+    async openTuiChannel(options) {
+      calls.opens.push(options);
+      if (options.cursor === undefined) return channel;
+      return {
+        ...channel,
+        role,
+        subscribe(listener) {
+          listener({
+            kind: "replay_gap",
+            identity,
+            reason: "cursor-expired",
+            requestedCursor: options.cursor,
+            highWaterCursor: channel.snapshot.highWaterCursor,
+            snapshotFollows: true,
+          });
+          return () => {};
+        },
+      };
+    },
+  };
+  const manager = new ShadowTuiAttachmentManager(backend, { keepAliveMs: 5_000 });
+  const harness = await startHarness(t, undefined, manager);
+  const denied = await connectTuiWebSocket(harness.address, { token: `${TOKEN}x` });
+  assert.equal(denied.status, 401);
+
+  const connection = await connectTuiWebSocket(harness.address, {
+    role: "controller",
+    generation: 1,
+    rows: 30,
+    columns: 100,
+  });
+  assert.equal(connection.status, 101);
+  const readyFrame = await connection.websocket.next();
+  assert.equal(readyFrame.kind, "snapshot");
+  assert.equal(readyFrame.role, "controller");
+  assert.equal(readyFrame.snapshot.title, "Fixture TUI");
+  assert.deepEqual(calls.opens[0].dimensions, { rows: 30, columns: 100 });
+
+  connection.websocket.send({
+    kind: "resize",
+    correlationId: "resize-1",
+    dimensions: { rows: 40, columns: 120 },
+  });
+  assert.equal((await connection.websocket.next()).kind, "ack");
+  assert.deepEqual(calls.resizes[0], { rows: 40, columns: 120 });
+  connection.websocket.send({
+    kind: "input",
+    correlationId: "input-1",
+    input: { type: "key", key: "Enter" },
+  });
+  assert.equal((await connection.websocket.next()).kind, "ack");
+  assert.deepEqual(calls.inputs[0], { type: "key", key: "Enter" });
+
+  for (const listener of listeners) {
+    listener({
+      kind: "tui_delta",
+      identity,
+      cursor: "tui:1",
+      sequence: 1,
+      dimensions: { rows: 40, columns: 120 },
+      changedRows: [{ row: 0, runs: [{ text: "updated" }] }],
+      cursorState: { row: 0, column: 7, visible: true },
+    });
+  }
+  const delta = await connection.websocket.next();
+  assert.equal(delta.kind, "delta");
+  assert.equal(delta.delta.sequence, 1);
+
+  connection.websocket.send({ kind: "control", action: "release", correlationId: "control-1" });
+  const control = await connection.websocket.next();
+  assert.equal(control.kind, "command_result");
+  assert.equal(control.role, "observer");
+  const resumed = await connectTuiWebSocket(harness.address, {
+    role: "observer",
+    generation: 1,
+    cursor: "expired",
+  });
+  assert.equal((await resumed.websocket.next()).kind, "replay_gap");
+  assert.equal((await resumed.websocket.next()).kind, "snapshot");
+  resumed.websocket.close();
+  await resumed.websocket.waitClosed();
+
+  connection.websocket.close();
+  await connection.websocket.waitClosed();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(calls.closes, 2);
 });
 
 test("upgrade auth, generation, subprotocol, and slow-reader failures stay connection-local", async (t) => {
