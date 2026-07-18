@@ -18,7 +18,7 @@ The spike is production structure, not a disposable mock:
 - `src/fixture-backend.ts` is typed against the public `DashboardBackend` inventory/transcript methods from `@harryaskham/pi-daemon/dashboard-contract`.
 - Public capability, limit, cursor, inventory, transcript, presence, and stream fixtures come from `dashboard-contract` / `dashboard-fixtures`; frontend-only fields remain explicitly named view fixtures.
 - A tiny progressive bootstrap paints bounded session rows first. The 10,000-record fixture index and interactive workspace are expanded in a transition after first paint.
-- Only viewport rows are mounted. A normal 1440×960 capture held 17 of 10,000 session rows and 15 transcript rows in the DOM.
+- Only viewport rows are mounted. A normal 1440×960 capture held 17 of 10,000 session rows and 18 rich transcript rows in the DOM.
 - The editor is a dynamic chunk. First rows do not wait for CodeMirror/Vim parsing.
 - Embedded and dedicated deployments are absent from SPA logic. Replacing `LocalFixtureBackend` with either real adapter does not change components or reducers.
 
@@ -44,20 +44,20 @@ The checked-in receipt was produced from a Vite production build and Playwright 
 
 | Measure | Result | Budget | Outcome |
 | --- | ---: | ---: | --- |
-| Navigation to first bounded rows | 116.4 ms | <150 ms | pass |
-| App/module-ready to first rows | 46.9 ms | <150 ms | pass |
-| In-app 10k search work | 0.5 ms | <100 ms | pass |
-| Streaming update commit work, max observed | 6.6 ms | <16 ms | pass |
+| Navigation to first bounded rows | 78.9 ms | <150 ms | pass |
+| App/module-ready to first rows | 5.8 ms | <150 ms | pass |
+| In-app 10k search work | 0.8 ms | <100 ms | pass |
+| Streaming update commit work, max observed | 4.1 ms | <16 ms | pass |
 | Mounted session rows | 17 / 10,000 | not O(total) | pass |
-| Mounted transcript rows | 15 / 1,200 | not O(total) | pass |
-| Initial production gzip | 90,952 bytes | <1.5 MiB | pass |
-| Complete production asset gzip, including lazy editor | 333,014 bytes | <1.5 MiB | pass |
+| Mounted transcript rows | 18 / 1,200 | not O(total) | pass |
+| Initial production gzip | 94,524 bytes | <1.5 MiB | pass |
+| Complete production asset gzip, including lazy editor and rich renderer | 340,952 bytes | <1.5 MiB | pass |
 
 `animationFrameCadenceP95Ms` in the receipt is display cadence (about 16.7 ms at 60 Hz), not JavaScript work. `streamFrameWorkMaxMs` is the measured React commit path compared with the 16 ms frame-work budget.
 
 ## Interaction and visual proof
 
-The reference artifact contains the reusable shell, virtual session list, rich mixed transcript, tool states, controller/hydration fence, split chat and information panes, CodeMirror composer, context chips, and owner-truthful `trusted · unisolated` policy. Runtime controls expose deterministic `ready`, `streaming`, `skeleton`, `empty`, and `error` states for visual regression.
+The reference artifact contains the reusable shell, virtual session list, normalized rich transcript, bounded image placeholder, safe markdown/code, specialized edit/bash tool states, controller/hydration fence, split chat and information panes, CodeMirror composer, context chips, and owner-truthful `trusted · unisolated` policy. Runtime controls expose deterministic `ready`, `streaming`, `skeleton`, `empty`, and `error` states for visual regression.
 
 Focused browser acceptance proves:
 
@@ -78,10 +78,11 @@ Follow-on shell, transcript, workspace, and live-integration beads should preser
 2. Keep preview `hydration: "not-requested"` and reconcile live records by Pi IDs, never rendered text or array position.
 3. Fence every live subscription by `hostInstanceId + sessionId + generation` and return opaque cursors unchanged.
 4. Keep rich and TUI presentations capability-gated peers. This spike does not fabricate TUI availability.
-5. Retain progressive first paint and byte/count-bounded viewport caches when replacing fixtures with the embedded and remote backends.
-6. Keep CodeMirror/Vim out of the first-row dependency graph; its current lazy chunk is intentionally measurable.
-7. Keep colors and visual states in `theme.css`. Component CSS may consume semantic tokens but must not introduce literal presentation colors.
-8. Until `bd-31ee8f` packages compiled assets, Nix deliberately removes npm's private-workspace source symlink during server-only installation; that later bead must copy the Vite manifest/assets into the final artifact rather than preserving a source-tree link.
+5. Route snapshot/live/`entry_appended`/gap transitions through `transcript-store.ts`; persisted records outrank live and optimistic records by Pi identities, stale host/generation frames are ignored, and gaps never append duplicates.
+6. Retain progressive first paint and byte/count-bounded viewport caches when replacing fixtures with the embedded and remote backends.
+7. Keep CodeMirror/Vim and rich markdown/syntax rendering out of the first-row dependency graph; their lazy chunks are intentionally measurable.
+8. Keep colors and visual states in `theme.css`. Component CSS may consume semantic tokens but must not introduce literal presentation colors.
+9. Until `bd-31ee8f` packages compiled assets, Nix deliberately removes npm's private-workspace source symlink during server-only installation; that later bead must copy the Vite manifest/assets into the final artifact rather than preserving a source-tree link.
 
 ## Security receipt
 

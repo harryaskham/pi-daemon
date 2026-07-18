@@ -1316,7 +1316,7 @@ These lanes intentionally begin in parallel:
 
 ### Rich UI, workspace, and shadow TUI
 
-- [ ] `bd-c0df45` — beautiful virtualized rich transcript and built-in/custom
+- [x] `bd-c0df45` — beautiful virtualized rich transcript and built-in/custom
   tool rendering; depends on contract, frontend spike, and projector.
 - [ ] `bd-5f9ca1` — persistent mouse-resizable splits, focus/swaps, settings and
   Vim composer; depends on SPA shell and browser server.

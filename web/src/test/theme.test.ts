@@ -30,6 +30,15 @@ describe("semantic Nord Midnight theme", () => {
     expect(sources.filter((source) => literalColor.test(source))).toEqual([]);
   });
 
+  it("keeps markdown declarative and image resolution on authorized routes", async () => {
+    const renderer = await readFile(new URL("../components/RichTranscriptRecord.tsx", import.meta.url), "utf8");
+    expect(renderer).not.toContain("dangerouslySetInnerHTML");
+    expect(renderer).not.toMatch(/\beval\s*\(|\bnew Function\s*\(/);
+    expect(renderer).toContain('source.startsWith("blob:")');
+    expect(renderer).toContain('source.startsWith("/dash/v1/")');
+    expect(renderer).not.toContain('source.startsWith("data:")');
+  });
+
   it("retains readable primary, muted, and accent contrasts", () => {
     expect(contrast("#edf3f8", "#0b101a")).toBeGreaterThan(12);
     expect(contrast("#a9b7c9", "#111827")).toBeGreaterThan(7);

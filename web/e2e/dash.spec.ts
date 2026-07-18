@@ -30,12 +30,15 @@ test("search, deliberate states, settings, and directional swaps remain interact
   await page.getByRole("button", { name: "empty" }).click();
   await expect(page.getByRole("heading", { name: "A quiet session" })).toBeVisible();
   await page.getByRole("button", { name: "error" }).click();
-  await expect(page.getByRole("alert")).toContainText("Live channel paused");
+  await expect(page.locator(".state-panel--error")).toContainText("Live channel paused");
+  await expect(page.locator(".session-ribbon")).toContainText("Replay gap · reconciliation required");
+  await page.getByRole("button", { name: "ready" }).click();
+  await expect(page.locator(".session-ribbon")).toContainText("Preview ready · hydration not requested");
 
-  const before = await page.locator("[data-pane-id=primary]").textContent();
+  const before = await page.locator("[data-pane-id=primary]").getAttribute("data-pane-content");
   await page.locator("[data-pane-id=primary]").focus();
   await page.keyboard.press("Control+Shift+l");
-  const after = await page.locator("[data-pane-id=inspector]").textContent();
+  const after = await page.locator("[data-pane-id=inspector]").getAttribute("data-pane-content");
   expect(after).toBe(before);
 
   await page.keyboard.press("Control+,");
@@ -63,7 +66,7 @@ test("expandable filters and hover/focus information stay accessible", async ({ 
 test("sidebar loading, error recovery, and mobile drawer states are explicit", async ({ page }) => {
   await page.setViewportSize({ width: 480, height: 820 });
   await page.goto("./?sidebar=error&state=ready");
-  await expect(page.getByRole("alert")).toContainText("Session index unavailable");
+  await expect(page.locator(".sidebar-list-state--error")).toContainText("Session index unavailable");
   await page.getByRole("button", { name: "Retry inventory" }).click();
   await page.locator("[data-session-row]").first().waitFor();
 
@@ -78,6 +81,28 @@ test("sidebar loading, error recovery, and mobile drawer states are explicit", a
   await expect(page.getByLabel("Loading sessions")).toHaveAttribute("aria-busy", "true");
 });
 
+test("rich transcript renders semantic markdown, tools, images, summaries, custom and error states", async ({ page }) => {
+  await page.goto("./?state=ready");
+  await expect(page.getByRole("heading", { name: "Generation-safe reducer" })).toBeVisible();
+  await expect(page.locator(".syntax-block").first()).toBeVisible();
+  await expect(page.locator("script[data-unsafe]")).toHaveCount(0);
+  await expect(page.getByText("<script data-unsafe>window.__dashUnsafe = true</script>", { exact: true })).toBeVisible();
+  await expect(page.locator(".message-image--placeholder")).toContainText("Nord Midnight dashboard reference");
+  await expect(page.locator(".summary-card")).toContainText("Context compacted");
+  await expect(page.locator(".custom-record")).toContainText("safe generic renderer");
+  await expect(page.locator(".timeline-record--queue")).toContainText("Follow-up queued");
+  await expect(page.locator(".message-error")).toContainText("replay gap");
+  await expect(page.locator(".tool-card--bash")).toContainText("bounded stream still running");
+  const customDetails = page.getByRole("button", { name: "Show details for Render extension status" });
+  await customDetails.click();
+  await expect(page.locator(".generic-tool-output")).toContainText("without executing browser-side extension code");
+
+  const editDetails = page.getByRole("button", { name: "Show details for Edit web/src/transcript-store.ts" });
+  await editDetails.click();
+  await expect(page.locator(".diff-line--add").first()).toContainText("transcriptRecordIdentity");
+  await expect(page.getByRole("button", { name: "Hide details for Edit web/src/transcript-store.ts" })).toHaveAttribute("aria-expanded", "true");
+});
+
 test("lazy composer accepts IME-shaped text without triggering pane shortcuts", async ({ page }) => {
   await page.goto("./?state=ready");
   const editor = page.getByTestId("composer-editor");
@@ -86,4 +111,10 @@ test("lazy composer accepts IME-shaped text without triggering pane shortcuts", 
   await expect(editor).toContainText("設計を静かに磨く");
   await page.keyboard.press("Control+h");
   await expect(page.locator("[data-pane-id=primary]")).toHaveClass(/workspace-pane--selected/);
+  await page.getByRole("button", { name: "Send message" }).click();
+  await expect(page.getByText("Fixture submission accepted.", { exact: false })).toBeVisible();
+  await page.waitForTimeout(650);
+  await expect(page.getByText("Fixture submission accepted.", { exact: false })).toHaveCount(1);
+  const persisted = page.getByText("Fixture submission accepted.", { exact: false }).locator("xpath=ancestor::article");
+  await expect(persisted.locator(".record-source--persisted")).toBeVisible();
 });

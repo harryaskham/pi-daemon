@@ -69,6 +69,7 @@ export function Workspace({
           key={node.paneId}
           className={`workspace-pane${selectedPaneId === node.paneId ? " workspace-pane--selected" : ""}`}
           data-pane-id={node.paneId}
+          data-pane-content={node.target.type === "empty" ? "empty" : `${node.target.type}:${node.target.inventoryId}`}
           tabIndex={-1}
           onPointerDown={() => onSelectedPaneChange(node.paneId)}
           aria-label={`Workspace pane ${node.paneId}`}
