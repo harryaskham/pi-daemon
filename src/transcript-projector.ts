@@ -26,6 +26,7 @@ import {
   stateFileSize,
 } from "./durability.js";
 import type { JsonObject, JsonValue } from "./session-api.js";
+import { formatSessionSourceFingerprint } from "./source-fingerprint.js";
 
 const PROJECTION_CACHE_FORMAT_VERSION = 1 as const;
 const UTF8 = new TextDecoder("utf-8", { fatal: true });
@@ -330,7 +331,7 @@ async function parseSessionFile(
   const migrated = await migrateProjectionEntries(entries);
   return {
     entries: migrated,
-    fingerprint: asDashboardFingerprint(`sha256:${hash.digest("base64url")}`),
+    fingerprint: formatSessionSourceFingerprint(hash.digest()),
     sourceSizeBytes: before.size,
     sourceModifiedMs: before.mtimeMs,
   };

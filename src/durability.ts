@@ -890,11 +890,19 @@ export async function atomicWritePrivateJson(path: string, value: unknown): Prom
   await atomicWrite(path, `${JSON.stringify(value, null, 2)}\n`);
 }
 
+/** Atomically publish bounded owner-private binary state. */
+export async function atomicWritePrivateBytes(
+  path: string,
+  value: Uint8Array,
+): Promise<void> {
+  await atomicWrite(path, value);
+}
+
 async function atomicWriteLines(path: string, values: unknown[]): Promise<void> {
   await atomicWrite(path, values.map((value) => JSON.stringify(value)).join("\n") + "\n");
 }
 
-async function atomicWrite(path: string, content: string): Promise<void> {
+async function atomicWrite(path: string, content: string | Uint8Array): Promise<void> {
   await mkdir(dirname(path), { recursive: true, mode: 0o700 });
   const temporary = `${path}.tmp-${process.pid}-${randomUUID()}`;
   const handle = await open(temporary, "wx", 0o600);

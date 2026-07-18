@@ -34,6 +34,7 @@
     "seenCursor": "dash:fixture:host-fixture-01:session-fixture-01:3:40",
     "unread": false
   },
+  "cwd": "/srv/work/fixture",
   "source": {
     "canonicalPath": "/srv/state/session-fixture.jsonl",
     "fingerprint": {

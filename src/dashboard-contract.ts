@@ -339,6 +339,7 @@ export interface SessionOwnershipInfo {
 }
 
 export interface SessionInfoResource extends SessionInventoryRecord {
+  cwd: string;
   source: {
     canonicalPath?: string;
     fingerprint?: SessionSourceFingerprint;

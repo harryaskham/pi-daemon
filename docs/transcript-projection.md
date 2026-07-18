@@ -82,7 +82,9 @@ metadata for the later blob-serving slice.
 
 ## Fingerprints, cache, and paging
 
-Inventory and projector use an exact digest of the raw streamed file bytes:
+Inventory and projector use `formatSessionSourceFingerprint()` from the small
+`source-fingerprint` module to encode an exact digest of the raw streamed file
+bytes:
 
 ```text
 sha256:<base64url digest>

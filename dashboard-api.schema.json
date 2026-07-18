@@ -380,8 +380,9 @@
         { "$ref": "#/$defs/inventoryRecord" },
         {
           "type": "object",
-          "required": ["source", "ownership", "diagnostics"],
+          "required": ["cwd", "source", "ownership", "diagnostics"],
           "properties": {
+            "cwd": { "type": "string", "minLength": 1, "maxLength": 4096 },
             "source": {
               "type": "object",
               "required": ["aliases"],

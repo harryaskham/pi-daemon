@@ -232,6 +232,7 @@ export function createDashboardContractFixtures(): DashboardContractFixtures {
   };
   const sessionInfo: SessionInfoResource = {
     ...inventoryRecord,
+    cwd: "/srv/work/fixture",
     source: {
       canonicalPath: "/srv/state/session-fixture.jsonl",
       fingerprint: {

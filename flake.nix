@@ -131,6 +131,7 @@
         test -s "$out/quickstart/index.html"
         test -s "$out/protocol/index.html"
         test -s "$out/dashboard-protocol/index.html"
+        test -s "$out/dashboard-inventory/index.html"
         test -s "$out/dashboard-api.schema.json"
         test -s "$out/dashboard-api.openapi.json"
       '';
