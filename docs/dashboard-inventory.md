@@ -8,7 +8,8 @@ title: Dash session inventory
 `SessionInventory` is the preview-only, owner-local index behind the Dash
 sidebar and information view. It merges retained Pi Daemon catalog records with
 approved Pi JSONL roots without hydrating an SDK runtime or sending a model
-turn.
+turn. Explicit writer transitions live in the separate
+[session ownership and export service](dashboard-ownership).
 
 The implementation lives in `src/session-inventory.ts` and is exported from the
 package root and `./session-inventory`. `src/source-fingerprint.ts` provides the

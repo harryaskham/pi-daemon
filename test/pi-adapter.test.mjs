@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { chmod, copyFile, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { chmod, copyFile, mkdir, mkdtemp, readFile, realpath, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import test from "node:test";
@@ -398,6 +398,62 @@ test("adapter maps Pi events, prompt result, queue controls, abort, and prefligh
   );
   assert.deepEqual(rejected.map((event) => event.event), ["preflightRejected"]);
   await adapter.dispose();
+});
+
+test("factory permits only the canonical Pi sessions data subtree inside agentDir", async () => {
+  const stateDir = await temporaryDirectory();
+  const agentDir = await temporaryDirectory();
+  const cwd = await temporaryDirectory();
+  const sessionDir = join(agentDir, "sessions", "project");
+  await mkdir(sessionDir, { recursive: true, mode: 0o700 });
+  const { authStorage, modelRegistry, model } = modelHarness();
+  const captures = [];
+  const factory = new PiSessionFactory({
+    stateDir,
+    agentDir,
+    allowedRoots: [cwd],
+    authStorage,
+    modelRegistry,
+    async createSession(options) {
+      captures.push(options);
+      return {
+        session: new FakePiSession("agent-sessions-root", options.model, options.sessionManager),
+        extensionsResult: options.resourceLoader.getExtensions(),
+      };
+    },
+  });
+  const prepared = parseSessionConfiguration({
+    cwd,
+    target: { mode: "new", sessionDir },
+    model: { provider: model.provider, id: model.id },
+    tools: { mode: "none" },
+  });
+  const adapter = await factory.open({
+    sessionId: "agent-sessions-root",
+    generation: 1,
+    ...prepared.openRequest,
+  });
+  try {
+    assert.equal(captures[0].sessionManager.getSessionDir(), await realpath(sessionDir));
+  } finally {
+    await adapter.dispose();
+  }
+
+  const forbiddenDir = join(agentDir, "extensions", "sessions");
+  const forbidden = parseSessionConfiguration({
+    cwd,
+    target: { mode: "new", sessionDir: forbiddenDir },
+    model: { provider: model.provider, id: model.id },
+    tools: { mode: "none" },
+  });
+  await assert.rejects(
+    factory.open({
+      sessionId: "forbidden-agent-subtree",
+      generation: 1,
+      ...forbidden.openRequest,
+    }),
+    (error) => error instanceof PiAdapterError && error.code === "authority_root_overlap",
+  );
 });
 
 test("runtime replacement rebinds subscriptions and persists changed identity before returning", async () => {

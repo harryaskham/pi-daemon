@@ -608,14 +608,29 @@ function validateOwnershipRecord(value: unknown): asserts value is SessionOwners
     typeof value.source.value !== "string" ||
     !Number.isSafeInteger(value.source.sizeBytes) ||
     (value.source.sizeBytes as number) < 0 ||
+    typeof value.source.modifiedAt !== "string" ||
+    !Number.isSafeInteger(value.source.entryCount) ||
+    (value.source.entryCount as number) < 0 ||
+    (value.source.device !== undefined && typeof value.source.device !== "string") ||
+    (value.source.inode !== undefined && typeof value.source.inode !== "string") ||
+    (value.source.lastEntryId !== undefined && typeof value.source.lastEntryId !== "string") ||
     typeof value.managedPath !== "string" ||
     !isAbsolutePath(value.managedPath) ||
+    (value.managedFingerprint !== undefined && typeof value.managedFingerprint !== "string") ||
     !Array.isArray(value.baseEntryIds) ||
+    new Set(value.baseEntryIds).size !== value.baseEntryIds.length ||
     !value.baseEntryIds.every((id) => typeof id === "string" && id.length > 0) ||
     !isRecord(value.lease) ||
     typeof value.lease.leaseId !== "string" ||
+    typeof value.lease.acquiredAt !== "string" ||
+    (value.lease.expiresAt !== undefined && typeof value.lease.expiresAt !== "string") ||
     !Array.isArray(value.exportedInventoryIds) ||
+    new Set(value.exportedInventoryIds).size !== value.exportedInventoryIds.length ||
     !value.exportedInventoryIds.every((id) => typeof id === "string" && id.length > 0) ||
+    (value.conflict !== undefined &&
+      (!isRecord(value.conflict) ||
+        typeof value.conflict.code !== "string" ||
+        typeof value.conflict.detectedAt !== "string")) ||
     typeof value.createdAt !== "string" ||
     typeof value.updatedAt !== "string"
   ) {
@@ -636,6 +651,13 @@ function validateTicketRecord(value: unknown): asserts value is OwnershipTicketR
     typeof value.requestId !== "string" ||
     typeof value.target !== "string" ||
     !isRecord(value.request) ||
+    value.request.requestId !== value.requestId ||
+    value.request.idempotencyKey !== value.idempotencyKey ||
+    (value.kind === "activation" &&
+      !["reuse", "direct", "fork", "preview-only"].includes(value.request.mode as string)) ||
+    (value.kind === "export" &&
+      !["as-new", "append-to-origin"].includes(value.request.mode as string)) ||
+    (value.error !== undefined && !isRecord(value.error)) ||
     typeof value.submittedAt !== "string" ||
     typeof value.updatedAt !== "string"
   ) {

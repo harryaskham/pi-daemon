@@ -1,6 +1,7 @@
 import { resolve } from "node:path";
 
 import type { JsonObject, SessionEnvironmentSummary, SessionSpec } from "./session-api.js";
+import type { OpenPayload } from "./protocol.js";
 
 export interface SessionConfigurationLimits {
   maxEnvironmentEntries: number;
@@ -163,6 +164,47 @@ export function parseSessionConfiguration(
 }
 
 export const prepareSessionConfiguration = parseSessionConfiguration;
+
+/** Stable transport payload for opening a prepared/persisted session spec. */
+export function sessionOpenPayloadFromSpec(
+  spec: PersistedSessionConfiguration,
+): OpenPayload {
+  const session: OpenPayload["session"] = {
+    mode:
+      spec.target.mode === "fork"
+        ? "new"
+        : (spec.target.mode as OpenPayload["session"]["mode"]),
+    ...(spec.target.path === undefined ? {} : { path: spec.target.path }),
+  };
+  const resources: OpenPayload["resources"] = {
+    extensions: "none",
+    skills: "none",
+    promptTemplates: "none",
+    themes: "none",
+    contextFiles: "none",
+    tools: "none",
+    ...(spec.resources?.systemPrompt === undefined
+      ? {}
+      : { systemPrompt: spec.resources.systemPrompt }),
+  };
+  const payload: OpenPayload = {
+    cwd: spec.cwd,
+    session,
+    resources,
+    ...(spec.name === undefined ? {} : { name: spec.name }),
+    ...(spec.agentDir === undefined ? {} : { agentDir: spec.agentDir }),
+  };
+  if (spec.model?.provider !== undefined && spec.model.id !== undefined) {
+    payload.model = {
+      provider: spec.model.provider,
+      id: spec.model.id,
+      ...(spec.model.thinkingLevel === undefined
+        ? {}
+        : { thinkingLevel: spec.model.thinkingLevel }),
+    };
+  }
+  return payload;
+}
 
 export function requireProvisionedEnvironment(
   summary: SessionEnvironmentSummary,

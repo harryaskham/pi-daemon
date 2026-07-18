@@ -19,7 +19,6 @@ import { Multiplexer, MultiplexerError } from "./multiplexer.js";
 import {
   ProtocolSerializationError,
   encodeBoundedLine,
-  type OpenPayload,
   type ProtocolCommand,
 } from "./protocol.js";
 import {
@@ -32,13 +31,11 @@ import {
   SessionConfigurationError,
   parseSessionConfiguration,
   requireProvisionedEnvironment,
+  sessionOpenPayloadFromSpec,
   type PreparedSessionConfiguration,
   type PreparedSessionRuntimeOptions,
 } from "./session-config.js";
-import {
-  catalogRecordToSessionResource,
-  type PersistedSessionSpec,
-} from "./session-catalog.js";
+import { catalogRecordToSessionResource } from "./session-catalog.js";
 import {
   RpcAttachmentError,
   RpcAttachmentManager,
@@ -1231,46 +1228,8 @@ function openCommandFromTicket(
     operation: "open",
     sessionId: command.sessionId,
     generation: command.generation,
-    payload: openPayloadFromSpec(command.spec),
+    payload: sessionOpenPayloadFromSpec(command.spec),
   };
-}
-
-function openPayloadFromSpec(spec: PersistedSessionSpec): OpenPayload {
-  const session: OpenPayload["session"] = {
-    mode:
-      spec.target.mode === "fork"
-        ? "new"
-        : (spec.target.mode as OpenPayload["session"]["mode"]),
-    ...(spec.target.path === undefined ? {} : { path: spec.target.path }),
-  };
-  const resources: OpenPayload["resources"] = {
-    extensions: "none",
-    skills: "none",
-    promptTemplates: "none",
-    themes: "none",
-    contextFiles: "none",
-    tools: "none",
-    ...(spec.resources?.systemPrompt === undefined
-      ? {}
-      : { systemPrompt: spec.resources.systemPrompt }),
-  };
-  const payload: OpenPayload = {
-    cwd: spec.cwd,
-    session,
-    resources,
-    ...(spec.name === undefined ? {} : { name: spec.name }),
-    ...(spec.agentDir === undefined ? {} : { agentDir: spec.agentDir }),
-  };
-  if (spec.model?.provider !== undefined && spec.model.id !== undefined) {
-    payload.model = {
-      provider: spec.model.provider,
-      id: spec.model.id,
-      ...(spec.model.thinkingLevel === undefined
-        ? {}
-        : { thinkingLevel: spec.model.thinkingLevel }),
-    };
-  }
-  return payload;
 }
 
 function apiRecord(value: unknown, field: string): Record<string, unknown> {

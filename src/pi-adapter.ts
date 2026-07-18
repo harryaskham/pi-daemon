@@ -817,15 +817,17 @@ function configuredBashEnabled(spec: PreparedSessionRuntimeOptions["persistedSpe
 }
 
 function validateSessionRoot(sessionRoot: string, cwd: string, agentRoot: string): void {
+  const agentSessionsRoot = join(agentRoot, "sessions");
+  const isNarrowAgentSessionRoot = isWithin(agentSessionsRoot, sessionRoot);
   if (
     isWithin(cwd, sessionRoot) ||
     isWithin(sessionRoot, cwd) ||
-    isWithin(agentRoot, sessionRoot) ||
-    isWithin(sessionRoot, agentRoot)
+    (!isNarrowAgentSessionRoot &&
+      (isWithin(agentRoot, sessionRoot) || isWithin(sessionRoot, agentRoot)))
   ) {
     throw new PiAdapterError(
       "authority_root_overlap",
-      "Pi session storage must not overlap the workload or credential roots",
+      "Pi session storage must not overlap workload or credential roots outside the canonical sessions data subtree",
     );
   }
 }

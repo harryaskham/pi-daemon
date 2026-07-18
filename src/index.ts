@@ -25,6 +25,8 @@ export * from "./session-cli.js";
 export * from "./session-config.js";
 export * from "./session-catalog.js";
 export * from "./session-inventory.js";
+export * from "./session-ownership-store.js";
+export * from "./session-ownership.js";
 export * from "./tickets.js";
 export * from "./transcript-projector.js";
 export * from "./virtual-terminal.js";

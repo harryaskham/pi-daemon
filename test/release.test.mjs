@@ -35,28 +35,35 @@ test("Pages workflow uses the pinned Nix site build without Docker actions", asy
 });
 
 test("Pages publishes the Dash protocol, schema, and OpenAPI from the pinned site build", async () => {
-  const [workflow, flake, index, protocol, inventory, shadowTui] = await Promise.all([
-    readFile(join(repositoryRoot, ".github/workflows/pages.yml"), "utf8"),
-    readFile(join(repositoryRoot, "flake.nix"), "utf8"),
-    readFile(join(repositoryRoot, "docs/index.md"), "utf8"),
-    readFile(join(repositoryRoot, "docs/dashboard-protocol.md"), "utf8"),
-    readFile(join(repositoryRoot, "docs/dashboard-inventory.md"), "utf8"),
-    readFile(join(repositoryRoot, "docs/shadow-tui.md"), "utf8"),
-  ]);
+  const [workflow, flake, index, protocol, inventory, ownership, shadowTui] =
+    await Promise.all([
+      readFile(join(repositoryRoot, ".github/workflows/pages.yml"), "utf8"),
+      readFile(join(repositoryRoot, "flake.nix"), "utf8"),
+      readFile(join(repositoryRoot, "docs/index.md"), "utf8"),
+      readFile(join(repositoryRoot, "docs/dashboard-protocol.md"), "utf8"),
+      readFile(join(repositoryRoot, "docs/dashboard-inventory.md"), "utf8"),
+      readFile(join(repositoryRoot, "docs/dashboard-ownership.md"), "utf8"),
+      readFile(join(repositoryRoot, "docs/shadow-tui.md"), "utf8"),
+    ]);
   assert.match(workflow, /- "dashboard-api\.schema\.json"/);
   assert.match(workflow, /- "dashboard-api\.openapi\.json"/);
   assert.match(workflow, /test -s _site\/dashboard-protocol\/index\.html/);
   assert.match(workflow, /test -s _site\/dashboard-inventory\/index\.html/);
+  assert.match(workflow, /test -s _site\/dashboard-ownership\/index\.html/);
   assert.match(workflow, /test -s _site\/shadow-tui\/index\.html/);
   assert.match(flake, /cp \$\{\.\/dashboard-api\.schema\.json\} "\$out\/dashboard-api\.schema\.json"/);
   assert.match(flake, /test -s "\$out\/dashboard-protocol\/index\.html"/);
+  assert.match(flake, /test -s "\$out\/dashboard-ownership\/index\.html"/);
   assert.match(flake, /test -s "\$out\/shadow-tui\/index\.html"/);
   assert.match(index, /\[Dash browser\/backend protocol\]\(dashboard-protocol\)/);
   assert.match(index, /\[Dash session inventory\]\(dashboard-inventory\)/);
+  assert.match(index, /\[Dash session ownership\]\(dashboard-ownership\)/);
   assert.match(index, /\[Dash shadow TUI\]\(shadow-tui\)/);
   assert.match(protocol, /daemon service bearer is \*\*server-to-server only\*\*/);
   assert.match(inventory, /31\.58 ms/);
   assert.match(inventory, /formatSessionSourceFingerprint/);
+  assert.match(ownership, /direct-co-opt-confirmed-v1/);
+  assert.match(ownership, /append-to-origin/);
   assert.match(protocol, /snapshotFollows: true/);
   assert.match(shadowTui, /second\s+`pi` process/);
   assert.match(shadowTui, /InteractiveSessionView/);
