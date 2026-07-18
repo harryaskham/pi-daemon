@@ -27,6 +27,7 @@ Initial standalone implementation:
 - canonical cwd allowlist and state/auth path isolation
 - bounded background recovery, truthful nondestructive readiness/probe status, whole-shutdown deadlines, safe idle sweep, metrics, and path-redacted lifecycle logs
 - reproducible Nix package/app/dev shell, multi-instance Home Manager service module, and npm package
+- strict bounded per-instance YAML configuration at `~/.config/pi/daemon/<instance>/config.yaml`, with CLI/environment selection, CLI-over-file precedence, secret-path-only policy, and Home Manager support
 - first-launch private directory bootstrap, stable generated API bearer, and non-overwriting per-instance Pi auth seeding
 - off-device aarch64-linux/Attic package path that avoids native Nix-on-Droid npm crashes and QEMU-only test false failures
 - bounded Linux/macOS CI, release automation, Dependabot, and Docker-free Nix/Pandoc GitHub Pages

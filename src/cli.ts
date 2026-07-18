@@ -10,6 +10,7 @@ import { loadServiceBearer, SERVICE_BEARER_ENV } from "./api-auth.js";
 import { ApiServer } from "./api-server.js";
 import { bootstrapServicePaths } from "./bootstrap.js";
 import { PiDaemonClient, ProtocolResponseError } from "./client.js";
+import { loadPiDaemonConfig, PiDaemonConfigError } from "./config.js";
 import { FileDurabilityStore } from "./durability.js";
 import { Multiplexer, type SessionFactory } from "./multiplexer.js";
 import { JsonLineLogger } from "./observability.js";
@@ -98,6 +99,14 @@ export async function runCli(
       );
       return error.retryable ? 75 : 1;
     }
+    if (error instanceof PiDaemonConfigError) {
+      io.stderr(
+        `${JSON.stringify({
+          error: { code: error.code, message: error.message, retryable: false },
+        })}\n`,
+      );
+      return 2;
+    }
     if (error instanceof CliUsageError || error instanceof SessionCliUsageError) {
       io.stderr(`${error.message}\nRun 'pi-daemon help' for usage.\n`);
       return 2;
@@ -170,10 +179,12 @@ async function runServe(
   io: CliIo,
   dependencies: CliDependencies,
 ): Promise<number> {
-  const allowedRootValues = repeatedOptionValues(args, "allow-root");
+  const cliAllowedRootValues = repeatedOptionValues(args, "allow-root");
   const options = parseOptions(
     args,
     new Set([
+      "config",
+      "instance",
       "socket",
       "state-dir",
       "agent-dir",
@@ -191,6 +202,7 @@ async function runServe(
       "max-event-bytes",
       "max-response-bytes",
       "max-outbound-bytes-per-connection",
+      "api-enabled",
       "api-bind",
       "api-port",
       "api-token-file",
@@ -199,31 +211,57 @@ async function runServe(
     ]),
     new Set(["allow-root"]),
   );
-  const socketPath = resolve(requiredOption(options, "socket"));
-  const stateDir = resolve(
-    options.get("state-dir") ?? `${homedir()}/.local/state/pi-daemon`,
-  );
+  const cliConfigPath = options.get("config");
+  const cliInstance = options.get("instance");
+  const loadedConfig = await loadPiDaemonConfig({
+    ...(cliConfigPath === undefined ? {} : { cliConfigPath }),
+    ...(cliInstance === undefined ? {} : { cliInstance }),
+  });
+  const config = loadedConfig.config;
+  const configuredPath = (cliName: string, value: string | undefined): string | undefined => {
+    const cliValue = options.get(cliName);
+    if (cliValue !== undefined) return resolve(cliValue);
+    return value === undefined ? undefined : loadedConfig.resolvePath(value);
+  };
+  const configuredSocket = configuredPath("socket", config.socketPath);
+  if (configuredSocket === undefined) {
+    throw new CliUsageError("missing required service socket (--socket or config socketPath)");
+  }
+  const socketPath = configuredSocket;
+  const stateDir =
+    configuredPath("state-dir", config.stateDir) ?? resolve(`${homedir()}/.local/state/pi-daemon`);
   const defaultAgentDir = resolve(getAgentDir());
-  const agentDir = resolve(options.get("agent-dir") ?? defaultAgentDir);
+  const agentDir = configuredPath("agent-dir", config.agentDir) ?? defaultAgentDir;
+  const configuredAllowedRoots = config.allowedRoots?.map((root) => loadedConfig.resolvePath(root)) ?? [];
+  const allowedRootValues =
+    cliAllowedRootValues.length > 0
+      ? cliAllowedRootValues.map((root) => resolve(root))
+      : configuredAllowedRoots;
   if (allowedRootValues.length === 0) {
-    throw new CliUsageError("missing required option: --allow-root");
+    throw new CliUsageError("missing required allowed root (--allow-root or config allowedRoots)");
   }
   const allowedRoots = await Promise.all(
-    allowedRootValues.map(async (root) => realpath(resolve(root))),
+    allowedRootValues.map(async (root) => realpath(root)),
   );
-  const apiEnabled = options.has("api-port");
+  const apiEnabled = options.has("api-enabled")
+    ? booleanSetting(options, "api-enabled", undefined)!
+    : options.has("api-port")
+      ? true
+      : (config.api?.enabled ?? config.api?.port !== undefined);
+  const configuredApiPort = integerSetting(options, "api-port", config.api?.port, 0);
+  if (apiEnabled && configuredApiPort === undefined) {
+    throw new CliUsageError("API listener requires --api-port or config api.port");
+  }
   if (
     !apiEnabled &&
     ["api-bind", "api-token-file", "api-token-fd", "api-allow-insecure-http"].some((name) =>
       options.has(name),
     )
   ) {
-    throw new CliUsageError("API listener options require --api-port");
+    throw new CliUsageError("API listener options require an enabled API and port");
   }
-  const configuredTokenFile = options.get("api-token-file");
-  const tokenFd = options.has("api-token-fd")
-    ? integerOption(options, "api-token-fd", 3)
-    : undefined;
+  const configuredTokenFile = configuredPath("api-token-file", config.api?.tokenFile);
+  const tokenFd = integerSetting(options, "api-token-fd", undefined, 3);
   const bearerSourceCount = [
     configuredTokenFile,
     tokenFd,
@@ -235,17 +273,13 @@ async function runServe(
   const apiTokenFile = apiEnabled
     ? configuredTokenFile === undefined && bearerSourceCount === 0
       ? join(stateDir, "api-token")
-      : configuredTokenFile === undefined
-        ? undefined
-        : resolve(configuredTokenFile)
+      : configuredTokenFile
     : undefined;
-  const configuredAuthSeedFile = options.get("auth-seed-file");
+  const configuredAuthSeedFile = configuredPath("auth-seed-file", config.authSeedFile);
   const authSeedFile =
     configuredAuthSeedFile === undefined && agentDir !== defaultAgentDir
       ? join(defaultAgentDir, "auth.json")
-      : configuredAuthSeedFile === undefined
-        ? undefined
-        : resolve(configuredAuthSeedFile);
+      : configuredAuthSeedFile;
   const bootstrap = await bootstrapServicePaths({
     stateDir,
     socketPath,
@@ -259,9 +293,13 @@ async function runServe(
   const catalog = new FileSessionCatalog({ stateDir });
   const tickets = new MutationTicketController(new FileMutationTicketStore({ stateDir }));
   const logger = new JsonLineLogger(io.stderr, { component: "pi-daemon" });
-  const idleSessionTtlMs = options.has("idle-session-ttl-ms")
-    ? integerOption(options, "idle-session-ttl-ms", 0)
-    : 30 * 60 * 1000;
+  const idleSessionTtlMs =
+    integerSetting(
+      options,
+      "idle-session-ttl-ms",
+      config.limits?.idleSessionTtlMs,
+      0,
+    ) ?? 30 * 60 * 1000;
   const multiplexer = new Multiplexer({
     factory:
       dependencies.factory ??
@@ -275,72 +313,94 @@ async function runServe(
     logger,
     idleSessionTtlMs,
     limits: {
-      ...(options.has("max-sessions")
-        ? { maxSessions: integerOption(options, "max-sessions", 1) }
-        : {}),
-      ...(options.has("max-concurrent-turns")
-        ? { maxConcurrentTurns: integerOption(options, "max-concurrent-turns", 1) }
-        : {}),
-      ...(options.has("max-session-queue-depth")
-        ? { maxSessionQueueDepth: integerOption(options, "max-session-queue-depth", 0) }
-        : {}),
+      ...optionalSetting(
+        "maxSessions",
+        integerSetting(options, "max-sessions", config.limits?.maxSessions, 1),
+      ),
+      ...optionalSetting(
+        "maxConcurrentTurns",
+        integerSetting(
+          options,
+          "max-concurrent-turns",
+          config.limits?.maxConcurrentTurns,
+          1,
+        ),
+      ),
+      ...optionalSetting(
+        "maxSessionQueueDepth",
+        integerSetting(
+          options,
+          "max-session-queue-depth",
+          config.limits?.maxSessionQueueDepth,
+          0,
+        ),
+      ),
     },
   });
   const recovery = await multiplexer.recover({
     queuedReplay: "background",
-    ...(options.has("recovery-open-timeout-ms")
-      ? {
-          openTimeoutMs: integerOption(
-            options,
-            "recovery-open-timeout-ms",
-            1,
-          ),
-        }
-      : {}),
-    ...(options.has("recovery-total-timeout-ms")
-      ? {
-          totalOpenTimeoutMs: integerOption(
-            options,
-            "recovery-total-timeout-ms",
-            1,
-          ),
-        }
-      : {}),
+    ...optionalSetting(
+      "openTimeoutMs",
+      integerSetting(
+        options,
+        "recovery-open-timeout-ms",
+        config.limits?.recoveryOpenTimeoutMs,
+        1,
+      ),
+    ),
+    ...optionalSetting(
+      "totalOpenTimeoutMs",
+      integerSetting(
+        options,
+        "recovery-total-timeout-ms",
+        config.limits?.recoveryTotalTimeoutMs,
+        1,
+      ),
+    ),
   });
   const server = new ProtocolServer({
     socketPath,
     multiplexer,
     limits: {
-      ...(options.has("max-connections")
-        ? { maxConnections: integerOption(options, "max-connections", 1) }
-        : {}),
-      ...(options.has("max-in-flight-requests-per-connection")
-        ? {
-            maxInFlightRequestsPerConnection: integerOption(
-              options,
-              "max-in-flight-requests-per-connection",
-              1,
-            ),
-          }
-        : {}),
-      ...(options.has("max-line-bytes")
-        ? { maxLineBytes: integerOption(options, "max-line-bytes", 1) }
-        : {}),
-      ...(options.has("max-event-bytes")
-        ? { maxEventBytes: integerOption(options, "max-event-bytes", 1) }
-        : {}),
-      ...(options.has("max-response-bytes")
-        ? { maxResponseBytes: integerOption(options, "max-response-bytes", 1) }
-        : {}),
-      ...(options.has("max-outbound-bytes-per-connection")
-        ? {
-            maxOutboundBytesPerConnection: integerOption(
-              options,
-              "max-outbound-bytes-per-connection",
-              1,
-            ),
-          }
-        : {}),
+      ...optionalSetting(
+        "maxConnections",
+        integerSetting(options, "max-connections", config.limits?.maxConnections, 1),
+      ),
+      ...optionalSetting(
+        "maxInFlightRequestsPerConnection",
+        integerSetting(
+          options,
+          "max-in-flight-requests-per-connection",
+          config.limits?.maxInFlightRequestsPerConnection,
+          1,
+        ),
+      ),
+      ...optionalSetting(
+        "maxLineBytes",
+        integerSetting(options, "max-line-bytes", config.limits?.maxLineBytes, 1),
+      ),
+      ...optionalSetting(
+        "maxEventBytes",
+        integerSetting(options, "max-event-bytes", config.limits?.maxEventBytes, 1),
+      ),
+      ...optionalSetting(
+        "maxResponseBytes",
+        integerSetting(
+          options,
+          "max-response-bytes",
+          config.limits?.maxResponseBytes,
+          1,
+        ),
+      ),
+      ...optionalSetting(
+        "maxOutboundBytesPerConnection",
+        integerSetting(
+          options,
+          "max-outbound-bytes-per-connection",
+          config.limits?.maxOutboundBytesPerConnection,
+          1,
+        ),
+      ),
     },
   });
   let apiServer: ApiServer | undefined;
@@ -356,11 +416,14 @@ async function runServe(
         multiplexer,
         authenticator: loaded.authenticator,
         tickets,
-        host: options.get("api-bind") ?? "127.0.0.1",
-        port: integerOption(options, "api-port", 0),
-        allowInsecureRemote: options.has("api-allow-insecure-http")
-          ? booleanOption(options, "api-allow-insecure-http")
-          : false,
+        host: options.get("api-bind") ?? config.api?.bind ?? "127.0.0.1",
+        port: configuredApiPort!,
+        allowInsecureRemote:
+          booleanSetting(
+            options,
+            "api-allow-insecure-http",
+            config.api?.allowInsecureHttp,
+          ) ?? false,
       });
       apiAddress = await apiServer.start();
     }
@@ -384,6 +447,11 @@ async function runServe(
       apiAddress === undefined
         ? { enabled: false }
         : { enabled: true, host: apiAddress.host, port: apiAddress.port },
+    configuration: {
+      instance: loadedConfig.instance,
+      fileLoaded: loadedConfig.present,
+      webConfigured: config.web !== undefined,
+    },
     bootstrap: {
       bearerCreated: bootstrap.bearerCreated,
       auth: bootstrap.auth,
@@ -555,7 +623,12 @@ function repeatedOptionValues(args: string[], name: string): string[] {
   return values;
 }
 
-function booleanOption(options: Map<string, string>, name: string): boolean {
+function booleanSetting(
+  options: Map<string, string>,
+  name: string,
+  configured: boolean | undefined,
+): boolean | undefined {
+  if (!options.has(name)) return configured;
   const raw = requiredOption(options, name);
   if (raw === "true") return true;
   if (raw === "false") return false;
@@ -578,6 +651,27 @@ function integerOption(options: Map<string, string>, name: string, minimum: numb
     throw new CliUsageError(`--${name} must be at least ${minimum}`);
   }
   return value;
+}
+
+function integerSetting(
+  options: Map<string, string>,
+  name: string,
+  configured: number | undefined,
+  minimum: number,
+): number | undefined {
+  if (options.has(name)) return integerOption(options, name, minimum);
+  if (configured === undefined) return undefined;
+  if (!Number.isSafeInteger(configured) || configured < minimum) {
+    throw new CliUsageError(`configured ${name} must be at least ${minimum}`);
+  }
+  return configured;
+}
+
+function optionalSetting<const K extends string, V>(
+  key: K,
+  value: V | undefined,
+): Partial<Record<K, V>> {
+  return value === undefined ? {} : ({ [key]: value } as Record<K, V>);
 }
 
 async function completesWithin(
@@ -621,9 +715,11 @@ function helpText(): string {
   return `Pi Daemon ${PI_DAEMON_VERSION}
 
 Usage:
-  pi-daemon serve --socket PATH --allow-root PATH [--allow-root PATH ...] [--state-dir PATH] [--agent-dir PATH] [limit options]
+  pi-daemon serve [--config PATH] [--instance NAME]
+                  --socket PATH --allow-root PATH [--allow-root PATH ...]
+                  [--state-dir PATH] [--agent-dir PATH] [limit options]
                   [--auth-seed-file PATH]
-                  [--api-port PORT] [--api-bind HOST]
+                  [--api-enabled true|false] [--api-port PORT] [--api-bind HOST]
                   [--api-token-file PATH | --api-token-fd FD]
                   [--api-allow-insecure-http true|false]
   pi-daemon probe --socket PATH [--timeout-ms N]
@@ -661,6 +757,14 @@ Create/update configuration:
   --spec-file PATH            Owner-only full SessionSpec JSON (may contain env)
   --spec-json JSON            Full SessionSpec without raw env values
   --cwd PATH --target new|continue|open|memory [typed model/tool options]
+
+Service configuration:
+  --config PATH               YAML config (default ~/.config/pi/daemon/INSTANCE/config.yaml)
+  --instance NAME             1-63 character service instance (default: default)
+  PI_DAEMON_CONFIG            Config path fallback; CLI --config takes precedence
+  PI_DAEMON_INSTANCE          Instance fallback; CLI --instance takes precedence
+  Individual CLI values override YAML; existing flag-only invocation remains supported.
+  Secrets are file/fd/environment references, never literal YAML values.
 
 Recovery limits:
   --recovery-open-timeout-ms N

@@ -2,6 +2,7 @@ export * from "./acp-adapter.js";
 export * from "./api-auth.js";
 export * from "./api-server.js";
 export * from "./client.js";
+export * from "./config.js";
 export * from "./dashboard-contract.js";
 export * from "./dashboard-fixtures.js";
 export * from "./durability.js";

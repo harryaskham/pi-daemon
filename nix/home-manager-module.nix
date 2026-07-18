@@ -19,10 +19,16 @@
   }: {
     options = {
       enable = lib.mkEnableOption "Pi Daemon instance ${name}" // {default = true;};
+      configFile = lib.mkOption {
+        type = lib.types.nullOr lib.types.str;
+        default = null;
+        example = "${homeDirectory}/.config/pi/daemon/${name}/config.yaml";
+        description = "Optional non-secret Pi Daemon YAML file. The service always passes its validated instance name; module-managed values remain CLI overrides.";
+      };
       stateDir = lib.mkOption {
         type = lib.types.str;
         default = "${homeDirectory}/.local/state/pi-daemon/${name}";
-        description = "Owner-private durable state and persisted session-configuration directory.";
+        description = "Owner-private durable state directory.";
       };
       socketPath = lib.mkOption {
         type = lib.types.str;
@@ -104,6 +110,14 @@
     [
       "${cfg.package}/bin/pi-daemon"
       "serve"
+      "--instance"
+      name
+    ]
+    ++ lib.optionals (instance.configFile != null) [
+      "--config"
+      instance.configFile
+    ]
+    ++ [
       "--socket"
       instance.socketPath
       "--state-dir"
@@ -116,6 +130,14 @@
       instance.authSeedFile
     ]
     ++ lib.concatMap (root: ["--allow-root" root]) instance.allowedRoots
+    ++ [
+      "--api-enabled"
+      (
+        if instance.api.enable
+        then "true"
+        else "false"
+      )
+    ]
     ++ lib.optionals instance.api.enable [
       "--api-bind"
       instance.api.bind
@@ -162,17 +184,21 @@
   serviceName = name: "pi-daemon-${name}";
   enabledList = lib.attrValues enabledInstances;
   enabledApiInstances = lib.filter (instance: instance.api.enable) enabledList;
+  enabledConfigInstances = lib.filter (instance: instance.configFile != null) enabledList;
   effectiveApiTokenFile = instance:
     if instance.api.tokenFile == null
     then "${instance.stateDir}/api-token"
     else instance.api.tokenFile;
   unique = values: builtins.length values == builtins.length (lib.unique values);
   protectedExtraArgs = [
+    "--config"
+    "--instance"
     "--socket"
     "--state-dir"
     "--agent-dir"
     "--auth-seed-file"
     "--allow-root"
+    "--api-enabled"
     "--api-bind"
     "--api-port"
     "--api-token-file"
@@ -230,6 +256,10 @@ in {
           })
           enabledInstances)
         ++ [
+          {
+            assertion = unique (map (instance: instance.configFile) enabledConfigInstances);
+            message = "enabled Pi Daemon instances must use unique explicit configFile values";
+          }
           {
             assertion = unique (map (instance: instance.stateDir) enabledList);
             message = "enabled Pi Daemon instances must use unique stateDir values";

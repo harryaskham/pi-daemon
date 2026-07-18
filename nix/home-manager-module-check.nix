@@ -49,6 +49,7 @@
     services.pi-daemon.package = testPackage;
     services.pi-daemon.instances = {
       alpha = {
+        configFile = "/home/tester/.config/pi/daemon/alpha/config.yaml";
         stateDir = "/home/tester/.state/pi-alpha";
         socketPath = "/home/tester/.run/pi-alpha.sock";
         agentDir = "/home/tester/.pi-alpha";
@@ -98,6 +99,26 @@
           two = {
             allowedRoots = ["/srv/two"];
             socketPath = "/tmp/shared.sock";
+          };
+        };
+      }
+    ];
+  };
+  evalConfigCollision = lib.evalModules {
+    specialArgs = {inherit pkgs;};
+    modules = [
+      baseStubs
+      self.homeManagerModules.pi-daemon
+      {
+        services.pi-daemon.package = testPackage;
+        services.pi-daemon.instances = {
+          one = {
+            allowedRoots = ["/srv/one"];
+            configFile = "/home/tester/.config/pi/daemon/shared/config.yaml";
+          };
+          two = {
+            allowedRoots = ["/srv/two"];
+            configFile = "/home/tester/.config/pi/daemon/shared/config.yaml";
           };
         };
       }
@@ -170,6 +191,7 @@
   };
   assertionsOk = builtins.all (entry: entry.assertion) eval.config.assertions;
   collisionDetected = !(builtins.all (entry: entry.assertion) evalCollision.config.assertions);
+  configCollisionDetected = !(builtins.all (entry: entry.assertion) evalConfigCollision.config.assertions);
   portCollisionDetected = !(builtins.all (entry: entry.assertion) evalPortCollision.config.assertions);
   tokenCollisionDetected = !(builtins.all (entry: entry.assertion) evalTokenCollision.config.assertions);
   normalServices =
@@ -208,6 +230,7 @@
 in
   assert assertionsOk;
   assert collisionDetected;
+  assert configCollisionDetected;
   assert portCollisionDetected;
   assert tokenCollisionDetected;
     pkgs.runCommand "pi-daemon-home-manager-module-check" {} ''
@@ -219,12 +242,17 @@ in
       )}
       test ${lib.escapeShellArg normalBetaEnvironment.PI_DAEMON_INSTANCE} = beta
       test ${lib.escapeShellArg normalBetaEnvironment.PI_DAEMON_SOCKET} = /home/tester/.run/pi-beta.sock
+      printf '%s\n' ${lib.escapeShellArg normalAlphaCommand} | grep -F -- '--instance'
+      printf '%s\n' ${lib.escapeShellArg normalAlphaCommand} | grep -F -- 'alpha'
+      printf '%s\n' ${lib.escapeShellArg normalAlphaCommand} | grep -F -- '--config'
+      printf '%s\n' ${lib.escapeShellArg normalAlphaCommand} | grep -F -- '/home/tester/.config/pi/daemon/alpha/config.yaml'
       printf '%s\n' ${lib.escapeShellArg normalAlphaCommand} | grep -F -- '--socket'
       printf '%s\n' ${lib.escapeShellArg normalAlphaCommand} | grep -F -- '/home/tester/.run/pi-alpha.sock'
       printf '%s\n' ${lib.escapeShellArg normalAlphaCommand} | grep -F -- '--auth-seed-file'
       printf '%s\n' ${lib.escapeShellArg normalAlphaCommand} | grep -F -- '/home/tester/.pi/agent/auth.json'
       printf '%s\n' ${lib.escapeShellArg normalAlphaCommand} | grep -F -- '--allow-root'
       printf '%s\n' ${lib.escapeShellArg normalAlphaCommand} | grep -F -- '/srv/shared'
+      printf '%s\n' ${lib.escapeShellArg normalAlphaCommand} | grep -F -- '--api-enabled true'
       printf '%s\n' ${lib.escapeShellArg normalAlphaCommand} | grep -F -- '--api-port'
       printf '%s\n' ${lib.escapeShellArg normalAlphaCommand} | grep -F -- '17463'
       printf '%s\n' ${lib.escapeShellArg normalBetaCommand} | grep -F -- '17464'

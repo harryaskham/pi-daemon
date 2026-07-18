@@ -59,6 +59,10 @@ pi-daemon serve --socket /run/user/1000/pi-daemon.sock \
   --state-dir ~/.local/state/pi-daemon --allow-root ~/work \
   --api-bind 127.0.0.1 --api-port 7463
 
+# Equivalent service values may come from
+# ~/.config/pi/daemon/INSTANCE/config.yaml; individual CLI flags override YAML.
+pi-daemon serve --config ~/.config/pi/daemon/work/config.yaml --instance work
+
 pi-daemon probe --socket /run/user/1000/pi-daemon.sock
 pi-daemon request --socket /run/user/1000/pi-daemon.sock --json '{...}'
 pi-daemon version

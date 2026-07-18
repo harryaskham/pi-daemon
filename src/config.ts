@@ -1,0 +1,586 @@
+import { lstat, readFile, stat } from "node:fs/promises";
+import { homedir } from "node:os";
+import { dirname, isAbsolute, join, resolve } from "node:path";
+
+import { parseDocument } from "yaml";
+
+export const PI_DAEMON_CONFIG_ENV = "PI_DAEMON_CONFIG" as const;
+export const PI_DAEMON_INSTANCE_ENV = "PI_DAEMON_INSTANCE" as const;
+export const DEFAULT_CONFIG_MAX_BYTES = 1024 * 1024;
+export const DEFAULT_CONFIG_MAX_DEPTH = 16;
+export const DEFAULT_CONFIG_MAX_PROPERTIES = 2048;
+export const DEFAULT_CONFIG_MAX_STRING_BYTES = 256 * 1024;
+
+export type SessionStorageMode = "pi-session-root" | "daemon-owned";
+export type DashboardDeploymentMode = "embedded" | "dedicated";
+export type PiDaemonWebPresentation = "rich" | "tui";
+
+export interface PiDaemonLimitConfig {
+  maxSessions?: number;
+  maxConcurrentTurns?: number;
+  maxSessionQueueDepth?: number;
+  idleSessionTtlMs?: number;
+  recoveryOpenTimeoutMs?: number;
+  recoveryTotalTimeoutMs?: number;
+  maxConnections?: number;
+  maxInFlightRequestsPerConnection?: number;
+  maxLineBytes?: number;
+  maxEventBytes?: number;
+  maxResponseBytes?: number;
+  maxOutboundBytesPerConnection?: number;
+}
+
+export interface PiDaemonApiConfig {
+  enabled?: boolean;
+  bind?: string;
+  port?: number;
+  tokenFile?: string;
+  allowInsecureHttp?: boolean;
+}
+
+export interface PiDaemonWebAuthConfig {
+  tokenFile?: string;
+  sessionTtlMs?: number;
+}
+
+export interface PiDaemonWebInventoryConfig {
+  roots?: string[];
+  reconcileIntervalMs?: number;
+  maxSessions?: number;
+}
+
+export interface PiDaemonWebResidencyConfig {
+  warmTtlMs?: number;
+  maxPinnedPerWorkspace?: number;
+}
+
+export interface PiDaemonWebTuiConfig {
+  enabled?: boolean;
+  defaultPresentation?: PiDaemonWebPresentation;
+  maxRows?: number;
+  maxColumns?: number;
+}
+
+export type ConfigJson =
+  | null
+  | boolean
+  | number
+  | string
+  | ConfigJson[]
+  | { [key: string]: ConfigJson };
+
+export interface PiDaemonWebConfig {
+  enabled?: boolean;
+  mode?: DashboardDeploymentMode;
+  bind?: string;
+  port?: number;
+  auth?: PiDaemonWebAuthConfig;
+  inventory?: PiDaemonWebInventoryConfig;
+  residency?: PiDaemonWebResidencyConfig;
+  tui?: PiDaemonWebTuiConfig;
+  /** Forward-compatible, bounded UI defaults. Browser/runtime validation is stricter. */
+  ui?: { [key: string]: ConfigJson };
+}
+
+export const DEFAULT_SESSION_STORAGE_MODE: SessionStorageMode = "pi-session-root";
+export const DEFAULT_PI_DAEMON_WEB_CONFIG = {
+  enabled: true,
+  mode: "embedded",
+  bind: "127.0.0.1",
+  port: 7464,
+  auth: { sessionTtlMs: 12 * 60 * 60 * 1000 },
+  inventory: { roots: [], reconcileIntervalMs: 30_000, maxSessions: 10_000 },
+  residency: { warmTtlMs: 30 * 60 * 1000, maxPinnedPerWorkspace: 8 },
+  tui: {
+    enabled: true,
+    defaultPresentation: "rich",
+    maxRows: 200,
+    maxColumns: 320,
+  },
+  ui: {},
+} as const satisfies PiDaemonWebConfig;
+
+export interface PiDaemonConfig {
+  instance?: string;
+  stateDir?: string;
+  socketPath?: string;
+  agentDir?: string;
+  authSeedFile?: string;
+  allowedRoots?: string[];
+  sessionStorage?: { mode?: SessionStorageMode };
+  limits?: PiDaemonLimitConfig;
+  api?: PiDaemonApiConfig;
+  web?: PiDaemonWebConfig;
+}
+
+export interface LoadedPiDaemonConfig {
+  instance: string;
+  path: string;
+  explicitPath: boolean;
+  present: boolean;
+  config: PiDaemonConfig;
+  /** Resolve a path read from this config relative to its containing directory. */
+  resolvePath(value: string): string;
+}
+
+export class PiDaemonConfigError extends Error {
+  readonly code: string;
+
+  constructor(code: string, message: string) {
+    super(message);
+    this.name = "PiDaemonConfigError";
+    this.code = code;
+  }
+}
+
+export async function loadPiDaemonConfig(options: {
+  cliConfigPath?: string;
+  cliInstance?: string;
+  environment?: Readonly<Record<string, string | undefined>>;
+  homeDirectory?: string;
+  xdgConfigHome?: string;
+  maxBytes?: number;
+} = {}): Promise<LoadedPiDaemonConfig> {
+  const environment = options.environment ?? process.env;
+  const homeDirectory = options.homeDirectory ?? homedir();
+  const configuredInstance = options.cliInstance ?? environment[PI_DAEMON_INSTANCE_ENV];
+  const instance = validateInstance(configuredInstance ?? "default");
+  const selectedPath = options.cliConfigPath ?? environment[PI_DAEMON_CONFIG_ENV];
+  const explicitPath = selectedPath !== undefined;
+  const configHome =
+    options.xdgConfigHome ?? environment.XDG_CONFIG_HOME ?? join(homeDirectory, ".config");
+  const path = expandPath(
+    selectedPath ?? join(configHome, "pi", "daemon", instance, "config.yaml"),
+    homeDirectory,
+    process.cwd(),
+  );
+  const maxBytes = positiveInteger(options.maxBytes ?? DEFAULT_CONFIG_MAX_BYTES, "maxBytes");
+
+  let info;
+  try {
+    info = await stat(path);
+  } catch (error) {
+    if (isNodeError(error) && error.code === "ENOENT") {
+      if (explicitPath) {
+        throw new PiDaemonConfigError("config_not_found", "selected configuration file does not exist");
+      }
+      return loadedConfig(instance, path, explicitPath, false, {}, homeDirectory);
+    }
+    throw new PiDaemonConfigError("config_unreadable", "configuration file could not be inspected");
+  }
+  if (!info.isFile()) {
+    throw new PiDaemonConfigError("config_not_regular", "configuration path must resolve to a regular file");
+  }
+  const getuid = process.getuid;
+  if (getuid !== undefined && info.uid !== getuid() && info.uid !== 0) {
+    throw new PiDaemonConfigError(
+      "config_owner_mismatch",
+      "configuration file must be owned by the current user or root",
+    );
+  }
+  if ((info.mode & 0o022) !== 0) {
+    throw new PiDaemonConfigError(
+      "config_insecure_mode",
+      "configuration file must not be group/world writable",
+    );
+  }
+  if (info.size > maxBytes) {
+    throw new PiDaemonConfigError("config_too_large", "configuration file exceeds its byte limit");
+  }
+
+  // lstat is intentionally advisory: Home Manager commonly exposes immutable
+  // Nix-store configuration through a symlink. The resolved target above must
+  // still be a regular, non-writable, current-user/root-owned file.
+  try {
+    await lstat(path);
+  } catch {
+    throw new PiDaemonConfigError("config_unreadable", "configuration file could not be inspected");
+  }
+
+  let text: string;
+  try {
+    text = await readFile(path, "utf8");
+  } catch {
+    throw new PiDaemonConfigError("config_unreadable", "configuration file could not be read");
+  }
+  if (Buffer.byteLength(text, "utf8") > maxBytes) {
+    throw new PiDaemonConfigError("config_too_large", "configuration file exceeds its byte limit");
+  }
+  const document = parseDocument(text, {
+    prettyErrors: false,
+    strict: true,
+    uniqueKeys: true,
+  });
+  if (document.errors.length > 0) {
+    throw new PiDaemonConfigError("config_invalid_yaml", "configuration file is not valid YAML");
+  }
+  let parsed: unknown;
+  try {
+    parsed = document.toJS({ maxAliasCount: 0 });
+  } catch {
+    throw new PiDaemonConfigError("config_invalid_yaml", "configuration aliases are not allowed");
+  }
+  const config = parseConfig(parsed ?? {});
+  if (config.instance !== undefined && config.instance !== instance) {
+    throw new PiDaemonConfigError(
+      "config_instance_mismatch",
+      "configuration instance does not match the selected instance",
+    );
+  }
+  return loadedConfig(instance, path, explicitPath, true, config, homeDirectory);
+}
+
+function loadedConfig(
+  instance: string,
+  path: string,
+  explicitPath: boolean,
+  present: boolean,
+  config: PiDaemonConfig,
+  homeDirectory: string,
+): LoadedPiDaemonConfig {
+  return {
+    instance,
+    path,
+    explicitPath,
+    present,
+    config,
+    resolvePath: (value) => expandPath(value, homeDirectory, dirname(path)),
+  };
+}
+
+function parseConfig(value: unknown): PiDaemonConfig {
+  const root = objectValue(value, "configuration");
+  assertKnownKeys(root, [
+    "instance",
+    "stateDir",
+    "socketPath",
+    "agentDir",
+    "authSeedFile",
+    "allowedRoots",
+    "sessionStorage",
+    "limits",
+    "api",
+    "web",
+  ]);
+  assertTreeBounds(root);
+  const result: PiDaemonConfig = {};
+  const instance = optionalString(root, "instance", 63);
+  if (instance !== undefined) result.instance = validateInstance(instance);
+  copyOptionalString(root, result, "stateDir");
+  copyOptionalString(root, result, "socketPath");
+  copyOptionalString(root, result, "agentDir");
+  copyOptionalString(root, result, "authSeedFile");
+  const allowedRoots = optionalStringArray(root, "allowedRoots", 256);
+  if (allowedRoots !== undefined) result.allowedRoots = allowedRoots;
+  if (root.sessionStorage !== undefined) {
+    const storage = objectValue(root.sessionStorage, "sessionStorage");
+    assertKnownKeys(storage, ["mode"]);
+    const mode = optionalEnum(storage, "mode", ["pi-session-root", "daemon-owned"] as const);
+    result.sessionStorage = mode === undefined ? {} : { mode };
+  }
+  if (root.limits !== undefined) result.limits = parseLimits(root.limits);
+  if (root.api !== undefined) result.api = parseApi(root.api);
+  if (root.web !== undefined) result.web = parseWeb(root.web);
+  return result;
+}
+
+function parseLimits(value: unknown): PiDaemonLimitConfig {
+  const object = objectValue(value, "limits");
+  const keys = [
+    "maxSessions",
+    "maxConcurrentTurns",
+    "maxSessionQueueDepth",
+    "idleSessionTtlMs",
+    "recoveryOpenTimeoutMs",
+    "recoveryTotalTimeoutMs",
+    "maxConnections",
+    "maxInFlightRequestsPerConnection",
+    "maxLineBytes",
+    "maxEventBytes",
+    "maxResponseBytes",
+    "maxOutboundBytesPerConnection",
+  ] as const;
+  assertKnownKeys(object, keys);
+  const result: PiDaemonLimitConfig = {};
+  for (const key of keys) {
+    const minimum = key === "maxSessionQueueDepth" || key === "idleSessionTtlMs" ? 0 : 1;
+    const number = optionalInteger(object, key, minimum);
+    if (number !== undefined) result[key] = number;
+  }
+  return result;
+}
+
+function parseApi(value: unknown): PiDaemonApiConfig {
+  const object = objectValue(value, "api");
+  assertKnownKeys(object, ["enabled", "bind", "port", "tokenFile", "allowInsecureHttp"]);
+  const result: PiDaemonApiConfig = {};
+  copyOptionalBoolean(object, result, "enabled");
+  copyOptionalString(object, result, "bind");
+  copyOptionalString(object, result, "tokenFile");
+  copyOptionalBoolean(object, result, "allowInsecureHttp");
+  const port = optionalInteger(object, "port", 0, 65_535);
+  if (port !== undefined) result.port = port;
+  if (result.enabled === true && result.port === undefined) {
+    throw new PiDaemonConfigError("config_invalid", "api.port is required when api.enabled is true");
+  }
+  return result;
+}
+
+function parseWeb(value: unknown): PiDaemonWebConfig {
+  const object = objectValue(value, "web");
+  assertKnownKeys(object, [
+    "enabled",
+    "mode",
+    "bind",
+    "port",
+    "auth",
+    "inventory",
+    "residency",
+    "tui",
+    "ui",
+  ]);
+  const result: PiDaemonWebConfig = {};
+  copyOptionalBoolean(object, result, "enabled");
+  copyOptionalString(object, result, "bind");
+  const mode = optionalEnum(object, "mode", ["embedded", "dedicated"] as const);
+  if (mode !== undefined) result.mode = mode;
+  const port = optionalInteger(object, "port", 0, 65_535);
+  if (port !== undefined) result.port = port;
+  if (object.auth !== undefined) result.auth = parseWebAuth(object.auth);
+  if (object.inventory !== undefined) result.inventory = parseWebInventory(object.inventory);
+  if (object.residency !== undefined) result.residency = parseWebResidency(object.residency);
+  if (object.tui !== undefined) result.tui = parseWebTui(object.tui);
+  if (object.ui !== undefined) {
+    const ui = objectValue(object.ui, "web.ui");
+    rejectSecretLikeKeys(ui, "web.ui");
+    result.ui = structuredClone(ui) as { [key: string]: ConfigJson };
+  }
+  return result;
+}
+
+function parseWebAuth(value: unknown): PiDaemonWebAuthConfig {
+  const object = objectValue(value, "web.auth");
+  assertKnownKeys(object, ["tokenFile", "sessionTtlMs"]);
+  const result: PiDaemonWebAuthConfig = {};
+  copyOptionalString(object, result, "tokenFile");
+  const ttl = optionalInteger(object, "sessionTtlMs", 1);
+  if (ttl !== undefined) result.sessionTtlMs = ttl;
+  return result;
+}
+
+function parseWebInventory(value: unknown): PiDaemonWebInventoryConfig {
+  const object = objectValue(value, "web.inventory");
+  assertKnownKeys(object, ["roots", "reconcileIntervalMs", "maxSessions"]);
+  const result: PiDaemonWebInventoryConfig = {};
+  const roots = optionalStringArray(object, "roots", 256);
+  if (roots !== undefined) result.roots = roots;
+  const interval = optionalInteger(object, "reconcileIntervalMs", 1);
+  if (interval !== undefined) result.reconcileIntervalMs = interval;
+  const maxSessions = optionalInteger(object, "maxSessions", 1);
+  if (maxSessions !== undefined) result.maxSessions = maxSessions;
+  return result;
+}
+
+function parseWebResidency(value: unknown): PiDaemonWebResidencyConfig {
+  const object = objectValue(value, "web.residency");
+  assertKnownKeys(object, ["warmTtlMs", "maxPinnedPerWorkspace"]);
+  const result: PiDaemonWebResidencyConfig = {};
+  const warmTtlMs = optionalInteger(object, "warmTtlMs", 0);
+  if (warmTtlMs !== undefined) result.warmTtlMs = warmTtlMs;
+  const maxPinned = optionalInteger(object, "maxPinnedPerWorkspace", 1);
+  if (maxPinned !== undefined) result.maxPinnedPerWorkspace = maxPinned;
+  return result;
+}
+
+function parseWebTui(value: unknown): PiDaemonWebTuiConfig {
+  const object = objectValue(value, "web.tui");
+  assertKnownKeys(object, ["enabled", "defaultPresentation", "maxRows", "maxColumns"]);
+  const result: PiDaemonWebTuiConfig = {};
+  copyOptionalBoolean(object, result, "enabled");
+  const presentation = optionalEnum(object, "defaultPresentation", ["rich", "tui"] as const);
+  if (presentation !== undefined) result.defaultPresentation = presentation;
+  const maxRows = optionalInteger(object, "maxRows", 1);
+  if (maxRows !== undefined) result.maxRows = maxRows;
+  const maxColumns = optionalInteger(object, "maxColumns", 1);
+  if (maxColumns !== undefined) result.maxColumns = maxColumns;
+  return result;
+}
+
+function validateInstance(value: string): string {
+  if (!/^[A-Za-z0-9][A-Za-z0-9-]{0,62}$/.test(value)) {
+    throw new PiDaemonConfigError(
+      "config_invalid_instance",
+      "instance must be 1-63 alphanumeric/hyphen characters",
+    );
+  }
+  return value;
+}
+
+function objectValue(value: unknown, name: string): Record<string, unknown> {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new PiDaemonConfigError("config_invalid", `${name} must be an object`);
+  }
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype !== Object.prototype && prototype !== null) {
+    throw new PiDaemonConfigError("config_invalid", `${name} must be a plain object`);
+  }
+  return value as Record<string, unknown>;
+}
+
+function assertKnownKeys(object: Record<string, unknown>, allowed: readonly string[]): void {
+  const allowedSet = new Set(allowed);
+  const unknown = Object.keys(object).find((key) => !allowedSet.has(key));
+  if (unknown !== undefined) {
+    throw new PiDaemonConfigError("config_unknown_field", `unknown configuration field: ${unknown}`);
+  }
+}
+
+function optionalString(
+  object: Record<string, unknown>,
+  key: string,
+  maxBytes = 16 * 1024,
+): string | undefined {
+  const value = object[key];
+  if (value === undefined) return undefined;
+  if (typeof value !== "string" || value.length === 0 || Buffer.byteLength(value, "utf8") > maxBytes) {
+    throw new PiDaemonConfigError("config_invalid", `${key} must be a bounded non-empty string`);
+  }
+  return value;
+}
+
+function optionalStringArray(
+  object: Record<string, unknown>,
+  key: string,
+  maxItems: number,
+): string[] | undefined {
+  const value = object[key];
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value) || value.length > maxItems) {
+    throw new PiDaemonConfigError("config_invalid", `${key} must be a bounded string array`);
+  }
+  return value.map((entry) => {
+    if (typeof entry !== "string" || entry.length === 0 || Buffer.byteLength(entry, "utf8") > 16 * 1024) {
+      throw new PiDaemonConfigError("config_invalid", `${key} must contain bounded non-empty strings`);
+    }
+    return entry;
+  });
+}
+
+function optionalInteger(
+  object: Record<string, unknown>,
+  key: string,
+  minimum: number,
+  maximum = Number.MAX_SAFE_INTEGER,
+): number | undefined {
+  const value = object[key];
+  if (value === undefined) return undefined;
+  if (!Number.isSafeInteger(value) || (value as number) < minimum || (value as number) > maximum) {
+    throw new PiDaemonConfigError(
+      "config_invalid",
+      `${key} must be an integer from ${minimum} through ${maximum}`,
+    );
+  }
+  return value as number;
+}
+
+function optionalEnum<const T extends readonly string[]>(
+  object: Record<string, unknown>,
+  key: string,
+  values: T,
+): T[number] | undefined {
+  const value = object[key];
+  if (value === undefined) return undefined;
+  if (typeof value !== "string" || !values.includes(value)) {
+    throw new PiDaemonConfigError("config_invalid", `${key} has an unsupported value`);
+  }
+  return value as T[number];
+}
+
+function optionalBoolean(object: Record<string, unknown>, key: string): boolean | undefined {
+  const value = object[key];
+  if (value === undefined) return undefined;
+  if (typeof value !== "boolean") {
+    throw new PiDaemonConfigError("config_invalid", `${key} must be true or false`);
+  }
+  return value;
+}
+
+function copyOptionalString<T extends object>(
+  source: Record<string, unknown>,
+  target: T,
+  key: keyof T & string,
+): void {
+  const value = optionalString(source, key);
+  if (value !== undefined) (target as Record<string, unknown>)[key] = value;
+}
+
+function copyOptionalBoolean<T extends object>(
+  source: Record<string, unknown>,
+  target: T,
+  key: keyof T & string,
+): void {
+  const value = optionalBoolean(source, key);
+  if (value !== undefined) (target as Record<string, unknown>)[key] = value;
+}
+
+function assertTreeBounds(root: Record<string, unknown>): void {
+  let properties = 0;
+  let stringBytes = 0;
+  const visit = (value: unknown, depth: number): void => {
+    if (depth > DEFAULT_CONFIG_MAX_DEPTH) {
+      throw new PiDaemonConfigError("config_too_large", "configuration exceeds its depth limit");
+    }
+    if (typeof value === "string") {
+      stringBytes += Buffer.byteLength(value, "utf8");
+    } else if (Array.isArray(value)) {
+      for (const entry of value) visit(entry, depth + 1);
+    } else if (value !== null && typeof value === "object") {
+      for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+        properties += 1;
+        stringBytes += Buffer.byteLength(key, "utf8");
+        visit(entry, depth + 1);
+      }
+    } else if (typeof value === "number") {
+      if (!Number.isFinite(value)) {
+        throw new PiDaemonConfigError("config_invalid", "configuration numbers must be finite");
+      }
+    } else if (value !== null && typeof value !== "boolean" && value !== undefined) {
+      throw new PiDaemonConfigError("config_invalid", "configuration contains an unsupported value");
+    }
+    if (properties > DEFAULT_CONFIG_MAX_PROPERTIES || stringBytes > DEFAULT_CONFIG_MAX_STRING_BYTES) {
+      throw new PiDaemonConfigError("config_too_large", "configuration exceeds its structural limit");
+    }
+  };
+  visit(root, 0);
+}
+
+function rejectSecretLikeKeys(value: unknown, path: string): void {
+  if (Array.isArray(value)) {
+    for (const [index, entry] of value.entries()) rejectSecretLikeKeys(entry, `${path}[${index}]`);
+    return;
+  }
+  if (value === null || typeof value !== "object") return;
+  for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+    if (/^(token|secret|password|api[-_]?key|bearer)$/i.test(key)) {
+      throw new PiDaemonConfigError(
+        "config_secret_value_forbidden",
+        `${path} must not contain literal secret-bearing fields`,
+      );
+    }
+    rejectSecretLikeKeys(entry, `${path}.${key}`);
+  }
+}
+
+function expandPath(value: string, homeDirectory: string, relativeTo: string): string {
+  const expanded = value === "~" ? homeDirectory : value.startsWith("~/") ? join(homeDirectory, value.slice(2)) : value;
+  return resolve(isAbsolute(expanded) ? expanded : join(relativeTo, expanded));
+}
+
+function positiveInteger(value: number, name: string): number {
+  if (!Number.isSafeInteger(value) || value <= 0) throw new Error(`${name} must be a positive integer`);
+  return value;
+}
+
+function isNodeError(error: unknown): error is NodeJS.ErrnoException {
+  return error instanceof Error && "code" in error;
+}

@@ -29,8 +29,69 @@ pi-daemon serve \
   --allow-root "$HOME/work"
 ```
 
-To enable the additive authenticated JSON listener, either let the daemon
-create its stable default bearer file or configure exactly one external source.
+### Instance YAML configuration
+
+Flag-only startup remains supported. The equivalent bounded YAML convention is:
+
+```text
+~/.config/pi/daemon/<instance>/config.yaml
+```
+
+`--config PATH` selects a file first, then `PI_DAEMON_CONFIG`; otherwise the
+validated `--instance` / `PI_DAEMON_INSTANCE` / `default` name selects the path
+above. A missing implicit default file preserves flag-only behavior, while a
+missing explicitly selected file is an error. Individual CLI options override
+YAML fields.
+
+```yaml
+instance: work
+stateDir: ~/.local/state/pi-daemon/work
+socketPath: ~/.local/state/pi-daemon/work/run/pi-daemon.sock
+agentDir: ~/.pi/agent
+allowedRoots:
+  - ~/work
+sessionStorage:
+  mode: pi-session-root
+limits:
+  maxSessions: 32
+  maxConcurrentTurns: 4
+  idleSessionTtlMs: 1800000
+api:
+  enabled: true
+  bind: 127.0.0.1
+  port: 17463
+  tokenFile: ~/.config/pi/daemon/work/api-token
+web:
+  enabled: true
+  mode: embedded
+  bind: 127.0.0.1
+  port: 17464
+  tui:
+    enabled: true
+    defaultPresentation: rich
+    maxRows: 200
+    maxColumns: 320
+  ui:
+    theme: { name: nord-midnight }
+```
+
+Relative YAML paths resolve from the configuration file; `~/` resolves from the
+service home. The file is byte/depth/property bounded, rejects duplicate or
+unknown service fields and YAML alias expansion, and must resolve to a regular
+current-user/root-owned file that is not group/world writable. Home Manager
+symlinks to immutable Nix-store targets are supported. Configuration contains
+only non-secret values and secret **paths**: literal tokens, passwords, bearers,
+and API keys are rejected from the forward-compatible `web.ui` map. Runtime web
+preferences are a separate allowlisted overlay under `STATE_DIR/web`; they
+cannot change bind/auth/root/credential/resource authority. The loader validates
+and preserves `web`/`sessionStorage` now; those fields become active only as the
+corresponding Dash/ownership beads land.
+
+To enable the additive authenticated JSON listener, either set `api.enabled`
+in YAML or pass `--api-port` (optionally make enablement explicit with
+`--api-enabled true`), then let the daemon create its stable default bearer file
+or configure exactly one external source. `--api-enabled false` lets a supervisor
+or Home Manager instance explicitly override an enabling YAML file.
 Supplying bearer bytes as a CLI value is intentionally unsupported:
 
 ```console
@@ -126,6 +187,8 @@ file, environment, roots, and logs:
   imports = [ inputs.pi-daemon.homeManagerModules.default ];
 
   services.pi-daemon.instances.work = {
+    # Optional; module-managed values below remain explicit CLI overrides.
+    configFile = "${config.xdg.configHome}/pi/daemon/work/config.yaml";
     stateDir = "${config.xdg.stateHome}/pi-daemon-work";
     socketPath = "${config.xdg.runtimeDir}/pi-daemon-work.sock";
     agentDir = "${config.home.homeDirectory}/.pi-work";
@@ -155,8 +218,11 @@ launchctl print "gui/$UID/com.pi-daemon.work"
 supervisorctl status pi-daemon-work
 ```
 
-Enabled instances must use unique `stateDir`, `socketPath`, stdout/stderr logs,
-API ports, and effective token paths. Instance names are bounded
+Enabled instances must use unique explicit `configFile`, `stateDir`,
+`socketPath`, stdout/stderr logs, API ports, and effective token paths. Every
+service receives `--instance NAME`; an optional `configFile` receives
+`--config PATH`, while module-managed identity/root/path/API values remain later
+CLI overrides. Instance names are bounded
 alphanumeric/hyphen identifiers. At least one explicit workload root and an API
 port are required when those surfaces are enabled. An optional external
 `tokenFile` contributes only its path to the Nix service definition, never its
