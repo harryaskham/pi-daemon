@@ -30,6 +30,8 @@ export * from "./session-catalog.js";
 export * from "./session-inventory.js";
 export * from "./session-ownership-store.js";
 export * from "./session-ownership.js";
+export * from "./shadow-tui-attachments.js";
+export * from "./shadow-tui-host.js";
 export * from "./tickets.js";
 export * from "./transcript-projector.js";
 export * from "./virtual-terminal.js";

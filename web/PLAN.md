@@ -1322,7 +1322,7 @@ These lanes intentionally begin in parallel:
   tool rendering; depends on contract, frontend spike, and projector.
 - [x] `bd-5f9ca1` — persistent mouse-resizable splits, focus/swaps, settings and
   Vim composer; depends on SPA shell and browser server.
-- [ ] `bd-da9e31` — one injected daemon shadow-TUI runtime/grid channel; depends
+- [x] `bd-da9e31` — one injected daemon shadow-TUI runtime/grid channel; depends
   on TUI spike, contract, embedded backend, and neutral API.
 - [x] `bd-0b804d` — responsive interactive browser TUI grid and Rich/TUI toggle;
   depends on TUI/frontend spikes, contract, and SPA shell.

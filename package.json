@@ -67,6 +67,14 @@
       "types": "./dist/dashboard-tui-attachments.d.ts",
       "import": "./dist/dashboard-tui-attachments.js"
     },
+    "./shadow-tui-host": {
+      "types": "./dist/shadow-tui-host.d.ts",
+      "import": "./dist/shadow-tui-host.js"
+    },
+    "./shadow-tui-attachments": {
+      "types": "./dist/shadow-tui-attachments.d.ts",
+      "import": "./dist/shadow-tui-attachments.js"
+    },
     "./dashboard-fixtures": {
       "types": "./dist/dashboard-fixtures.d.ts",
       "import": "./dist/dashboard-fixtures.js"

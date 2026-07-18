@@ -106,6 +106,8 @@ export interface InProcessDashboardTuiChannels {
     session: SessionResource;
     controller: PiRpcController;
   }): Promise<DashboardTuiChannel>;
+  invalidate?(identity: DashboardSessionIdentity, reason?: string): void;
+  dispose?(): void;
 }
 
 export interface InProcessDashboardBackendOptions {
@@ -163,6 +165,16 @@ export class InProcessDashboardBackend implements DashboardBackend {
     );
     this.#unsubscribeMultiplexer = this.#multiplexer.subscribe((event) => {
       if (event.sessionId === undefined) return;
+      if (event.generation !== undefined) {
+        this.#tuiChannels?.invalidate?.(
+          {
+            hostInstanceId: this.#multiplexer.hostInstanceId,
+            sessionId: event.sessionId,
+            generation: event.generation,
+          },
+          event.event,
+        );
+      }
       for (const [key, hub] of this.#richHubs) {
         if (hub.identity.sessionId !== event.sessionId) continue;
         if (
@@ -339,6 +351,7 @@ export class InProcessDashboardBackend implements DashboardBackend {
     this.#unsubscribeMultiplexer();
     for (const hub of this.#richHubs.values()) hub.dispose("dashboard backend disposed");
     this.#richHubs.clear();
+    this.#tuiChannels?.dispose?.();
   }
 
   async #residentContext(

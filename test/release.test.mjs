@@ -113,7 +113,14 @@ test("clean package builds include the content-hashed Dash SPA and secure server
     readFile(join(repositoryRoot, "dist/dashboard/index.html"), "utf8"),
     readdir(join(repositoryRoot, "dist/dashboard/assets")),
   ]);
-  for (const name of ["dashboard-auth", "dashboard-backend", "dashboard-store", "dashboard-server"]) {
+  for (const name of [
+    "dashboard-auth",
+    "dashboard-backend",
+    "dashboard-store",
+    "dashboard-server",
+    "shadow-tui-attachments",
+    "shadow-tui-host",
+  ]) {
     assert.equal(manifest.exports[`./${name}`].import, `./dist/${name}.js`);
   }
   assert.match(manifest.scripts.build, /npm run web:build/);
