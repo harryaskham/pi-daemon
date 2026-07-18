@@ -21,6 +21,8 @@ import { PiSessionFactory } from "./pi-adapter.js";
 import { installProcessStdioErrorHandlers } from "./process-stdio.js";
 import { parseCommand } from "./protocol.js";
 import { RpcAttachmentManager } from "./rpc-attachments.js";
+import { importConfiguredSchedules } from "./schedule-config.js";
+import { FileScheduleStore } from "./schedule-store.js";
 import { ProtocolServer } from "./server.js";
 import {
   SessionCliUsageError,
@@ -74,6 +76,7 @@ export async function runCli(
         return await runServe(args, io, dependencies);
       case "session":
       case "ticket":
+      case "schedule":
       case "prompt":
       case "control":
       case "rpc":
@@ -367,6 +370,12 @@ async function runServe(
       ),
     ),
   });
+  const scheduleStore = new FileScheduleStore({ stateDir });
+  const scheduleImports = await importConfiguredSchedules({
+    loadedConfig,
+    store: scheduleStore,
+    resolveSession: async (sessionRef) => (await multiplexer.retainedSession(sessionRef))?.sessionId,
+  });
   const rpcAttachments = apiEnabled ? new RpcAttachmentManager(multiplexer) : undefined;
   let dashboardRuntime: EmbeddedDashboardServiceRuntime | undefined;
   let dashboardServer: DashboardServer | undefined;
@@ -453,6 +462,7 @@ async function runServe(
         multiplexer,
         authenticator: loaded.authenticator,
         tickets,
+        schedules: scheduleStore,
         ...(rpcAttachments === undefined ? {} : { rpcAttachments }),
         ...(dashboardRuntime === undefined ? {} : { dashboardApi: dashboardRuntime.neutralApi }),
         host: options.get("api-bind") ?? config.api?.bind ?? "127.0.0.1",
@@ -487,6 +497,7 @@ async function runServe(
     queuedMutationTickets: apiServer?.ticketRecovery?.queued.length ?? 0,
     indeterminateMutationTickets: apiServer?.ticketRecovery?.indeterminate.length ?? 0,
     prunedMutationTickets: apiServer?.ticketRecovery?.pruned ?? 0,
+    scheduleImports,
     api:
       apiAddress === undefined
         ? { enabled: false }
@@ -797,6 +808,7 @@ Usage:
   pi-daemon request --socket PATH --json REQUEST [--timeout-ms N]
   pi-daemon session list|show|create|update|delete [options]
   pi-daemon ticket get|wait|reconcile [options]
+  pi-daemon schedule list|status|show|create|update|delete|enable|disable [options]
   pi-daemon prompt --session REF --generation N --message TEXT [target options]
   pi-daemon control steer|follow-up|abort --session REF --generation N [options]
   pi-daemon rpc attach --session REF [pi-daemon-rpc options]
@@ -810,6 +822,7 @@ Commands:
   request  Send one low-level protocol command and print its response.
   session  Manage retained sessions with high-level JSON commands.
   ticket   Inspect, wait for, or reconcile durable tickets.
+  schedule Manage durable schedules using owner-private JSON/YAML files.
   prompt   Submit one prompt through Unix wake or authenticated Pi RPC.
   control  Steer, follow up, or abort one resident session.
   rpc      Run the stock-RPC bridge or discover its WebSocket endpoint.
@@ -823,6 +836,11 @@ High-level target options:
   --token-fd FD               Inherited bearer descriptor, or PI_DAEMON_BEARER_TOKEN
   --allow-insecure-http true  Explicitly permit non-loopback plaintext
   --timeout-ms N              Bound connect/request/poll/turn waits
+
+Schedule configuration:
+  --file PATH                 Owner-only JSON/YAML schedule definition
+  --prompt-file PATH          Owner-only prompt content (never placed in argv)
+  --revision N                Require an exact revision before mutation
 
 Create/update configuration:
   --spec-file PATH            Owner-only full SessionSpec JSON (may contain env)

@@ -1,0 +1,13 @@
+{
+  "apiVersion": "1.0",
+  "requestId": "request-schedule-status-01",
+  "hostInstanceId": "host-fixture-01",
+  "ok": true,
+  "data": {
+    "timerRuntime": false,
+    "externalTimersSupported": true,
+    "scheduleCount": 1,
+    "enabledCount": 1,
+    "nextWakeAt": "2026-07-20T07:30:00.000Z"
+  }
+}

@@ -512,7 +512,7 @@
     },
     "capabilities": {
       "type": "object",
-      "required": ["apiVersion", "transports", "rpcSubprotocols", "rpc", "acp", "isolationModes", "authentication"],
+      "required": ["apiVersion", "transports", "rpcSubprotocols", "rpc", "acp", "isolationModes", "authentication", "schedules"],
       "properties": {
         "apiVersion": { "$ref": "#/$defs/apiVersion" },
         "transports": {
@@ -533,6 +533,17 @@
           "uniqueItems": true
         },
         "authentication": { "const": "service-bearer" },
+        "schedules": {
+          "oneOf": [
+            { "$ref": "https://a.skh.am/pi-daemon/schedule.schema.json#/$defs/scheduleCapabilities" },
+            {
+              "type": "object",
+              "required": ["available"],
+              "properties": { "available": { "const": false } },
+              "additionalProperties": false
+            }
+          ]
+        },
         "dashboard": {
           "$ref": "https://a.skh.am/pi-daemon/dashboard-api.schema.json#/$defs/dashboardServiceCapabilities"
         }
@@ -550,6 +561,48 @@
             "data": { "$ref": "#/$defs/capabilities" }
           }
         }
+      ]
+    },
+    "scheduleList": {
+      "type": "object",
+      "required": ["schedules"],
+      "properties": {
+        "schedules": {
+          "type": "array",
+          "maxItems": 1024,
+          "items": { "$ref": "https://a.skh.am/pi-daemon/schedule.schema.json#/$defs/scheduleResource" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "scheduleStatus": {
+      "type": "object",
+      "required": ["timerRuntime", "externalTimersSupported", "scheduleCount", "enabledCount"],
+      "properties": {
+        "timerRuntime": { "const": false },
+        "externalTimersSupported": { "const": true },
+        "scheduleCount": { "type": "integer", "minimum": 0 },
+        "enabledCount": { "type": "integer", "minimum": 0 },
+        "nextWakeAt": { "$ref": "#/$defs/timestamp" }
+      },
+      "additionalProperties": false
+    },
+    "scheduleResourceEnvelope": {
+      "allOf": [
+        { "$ref": "#/$defs/apiEnvelopeBase" },
+        { "type": "object", "required": ["data"], "properties": { "ok": { "const": true }, "data": { "$ref": "https://a.skh.am/pi-daemon/schedule.schema.json#/$defs/scheduleResource" } } }
+      ]
+    },
+    "scheduleListEnvelope": {
+      "allOf": [
+        { "$ref": "#/$defs/apiEnvelopeBase" },
+        { "type": "object", "required": ["data"], "properties": { "ok": { "const": true }, "data": { "$ref": "#/$defs/scheduleList" } } }
+      ]
+    },
+    "scheduleStatusEnvelope": {
+      "allOf": [
+        { "$ref": "#/$defs/apiEnvelopeBase" },
+        { "type": "object", "required": ["data"], "properties": { "ok": { "const": true }, "data": { "$ref": "#/$defs/scheduleStatus" } } }
       ]
     },
     "dashboardServiceCapabilitiesEnvelope": {

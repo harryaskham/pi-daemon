@@ -223,7 +223,7 @@ function lastTrigger(value: unknown): ScheduleLastTrigger {
   return result;
 }
 
-function prompt(value: unknown, limits: ScheduleLimits): string { const result = text(value, "prompt", limits.maxPromptBytes); if (Buffer.byteLength(result, "utf8") > limits.maxPromptBytes) throw new ScheduleValidationError("schedule_too_large", "prompt exceeds maxPromptBytes"); return result; }
+function prompt(value: unknown, limits: ScheduleLimits): string { if (typeof value !== "string" || value.length < 1 || value.includes("\0")) invalid("prompt must be a non-empty bounded string"); if (Buffer.byteLength(value, "utf8") > limits.maxPromptBytes) throw new ScheduleValidationError("schedule_too_large", "prompt exceeds maxPromptBytes"); return value; }
 function record(value: unknown): Record<string, unknown> { if (value === null || typeof value !== "object" || Array.isArray(value)) invalid("schedule value must be an object"); return value as Record<string, unknown>; }
 function exactKeys(object: Record<string, unknown>, allowed: string[]): void { const set = new Set(allowed); if (Object.keys(object).some((key) => !set.has(key))) invalid("schedule contains an unknown field"); }
 function identifier(value: unknown, name: string, max = 128): string { const result = text(value, name, max); if (!/^[A-Za-z0-9][A-Za-z0-9._:-]*$/u.test(result)) invalid(`${name} is not a valid identifier`); return result; }

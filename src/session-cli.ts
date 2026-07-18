@@ -11,6 +11,8 @@ import {
   type TicketResource,
 } from "./session-api.js";
 import { SessionApiClient } from "./session-client.js";
+import type { ScheduleResource } from "./schedule-contract.js";
+import { parseDocument } from "yaml";
 
 export interface SessionCliIo {
   stdout: (text: string) => void;
@@ -53,6 +55,8 @@ export async function runHighLevelCli(
       return runSession(args, io, dependencies);
     case "ticket":
       return runTicket(args, io, dependencies);
+    case "schedule":
+      return runSchedule(args, io, dependencies);
     case "prompt":
       return runPrompt(args, io, dependencies);
     case "control":
@@ -260,6 +264,99 @@ async function runSession(
     default:
       throw new SessionCliUsageError("session action must be list, show, create, update, or delete");
   }
+}
+
+async function runSchedule(
+  args: string[],
+  io: SessionCliIo,
+  dependencies: SessionCliDependencies,
+): Promise<number> {
+  const [action, ...rest] = args;
+  const options = parseOptions(rest, [...COMMON_OPTIONS, "schedule", "session", "revision", "file", "prompt-file", "idempotency-key"]);
+  const target = apiTarget(options, dependencies);
+  if (action === "list") {
+    print(io, (await target.client.listSchedules(options.get("session"))).data);
+    return 0;
+  }
+  if (action === "status") {
+    print(io, (await target.client.scheduleStatus()).data);
+    return 0;
+  }
+  const scheduleId = required(options, "schedule");
+  if (action === "show") {
+    print(io, (await target.client.getSchedule(scheduleId)).data);
+    return 0;
+  }
+  const key = options.get("idempotency-key") ?? randomUUID();
+  if (action === "create") {
+    const definition = await scheduleDefinitionFile(options);
+    print(io, (await target.client.createSchedule(scheduleId, definition, key)).data);
+    return 0;
+  }
+  const current = await checkedSchedule(target.client, scheduleId, options);
+  if (action === "update") {
+    const definition = await scheduleDefinitionFile(options);
+    print(io, (await target.client.updateSchedule(scheduleId, definition, current.etag, key)).data);
+    return 0;
+  }
+  if (action === "delete") {
+    print(io, (await target.client.deleteSchedule(scheduleId, current.etag, key)).data);
+    return 0;
+  }
+  if (action === "enable" || action === "disable") {
+    print(io, (await target.client.setScheduleEnabled(scheduleId, action === "enable", current.etag, key)).data);
+    return 0;
+  }
+  throw new SessionCliUsageError("schedule action must be list, status, show, create, update, delete, enable, or disable");
+}
+
+async function checkedSchedule(client: SessionApiClient, scheduleId: string, options: OptionMap): Promise<{ resource: ScheduleResource; etag: string }> {
+  const result = await client.getSchedule(scheduleId);
+  const expected = optionalInteger(options, "revision", 0);
+  if (expected !== undefined && result.data.revision !== expected) throw new SessionCliUsageError("schedule revision changed");
+  if (typeof result.headers.etag !== "string") throw new Error("schedule API omitted ETag");
+  return { resource: result.data, etag: result.headers.etag };
+}
+
+async function scheduleDefinitionFile(options: OptionMap): Promise<Record<string, unknown>> {
+  const path = resolve(required(options, "file"));
+  const value = await readOwnerOnlyDataFile(path, "--file", 256 * 1024);
+  if (!isRecord(value)) throw new SessionCliUsageError("--file must contain one schedule object");
+  const definition = { ...value };
+  if (definition.promptFile !== undefined) {
+    if (typeof definition.promptFile !== "string") throw new SessionCliUsageError("promptFile must be a path");
+    if (definition.prompt !== undefined) throw new SessionCliUsageError("use only prompt or promptFile");
+    definition.prompt = await readOwnerOnlyText(resolve(path, "..", definition.promptFile), "promptFile", 65_536);
+    delete definition.promptFile;
+  }
+  const explicitPrompt = options.get("prompt-file");
+  if (explicitPrompt !== undefined) {
+    if (definition.prompt !== undefined) throw new SessionCliUsageError("--prompt-file conflicts with prompt in --file");
+    definition.prompt = await readOwnerOnlyText(resolve(explicitPrompt), "--prompt-file", 65_536);
+  }
+  return definition;
+}
+
+async function readOwnerOnlyDataFile(pathValue: string, label: string, maxBytes: number): Promise<unknown> {
+  const path = resolve(pathValue);
+  const text = await readOwnerOnlyText(path, label, maxBytes);
+  if (/\.ya?ml$/iu.test(path)) {
+    const document = parseDocument(text, { prettyErrors: false, strict: true, uniqueKeys: true });
+    if (document.errors.length > 0) throw new SessionCliUsageError(`${label} must contain valid YAML`);
+    try { return document.toJS({ maxAliasCount: 0 }) as unknown; } catch { throw new SessionCliUsageError(`${label} YAML aliases are not allowed`); }
+  }
+  return parseJson(text, label);
+}
+
+async function readOwnerOnlyText(path: string, label: string, maxBytes: number): Promise<string> {
+  const info = await lstat(path);
+  const getuid = process.getuid;
+  if (info.isSymbolicLink() || !info.isFile() || (getuid !== undefined && info.uid !== getuid()) || (info.mode & 0o077) !== 0 || info.size < 1 || info.size > maxBytes) {
+    throw new SessionCliUsageError(`${label} must be an owner-only bounded regular non-symlink file`);
+  }
+  const text = await readFile(path, "utf8");
+  if (Buffer.byteLength(text, "utf8") > maxBytes) throw new SessionCliUsageError(`${label} exceeds byte limit`);
+  return text;
 }
 
 async function runTicket(

@@ -84,6 +84,29 @@
       }
     },
     "isolationModes": ["unisolated"],
-    "authentication": "service-bearer"
+    "authentication": "service-bearer",
+    "schedules": {
+      "contractVersion": "1.0",
+      "persistence": true,
+      "timerRuntime": false,
+      "cronSyntax": "posix-five-field",
+      "timezoneDatabase": "runtime-iana",
+      "optimisticConcurrency": "expected-revision",
+      "overlapPolicies": ["skip", "queue-one", "reject"],
+      "missedWakePolicies": ["skip", "run-once", "bounded-catch-up"],
+      "promptHandling": "owner-private-sensitive-content",
+      "terminalTicketSummary": "content-free",
+      "clock": "wall-clock-utc-instants",
+      "limits": {
+        "maxSchedules": 1024,
+        "maxSchedulesPerSession": 32,
+        "maxPromptBytes": 65536,
+        "maxRecordBytes": 131072,
+        "maxRecoveryBytes": 134217728,
+        "maxCatchUpRuns": 24,
+        "maxJitterMs": 86400000,
+        "maxAdmissionDelayMs": 86400000
+      }
+    }
   }
 }

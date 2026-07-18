@@ -30,6 +30,13 @@ export interface PiDaemonLimitConfig {
   maxOutboundBytesPerConnection?: number;
 }
 
+export interface PiDaemonScheduleConfig {
+  /** Non-secret defaults merged into each imported schedule definition. */
+  defaults?: { [key: string]: ConfigJson };
+  /** Schedule JSON/YAML files, resolved relative to the daemon config. */
+  imports?: string[];
+}
+
 export interface PiDaemonApiConfig {
   enabled?: boolean;
   bind?: string;
@@ -110,6 +117,7 @@ export interface PiDaemonConfig {
   sessionStorage?: { mode?: SessionStorageMode };
   limits?: PiDaemonLimitConfig;
   api?: PiDaemonApiConfig;
+  schedules?: PiDaemonScheduleConfig;
   web?: PiDaemonWebConfig;
 }
 
@@ -260,6 +268,7 @@ function parseConfig(value: unknown): PiDaemonConfig {
     "sessionStorage",
     "limits",
     "api",
+    "schedules",
     "web",
   ]);
   assertTreeBounds(root);
@@ -280,6 +289,7 @@ function parseConfig(value: unknown): PiDaemonConfig {
   }
   if (root.limits !== undefined) result.limits = parseLimits(root.limits);
   if (root.api !== undefined) result.api = parseApi(root.api);
+  if (root.schedules !== undefined) result.schedules = parseSchedules(root.schedules);
   if (root.web !== undefined) result.web = parseWeb(root.web);
   return result;
 }
@@ -307,6 +317,20 @@ function parseLimits(value: unknown): PiDaemonLimitConfig {
     const number = optionalInteger(object, key, minimum);
     if (number !== undefined) result[key] = number;
   }
+  return result;
+}
+
+function parseSchedules(value: unknown): PiDaemonScheduleConfig {
+  const object = objectValue(value, "schedules");
+  assertKnownKeys(object, ["defaults", "imports"]);
+  const result: PiDaemonScheduleConfig = {};
+  if (object.defaults !== undefined) {
+    const defaults = objectValue(object.defaults, "schedules.defaults");
+    assertKnownKeys(defaults, ["enabled", "cron", "timezone", "execution", "overlapPolicy", "missedWakePolicy", "jitterMs", "maxAdmissionDelayMs"]);
+    result.defaults = defaults as { [key: string]: ConfigJson };
+  }
+  const imports = optionalStringArray(object, "imports", 256);
+  if (imports !== undefined) result.imports = imports;
   return result;
 }
 

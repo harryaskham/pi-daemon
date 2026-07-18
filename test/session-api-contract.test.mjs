@@ -18,12 +18,14 @@ const readJson = async (path) =>
 const fixture = (name) => readJson(`fixtures/session-api/${name}`);
 
 async function contractValidator() {
-  const [schema, dashboardSchema] = await Promise.all([
+  const [schema, dashboardSchema, scheduleSchema] = await Promise.all([
     readJson("session-api.schema.json"),
     readJson("dashboard-api.schema.json"),
+    readJson("schedule.schema.json"),
   ]);
   const ajv = new Ajv2020({ allErrors: true, strict: true });
   ajv.addSchema(dashboardSchema);
+  ajv.addSchema(scheduleSchema);
   ajv.addSchema(schema);
   const validate = (definition, value) => {
     const compiled = ajv.getSchema(`${schema.$id}#/$defs/${definition}`);
@@ -47,6 +49,8 @@ test("session API fixtures validate against their published definitions", async 
     ["list.response.json", "sessionListEnvelope"],
     ["ticket.response.json", "ticketEnvelope"],
     ["capabilities.response.json", "capabilitiesEnvelope"],
+    ["schedule.list.response.json", "scheduleListEnvelope"],
+    ["schedule.status.response.json", "scheduleStatusEnvelope"],
     ["rpc.raw-command.json", "piRpcCommand"],
     ["rpc.raw-event.json", "piRpcEvent"],
     ["rpc.command.frame.json", "rpcCommandFrame"],

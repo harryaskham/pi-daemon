@@ -308,6 +308,83 @@
         "x-upstream-protocol": "Agent Client Protocol JSON-RPC 2.0"
       }
     },
+    "/schedule": {
+      "get": {
+        "operationId": "listSchedules",
+        "summary": "List durable schedules, optionally resolved by exact session reference",
+        "parameters": [
+          { "$ref": "#/components/parameters/RequestId" },
+          { "name": "session", "in": "query", "schema": { "type": "string", "maxLength": 256 } }
+        ],
+        "responses": {
+          "200": { "description": "Schedule list", "content": { "application/json": { "schema": { "$ref": "./session-api.schema.json#/$defs/scheduleListEnvelope" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/schedule/status": {
+      "get": {
+        "operationId": "getScheduleStatus",
+        "summary": "Get content-free schedule status and next wake",
+        "responses": {
+          "200": { "description": "Schedule status", "content": { "application/json": { "schema": { "$ref": "./session-api.schema.json#/$defs/scheduleStatusEnvelope" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/schedule/{scheduleId}": {
+      "parameters": [
+        { "name": "scheduleId", "in": "path", "required": true, "schema": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$" } },
+        { "$ref": "#/components/parameters/RequestId" }
+      ],
+      "get": {
+        "operationId": "getSchedule",
+        "responses": {
+          "200": { "description": "Schedule and ETag", "content": { "application/json": { "schema": { "$ref": "./session-api.schema.json#/$defs/scheduleResourceEnvelope" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
+      "post": {
+        "operationId": "createSchedule",
+        "parameters": [{ "$ref": "#/components/parameters/IdempotencyKey" }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object" } } } },
+        "responses": { "201": { "description": "Schedule created" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "409": { "$ref": "#/components/responses/Conflict" } }
+      },
+      "put": {
+        "operationId": "updateSchedule",
+        "parameters": [{ "$ref": "#/components/parameters/IdempotencyKey" }, { "$ref": "#/components/parameters/IfMatch" }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object" } } } },
+        "responses": { "200": { "description": "Schedule updated" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "412": { "$ref": "#/components/responses/PreconditionFailed" } }
+      },
+      "delete": {
+        "operationId": "deleteSchedule",
+        "parameters": [{ "$ref": "#/components/parameters/IdempotencyKey" }, { "$ref": "#/components/parameters/IfMatch" }],
+        "responses": { "200": { "description": "Schedule deleted" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "412": { "$ref": "#/components/responses/PreconditionFailed" } }
+      }
+    },
+    "/schedule/{scheduleId}/enable": {
+      "post": {
+        "operationId": "enableSchedule",
+        "parameters": [
+          { "name": "scheduleId", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "$ref": "#/components/parameters/IdempotencyKey" },
+          { "$ref": "#/components/parameters/IfMatch" }
+        ],
+        "responses": { "200": { "description": "Schedule enabled" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "412": { "$ref": "#/components/responses/PreconditionFailed" } }
+      }
+    },
+    "/schedule/{scheduleId}/disable": {
+      "post": {
+        "operationId": "disableSchedule",
+        "parameters": [
+          { "name": "scheduleId", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "$ref": "#/components/parameters/IdempotencyKey" },
+          { "$ref": "#/components/parameters/IfMatch" }
+        ],
+        "responses": { "200": { "description": "Schedule disabled" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "412": { "$ref": "#/components/responses/PreconditionFailed" } }
+      }
+    },
     "/dashboard/capabilities": {
       "get": {
         "operationId": "getDashboardServiceCapabilities",

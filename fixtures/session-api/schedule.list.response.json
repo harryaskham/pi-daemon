@@ -1,0 +1,38 @@
+{
+  "apiVersion": "1.0",
+  "requestId": "request-schedule-list-01",
+  "hostInstanceId": "host-fixture-01",
+  "ok": true,
+  "data": {
+    "schedules": [
+      {
+        "contractVersion": "1.0",
+        "scheduleId": "daily-review",
+        "sessionRef": "session-01",
+        "revision": 3,
+        "enabled": true,
+        "cron": "30 8 * * 1-5",
+        "timezone": "Europe/London",
+        "prompt": "Review outstanding work and report a concise plan.",
+        "execution": { "thinkingLevel": "medium" },
+        "overlapPolicy": "skip",
+        "missedWakePolicy": { "mode": "run-once" },
+        "jitterMs": 30000,
+        "maxAdmissionDelayMs": 300000,
+        "nextTriggerAt": "2026-07-20T07:30:00.000Z",
+        "lastTrigger": {
+          "scheduledFor": "2026-07-18T08:30:00.000Z",
+          "observedAt": "2026-07-18T08:30:01.000Z",
+          "disposition": "admitted",
+          "terminalTicket": {
+            "ticketId": "ticket-schedule-01",
+            "state": "completed",
+            "updatedAt": "2026-07-18T08:31:00.000Z"
+          }
+        },
+        "createdAt": "2026-07-01T09:00:00.000Z",
+        "updatedAt": "2026-07-18T08:31:00.000Z"
+      }
+    ]
+  }
+}

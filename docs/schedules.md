@@ -99,5 +99,55 @@ quarantines malformed or unsupported files with a `.corrupt-...` suffix.
 Recovery does not submit, catch up, or start timers. Exceeding global or
 per-session capacity fails closed rather than partially scheduling resources.
 
+## Authenticated HTTP and CLI
+
+When the JSON API is enabled, every schedule route authenticates the service
+bearer before parsing the route or revealing whether a schedule/session exists:
+
+- `GET /v1/schedule[?session=ID-OR-UNIQUE-NAME]` and
+  `GET /v1/schedule/{scheduleId}`;
+- `POST /v1/schedule/{scheduleId}` to create;
+- `PUT` and `DELETE /v1/schedule/{scheduleId}` to mutate;
+- `POST /v1/schedule/{scheduleId}/enable|disable`;
+- `GET /v1/schedule/status` for content-free counts, timer capability, and the
+  earliest authoritative `nextWakeAt` when present.
+
+Mutations require `Idempotency-Key`. Existing-resource mutations also require
+the exact opaque `ETag` returned by GET; a stale value receives 412. Session
+references resolve through the retained catalog to one immutable session ID,
+and missing/ambiguous references fail rather than creating an orphan. The timer
+runtime capability remains explicit, so external systemd/launchd timers may
+coexist without the daemon claiming ownership of their triggers.
+
+The high-level commands are `pi-daemon schedule
+list|status|show|create|update|delete|enable|disable`. Create/update consume an
+owner-only `--file` (JSON or YAML); prompt text may be supplied by an owner-only
+`promptFile` reference or `--prompt-file`, so it is not exposed in process argv.
+`--revision` adds an exact client-side revision check. CLI errors and status do
+not echo prompt content.
+
+Daemon YAML may declare non-secret defaults and import references:
+
+```yaml
+schedules:
+  defaults:
+    enabled: true
+    timezone: Europe/London
+    overlapPolicy: skip
+    missedWakePolicy: { mode: skip }
+    jitterMs: 0
+    maxAdmissionDelayMs: 300000
+  imports:
+    - schedules/daily.yaml
+```
+
+An import is one schedule object, an array, or `{ schedules: [...] }`. Relative
+paths are resolved from the daemon config; each schedule may use `promptFile`
+relative to its import. Prompt files must be owner-only regular non-symlink
+files. Imports reconcile by immutable schedule/session identity and optimistic
+revision during startup; they do not start timers.
+
+## Negotiation
+
 Default negotiated limits are published in `scheduleCapabilities()`. Servers
 may lower them, and clients must use the effective capability values.

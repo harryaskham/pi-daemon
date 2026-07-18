@@ -18,6 +18,7 @@ import type {
   TranscriptPage,
   TranscriptQuery,
 } from "./dashboard-contract.js";
+import type { ScheduleResource } from "./schedule-contract.js";
 import {
   DASHBOARD_TUI_SUBPROTOCOL,
   type ApiErrorBody,
@@ -167,6 +168,35 @@ export class SessionApiClient {
 
   getTicket(ticketId: string): Promise<SessionApiResult<TicketResource>> {
     return this.request("GET", `/v1/ticket/${encodeURIComponent(ticketReference(ticketId))}`);
+  }
+
+  listSchedules(sessionRef?: string): Promise<SessionApiResult<{ schedules: ScheduleResource[] }>> {
+    const query = sessionRef === undefined ? "" : `?session=${encodeURIComponent(sessionReference(sessionRef))}`;
+    return this.request("GET", `/v1/schedule${query}`);
+  }
+
+  getSchedule(scheduleId: string): Promise<SessionApiResult<ScheduleResource>> {
+    return this.request("GET", `/v1/schedule/${encodeURIComponent(scheduleReference(scheduleId))}`);
+  }
+
+  scheduleStatus(): Promise<SessionApiResult<{ timerRuntime: boolean; externalTimersSupported: boolean; scheduleCount: number; enabledCount: number; nextWakeAt?: string }>> {
+    return this.request("GET", "/v1/schedule/status");
+  }
+
+  createSchedule(scheduleId: string, definition: unknown, idempotencyKey: string): Promise<SessionApiResult<ScheduleResource>> {
+    return this.request("POST", `/v1/schedule/${encodeURIComponent(scheduleReference(scheduleId))}`, { body: definition, headers: { "Idempotency-Key": idempotencyKey } });
+  }
+
+  updateSchedule(scheduleId: string, definition: unknown, etag: string, idempotencyKey: string): Promise<SessionApiResult<ScheduleResource>> {
+    return this.request("PUT", `/v1/schedule/${encodeURIComponent(scheduleReference(scheduleId))}`, { body: definition, headers: { "If-Match": etag, "Idempotency-Key": idempotencyKey } });
+  }
+
+  deleteSchedule(scheduleId: string, etag: string, idempotencyKey: string): Promise<SessionApiResult<{ deleted: true }>> {
+    return this.request("DELETE", `/v1/schedule/${encodeURIComponent(scheduleReference(scheduleId))}`, { headers: { "If-Match": etag, "Idempotency-Key": idempotencyKey } });
+  }
+
+  setScheduleEnabled(scheduleId: string, enabled: boolean, etag: string, idempotencyKey: string): Promise<SessionApiResult<ScheduleResource>> {
+    return this.request("POST", `/v1/schedule/${encodeURIComponent(scheduleReference(scheduleId))}/${enabled ? "enable" : "disable"}`, { headers: { "If-Match": etag, "Idempotency-Key": idempotencyKey } });
   }
 
   async waitTicket(
@@ -554,6 +584,11 @@ function sessionReference(value: string): string {
 
 function ticketReference(value: string): string {
   if (value.length < 1 || value.length > 256) throw new Error("invalid ticket reference");
+  return value;
+}
+
+function scheduleReference(value: string): string {
+  if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u.test(value)) throw new Error("invalid schedule reference");
   return value;
 }
 

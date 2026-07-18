@@ -187,6 +187,7 @@ supervisord on nix-on-droid; see [Operations](docs/operations.md#home-manager-se
 - [`docs/dashboard-service-api.md`](docs/dashboard-service-api.md) — neutral service-bearer Dash API and TUI negotiation for remote backends
 - [`docs/shadow-tui.md`](docs/shadow-tui.md) — in-process virtual terminal, control policy, performance proof, and Pi view seam
 - [`docs/session-cli.md`](docs/session-cli.md) — high-level session CRUD, tickets, prompt/control, and endpoint discovery
+- [`docs/schedules.md`](docs/schedules.md) — authenticated schedule CRUD/status, ETags, safe file-backed CLI/config imports, and external-timer coexistence
 - [`session-api.schema.json`](session-api.schema.json) / [`session-api.openapi.json`](session-api.openapi.json) — machine-readable session API
 - [`SECURITY.md`](SECURITY.md) — trust boundary and vulnerability reporting
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — development workflow

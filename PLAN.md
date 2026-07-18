@@ -652,6 +652,8 @@ implementation order. This list is a human-readable crosswalk.
   - [x] `bd-6d96bb` — v1 schedule resource/schema/fixtures, bounded owner-private
     persistence recovery, optimistic revisions, clock/DST and secrecy contract;
     timer admission and execution remain deferred.
+  - [x] `bd-72aac0` — bearer-authenticated schedule CRUD/status/capabilities,
+    ETag/idempotency CLI, and owner-private YAML/import prompt references.
 
 All standalone delivery and acceptance blockers are landed. Cutting the first
 release tag is an explicit operator action under `docs/release.md`; the remaining

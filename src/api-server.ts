@@ -56,6 +56,16 @@ import {
 } from "./session-config.js";
 import { catalogRecordToSessionResource } from "./session-catalog.js";
 import {
+  scheduleCapabilities,
+  ScheduleValidationError,
+  type ScheduleResource,
+} from "./schedule-contract.js";
+import {
+  FileScheduleStore,
+  ScheduleStoreError,
+  type ScheduleDefinition,
+} from "./schedule-store.js";
+import {
   RpcAttachmentError,
   RpcAttachmentManager,
   type RpcAttachmentLimits,
@@ -100,6 +110,8 @@ export interface ApiServerOptions {
   acpAdapters?: AcpAdapterManager;
   dashboardApi?: DashboardNeutralApi;
   dashboardTuiAttachments?: DashboardTuiAttachmentManager;
+  /** Durable neutral schedules. Timer execution remains an external/additive concern. */
+  schedules?: FileScheduleStore;
 }
 
 export interface ApiServerAddress {
@@ -149,6 +161,8 @@ export class ApiServer {
   readonly #acpAdapters: AcpAdapterManager;
   readonly #dashboardApi: DashboardNeutralApi | undefined;
   readonly #dashboardTuiAttachments: DashboardTuiAttachmentManager | undefined;
+  readonly #schedules: FileScheduleStore | undefined;
+  readonly #scheduleMutations = new Map<string, { fingerprint: string; status: number; data?: ScheduleResource }>();
   readonly #server: Server;
   readonly #upgradeSockets = new Set<Duplex>();
   #started = false;
@@ -172,6 +186,7 @@ export class ApiServer {
       options.acpAdapters ?? new AcpAdapterManager(this.#multiplexer, options.acpLimits);
     this.#dashboardApi = options.dashboardApi;
     this.#dashboardTuiAttachments = options.dashboardTuiAttachments;
+    this.#schedules = options.schedules;
     this.limits = {
       maxConnections: positiveInteger(
         options.limits?.maxConnections ?? DEFAULT_API_SERVER_LIMITS.maxConnections,
@@ -306,6 +321,7 @@ export class ApiServer {
             acp: this.#acpAdapters.capabilities,
             isolationModes: ["unisolated"],
             authentication: "service-bearer",
+            schedules: this.#schedules === undefined ? { available: false } : scheduleCapabilities(this.#schedules.limits),
             ...(this.#dashboardApi === undefined
               ? {}
               : { dashboard: await this.#dashboardApi.capabilities() }),
@@ -318,6 +334,11 @@ export class ApiServer {
         this.#dashboardApi !== undefined &&
         (await this.#handleDashboardRequest(request, response, url, requestId))
       ) {
+        return;
+      }
+
+      if (url.pathname === "/v1/schedule" || url.pathname === "/v1/schedule/status" || url.pathname.startsWith("/v1/schedule/")) {
+        await this.#handleScheduleRequest(request, response, url, requestId);
         return;
       }
 
@@ -523,6 +544,94 @@ export class ApiServer {
         errorEnvelope(requestId, this.#multiplexer.hostInstanceId, normalized.body),
       );
     }
+  }
+
+  async #handleScheduleRequest(
+    request: IncomingMessage,
+    response: ServerResponse,
+    url: URL,
+    requestId: string,
+  ): Promise<void> {
+    const store = this.#schedules;
+    if (store === undefined) throw new ApiRequestError(501, "schedules_unavailable", "schedule persistence is not configured");
+    if (request.method === "GET" && url.pathname === "/v1/schedule/status") {
+      const schedules = await store.list();
+      const nextWakeAt = schedules
+        .filter((value) => value.enabled && value.nextTriggerAt !== undefined)
+        .map((value) => value.nextTriggerAt!)
+        .sort()[0];
+      sendJson(response, 200, { apiVersion: SESSION_API_VERSION, requestId, hostInstanceId: this.#multiplexer.hostInstanceId, ok: true, data: { timerRuntime: false, externalTimersSupported: true, scheduleCount: schedules.length, enabledCount: schedules.filter((value) => value.enabled).length, ...(nextWakeAt === undefined ? {} : { nextWakeAt }) } });
+      return;
+    }
+    if (request.method === "GET" && url.pathname === "/v1/schedule") {
+      const sessionRef = url.searchParams.get("session");
+      if (sessionRef !== null && (sessionRef.length === 0 || sessionRef.length > 256)) throw new ApiRequestError(400, "invalid_session_ref", "session reference is invalid");
+      const canonical = sessionRef === null ? undefined : await this.#resolveScheduleSession(sessionRef);
+      const schedules = await store.list(canonical);
+      sendJson(response, 200, { apiVersion: SESSION_API_VERSION, requestId, hostInstanceId: this.#multiplexer.hostInstanceId, ok: true, data: { schedules } });
+      return;
+    }
+    const parsed = schedulePath(url.pathname);
+    if (parsed === undefined) throw new ApiRequestError(404, "route_not_found", "API route not found");
+    const current = await store.get(parsed.scheduleId);
+    if (request.method === "GET" && parsed.action === undefined) {
+      if (current === undefined) throw new ApiRequestError(404, "schedule_not_found", "schedule not found");
+      sendJson(response, 200, { apiVersion: SESSION_API_VERSION, requestId, hostInstanceId: this.#multiplexer.hostInstanceId, ok: true, data: current }, { ETag: scheduleEtag(current.scheduleId, current.revision) });
+      return;
+    }
+    if (request.method !== "POST" && request.method !== "PUT" && request.method !== "DELETE") throw new ApiRequestError(405, "method_not_allowed", "method is not allowed");
+    const key = requiredIdempotencyKey(request.headers["idempotency-key"]);
+    const body = request.method === "DELETE" || parsed.action !== undefined ? undefined : await readBoundedJson(request, Math.min(this.limits.maxBodyBytes, store.limits.maxRecordBytes));
+    const fingerprint = createHash("sha256").update(JSON.stringify([request.method, url.pathname, body])).digest("hex");
+    const idempotencyId = `${request.method}:${url.pathname}:${key}`;
+    const replay = this.#scheduleMutations.get(idempotencyId);
+    if (replay !== undefined) {
+      if (replay.fingerprint !== fingerprint) throw new ApiRequestError(409, "idempotency_conflict", "idempotency key was already used with different schedule content");
+      sendJson(response, replay.status, { apiVersion: SESSION_API_VERSION, requestId, hostInstanceId: this.#multiplexer.hostInstanceId, ok: true, data: replay.data ?? { deleted: true } }, replay.data === undefined ? {} : { ETag: scheduleEtag(replay.data.scheduleId, replay.data.revision) });
+      return;
+    }
+    let result: ScheduleResource | undefined;
+    let status = 200;
+    if (request.method === "POST" && parsed.action === undefined) {
+      if (current !== undefined) throw new ApiRequestError(409, "schedule_exists", "schedule already exists");
+      const definition = await this.#scheduleDefinition(body, parsed.scheduleId);
+      result = await store.create(definition);
+      status = 201;
+    } else {
+      if (current === undefined) throw new ApiRequestError(404, "schedule_not_found", "schedule not found");
+      assertScheduleIfMatch(request.headers["if-match"], current);
+      if (request.method === "DELETE" && parsed.action === undefined) {
+        await store.delete(current.scheduleId, current.revision);
+      } else {
+        const definition = parsed.action === undefined
+          ? await this.#scheduleDefinition(body, current.scheduleId, current.sessionRef, current.revision)
+          : { ...scheduleDefinitionFromResource(current), enabled: parsed.action === "enable" };
+        result = await store.update(current.scheduleId, current.revision, definition);
+      }
+    }
+    if (this.#scheduleMutations.size >= 1024) this.#scheduleMutations.delete(this.#scheduleMutations.keys().next().value!);
+    this.#scheduleMutations.set(idempotencyId, { fingerprint, status, ...(result === undefined ? {} : { data: result }) });
+    sendJson(response, status, { apiVersion: SESSION_API_VERSION, requestId, hostInstanceId: this.#multiplexer.hostInstanceId, ok: true, data: result ?? { deleted: true } }, result === undefined ? {} : { ETag: scheduleEtag(result.scheduleId, result.revision) });
+  }
+
+  async #scheduleDefinition(value: unknown, scheduleId: string, immutableSession?: string, currentRevision?: number): Promise<ScheduleDefinition> {
+    const input = apiRecord(value, "schedule definition");
+    const suppliedId = input.scheduleId === undefined ? scheduleId : apiString(input.scheduleId, "scheduleId", 128);
+    if (suppliedId !== scheduleId) throw new ApiRequestError(409, "schedule_identity_conflict", "scheduleId is immutable and must match the route");
+    const requestedSession = apiString(input.sessionRef, "sessionRef", 256);
+    const sessionRef = await this.#resolveScheduleSession(requestedSession);
+    if (immutableSession !== undefined && sessionRef !== immutableSession) throw new ApiRequestError(409, "schedule_identity_conflict", "sessionRef is immutable");
+    if (input.expectedRevision !== undefined && (!Number.isSafeInteger(input.expectedRevision) || input.expectedRevision !== currentRevision)) {
+      throw new ApiRequestError(412, "schedule_precondition_failed", "expectedRevision does not match the current schedule revision");
+    }
+    const { contractVersion: _contractVersion, revision: _revision, createdAt: _createdAt, updatedAt: _updatedAt, expectedRevision: _expectedRevision, ...definition } = input;
+    return { ...definition, scheduleId, sessionRef } as ScheduleDefinition;
+  }
+
+  async #resolveScheduleSession(sessionRef: string): Promise<string> {
+    const record = await this.#multiplexer.retainedSession(sessionRef);
+    if (record === undefined) throw new ApiRequestError(404, "session_not_found", "session not found");
+    return record.sessionId;
   }
 
   async #handleDashboardRequest(
@@ -1687,6 +1796,33 @@ function sessionEtag(sessionId: string, revision: number): string {
   return `"${Buffer.from(sessionId, "utf8").toString("base64url")}:${revision}"`;
 }
 
+function scheduleEtag(scheduleId: string, revision: number): string {
+  return `"${Buffer.from(scheduleId, "utf8").toString("base64url")}:${revision}"`;
+}
+
+function assertScheduleIfMatch(value: string | string[] | undefined, resource: ScheduleResource): void {
+  if (typeof value !== "string" || value !== scheduleEtag(resource.scheduleId, resource.revision)) {
+    throw new ApiRequestError(412, "schedule_precondition_failed", "If-Match does not match the current schedule revision");
+  }
+}
+
+function scheduleDefinitionFromResource(resource: ScheduleResource): ScheduleDefinition {
+  const { contractVersion: _contractVersion, revision: _revision, createdAt: _createdAt, updatedAt: _updatedAt, ...definition } = resource;
+  return definition;
+}
+
+function schedulePath(pathname: string): { scheduleId: string; action?: "enable" | "disable" } | undefined {
+  const match = /^\/v1\/schedule\/([^/]+)(?:\/(enable|disable))?$/.exec(pathname);
+  if (match === null) return undefined;
+  try {
+    const scheduleId = decodeURIComponent(match[1]!);
+    if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u.test(scheduleId)) throw new Error("invalid schedule ID");
+    return { scheduleId, ...(match[2] === undefined ? {} : { action: match[2] as "enable" | "disable" }) };
+  } catch {
+    throw new ApiRequestError(400, "invalid_schedule_id", "schedule ID is invalid");
+  }
+}
+
 function sessionRefFromPath(pathname: string): string | undefined {
   const match = /^\/v1\/session\/([^/]+)$/.exec(pathname);
   if (match === null) return undefined;
@@ -1811,6 +1947,13 @@ function normalizeApiError(error: unknown): { status: number; body: ApiErrorBody
         retryable: false,
       },
     };
+  }
+  if (error instanceof ScheduleValidationError) {
+    return { status: error.code === "schedule_too_large" ? 413 : 400, body: { code: error.code, message: error.message, retryable: false } };
+  }
+  if (error instanceof ScheduleStoreError) {
+    const status = error.code === "not_found" ? 404 : error.code === "revision_conflict" ? 412 : error.code === "already_exists" ? 409 : error.code === "schedule_capacity" ? 429 : 503;
+    return { status, body: { code: error.code, message: error.message, retryable: status === 429 || status === 503 } };
   }
   if (error instanceof SessionConfigurationError) {
     const status =
