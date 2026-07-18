@@ -51,6 +51,23 @@ test("Pages publishes the Dash protocol, schema, and OpenAPI from the pinned sit
   assert.match(protocol, /snapshotFollows: true/);
 });
 
+test("Dash transcript projector is exported, documented, and included in clean builds", async () => {
+  const [manifest, index, readme, docs] = await Promise.all([
+    readFile(join(repositoryRoot, "package.json"), "utf8").then(JSON.parse),
+    readFile(join(repositoryRoot, "src/index.ts"), "utf8"),
+    readFile(join(repositoryRoot, "README.md"), "utf8"),
+    readFile(join(repositoryRoot, "docs/transcript-projection.md"), "utf8"),
+  ]);
+  assert.equal(
+    manifest.exports["./transcript-projector"].import,
+    "./dist/transcript-projector.js",
+  );
+  assert.match(index, /export \* from "\.\/transcript-projector\.js"/);
+  assert.match(readme, /docs\/transcript-projection\.md/);
+  assert.match(docs, /hydration: "not-requested"/);
+  assert.match(docs, /sha256:<base64url digest>/);
+});
+
 test("flake publishes the collision-safe multi-instance Home Manager service module", async () => {
   const [flake, module] = await Promise.all([
     readFile(join(repositoryRoot, "flake.nix"), "utf8"),
