@@ -11,6 +11,8 @@ await cp(new URL("../web/dist", import.meta.url), new URL("../dist/dashboard", i
 });
 for (const contract of [
   "protocol.schema.json",
+  "protocol-v2.schema.json",
+  "tool-adapter.schema.json",
   "session-api.schema.json",
   "session-api.openapi.json",
   "dashboard-api.schema.json",

@@ -1,0 +1,12 @@
+{
+  "protocolVersion": "1.0",
+  "kind": "aborted",
+  "adapterId": "owner-filesystem",
+  "adapterVersion": "1.2.0",
+  "hostInstanceId": "host-019f",
+  "sessionId": "agent-a",
+  "generation": 2,
+  "requestId": "abort-1",
+  "targetRequestId": "tool-1",
+  "aborted": true
+}

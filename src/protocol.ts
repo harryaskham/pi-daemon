@@ -1,6 +1,8 @@
 import { TextDecoder } from "node:util";
 
 export const PROTOCOL_VERSION = "1.0" as const;
+export const PROTOCOL_V2_VERSION = "2.0" as const;
+export const SUPPORTED_PROTOCOL_VERSIONS = [PROTOCOL_VERSION, PROTOCOL_V2_VERSION] as const;
 export const PROTOCOL_MAJOR = 1;
 export const DEFAULT_MAX_LINE_BYTES = 1024 * 1024;
 export const DEFAULT_MAX_PROMPT_CHARS = 256 * 1024;
@@ -142,7 +144,7 @@ export interface ProtocolErrorBody {
 }
 
 export interface ResponseEnvelope<T = unknown> {
-  protocolVersion: typeof PROTOCOL_VERSION;
+  protocolVersion: string;
   kind: "response";
   requestId: string;
   hostInstanceId: string;
@@ -154,7 +156,7 @@ export interface ResponseEnvelope<T = unknown> {
 }
 
 export interface EventEnvelope<T = unknown> {
-  protocolVersion: typeof PROTOCOL_VERSION;
+  protocolVersion: string;
   kind: "event";
   event: string;
   hostInstanceId: string;
@@ -410,10 +412,10 @@ export function successResponse<T>(
   requestId: string,
   hostInstanceId: string,
   data: T,
-  options: { sessionId?: string; sequence?: number } = {},
+  options: { sessionId?: string; sequence?: number; protocolVersion?: string } = {},
 ): ResponseEnvelope<T> {
   return {
-    protocolVersion: PROTOCOL_VERSION,
+    protocolVersion: options.protocolVersion ?? PROTOCOL_VERSION,
     kind: "response",
     requestId,
     hostInstanceId,
@@ -428,10 +430,10 @@ export function errorResponse(
   requestId: string,
   hostInstanceId: string,
   error: ProtocolErrorBody,
-  options: { sessionId?: string; sequence?: number } = {},
+  options: { sessionId?: string; sequence?: number; protocolVersion?: string } = {},
 ): ResponseEnvelope {
   return {
-    protocolVersion: PROTOCOL_VERSION,
+    protocolVersion: options.protocolVersion ?? PROTOCOL_VERSION,
     kind: "response",
     requestId,
     hostInstanceId,
@@ -443,6 +445,7 @@ export function errorResponse(
 }
 
 export function eventEnvelope<T>(input: {
+  protocolVersion?: string;
   event: string;
   hostInstanceId: string;
   sessionId: string;
@@ -452,7 +455,7 @@ export function eventEnvelope<T>(input: {
   data?: T;
 }): EventEnvelope<T> {
   return {
-    protocolVersion: PROTOCOL_VERSION,
+    protocolVersion: input.protocolVersion ?? PROTOCOL_VERSION,
     kind: "event",
     event: input.event,
     hostInstanceId: input.hostInstanceId,

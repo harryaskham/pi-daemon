@@ -26,7 +26,17 @@
       "types": "./dist/protocol.d.ts",
       "import": "./dist/protocol.js"
     },
+    "./protocol-v2": {
+      "types": "./dist/protocol-v2.d.ts",
+      "import": "./dist/protocol-v2.js"
+    },
+    "./tool-adapter-protocol": {
+      "types": "./dist/tool-adapter-protocol.d.ts",
+      "import": "./dist/tool-adapter-protocol.js"
+    },
     "./protocol.schema.json": "./dist/protocol.schema.json",
+    "./protocol-v2.schema.json": "./dist/protocol-v2.schema.json",
+    "./tool-adapter.schema.json": "./dist/tool-adapter.schema.json",
     "./session-api": {
       "types": "./dist/session-api.d.ts",
       "import": "./dist/session-api.js"

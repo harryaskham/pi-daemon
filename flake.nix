@@ -55,8 +55,9 @@
           packageRoot="$out/lib/node_modules/@harryaskham/pi-daemon"
           mkdir -p "$packageRoot" "$out/bin"
           cp -R dist node_modules package.json CHANGELOG.md README.md SECURITY.md LICENSE \
-            protocol.schema.json session-api.schema.json session-api.openapi.json \
-            dashboard-api.schema.json dashboard-api.openapi.json schedule.schema.json "$packageRoot/"
+            protocol.schema.json protocol-v2.schema.json tool-adapter.schema.json \
+            session-api.schema.json session-api.openapi.json dashboard-api.schema.json \
+            dashboard-api.openapi.json schedule.schema.json "$packageRoot/"
           makeWrapper ${pkgs.nodejs_24}/bin/node "$out/bin/pi-daemon" \
             --add-flags "$packageRoot/dist/cli.js"
           makeWrapper ${pkgs.nodejs_24}/bin/node "$out/bin/pi-daemon-rpc" \
@@ -122,6 +123,8 @@
             --output="$destination"
         done
         cp ${./protocol.schema.json} "$out/protocol.schema.json"
+        cp ${./protocol-v2.schema.json} "$out/protocol-v2.schema.json"
+        cp ${./tool-adapter.schema.json} "$out/tool-adapter.schema.json"
         cp ${./session-api.schema.json} "$out/session-api.schema.json"
         cp ${./session-api.openapi.json} "$out/session-api.openapi.json"
         cp ${./dashboard-api.schema.json} "$out/dashboard-api.schema.json"
@@ -131,6 +134,9 @@
         test -s "$out/index.html"
         test -s "$out/quickstart/index.html"
         test -s "$out/protocol/index.html"
+        test -s "$out/tool-adapter-protocol/index.html"
+        test -s "$out/protocol-v2.schema.json"
+        test -s "$out/tool-adapter.schema.json"
         test -s "$out/dashboard-protocol/index.html"
         test -s "$out/dashboard-inventory/index.html"
         test -s "$out/shadow-tui/index.html"

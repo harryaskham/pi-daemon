@@ -7,10 +7,16 @@ title: Protocol
 
 Pi Daemon uses UTF-8 NDJSON over an owner-only Unix socket. Every line is one
 JSON object. The default maximum line is 1 MiB. Protocol major mismatch closes
-the connection; unknown fields and newer minor versions are accepted.
+the connection; unknown outer-envelope fields and newer minor versions are
+accepted.
 
-The canonical machine-readable contract is
-[`protocol.schema.json`](protocol.schema.json).
+The canonical v1 machine-readable contract is
+[`protocol.schema.json`](protocol.schema.json). The additive v2 contract is
+[`protocol-v2.schema.json`](protocol-v2.schema.json); its closed host-scoped
+filesystem capability is specified separately in the
+[host tool-adapter protocol](tool-adapter-protocol) and
+[`tool-adapter.schema.json`](tool-adapter.schema.json). V1 remains exactly
+no-tools.
 
 This local protocol is one of two additive control modes. Authenticated session
 CRUD, multi-reader raw/framed Pi RPC attachment, and the operator-requested
@@ -58,7 +64,10 @@ temporary failure.
 
 `open` accepts session modes `memory`, `new`, `continue`, and `open`. The v1
 resource policy is all `none`; an optional explicit system prompt is the only
-loaded content resource.
+loaded content resource. Protocol v2 retains those defaults but may carry one
+closed, generation- and host-bound `host-adapter` descriptor for the six fixed
+filesystem-neutral operations. It never enables shell, process, network,
+package, extension, remove, or arbitrary method authority.
 
 Event delivery is explicit. `open`, `wake`, `status`, `abort`, successful
 commands, and failed commands never subscribe a connection implicitly. A client
@@ -105,6 +114,14 @@ must inspect Pi entries/state before issuing a fresh control key. `abort` is
 idempotent host-local cancellation and is never replayed. Extension and other
 mutating Pi RPC commands are classified by the RPC parity layer before they are
 admitted; commands without durable semantics must not be auto-retried.
+
+## Versioned response and event envelopes
+
+Handshake advertises the exact supported versions. Existing response/error/event
+builders default to `1.0`, preserving v1 output. V2-aware dispatch passes the
+accepted command's exact version to response and error builders, and records the
+successful open version so later host-originated session events use that same
+version. A parsed `2.x` command must never receive a silent `1.0` envelope.
 
 ## Backpressure
 

@@ -54,6 +54,21 @@ const response = await client.request({
 });
 ```
 
+## Protocol-v2 host capabilities
+
+A trusted host may pass `tools: { mode: "host-adapter", descriptor: ... }` in a
+v2 open. The descriptor names only an owner-private Unix endpoint, a secret
+session/host/generation-bound capability, six fixed filesystem operations, and
+required resource limits. It carries no client-orchestrator object, bearer,
+PKI, environment, arbitrary extension, or shell authority. See the
+[host tool-adapter protocol](tool-adapter-protocol) and its checked v2/adapter
+fixtures before implementing a consumer.
+
+A descriptor is minted for the current Pi Daemon `hostInstanceId`, exact logical
+session ID, and generation. Clients must reprovision after restart or replacement
+rather than replaying a retained capability. Responses echo the accepted daemon
+protocol version; adapter results echo their nonsecret identity and request keys.
+
 ## Nix consumer
 
 ```nix

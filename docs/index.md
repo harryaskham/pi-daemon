@@ -10,17 +10,19 @@ long-lived Node process. It shares authentication and model metadata while each
 logical session keeps its own session manager, settings, event sequence, queue,
 and durable idempotency state.
 
-The implemented scaffold is intentionally no-tools: it does not load
-extensions, skills, prompt templates, themes, context files, or built-in
-filesystem/process tools. The full target adds trusted per-session Pi runtime
-configuration, durable CRUD, authenticated JSON control, Pi RPC attachment,
-a stock-compatible remote stdio bridge, and ACP translation while remaining a
-neutral service—not a Cacophony component.
+Protocol v1 remains intentionally no-tools: it does not load extensions,
+skills, prompt templates, themes, context files, or built-in filesystem/process
+tools. The additive protocol-v2 contract can bind one host/session/generation to
+six fixed filesystem operations over an owner-private Unix adapter; it still
+provides no shell or arbitrary extension authority. Durable CRUD, authenticated
+JSON control, Pi RPC attachment, the remote stdio bridge, and ACP translation
+remain neutral service surfaces—not Cacophony components.
 
 ## Documentation
 
 - **[Operator quickstart](quickstart)** — run collision-free Home Manager instances, create/delete sessions, wait on tickets, and attach RPC or ACP clients
 - [Protocol](protocol) — NDJSON operations, event flow, generations, and retry semantics
+- [Host tool-adapter protocol](tool-adapter-protocol) — protocol-v2 descriptor, fixed filesystem operations, bind/invoke/abort/revoke frames, and capability secrecy
 - [Session API](session-api) — additive CRUD, multi-reader Pi RPC attach, and `/apc` ACP contract
 - [Dash browser/backend protocol](dashboard-protocol) — preview-first resources, normalized transcripts, multiplexed Rich/TUI channels, replay, limits, and performance budgets
 - [Dash transcript projection](transcript-projection) — bounded no-hydration JSONL branch rendering, cache, paging, and fingerprints
@@ -40,7 +42,7 @@ neutral service—not a Cacophony component.
 - [Remote RPC stdio bridge](rpc-bridge) — authentication, stock JSONL translation, reconnect, gap, and terminal semantics
 - [ACP adapter](acp-adapter) — bounded in-process Agent Client Protocol at the `/apc` route
 - [Release](release) — tag, artifact, and rollback checklist
-- [NDJSON JSON Schema](protocol.schema.json) — language-neutral local protocol contract
+- [NDJSON v1 JSON Schema](protocol.schema.json), [v2 JSON Schema](protocol-v2.schema.json), and [tool-adapter JSON Schema](tool-adapter.schema.json)
 - [Session API JSON Schema](session-api.schema.json) and [OpenAPI](session-api.openapi.json)
 - [Schedule JSON Schema](schedule.schema.json)
 - [Dash API JSON Schema](dashboard-api.schema.json) and [OpenAPI](dashboard-api.openapi.json)

@@ -1,0 +1,19 @@
+{
+  "protocolVersion": "1.0",
+  "kind": "bound",
+  "adapterId": "owner-filesystem",
+  "adapterVersion": "1.2.0",
+  "hostInstanceId": "host-019f",
+  "sessionId": "agent-a",
+  "generation": 2,
+  "operations": ["fs.list", "fs.stat", "fs.read", "fs.search", "fs.write", "fs.edit"],
+  "limits": {
+    "maxRequestBytes": 1048576,
+    "maxResponseBytes": 1048576,
+    "maxConcurrentRequests": 4,
+    "maxQueuedRequests": 16,
+    "requestTimeoutMs": 30000,
+    "maxIdempotencyKeys": 256,
+    "idempotencyTtlMs": 3600000
+  }
+}

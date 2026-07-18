@@ -81,6 +81,25 @@ paths are themselves an authority grant. Extension/package JavaScript still
 shares process memory, globals, ambient daemon environment, and provider
 registries with every other in-process session.
 
+## Host-scoped tool adapter
+
+The additive protocol-v2 [host tool-adapter](tool-adapter-protocol) is a narrower
+alternative to loading project code in the daemon. Its closed descriptor grants
+a subset of six fixed filesystem operations through an owner-private Unix
+socket. Adapter ID/version, host incarnation, logical session ID, and generation
+are checked on every frame. The session cwd is the implicit root; paths are
+root-relative and the runtime must fail closed on traversal, symlinks, stale
+identity, oversized records, queue/time limits, and response mismatch.
+
+The opaque capability handle is memory-only and appears on the private wire only
+in `bind`. It is never an HTTP/daemon bearer, certificate, environment value, or
+persisted credential, and it must not enter logs, errors, status, events,
+manifests, journals, tickets, or acknowledgements. Restart changes host identity
+and requires reprovisioning rather than replay. Per-invocation `abort` and
+best-effort generation/session `revoke` prevent one stuck tool from requiring a
+whole shared socket teardown. V1 and every v2 `tools: "none"` open retain the
+existing no-tools behavior.
+
 ## Separate inhabitants
 
 Configured process/filesystem tools and reviewed extensions may share one

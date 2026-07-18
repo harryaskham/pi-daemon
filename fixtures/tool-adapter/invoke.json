@@ -1,0 +1,17 @@
+{
+  "protocolVersion": "1.0",
+  "kind": "invoke",
+  "adapterId": "owner-filesystem",
+  "adapterVersion": "1.2.0",
+  "hostInstanceId": "host-019f",
+  "sessionId": "agent-a",
+  "generation": 2,
+  "requestId": "tool-1",
+  "idempotencyKey": "turn-1-read-1",
+  "operation": "fs.read",
+  "payload": {
+    "path": "src/protocol.ts",
+    "offset": 0,
+    "maxBytes": 4096
+  }
+}

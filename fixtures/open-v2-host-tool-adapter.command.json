@@ -1,0 +1,53 @@
+{
+  "protocolVersion": "2.0",
+  "requestId": "req-open-v2-1",
+  "operation": "open",
+  "sessionId": "agent-a",
+  "generation": 2,
+  "payload": {
+    "cwd": "/workspace/agent-a",
+    "session": { "mode": "new" },
+    "resources": {
+      "extensions": "none",
+      "skills": "none",
+      "promptTemplates": "none",
+      "themes": "none",
+      "contextFiles": "none",
+      "tools": {
+        "mode": "host-adapter",
+        "descriptor": {
+          "protocolVersion": "1.0",
+          "adapterId": "owner-filesystem",
+          "adapterVersion": "1.2.0",
+          "endpoint": {
+            "transport": "unix",
+            "path": "/run/user/1000/pi-tools.sock"
+          },
+          "binding": {
+            "hostInstanceId": "host-019f",
+            "sessionId": "agent-a",
+            "generation": 2,
+            "capabilityHandle": "aBcDeFgHiJkLmNoPqRsTuVwXyZ0123456789_-AB"
+          },
+          "operations": [
+            "fs.list",
+            "fs.stat",
+            "fs.read",
+            "fs.search",
+            "fs.write",
+            "fs.edit"
+          ],
+          "limits": {
+            "maxRequestBytes": 1048576,
+            "maxResponseBytes": 1048576,
+            "maxConcurrentRequests": 4,
+            "maxQueuedRequests": 16,
+            "requestTimeoutMs": 30000,
+            "maxIdempotencyKeys": 256,
+            "idempotencyTtlMs": 3600000
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,1206 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://a.skh.am/pi-daemon/tool-adapter.schema.json",
+  "title": "Pi Daemon host tool-adapter protocol v1",
+  "description": "Closed, session-incarnation-bound descriptor and NDJSON frames for the product-neutral filesystem tool adapter.",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/descriptor"
+    },
+    {
+      "$ref": "#/$defs/bind"
+    },
+    {
+      "$ref": "#/$defs/bound"
+    },
+    {
+      "$ref": "#/$defs/invoke"
+    },
+    {
+      "$ref": "#/$defs/result"
+    },
+    {
+      "$ref": "#/$defs/revoke"
+    },
+    {
+      "$ref": "#/$defs/revoked"
+    },
+    {
+      "$ref": "#/$defs/abort"
+    },
+    {
+      "$ref": "#/$defs/aborted"
+    }
+  ],
+  "$defs": {
+    "adapterProtocolVersion": {
+      "const": "1.0"
+    },
+    "adapterId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+    },
+    "adapterVersion": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?(\\+[0-9A-Za-z.-]+)?$"
+    },
+    "opaqueId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "wireId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    },
+    "capabilityHandle": {
+      "type": "string",
+      "minLength": 32,
+      "maxLength": 512,
+      "pattern": "^[A-Za-z0-9_-]+$"
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "timestamp": {
+      "type": "string",
+      "minLength": 20,
+      "maxLength": 64,
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,9})?Z$"
+    },
+    "relativePath": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4096,
+      "not": {
+        "pattern": "(^/|(^|/)\\.\\.(/|$)|\\\\|[\\u0000-\\u001f\\u007f])"
+      }
+    },
+    "operations": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 6,
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "fs.list",
+          "fs.stat",
+          "fs.read",
+          "fs.search",
+          "fs.write",
+          "fs.edit"
+        ]
+      }
+    },
+    "limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "maxRequestBytes",
+        "maxResponseBytes",
+        "maxConcurrentRequests",
+        "maxQueuedRequests",
+        "requestTimeoutMs",
+        "maxIdempotencyKeys",
+        "idempotencyTtlMs"
+      ],
+      "properties": {
+        "maxRequestBytes": {
+          "type": "integer",
+          "minimum": 2048,
+          "maximum": 4194304
+        },
+        "maxResponseBytes": {
+          "type": "integer",
+          "minimum": 1024,
+          "maximum": 4194304
+        },
+        "maxConcurrentRequests": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 64
+        },
+        "maxQueuedRequests": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 256
+        },
+        "requestTimeoutMs": {
+          "type": "integer",
+          "minimum": 100,
+          "maximum": 120000
+        },
+        "maxIdempotencyKeys": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4096
+        },
+        "idempotencyTtlMs": {
+          "type": "integer",
+          "minimum": 1000,
+          "maximum": 86400000
+        }
+      }
+    },
+    "endpoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "transport",
+        "path"
+      ],
+      "properties": {
+        "transport": {
+          "const": "unix"
+        },
+        "path": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 100,
+          "pattern": "^/",
+          "not": {
+            "pattern": "[\\u0000-\\u001f\\u007f]"
+          }
+        }
+      }
+    },
+    "binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "hostInstanceId",
+        "sessionId",
+        "generation",
+        "capabilityHandle"
+      ],
+      "properties": {
+        "hostInstanceId": {
+          "$ref": "#/$defs/opaqueId"
+        },
+        "sessionId": {
+          "$ref": "#/$defs/opaqueId"
+        },
+        "generation": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "capabilityHandle": {
+          "$ref": "#/$defs/capabilityHandle"
+        }
+      }
+    },
+    "descriptor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "protocolVersion",
+        "adapterId",
+        "adapterVersion",
+        "endpoint",
+        "binding",
+        "operations",
+        "limits"
+      ],
+      "properties": {
+        "protocolVersion": {
+          "$ref": "#/$defs/adapterProtocolVersion"
+        },
+        "adapterId": {
+          "$ref": "#/$defs/adapterId"
+        },
+        "adapterVersion": {
+          "$ref": "#/$defs/adapterVersion"
+        },
+        "endpoint": {
+          "$ref": "#/$defs/endpoint"
+        },
+        "binding": {
+          "$ref": "#/$defs/binding"
+        },
+        "operations": {
+          "$ref": "#/$defs/operations"
+        },
+        "limits": {
+          "$ref": "#/$defs/limits"
+        }
+      }
+    },
+    "wireIdentity": {
+      "type": "object",
+      "required": [
+        "protocolVersion",
+        "kind",
+        "adapterId",
+        "adapterVersion",
+        "hostInstanceId",
+        "sessionId",
+        "generation"
+      ],
+      "properties": {
+        "protocolVersion": {
+          "$ref": "#/$defs/adapterProtocolVersion"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "adapterId": {
+          "$ref": "#/$defs/adapterId"
+        },
+        "adapterVersion": {
+          "$ref": "#/$defs/adapterVersion"
+        },
+        "hostInstanceId": {
+          "$ref": "#/$defs/opaqueId"
+        },
+        "sessionId": {
+          "$ref": "#/$defs/opaqueId"
+        },
+        "generation": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "bind": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/wireIdentity"
+        },
+        {
+          "type": "object",
+          "required": [
+            "capabilityHandle",
+            "operations",
+            "limits"
+          ],
+          "properties": {
+            "kind": {
+              "const": "bind"
+            },
+            "capabilityHandle": {
+              "$ref": "#/$defs/capabilityHandle"
+            },
+            "operations": {
+              "$ref": "#/$defs/operations"
+            },
+            "limits": {
+              "$ref": "#/$defs/limits"
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false,
+      "type": "object"
+    },
+    "bound": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/wireIdentity"
+        },
+        {
+          "type": "object",
+          "required": [
+            "operations",
+            "limits"
+          ],
+          "properties": {
+            "kind": {
+              "const": "bound"
+            },
+            "operations": {
+              "$ref": "#/$defs/operations"
+            },
+            "limits": {
+              "$ref": "#/$defs/limits"
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false,
+      "type": "object"
+    },
+    "listRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path"
+      ],
+      "properties": {
+        "path": {
+          "$ref": "#/$defs/relativePath"
+        },
+        "maxEntries": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000
+        }
+      }
+    },
+    "statRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path"
+      ],
+      "properties": {
+        "path": {
+          "$ref": "#/$defs/relativePath"
+        }
+      }
+    },
+    "readRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path"
+      ],
+      "properties": {
+        "path": {
+          "$ref": "#/$defs/relativePath"
+        },
+        "offset": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "maxBytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4194304
+        }
+      }
+    },
+    "searchRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "query"
+      ],
+      "properties": {
+        "path": {
+          "$ref": "#/$defs/relativePath"
+        },
+        "query": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096
+        },
+        "maxResults": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000
+        }
+      }
+    },
+    "writeRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "content"
+      ],
+      "properties": {
+        "path": {
+          "$ref": "#/$defs/relativePath"
+        },
+        "content": {
+          "type": "string",
+          "maxLength": 4194304
+        },
+        "create": {
+          "type": "boolean"
+        },
+        "overwrite": {
+          "type": "boolean"
+        },
+        "expectedDigest": {
+          "$ref": "#/$defs/digest"
+        }
+      }
+    },
+    "editReplacement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "oldText",
+        "newText"
+      ],
+      "properties": {
+        "oldText": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4194304
+        },
+        "newText": {
+          "type": "string",
+          "maxLength": 4194304
+        }
+      }
+    },
+    "editRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "edits"
+      ],
+      "properties": {
+        "path": {
+          "$ref": "#/$defs/relativePath"
+        },
+        "edits": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 256,
+          "items": {
+            "$ref": "#/$defs/editReplacement"
+          }
+        },
+        "expectedDigest": {
+          "$ref": "#/$defs/digest"
+        }
+      }
+    },
+    "invokeBase": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/wireIdentity"
+        },
+        {
+          "type": "object",
+          "required": [
+            "requestId",
+            "idempotencyKey",
+            "operation",
+            "payload"
+          ],
+          "properties": {
+            "kind": {
+              "const": "invoke"
+            },
+            "requestId": {
+              "$ref": "#/$defs/wireId"
+            },
+            "idempotencyKey": {
+              "$ref": "#/$defs/wireId"
+            },
+            "operation": {
+              "type": "string"
+            },
+            "payload": {
+              "type": "object"
+            }
+          }
+        }
+      ]
+    },
+    "invoke": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/invokeList"
+        },
+        {
+          "$ref": "#/$defs/invokeStat"
+        },
+        {
+          "$ref": "#/$defs/invokeRead"
+        },
+        {
+          "$ref": "#/$defs/invokeSearch"
+        },
+        {
+          "$ref": "#/$defs/invokeWrite"
+        },
+        {
+          "$ref": "#/$defs/invokeEdit"
+        }
+      ]
+    },
+    "invokeList": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/invokeBase"
+        },
+        {
+          "properties": {
+            "operation": {
+              "const": "fs.list"
+            },
+            "payload": {
+              "$ref": "#/$defs/listRequest"
+            }
+          },
+          "type": "object"
+        }
+      ],
+      "unevaluatedProperties": false,
+      "type": "object"
+    },
+    "invokeStat": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/invokeBase"
+        },
+        {
+          "properties": {
+            "operation": {
+              "const": "fs.stat"
+            },
+            "payload": {
+              "$ref": "#/$defs/statRequest"
+            }
+          },
+          "type": "object"
+        }
+      ],
+      "unevaluatedProperties": false,
+      "type": "object"
+    },
+    "invokeRead": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/invokeBase"
+        },
+        {
+          "properties": {
+            "operation": {
+              "const": "fs.read"
+            },
+            "payload": {
+              "$ref": "#/$defs/readRequest"
+            }
+          },
+          "type": "object"
+        }
+      ],
+      "unevaluatedProperties": false,
+      "type": "object"
+    },
+    "invokeSearch": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/invokeBase"
+        },
+        {
+          "properties": {
+            "operation": {
+              "const": "fs.search"
+            },
+            "payload": {
+              "$ref": "#/$defs/searchRequest"
+            }
+          },
+          "type": "object"
+        }
+      ],
+      "unevaluatedProperties": false,
+      "type": "object"
+    },
+    "invokeWrite": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/invokeBase"
+        },
+        {
+          "properties": {
+            "operation": {
+              "const": "fs.write"
+            },
+            "payload": {
+              "$ref": "#/$defs/writeRequest"
+            }
+          },
+          "type": "object"
+        }
+      ],
+      "unevaluatedProperties": false,
+      "type": "object"
+    },
+    "invokeEdit": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/invokeBase"
+        },
+        {
+          "properties": {
+            "operation": {
+              "const": "fs.edit"
+            },
+            "payload": {
+              "$ref": "#/$defs/editRequest"
+            }
+          },
+          "type": "object"
+        }
+      ],
+      "unevaluatedProperties": false,
+      "type": "object"
+    },
+    "listResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "entries",
+        "truncated"
+      ],
+      "properties": {
+        "entries": {
+          "type": "array",
+          "maxItems": 10000,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "type"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 255,
+                "not": {
+                  "pattern": "(^\\.\\.?$|/|[\\u0000-\\u001f\\u007f])"
+                }
+              },
+              "type": {
+                "enum": [
+                  "file",
+                  "directory"
+                ]
+              },
+              "size": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "modifiedAt": {
+                "$ref": "#/$defs/timestamp"
+              }
+            }
+          }
+        },
+        "truncated": {
+          "type": "boolean"
+        }
+      }
+    },
+    "statResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "size"
+      ],
+      "properties": {
+        "type": {
+          "enum": [
+            "file",
+            "directory"
+          ]
+        },
+        "size": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "modifiedAt": {
+          "$ref": "#/$defs/timestamp"
+        }
+      }
+    },
+    "readResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "content",
+        "bytesRead",
+        "eof"
+      ],
+      "properties": {
+        "content": {
+          "type": "string",
+          "maxLength": 4194304
+        },
+        "bytesRead": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4194304
+        },
+        "eof": {
+          "type": "boolean"
+        }
+      }
+    },
+    "searchResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "matches",
+        "truncated"
+      ],
+      "properties": {
+        "matches": {
+          "type": "array",
+          "maxItems": 10000,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "path",
+              "line",
+              "column",
+              "text"
+            ],
+            "properties": {
+              "path": {
+                "$ref": "#/$defs/relativePath"
+              },
+              "line": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "column": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "text": {
+                "type": "string",
+                "maxLength": 4096
+              }
+            }
+          }
+        },
+        "truncated": {
+          "type": "boolean"
+        }
+      }
+    },
+    "writeResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "created",
+        "bytesWritten",
+        "digest"
+      ],
+      "properties": {
+        "created": {
+          "type": "boolean"
+        },
+        "bytesWritten": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4194304
+        },
+        "digest": {
+          "$ref": "#/$defs/digest"
+        }
+      }
+    },
+    "editResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "replacements",
+        "digest"
+      ],
+      "properties": {
+        "replacements": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 256
+        },
+        "digest": {
+          "$ref": "#/$defs/digest"
+        }
+      }
+    },
+    "error": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "code",
+        "message",
+        "retryable"
+      ],
+      "properties": {
+        "code": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-z][a-z0-9_]*$"
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        },
+        "retryable": {
+          "type": "boolean"
+        }
+      }
+    },
+    "resultBase": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/wireIdentity"
+        },
+        {
+          "type": "object",
+          "required": [
+            "requestId",
+            "idempotencyKey",
+            "operation",
+            "ok"
+          ],
+          "properties": {
+            "kind": {
+              "const": "result"
+            },
+            "requestId": {
+              "$ref": "#/$defs/wireId"
+            },
+            "idempotencyKey": {
+              "$ref": "#/$defs/wireId"
+            },
+            "operation": {
+              "type": "string"
+            },
+            "ok": {
+              "type": "boolean"
+            }
+          }
+        }
+      ]
+    },
+    "result": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/resultList"
+        },
+        {
+          "$ref": "#/$defs/resultStat"
+        },
+        {
+          "$ref": "#/$defs/resultRead"
+        },
+        {
+          "$ref": "#/$defs/resultSearch"
+        },
+        {
+          "$ref": "#/$defs/resultWrite"
+        },
+        {
+          "$ref": "#/$defs/resultEdit"
+        },
+        {
+          "$ref": "#/$defs/errorResult"
+        }
+      ]
+    },
+    "resultList": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/resultBase"
+        },
+        {
+          "required": [
+            "data"
+          ],
+          "properties": {
+            "operation": {
+              "const": "fs.list"
+            },
+            "ok": {
+              "const": true
+            },
+            "data": {
+              "$ref": "#/$defs/listResult"
+            }
+          },
+          "type": "object"
+        }
+      ],
+      "unevaluatedProperties": false,
+      "type": "object"
+    },
+    "resultStat": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/resultBase"
+        },
+        {
+          "required": [
+            "data"
+          ],
+          "properties": {
+            "operation": {
+              "const": "fs.stat"
+            },
+            "ok": {
+              "const": true
+            },
+            "data": {
+              "$ref": "#/$defs/statResult"
+            }
+          },
+          "type": "object"
+        }
+      ],
+      "unevaluatedProperties": false,
+      "type": "object"
+    },
+    "resultRead": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/resultBase"
+        },
+        {
+          "required": [
+            "data"
+          ],
+          "properties": {
+            "operation": {
+              "const": "fs.read"
+            },
+            "ok": {
+              "const": true
+            },
+            "data": {
+              "$ref": "#/$defs/readResult"
+            }
+          },
+          "type": "object"
+        }
+      ],
+      "unevaluatedProperties": false,
+      "type": "object"
+    },
+    "resultSearch": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/resultBase"
+        },
+        {
+          "required": [
+            "data"
+          ],
+          "properties": {
+            "operation": {
+              "const": "fs.search"
+            },
+            "ok": {
+              "const": true
+            },
+            "data": {
+              "$ref": "#/$defs/searchResult"
+            }
+          },
+          "type": "object"
+        }
+      ],
+      "unevaluatedProperties": false,
+      "type": "object"
+    },
+    "resultWrite": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/resultBase"
+        },
+        {
+          "required": [
+            "data"
+          ],
+          "properties": {
+            "operation": {
+              "const": "fs.write"
+            },
+            "ok": {
+              "const": true
+            },
+            "data": {
+              "$ref": "#/$defs/writeResult"
+            }
+          },
+          "type": "object"
+        }
+      ],
+      "unevaluatedProperties": false,
+      "type": "object"
+    },
+    "resultEdit": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/resultBase"
+        },
+        {
+          "required": [
+            "data"
+          ],
+          "properties": {
+            "operation": {
+              "const": "fs.edit"
+            },
+            "ok": {
+              "const": true
+            },
+            "data": {
+              "$ref": "#/$defs/editResult"
+            }
+          },
+          "type": "object"
+        }
+      ],
+      "unevaluatedProperties": false,
+      "type": "object"
+    },
+    "errorResult": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/resultBase"
+        },
+        {
+          "required": [
+            "error"
+          ],
+          "properties": {
+            "operation": {
+              "enum": [
+                "fs.list",
+                "fs.stat",
+                "fs.read",
+                "fs.search",
+                "fs.write",
+                "fs.edit"
+              ]
+            },
+            "ok": {
+              "const": false
+            },
+            "error": {
+              "$ref": "#/$defs/error"
+            }
+          },
+          "type": "object"
+        }
+      ],
+      "unevaluatedProperties": false,
+      "type": "object"
+    },
+    "revoke": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/wireIdentity"
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "revoke"
+            }
+          },
+          "type": "object"
+        }
+      ],
+      "unevaluatedProperties": false,
+      "type": "object"
+    },
+    "revoked": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/wireIdentity"
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "revoked"
+            }
+          },
+          "type": "object"
+        }
+      ],
+      "unevaluatedProperties": false,
+      "type": "object"
+    },
+    "abort": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/wireIdentity"
+        },
+        {
+          "required": [
+            "requestId",
+            "targetRequestId"
+          ],
+          "properties": {
+            "kind": {
+              "const": "abort"
+            },
+            "requestId": {
+              "$ref": "#/$defs/wireId"
+            },
+            "targetRequestId": {
+              "$ref": "#/$defs/wireId"
+            }
+          },
+          "type": "object"
+        }
+      ],
+      "unevaluatedProperties": false,
+      "type": "object"
+    },
+    "aborted": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/wireIdentity"
+        },
+        {
+          "required": [
+            "requestId",
+            "targetRequestId",
+            "aborted"
+          ],
+          "properties": {
+            "kind": {
+              "const": "aborted"
+            },
+            "requestId": {
+              "$ref": "#/$defs/wireId"
+            },
+            "targetRequestId": {
+              "$ref": "#/$defs/wireId"
+            },
+            "aborted": {
+              "type": "boolean"
+            },
+            "error": {
+              "$ref": "#/$defs/error"
+            }
+          },
+          "if": {
+            "properties": {
+              "aborted": {
+                "const": true
+              }
+            },
+            "type": "object"
+          },
+          "then": {
+            "type": "object",
+            "properties": {
+              "error": false
+            }
+          },
+          "type": "object"
+        }
+      ],
+      "unevaluatedProperties": false,
+      "type": "object"
+    }
+  }
+}

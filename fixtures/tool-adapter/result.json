@@ -1,0 +1,18 @@
+{
+  "protocolVersion": "1.0",
+  "kind": "result",
+  "adapterId": "owner-filesystem",
+  "adapterVersion": "1.2.0",
+  "hostInstanceId": "host-019f",
+  "sessionId": "agent-a",
+  "generation": 2,
+  "requestId": "tool-1",
+  "idempotencyKey": "turn-1-read-1",
+  "operation": "fs.read",
+  "ok": true,
+  "data": {
+    "content": "export const PROTOCOL_VERSION = \"1.0\";\n",
+    "bytesRead": 39,
+    "eof": false
+  }
+}

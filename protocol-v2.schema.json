@@ -1,0 +1,583 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://a.skh.am/pi-daemon/protocol-v2.schema.json",
+  "title": "Pi Daemon protocol v2",
+  "description": "Language-neutral protocol v2 records. V2 adds a generation-bound host tool-adapter policy while v1 remains no-tools.",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/command"
+    },
+    {
+      "$ref": "#/$defs/response"
+    },
+    {
+      "$ref": "#/$defs/event"
+    }
+  ],
+  "$defs": {
+    "protocolVersion": {
+      "type": "string",
+      "pattern": "^2\\.[0-9]+$"
+    },
+    "identifier": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512
+    },
+    "baseCommand": {
+      "type": "object",
+      "required": [
+        "protocolVersion",
+        "requestId",
+        "operation",
+        "payload"
+      ],
+      "properties": {
+        "protocolVersion": {
+          "$ref": "#/$defs/protocolVersion"
+        },
+        "requestId": {
+          "$ref": "#/$defs/identifier"
+        },
+        "operation": {
+          "type": "string"
+        },
+        "payload": {
+          "type": "object"
+        }
+      }
+    },
+    "sessionIdentity": {
+      "type": "object",
+      "required": [
+        "sessionId",
+        "generation"
+      ],
+      "properties": {
+        "sessionId": {
+          "$ref": "#/$defs/identifier"
+        },
+        "generation": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "idempotency": {
+      "type": "object",
+      "required": [
+        "idempotencyKey"
+      ],
+      "properties": {
+        "idempotencyKey": {
+          "$ref": "#/$defs/identifier"
+        }
+      }
+    },
+    "handshakeCommand": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/baseCommand"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "operation": {
+              "const": "handshake"
+            },
+            "payload": {
+              "type": "object"
+            }
+          }
+        }
+      ]
+    },
+    "modelPolicy": {
+      "type": "object",
+      "required": [
+        "provider",
+        "id"
+      ],
+      "properties": {
+        "provider": {
+          "$ref": "#/$defs/identifier"
+        },
+        "id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "thinkingLevel": {
+          "enum": [
+            "off",
+            "minimal",
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ]
+        }
+      }
+    },
+    "resourcePolicy": {
+      "type": "object",
+      "required": [
+        "extensions",
+        "skills",
+        "promptTemplates",
+        "themes",
+        "contextFiles",
+        "tools"
+      ],
+      "properties": {
+        "extensions": {
+          "const": "none"
+        },
+        "skills": {
+          "const": "none"
+        },
+        "promptTemplates": {
+          "const": "none"
+        },
+        "themes": {
+          "const": "none"
+        },
+        "contextFiles": {
+          "const": "none"
+        },
+        "tools": {
+          "oneOf": [
+            {
+              "const": "none"
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "mode",
+                "descriptor"
+              ],
+              "properties": {
+                "mode": {
+                  "const": "host-adapter"
+                },
+                "descriptor": {
+                  "$ref": "https://a.skh.am/pi-daemon/tool-adapter.schema.json#/$defs/descriptor"
+                }
+              }
+            }
+          ]
+        },
+        "systemPrompt": {
+          "type": "string",
+          "maxLength": 262144
+        }
+      }
+    },
+    "openCommand": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/baseCommand"
+        },
+        {
+          "$ref": "#/$defs/sessionIdentity"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "operation": {
+              "const": "open"
+            },
+            "payload": {
+              "type": "object",
+              "required": [
+                "cwd",
+                "session"
+              ],
+              "properties": {
+                "cwd": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 4096
+                },
+                "name": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128
+                },
+                "agentDir": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 4096
+                },
+                "session": {
+                  "type": "object",
+                  "required": [
+                    "mode"
+                  ],
+                  "properties": {
+                    "mode": {
+                      "enum": [
+                        "new",
+                        "open",
+                        "continue",
+                        "memory"
+                      ]
+                    },
+                    "path": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 4096
+                    }
+                  }
+                },
+                "model": {
+                  "$ref": "#/$defs/modelPolicy"
+                },
+                "resources": {
+                  "$ref": "#/$defs/resourcePolicy"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "wakeCommand": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/baseCommand"
+        },
+        {
+          "$ref": "#/$defs/sessionIdentity"
+        },
+        {
+          "$ref": "#/$defs/idempotency"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "operation": {
+              "const": "wake"
+            },
+            "payload": {
+              "type": "object",
+              "required": [
+                "prompt"
+              ],
+              "properties": {
+                "prompt": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 262144
+                },
+                "source": {
+                  "type": "string",
+                  "maxLength": 128
+                },
+                "waitForTerminal": {
+                  "type": "boolean",
+                  "default": true
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "queuedMessageCommand": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/baseCommand"
+        },
+        {
+          "$ref": "#/$defs/sessionIdentity"
+        },
+        {
+          "$ref": "#/$defs/idempotency"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "operation": {
+              "enum": [
+                "steer",
+                "followUp"
+              ]
+            },
+            "payload": {
+              "type": "object",
+              "required": [
+                "message"
+              ],
+              "properties": {
+                "message": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 262144
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "statusCommand": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/baseCommand"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "operation": {
+              "const": "status"
+            },
+            "sessionId": {
+              "$ref": "#/$defs/identifier"
+            }
+          }
+        }
+      ]
+    },
+    "abortCommand": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/baseCommand"
+        },
+        {
+          "$ref": "#/$defs/sessionIdentity"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "operation": {
+              "const": "abort"
+            }
+          }
+        }
+      ]
+    },
+    "attachCommand": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/baseCommand"
+        },
+        {
+          "$ref": "#/$defs/sessionIdentity"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "operation": {
+              "const": "attach"
+            }
+          }
+        }
+      ]
+    },
+    "detachCommand": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/baseCommand"
+        },
+        {
+          "$ref": "#/$defs/sessionIdentity"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "operation": {
+              "const": "detach"
+            }
+          }
+        }
+      ]
+    },
+    "closeCommand": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/baseCommand"
+        },
+        {
+          "$ref": "#/$defs/sessionIdentity"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "operation": {
+              "const": "close"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "retainSession": {
+                  "type": "boolean"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "drainCommand": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/baseCommand"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "operation": {
+              "const": "drain"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "timeoutMs": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 86400000
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "command": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/handshakeCommand"
+        },
+        {
+          "$ref": "#/$defs/openCommand"
+        },
+        {
+          "$ref": "#/$defs/wakeCommand"
+        },
+        {
+          "$ref": "#/$defs/queuedMessageCommand"
+        },
+        {
+          "$ref": "#/$defs/statusCommand"
+        },
+        {
+          "$ref": "#/$defs/abortCommand"
+        },
+        {
+          "$ref": "#/$defs/attachCommand"
+        },
+        {
+          "$ref": "#/$defs/detachCommand"
+        },
+        {
+          "$ref": "#/$defs/closeCommand"
+        },
+        {
+          "$ref": "#/$defs/drainCommand"
+        }
+      ]
+    },
+    "error": {
+      "type": "object",
+      "required": [
+        "code",
+        "message",
+        "retryable"
+      ],
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "retryable": {
+          "type": "boolean"
+        },
+        "details": {
+          "type": "object"
+        }
+      }
+    },
+    "response": {
+      "type": "object",
+      "required": [
+        "protocolVersion",
+        "kind",
+        "requestId",
+        "hostInstanceId",
+        "ok"
+      ],
+      "properties": {
+        "protocolVersion": {
+          "$ref": "#/$defs/protocolVersion"
+        },
+        "kind": {
+          "const": "response"
+        },
+        "requestId": {
+          "$ref": "#/$defs/identifier"
+        },
+        "hostInstanceId": {
+          "$ref": "#/$defs/identifier"
+        },
+        "sessionId": {
+          "$ref": "#/$defs/identifier"
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "data": {},
+        "error": {
+          "$ref": "#/$defs/error"
+        }
+      }
+    },
+    "event": {
+      "type": "object",
+      "required": [
+        "protocolVersion",
+        "kind",
+        "event",
+        "hostInstanceId",
+        "sessionId",
+        "generation",
+        "sequence"
+      ],
+      "properties": {
+        "protocolVersion": {
+          "$ref": "#/$defs/protocolVersion"
+        },
+        "kind": {
+          "const": "event"
+        },
+        "event": {
+          "type": "string"
+        },
+        "hostInstanceId": {
+          "$ref": "#/$defs/identifier"
+        },
+        "sessionId": {
+          "$ref": "#/$defs/identifier"
+        },
+        "generation": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "requestId": {
+          "$ref": "#/$defs/identifier"
+        },
+        "data": {}
+      }
+    }
+  }
+}

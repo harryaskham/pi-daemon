@@ -1,0 +1,9 @@
+{
+  "protocolVersion": "1.0",
+  "kind": "revoke",
+  "adapterId": "owner-filesystem",
+  "adapterVersion": "1.2.0",
+  "hostInstanceId": "host-019f",
+  "sessionId": "agent-a",
+  "generation": 2
+}

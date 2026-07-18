@@ -112,9 +112,11 @@ Service logs omit prompts, outputs, credentials, and private paths. SIGTERM uses
 a 30-second whole-shutdown deadline, SIGINT five seconds, and idle SDK sessions
 are evicted after 30 minutes by default (`--idle-session-ttl-ms 0` disables it).
 
-The language-neutral [`protocol.schema.json`](protocol.schema.json), checked
-fixtures under [`fixtures/`](fixtures/), and exported TypeScript protocol types
-are the compatibility contract. See the [protocol design](PLAN.md#6-protocol)
+The language-neutral v1 [`protocol.schema.json`](protocol.schema.json), additive
+v2 [`protocol-v2.schema.json`](protocol-v2.schema.json), scoped
+[`tool-adapter.schema.json`](tool-adapter.schema.json), checked fixtures under
+[`fixtures/`](fixtures/), and exported TypeScript protocol types are the
+compatibility contract. See the [protocol design](PLAN.md#6-protocol)
 and, as implementation lands, the published [documentation site](https://a.skh.am/pi-daemon/).
 
 ## Safety defaults
@@ -178,6 +180,7 @@ supervisord on nix-on-droid; see [Operations](docs/operations.md#home-manager-se
 - [`docs/quickstart.md`](docs/quickstart.md) — secure Home Manager, session API, RPC, and ACP operator quickstart
 - [`PLAN.md`](PLAN.md) — architecture, protocol, rollout, and provisional beads
 - [`docs/session-api.md`](docs/session-api.md) — additive session CRUD, Pi RPC attach, and `/apc` ACP contract
+- [`docs/tool-adapter-protocol.md`](docs/tool-adapter-protocol.md) — protocol-v2 host/session-bound fixed filesystem capability
 - [`docs/dashboard-protocol.md`](docs/dashboard-protocol.md) — Dash browser/backend contract, limits, identity, and performance budgets
 - [`docs/transcript-projection.md`](docs/transcript-projection.md) — preview-only Pi JSONL active-branch projection, cache, paging, and bounds
 - [`docs/dashboard-ownership.md`](docs/dashboard-ownership.md) — direct/fork ownership, leases, conflict guards, export, and release

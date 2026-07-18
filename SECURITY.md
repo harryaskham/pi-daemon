@@ -68,8 +68,18 @@ view shares the one resident session runtime, extension instance, and JSONL
 writer; starting a child Pi/PTY against the session is not a supported render
 path.
 
-A client needing arbitrary code execution or unreviewed extensions must use a
-separate process/security domain.
+Protocol v2 may bind a logical session to an operator-owned, owner-private Unix
+filesystem adapter. Its closed descriptor is fixed to adapter version, host
+incarnation, session ID, and generation and grants only a subset of `fs.list`,
+`fs.stat`, `fs.read`, `fs.search`, `fs.write`, and `fs.edit` beneath the session
+cwd. Every frame and response is bounded and identity-checked; per-request abort
+and close/replacement revoke are explicit. The base64url capability is
+memory-only, sent only in `bind`, and forbidden from logs, errors, status,
+events, manifests, journals, tickets, acknowledgements, and later frames. It is
+not a bearer/PKI/environment channel. V1 remains no-tools.
+
+A client needing arbitrary code execution, shell/process/network authority, or
+unreviewed extensions must use a separate process/security domain.
 
 ## Dependency audit baseline
 

@@ -8,6 +8,7 @@ semantic versioning once a release tag is cut.
 Initial standalone implementation:
 
 - versioned, forward-tolerant NDJSON protocol and JSON schema
+- additive protocol-v2 host/session/generation-bound neutral filesystem adapter contract with closed descriptors, bind/invoke/abort/revoke frames, strict limits, fixtures, schemas, and unchanged v1 no-tools behavior
 - one-process multiplexer with isolated, replaceable Pi `AgentSessionRuntime` sessions
 - shared default authentication/model registry plus bounded per-session model, tool, resource, settings, trusted extension, and memory-only environment policy
 - per-session ordering, global concurrency, bounded queues, and event sequencing

@@ -628,6 +628,13 @@ implementation order. This list is a human-readable crosswalk.
 
 ### Post-completion operator surfaces
 
+- [ ] `bd-fc8275` — protocol-v2 host-scoped neutral tool adapters without
+  arbitrary extensions or shell.
+  - [ ] `bd-5c06cd` — descriptor/types, validation, public schemas, fixtures,
+    compatibility tests, and protocol/security/integration documentation.
+  - [ ] `bd-ff2f8f` — bounded runtime registry/client and fixed filesystem-tool
+    injection; final server persistence/wiring and cross-session acceptance stay
+    with the parent.
 - [ ] `bd-ba3623` — Pi Daemon Dash: exceptionally fast, polished browser
   session workspace with embedded/dedicated backends and Rich/TUI panes;
   detailed architecture and dependency board in `web/PLAN.md`.
