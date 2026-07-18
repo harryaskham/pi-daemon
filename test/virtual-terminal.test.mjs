@@ -1,13 +1,13 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { performance } from "node:perf_hooks";
+import { fileURLToPath } from "node:url";
 import test from "node:test";
 import {
   AssistantMessageComponent,
   CustomMessageComponent,
   getMarkdownTheme,
-  getPackageDir,
   initTheme,
   ToolExecutionComponent,
   UserMessageComponent,
@@ -25,6 +25,8 @@ import {
   VirtualTerminal,
 } from "../dist/virtual-terminal.js";
 
+const pinnedPiRoot = dirname(dirname(fileURLToPath(import.meta.resolve("@earendil-works/pi-coding-agent"))));
+
 function viewportText(frame) {
   const rows = Array.from({ length: frame.rows }, () => "");
   for (const delta of frame.changedRows) rows[delta.row] = delta.text;
@@ -38,6 +40,17 @@ function percentile(values, fraction) {
 
 async function nextTurn() {
   await new Promise((resolve) => setImmediate(resolve));
+}
+
+function initPinnedTheme() {
+  const previous = process.env.PI_PACKAGE_DIR;
+  process.env.PI_PACKAGE_DIR = pinnedPiRoot;
+  try {
+    initTheme(undefined, false);
+  } finally {
+    if (previous === undefined) delete process.env.PI_PACKAGE_DIR;
+    else process.env.PI_PACKAGE_DIR = previous;
+  }
 }
 
 test("VirtualTerminal hard ceilings match the public Dash frame contract", () => {
@@ -170,7 +183,7 @@ test("VirtualTerminal bounds fragmented escape sequences and frame output", () =
 });
 
 test("exported Pi components render through one in-process TUI and preserve extension input", async () => {
-  initTheme(undefined, false);
+  initPinnedTheme();
   const terminal = new VirtualTerminal(88, 64);
   const tui = new TUI(terminal, true);
   tui.setClearOnShrink(false);
@@ -269,10 +282,10 @@ test("exported Pi components render through one in-process TUI and preserve exte
 
 test("pinned InteractiveMode audit records the unsupported process and extension binding seam", async () => {
   const source = await readFile(
-    join(getPackageDir(), "dist/modes/interactive/interactive-mode.js"),
+    join(pinnedPiRoot, "dist/modes/interactive/interactive-mode.js"),
     "utf8",
   );
-  const session = await readFile(join(getPackageDir(), "dist/core/agent-session.js"), "utf8");
+  const session = await readFile(join(pinnedPiRoot, "dist/core/agent-session.js"), "utf8");
   assert.match(source, /new TUI\(new ProcessTerminal\(\)/);
   assert.match(source, /ensureTool\("fd"\)/);
   assert.match(source, /process\.exit\(/);
