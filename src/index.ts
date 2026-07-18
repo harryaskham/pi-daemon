@@ -22,6 +22,8 @@ export * from "./pi-sdk-contract.js";
 export * from "./protocol.js";
 export * from "./rpc-attachments.js";
 export * from "./rpc-bridge.js";
+export * from "./schedule-contract.js";
+export * from "./schedule-store.js";
 export * from "./server.js";
 export * from "./source-fingerprint.js";
 export * from "./session-api.js";

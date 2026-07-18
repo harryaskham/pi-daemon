@@ -419,6 +419,9 @@ async function runServe(
   let apiServer: ApiServer | undefined;
   let apiAddress: { host: string; port: number } | undefined;
   let dashboardAddress: { host: string; port: number; origin: string } | undefined;
+  // Install process handlers before publishing the first listener. Later startup
+  // work must not expose a window where SIGTERM takes the default signal exit.
+  const signalLatch = dependencies.waitForShutdown === undefined ? latchShutdownSignal() : undefined;
   try {
     await server.start();
     if (apiEnabled || embeddedWebEnabled) {
@@ -465,6 +468,7 @@ async function runServe(
     }
     dashboardAddress = await dashboardServer?.start();
   } catch (error) {
+    signalLatch?.dispose();
     await dashboardServer?.stop().catch(() => {});
     await apiServer?.stop().catch(() => {});
     rpcAttachments?.dispose();
@@ -587,9 +591,18 @@ async function runServe(
     if (dependencies.waitForShutdown !== undefined) {
       await dependencies.waitForShutdown(shutdown);
     } else {
-      await waitForSignal(shutdown);
+      const signal = await signalLatch!.signal;
+      const timeoutMs = signal === "SIGTERM" ? 30_000 : 5_000;
+      const hardExit = setTimeout(() => process.exit(1), timeoutMs + 250);
+      hardExit.unref();
+      try {
+        await shutdown(timeoutMs);
+      } finally {
+        clearTimeout(hardExit);
+      }
     }
   } finally {
+    signalLatch?.dispose();
     if (sweepInterval !== undefined) clearInterval(sweepInterval);
     await shutdown();
   }
@@ -748,23 +761,25 @@ async function completesWithin(
   }
 }
 
-async function waitForSignal(shutdown: (timeoutMs?: number) => Promise<void>): Promise<void> {
-  await new Promise<void>((resolvePromise, reject) => {
-    const cleanup = (): void => {
-      process.off("SIGTERM", onSigterm);
-      process.off("SIGINT", onSigint);
-    };
-    const run = (timeoutMs: number): void => {
-      cleanup();
-      const hardExit = setTimeout(() => process.exit(1), timeoutMs + 250);
-      hardExit.unref();
-      void shutdown(timeoutMs).then(resolvePromise, reject);
-    };
-    const onSigterm = (): void => run(30_000);
-    const onSigint = (): void => run(5_000);
-    process.once("SIGTERM", onSigterm);
-    process.once("SIGINT", onSigint);
-  });
+function latchShutdownSignal(): {
+  signal: Promise<"SIGTERM" | "SIGINT">;
+  dispose: () => void;
+} {
+  let resolveSignal!: (signal: "SIGTERM" | "SIGINT") => void;
+  const signal = new Promise<"SIGTERM" | "SIGINT">((resolve) => { resolveSignal = resolve; });
+  const dispose = (): void => {
+    process.off("SIGTERM", onSigterm);
+    process.off("SIGINT", onSigint);
+  };
+  const settle = (received: "SIGTERM" | "SIGINT"): void => {
+    dispose();
+    resolveSignal(received);
+  };
+  const onSigterm = (): void => settle("SIGTERM");
+  const onSigint = (): void => settle("SIGINT");
+  process.once("SIGTERM", onSigterm);
+  process.once("SIGINT", onSigint);
+  return { signal, dispose };
 }
 
 function helpText(): string {

@@ -1,0 +1,116 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://a.skh.am/pi-daemon/schedule.schema.json",
+  "title": "Pi Daemon neutral schedule contract v1",
+  "oneOf": [
+    { "$ref": "#/$defs/scheduleResource" },
+    { "$ref": "#/$defs/scheduleCapabilities" }
+  ],
+  "$defs": {
+    "identifier": { "type": "string", "minLength": 1, "maxLength": 256, "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$" },
+    "timestamp": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{3})?Z$", "maxLength": 64 },
+    "terminalTicket": {
+      "type": "object",
+      "required": ["ticketId", "state", "updatedAt"],
+      "properties": {
+        "ticketId": { "$ref": "#/$defs/identifier" },
+        "state": { "enum": ["completed", "failed", "indeterminate"] },
+        "updatedAt": { "$ref": "#/$defs/timestamp" },
+        "errorCode": { "$ref": "#/$defs/identifier" }
+      },
+      "additionalProperties": false
+    },
+    "lastTrigger": {
+      "type": "object",
+      "required": ["scheduledFor", "observedAt", "disposition"],
+      "properties": {
+        "scheduledFor": { "$ref": "#/$defs/timestamp" },
+        "observedAt": { "$ref": "#/$defs/timestamp" },
+        "disposition": { "enum": ["admitted", "skipped", "rejected"] },
+        "terminalTicket": { "$ref": "#/$defs/terminalTicket" }
+      },
+      "additionalProperties": false
+    },
+    "execution": {
+      "type": "object",
+      "minProperties": 1,
+      "properties": {
+        "model": {
+          "type": "object",
+          "required": ["provider", "id"],
+          "properties": {
+            "provider": { "type": "string", "minLength": 1, "maxLength": 128 },
+            "id": { "type": "string", "minLength": 1, "maxLength": 256 }
+          },
+          "additionalProperties": false
+        },
+        "thinkingLevel": { "enum": ["off", "minimal", "low", "medium", "high", "xhigh", "max"] }
+      },
+      "additionalProperties": false
+    },
+    "missedWake": {
+      "oneOf": [
+        { "type": "object", "required": ["mode"], "properties": { "mode": { "const": "skip" } }, "additionalProperties": false },
+        { "type": "object", "required": ["mode"], "properties": { "mode": { "const": "run-once" } }, "additionalProperties": false },
+        { "type": "object", "required": ["mode", "maxRuns"], "properties": { "mode": { "const": "bounded-catch-up" }, "maxRuns": { "type": "integer", "minimum": 1, "maximum": 24 } }, "additionalProperties": false }
+      ]
+    },
+    "scheduleResource": {
+      "type": "object",
+      "required": ["contractVersion", "scheduleId", "sessionRef", "revision", "enabled", "cron", "timezone", "prompt", "overlapPolicy", "missedWakePolicy", "jitterMs", "maxAdmissionDelayMs", "createdAt", "updatedAt"],
+      "properties": {
+        "contractVersion": { "const": "1.0" },
+        "scheduleId": { "$ref": "#/$defs/identifier" },
+        "sessionRef": { "$ref": "#/$defs/identifier" },
+        "revision": { "type": "integer", "minimum": 0 },
+        "enabled": { "type": "boolean" },
+        "cron": { "type": "string", "minLength": 9, "maxLength": 256, "pattern": "^[0-9*/, -]+$" },
+        "timezone": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "prompt": { "type": "string", "minLength": 1, "maxLength": 65536 },
+        "execution": { "$ref": "#/$defs/execution" },
+        "overlapPolicy": { "enum": ["skip", "queue-one", "reject"] },
+        "missedWakePolicy": { "$ref": "#/$defs/missedWake" },
+        "jitterMs": { "type": "integer", "minimum": 0, "maximum": 86400000 },
+        "maxAdmissionDelayMs": { "type": "integer", "minimum": 0, "maximum": 86400000 },
+        "nextTriggerAt": { "$ref": "#/$defs/timestamp" },
+        "lastTrigger": { "$ref": "#/$defs/lastTrigger" },
+        "createdAt": { "$ref": "#/$defs/timestamp" },
+        "updatedAt": { "$ref": "#/$defs/timestamp" }
+      },
+      "additionalProperties": false
+    },
+    "scheduleCapabilities": {
+      "type": "object",
+      "required": ["contractVersion", "persistence", "timerRuntime", "cronSyntax", "timezoneDatabase", "optimisticConcurrency", "overlapPolicies", "missedWakePolicies", "promptHandling", "terminalTicketSummary", "clock", "limits"],
+      "properties": {
+        "contractVersion": { "const": "1.0" },
+        "persistence": { "const": true },
+        "timerRuntime": { "const": false },
+        "cronSyntax": { "const": "posix-five-field" },
+        "timezoneDatabase": { "const": "runtime-iana" },
+        "optimisticConcurrency": { "const": "expected-revision" },
+        "overlapPolicies": { "const": ["skip", "queue-one", "reject"] },
+        "missedWakePolicies": { "const": ["skip", "run-once", "bounded-catch-up"] },
+        "promptHandling": { "const": "owner-private-sensitive-content" },
+        "terminalTicketSummary": { "const": "content-free" },
+        "clock": { "const": "wall-clock-utc-instants" },
+        "limits": {
+          "type": "object",
+          "required": ["maxSchedules", "maxSchedulesPerSession", "maxPromptBytes", "maxRecordBytes", "maxRecoveryBytes", "maxCatchUpRuns", "maxJitterMs", "maxAdmissionDelayMs"],
+          "properties": {
+            "maxSchedules": { "type": "integer", "minimum": 1 },
+            "maxSchedulesPerSession": { "type": "integer", "minimum": 1 },
+            "maxPromptBytes": { "type": "integer", "minimum": 1 },
+            "maxRecordBytes": { "type": "integer", "minimum": 1 },
+            "maxRecoveryBytes": { "type": "integer", "minimum": 1 },
+            "maxCatchUpRuns": { "type": "integer", "minimum": 1 },
+            "maxJitterMs": { "type": "integer", "minimum": 1 },
+            "maxAdmissionDelayMs": { "type": "integer", "minimum": 1 }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

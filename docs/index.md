@@ -29,6 +29,7 @@ neutral service—not a Cacophony component.
 - [Dash session ownership](dashboard-ownership) — explicit direct/fork leases, conflict guards, atomic export/append-back, and indeterminate recovery
 - [Neutral Dash service API](dashboard-service-api) — service-bearer inventory, preview, activation/export/lease routes and TUI negotiation for remote backends
 - [Session configuration](session-configuration) — Pi CLI mapping, environment handling, resources, tools, and honest isolation limits
+- [Schedule contract](schedules) — versioned cron/timezone/prompt resources, persistence recovery, clock and DST semantics (timers deferred)
 - [Operations](operations) — install, serve, probe, status, drain, and recovery
 - [Session management CLI](session-cli) — JSON CRUD, tickets, prompts/controls, and endpoint discovery
 - [Security](security) — shared-process trust boundary and root policy
@@ -41,6 +42,7 @@ neutral service—not a Cacophony component.
 - [Release](release) — tag, artifact, and rollback checklist
 - [NDJSON JSON Schema](protocol.schema.json) — language-neutral local protocol contract
 - [Session API JSON Schema](session-api.schema.json) and [OpenAPI](session-api.openapi.json)
+- [Schedule JSON Schema](schedule.schema.json)
 - [Dash API JSON Schema](dashboard-api.schema.json) and [OpenAPI](dashboard-api.openapi.json)
 - [Source repository](https://github.com/harryaskham/pi-daemon)
 

@@ -93,6 +93,7 @@ const copyPackageSource = async (destination) => {
     "session-api.openapi.json",
     "dashboard-api.schema.json",
     "dashboard-api.openapi.json",
+    "schedule.schema.json",
     "CHANGELOG.md",
     "README.md",
     "SECURITY.md",
@@ -129,6 +130,7 @@ test("schema conformance uses the audited exact Ajv pin without $data", async ()
     "test/protocol.test.mjs",
     "test/session-api-contract.test.mjs",
     "test/dashboard-contract.test.mjs",
+    "test/schedule-contract.test.mjs",
   ]) {
     const source = await readFile(join(repositoryRoot, file), "utf8");
     assert.match(source, /new Ajv2020\(\{ allErrors: true, strict: true \}\)/);
@@ -229,6 +231,11 @@ test(
       "dist/shadow-tui-attachments.d.ts",
       "dist/dashboard-api.schema.json",
       "dist/dashboard-api.openapi.json",
+      "dist/schedule-contract.js",
+      "dist/schedule-contract.d.ts",
+      "dist/schedule-store.js",
+      "dist/schedule-store.d.ts",
+      "dist/schedule.schema.json",
       "THIRD_PARTY_NOTICES.md",
     ]) {
       assert.equal(packageFiles.has(required), true, `packed artifact omitted ${required}`);
