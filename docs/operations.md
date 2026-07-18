@@ -229,6 +229,43 @@ port are required when those surfaces are enabled. An optional external
 bearer bytes. `extraArgs` may set resource limits but
 cannot override module-managed identity, root, path, or API arguments.
 
+## Rolling non-launchd test instance
+
+`scripts/pi-daemon-test-instance.sh` maintains an operator-owned test instance
+without creating or modifying a launchd/systemd unit. It keeps a separate Git
+checkout, Nix GC root, config, state, Pi agent directory, socket, tmux session,
+log, API bearer, and future Dash web credential. `update` fast-forwards only to
+`origin/main`, refuses tracked source changes, runs the exact Nix package/test
+gate, atomically switches to the immutable result, and restarts only its named
+tmux session after a successful build. A failed build leaves the running result
+unchanged.
+
+```console
+install -m 0755 scripts/pi-daemon-test-instance.sh ~/.local/bin/pi-daemon-test
+pi-daemon-test install       # first exact build + start
+pi-daemon-test update        # build latest main; restart if already running
+pi-daemon-test status
+pi-daemon-test logs
+pi-daemon-test stop
+```
+
+Default paths are `~/.local/share/pi-daemon-test/source`,
+`~/.local/state/pi-daemon/test`, and
+`~/.config/pi/daemon/test/config.yaml`; environment variables named at the top
+of the script override them. The config must still provide explicit isolated
+values. The ms-mac developer instance uses socket
+`~/.local/state/pi-daemon/test/run/pi-daemon.sock`, API `127.0.0.1:7473`, and
+reserved Dash endpoint `127.0.0.1:7474`, while the Home Manager primary remains
+on API port 7463. No token is placed in the script, argv, Git, or output: service
+bootstrap creates `STATE_DIR/api-token`, and the DashboardServer factory creates
+`STATE_DIR/web-token` when its lifecycle is enabled.
+
+The current `serve` lifecycle starts the owner-only socket and session API and
+records the validated `web` namespace. The packaged SPA and DashboardServer are
+already in the Nix result, but the `web` listener itself remains absent until
+the embedded/dedicated backend lifecycle slice lands; status must not claim
+port 7474 is live before then.
+
 ## Nix-on-Droid cache bootstrap
 
 Pi Daemon remains a Node service even though the interactive Pi CLI can be
