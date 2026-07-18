@@ -15,6 +15,7 @@ import { FileDurabilityStore } from "./durability.js";
 import { Multiplexer, type SessionFactory } from "./multiplexer.js";
 import { JsonLineLogger } from "./observability.js";
 import { PiSessionFactory } from "./pi-adapter.js";
+import { installProcessStdioErrorHandlers } from "./process-stdio.js";
 import { parseCommand } from "./protocol.js";
 import { ProtocolServer } from "./server.js";
 import {
@@ -799,5 +800,6 @@ async function isDirectInvocation(invokedPath: string | undefined): Promise<bool
 }
 
 if (await isDirectInvocation(process.argv[1])) {
+  installProcessStdioErrorHandlers();
   process.exitCode = await runCli(process.argv.slice(2));
 }

@@ -4,6 +4,7 @@ import { realpath } from "node:fs/promises";
 import type { Readable, Writable } from "node:stream";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
+import { installProcessStdioErrorHandlers } from "./process-stdio.js";
 import {
   DEFAULT_RPC_STDIO_BRIDGE_LIMITS,
   RpcStdioBridge,
@@ -316,5 +317,6 @@ async function isDirectInvocation(invokedPath: string | undefined): Promise<bool
 }
 
 if (await isDirectInvocation(process.argv[1])) {
+  installProcessStdioErrorHandlers();
   process.exitCode = await runRpcStdioCli(process.argv.slice(2));
 }

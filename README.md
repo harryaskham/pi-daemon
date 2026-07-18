@@ -80,6 +80,10 @@ pi-daemon-rpc --url http://127.0.0.1:7463 --session exact-id-or-name \
   --token-file ~/.local/state/pi-daemon/api-token
 ```
 
+Both executables treat an `EPIPE` from stdout or stderr as a normal early-closing
+Unix pipeline consumer and exit quietly with status 0. Other stream errors remain
+fatal and are never hidden by the closed-pipe guard.
+
 On first launch, `serve` creates and validates its private state, socket, and Pi
 agent directories. When a custom `--agent-dir` has no `auth.json`, it seeds once
 from Pi's normal owner-private auth file if present; `--auth-seed-file` selects a

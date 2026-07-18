@@ -168,6 +168,10 @@ drain, and output flush are bounded. Attach/reconnect/gap status is JSONL on
 stderr; bearer values and daemon framing never appear on either output stream.
 See [Remote RPC stdio bridge](rpc-bridge).
 
+Both `pi-daemon` and `pi-daemon-rpc` install their stdout/stderr error policy
+before command output. `EPIPE` means an early-closing Unix pipeline consumer and
+terminates quietly with status 0; unrelated stream errors remain fatal.
+
 The service emits structured JSON lifecycle logs to stderr. It never logs
 prompts, model output, credentials, or private state/agent/workload paths.
 `pi_daemon_listening_degraded` means the transport is available but recovery or
