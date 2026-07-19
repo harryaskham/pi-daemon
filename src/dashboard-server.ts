@@ -46,6 +46,12 @@ import {
   ensureDashboardCredentialFile,
   type DashboardAuthenticatedSession,
 } from "./dashboard-auth.js";
+import { dashboardSessionDraftEtag } from "./dashboard-session-draft-contract.js";
+import {
+  validateDashboardSessionDraftCancelRequest,
+  validateDashboardSessionDraftCreateRequest,
+  validateDashboardSessionDraftSendRequest,
+} from "./dashboard-session-drafts.js";
 import {
   DashboardSettingsStore,
   DashboardStoreError,
@@ -424,9 +430,88 @@ export class DashboardServer {
         return;
       }
 
+      if (request.method === "POST" && url.pathname === `${DASH_API_BASE_PATH}/session-drafts`) {
+        const body = validateDashboardSessionDraftCreateRequest(
+          await readJsonBody(request, this.limits.dashboard.maxHttpBodyBytes),
+        );
+        assertMutationHeaders(request, body);
+        const draft = await this.backend.createSessionDraft(body);
+        sendJson(
+          response,
+          201,
+          successEnvelopeFrom(context, draft),
+          this.limits.dashboard.maxOutboundBytesPerConnection,
+          {
+            Location: `${DASH_API_BASE_PATH}/session-drafts/${encodeURIComponent(draft.draftId)}`,
+            ETag: dashboardSessionDraftEtag(draft.draftId, draft.revision),
+          },
+        );
+        return;
+      }
+
       if (request.method === "GET" && url.pathname === `${DASH_API_BASE_PATH}/sessions`) {
         const page = await this.backend.listSessions(inventoryQuery(url, this.limits.dashboard));
         sendJson(response, 200, successEnvelopeFrom(context, page), this.limits.dashboard.maxOutboundBytesPerConnection);
+        return;
+      }
+
+      const draftSendTicketMatch = matchPath(
+        url.pathname,
+        `${DASH_API_BASE_PATH}/session-draft-send/`,
+        "",
+      );
+      if (request.method === "GET" && draftSendTicketMatch !== undefined) {
+        const ticket = await this.backend.getSessionDraftSend(draftSendTicketMatch);
+        sendJson(response, 200, successEnvelopeFrom(context, ticket), this.limits.dashboard.maxOutboundBytesPerConnection);
+        return;
+      }
+      const draftMatch = matchPath(url.pathname, `${DASH_API_BASE_PATH}/session-drafts/`, "");
+      if (request.method === "GET" && draftMatch !== undefined) {
+        const draft = await this.backend.getSessionDraft(draftMatch);
+        sendJson(
+          response,
+          200,
+          successEnvelopeFrom(context, draft),
+          this.limits.dashboard.maxOutboundBytesPerConnection,
+          { ETag: dashboardSessionDraftEtag(draft.draftId, draft.revision) },
+        );
+        return;
+      }
+      const draftSendMatch = matchPath(
+        url.pathname,
+        `${DASH_API_BASE_PATH}/session-drafts/`,
+        "/send",
+      );
+      if (request.method === "POST" && draftSendMatch !== undefined) {
+        const body = validateDashboardSessionDraftSendRequest(
+          await readJsonBody(request, this.limits.dashboard.maxHttpBodyBytes),
+        );
+        assertMutationHeaders(request, body);
+        assertDashboardDraftIfMatch(request, draftSendMatch, body.expectedRevision);
+        const ticket = await this.backend.sendSessionDraft(draftSendMatch, body);
+        sendJson(
+          response,
+          202,
+          successEnvelopeFrom(context, ticket),
+          this.limits.dashboard.maxOutboundBytesPerConnection,
+          { Location: `${DASH_API_BASE_PATH}/session-draft-send/${encodeURIComponent(ticket.ticketId)}` },
+        );
+        return;
+      }
+      if (request.method === "DELETE" && draftMatch !== undefined) {
+        const body = validateDashboardSessionDraftCancelRequest(
+          await readJsonBody(request, this.limits.dashboard.maxHttpBodyBytes),
+        );
+        assertMutationHeaders(request, body);
+        assertDashboardDraftIfMatch(request, draftMatch, body.expectedRevision);
+        const draft = await this.backend.cancelSessionDraft(draftMatch, body);
+        sendJson(
+          response,
+          200,
+          successEnvelopeFrom(context, draft),
+          this.limits.dashboard.maxOutboundBytesPerConnection,
+          { ETag: dashboardSessionDraftEtag(draft.draftId, draft.revision) },
+        );
         return;
       }
 
@@ -1003,6 +1088,23 @@ function assertMutationHeaders(
   const suppliedRequestId = request.headers["x-request-id"];
   if (suppliedRequestId !== undefined && suppliedRequestId !== body.requestId) {
     throw new DashboardServerError(400, "invalid_header", "X-Request-ID does not match the request body");
+  }
+}
+
+function assertDashboardDraftIfMatch(
+  request: IncomingMessage,
+  draftId: string,
+  revision: number,
+): void {
+  if (
+    typeof request.headers["if-match"] !== "string" ||
+    request.headers["if-match"] !== dashboardSessionDraftEtag(draftId, revision)
+  ) {
+    throw new DashboardServerError(
+      412,
+      "draft_revision_conflict",
+      "If-Match does not match expectedRevision",
+    );
   }
 }
 

@@ -145,6 +145,10 @@ The provisional routes are fixed under `/dash/v1`:
 | `GET /activation/{ticketId}` | retained activation ticket |
 | `POST /sessions/{sessionRef}/export` | idempotent export-as-new or guarded append |
 | `GET /export/{ticketId}` | retained export ticket |
+| `POST /session-drafts` | validated durable new-session draft with zero runtime/model/tool work |
+| `GET\|DELETE /session-drafts/{draftId}` | inspect or revision-cancel an unsent/materializing draft |
+| `POST /session-drafts/{draftId}/send` | admit one exact first message through durable phase checkpoints |
+| `GET /session-draft-send/{ticketId}` | retained first-send ticket including admitted draft revision and session generation |
 | `GET|PUT /workspaces/{workspaceId}` | strong-ETag split-tree and seen-cursor state |
 | `GET|PATCH|DELETE /settings` | effective UI settings, allowlisted overlay, and reset |
 | `GET /schedules/capabilities` | effective cron/timezone and schedule validation limits |
@@ -174,6 +178,11 @@ update that omits it retains the existing owner-private value. Dedicated mode
 reads that value only over the server-side service-bearer connection. Older
 daemons that do not advertise `resources.schedules` produce the typed
 `schedules_unavailable` capability result rather than speculative requests.
+Likewise `resources.sessionDrafts` gates lazy creation. Draft resources never
+contain the private first message; the owner-private store exposes it only to
+the injected materializer. Cancellation before prompt submission is terminal,
+while a cancellation racing prompt submission is indeterminate and never
+blindly replayed.
 
 ## Preview, ownership, and hydration are separate
 

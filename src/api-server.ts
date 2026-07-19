@@ -24,6 +24,12 @@ import {
   type SessionInventoryQuery,
   type TranscriptQuery,
 } from "./dashboard-contract.js";
+import { dashboardSessionDraftEtag } from "./dashboard-session-draft-contract.js";
+import {
+  validateDashboardSessionDraftCancelRequest,
+  validateDashboardSessionDraftCreateRequest,
+  validateDashboardSessionDraftSendRequest,
+} from "./dashboard-session-drafts.js";
 import {
   normalizeDashboardNeutralError,
   type DashboardNeutralApi,
@@ -715,8 +721,59 @@ export class ApiServer {
           send(200, await api.getExport(exportTicket));
           return true;
         }
+        const draftSendTicket = dashboardPathRef(
+          url.pathname,
+          "/v1/dashboard/session-draft-send/",
+        );
+        if (draftSendTicket !== undefined) {
+          send(200, await api.getSessionDraftSend(draftSendTicket));
+          return true;
+        }
+        const draftRef = dashboardPathRef(
+          url.pathname,
+          "/v1/dashboard/session-drafts/",
+        );
+        if (draftRef !== undefined) {
+          send(200, await api.getSessionDraft(draftRef));
+          return true;
+        }
       }
       if (request.method === "POST") {
+        if (url.pathname === "/v1/dashboard/session-drafts") {
+          const body = validateDashboardSessionDraftCreateRequest(
+            await readBoundedJson(request, this.limits.maxBodyBytes),
+          );
+          assertMatchingRequestId(request.headers["x-request-id"], body.requestId);
+          assertDashboardIdempotency(request, body.idempotencyKey);
+          const draft = await api.createSessionDraft(body);
+          send(201, draft, {
+            Location: `/v1/dashboard/session-drafts/${encodeURIComponent(draft.draftId)}`,
+            ETag: dashboardSessionDraftEtag(draft.draftId, draft.revision),
+          }, body.requestId);
+          return true;
+        }
+        const draftSendRef = dashboardPathRef(
+          url.pathname,
+          "/v1/dashboard/session-drafts/",
+          "/send",
+        );
+        if (draftSendRef !== undefined) {
+          const body = validateDashboardSessionDraftSendRequest(
+            await readBoundedJson(request, this.limits.maxBodyBytes),
+          );
+          assertMatchingRequestId(request.headers["x-request-id"], body.requestId);
+          assertDashboardIdempotency(request, body.idempotencyKey);
+          assertDashboardDraftIfMatch(
+            request.headers["if-match"],
+            draftSendRef,
+            body.expectedRevision,
+          );
+          const ticket = await api.sendSessionDraft(draftSendRef, body);
+          send(202, ticket, {
+            Location: `/v1/dashboard/session-draft-send/${encodeURIComponent(ticket.ticketId)}`,
+          }, body.requestId);
+          return true;
+        }
         const activateRef = dashboardPathRef(
           url.pathname,
           "/v1/dashboard/inventory/",
@@ -772,6 +829,27 @@ export class ApiServer {
           );
           assertMatchingRequestId(request.headers["x-request-id"], body.requestId);
           send(200, await api.renewLease(leaseRef, body.leaseId), {}, body.requestId);
+          return true;
+        }
+      }
+      if (request.method === "DELETE") {
+        const draftRef = dashboardPathRef(
+          url.pathname,
+          "/v1/dashboard/session-drafts/",
+        );
+        if (draftRef !== undefined) {
+          const body = validateDashboardSessionDraftCancelRequest(
+            await readBoundedJson(request, this.limits.maxBodyBytes),
+          );
+          assertMatchingRequestId(request.headers["x-request-id"], body.requestId);
+          assertDashboardIdempotency(request, body.idempotencyKey);
+          assertDashboardDraftIfMatch(
+            request.headers["if-match"],
+            draftRef,
+            body.expectedRevision,
+          );
+          const draft = await api.cancelSessionDraft(draftRef, body);
+          send(200, draft, { ETag: dashboardSessionDraftEtag(draft.draftId, draft.revision) }, body.requestId);
           return true;
         }
       }
@@ -1804,6 +1882,20 @@ function apiInteger(value: unknown, field: string, minimum: number): number {
 
 function sessionEtag(sessionId: string, revision: number): string {
   return `"${Buffer.from(sessionId, "utf8").toString("base64url")}:${revision}"`;
+}
+
+function assertDashboardDraftIfMatch(
+  value: string | string[] | undefined,
+  draftId: string,
+  revision: number,
+): void {
+  if (typeof value !== "string" || value !== dashboardSessionDraftEtag(draftId, revision)) {
+    throw new ApiRequestError(
+      412,
+      "draft_revision_conflict",
+      "If-Match does not match the current draft revision",
+    );
+  }
 }
 
 function scheduleEtag(scheduleId: string, revision: number): string {

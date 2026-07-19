@@ -95,6 +95,7 @@ const copyPackageSource = async (destination) => {
     "session-api.openapi.json",
     "dashboard-api.schema.json",
     "dashboard-api.openapi.json",
+    "dashboard-session-draft.schema.json",
     "schedule.schema.json",
     "CHANGELOG.md",
     "README.md",
@@ -133,6 +134,7 @@ test("schema conformance uses the audited exact Ajv pin without $data", async ()
     "test/tool-adapter-protocol.test.mjs",
     "test/session-api-contract.test.mjs",
     "test/dashboard-contract.test.mjs",
+    "test/dashboard-session-draft-contract.test.mjs",
     "test/schedule-contract.test.mjs",
   ]) {
     const source = await readFile(join(repositoryRoot, file), "utf8");
@@ -240,6 +242,11 @@ test(
       "dist/shadow-tui-attachments.d.ts",
       "dist/dashboard-api.schema.json",
       "dist/dashboard-api.openapi.json",
+      "dist/dashboard-session-draft-contract.js",
+      "dist/dashboard-session-draft-contract.d.ts",
+      "dist/dashboard-session-drafts.js",
+      "dist/dashboard-session-drafts.d.ts",
+      "dist/dashboard-session-draft.schema.json",
       "dist/schedule-contract.js",
       "dist/schedule-contract.d.ts",
       "dist/schedule-store.js",
@@ -375,17 +382,20 @@ test(
         'import { FileSessionOwnershipStore } from "@harryaskham/pi-daemon/session-ownership-store";',
         'import dashSchema from "@harryaskham/pi-daemon/dashboard-api.schema.json" with { type: "json" };',
         'import dashOpenapi from "@harryaskham/pi-daemon/dashboard-api.openapi.json" with { type: "json" };',
+        'import { dashboardSessionDraftEtag } from "@harryaskham/pi-daemon/dashboard-session-draft-contract";',
+        'import { DASHBOARD_SESSION_DRAFT_CONTRACT_VERSION } from "@harryaskham/pi-daemon/dashboard-session-drafts";',
+        'import draftSchema from "@harryaskham/pi-daemon/dashboard-session-draft.schema.json" with { type: "json" };',
         'const isolation = parseSessionConfiguration({ cwd: process.cwd(), target: { mode: "memory" } }).persistedSpec.isolation?.mode;',
         'const dashFixture = createDashboardContractFixtures();',
         'const fingerprint = formatSessionSourceFingerprint(new Uint8Array(32));',
-        'process.stdout.write(`${PI_DAEMON_VERSION} ${SESSION_API_VERSION} ${isolation} ${DEFAULT_RPC_STDIO_BRIDGE_LIMITS.reconnectAttempts} ${typeof SessionApiClient} ${schema.title} ${protocolV2Schema.title} ${toolAdapterSchema.title} ${typeof parseSupportedProtocolCommand} ${NEUTRAL_TOOL_OPERATIONS.length} ${sessionSchema.title} ${openapi.openapi} ${DASH_API_VERSION} ${DASH_DEFAULT_LIMITS.maxInventoryPageItems} ${dashFixture.transcript.hydration} ${dashSchema.title} ${dashOpenapi.openapi} ${DEFAULT_SESSION_INVENTORY_LIMITS.maxSessions} ${fingerprint.slice(0, 7)} ${typeof TranscriptProjector} ${typeof DashboardBrowserAuth} ${typeof DashboardWorkspaceStore} ${typeof DashboardServer} ${typeof EmbeddedDashboardServiceRuntime} ${typeof InProcessDashboardBackend} ${typeof RemoteDashboardBackend} ${typeof VirtualTerminal} ${typeof SessionOwnershipService} ${typeof FileSessionOwnershipStore} ${typeof DashboardNeutralApiController} ${typeof UnavailableDashboardTuiAttachments} ${typeof ShadowTuiHost} ${typeof ShadowTuiAttachmentManager}\n`);',
+        'process.stdout.write(`${PI_DAEMON_VERSION} ${SESSION_API_VERSION} ${isolation} ${DEFAULT_RPC_STDIO_BRIDGE_LIMITS.reconnectAttempts} ${typeof SessionApiClient} ${schema.title} ${protocolV2Schema.title} ${toolAdapterSchema.title} ${typeof parseSupportedProtocolCommand} ${NEUTRAL_TOOL_OPERATIONS.length} ${sessionSchema.title} ${openapi.openapi} ${DASH_API_VERSION} ${DASH_DEFAULT_LIMITS.maxInventoryPageItems} ${dashFixture.transcript.hydration} ${dashSchema.title} ${dashOpenapi.openapi} ${DASHBOARD_SESSION_DRAFT_CONTRACT_VERSION} ${draftSchema.title} ${typeof dashboardSessionDraftEtag} ${DEFAULT_SESSION_INVENTORY_LIMITS.maxSessions} ${fingerprint.slice(0, 7)} ${typeof TranscriptProjector} ${typeof DashboardBrowserAuth} ${typeof DashboardWorkspaceStore} ${typeof DashboardServer} ${typeof EmbeddedDashboardServiceRuntime} ${typeof InProcessDashboardBackend} ${typeof RemoteDashboardBackend} ${typeof VirtualTerminal} ${typeof SessionOwnershipService} ${typeof FileSessionOwnershipStore} ${typeof DashboardNeutralApiController} ${typeof UnavailableDashboardTuiAttachments} ${typeof ShadowTuiHost} ${typeof ShadowTuiAttachmentManager}\n`);',
         "",
       ].join("\n"),
     );
     const imported = await run(process.execPath, [basename(importCheck)], { cwd: consumer });
     assert.equal(
       imported.stdout,
-      `${packageVersion} 1.0 unisolated 8 function Pi Daemon protocol v1 Pi Daemon protocol v2 Pi Daemon host tool-adapter protocol v1 function 6 Pi Daemon additive session API v1 3.1.0 1.0 100 not-requested Pi Daemon Dash browser API v1 3.1.0 10000 sha256: function function function function function function function function function function function function function function\n`,
+      `${packageVersion} 1.0 unisolated 8 function Pi Daemon protocol v1 Pi Daemon protocol v2 Pi Daemon host tool-adapter protocol v1 function 6 Pi Daemon additive session API v1 3.1.0 1.0 100 not-requested Pi Daemon Dash browser API v1 3.1.0 1.0 Pi Daemon Dash lazy session draft contract v1 function 10000 sha256: function function function function function function function function function function function function function function\n`,
     );
   },
 );

@@ -1,0 +1,14 @@
+{
+  "ticketId": "draft-send-ticket-01",
+  "draftId": "draft-fixture-01",
+  "draftRevision": 1,
+  "requestId": "draft-send-1",
+  "idempotencyKey": "draft-send-key-1",
+  "state": "succeeded",
+  "submittedAt": "2026-07-19T14:40:01.000Z",
+  "updatedAt": "2026-07-19T14:40:02.000Z",
+  "session": {
+    "sessionId": "session-fixture-01",
+    "generation": 1
+  }
+}

@@ -831,6 +831,8 @@ test("serve CLI generates and uses a stable default bearer when no external sour
 
 test("authenticated neutral Dashboard API preserves resources, idempotency, paths and TUI gating", async (t) => {
   const calls = [];
+  let draft;
+  let draftTicket;
   const capabilities = {
     apiVersion: "1.0",
     authentication: "service-bearer",
@@ -841,6 +843,7 @@ test("authenticated neutral Dashboard API preserves resources, idempotency, path
       ownership: true,
       export: true,
       leases: true,
+      sessionDrafts: true,
     },
     presentations: {
       rich: { available: true },
@@ -940,6 +943,21 @@ test("authenticated neutral Dashboard API preserves resources, idempotency, path
         updatedAt: "2026-07-18T12:00:00.000Z",
       };
     },
+    async createSessionDraft(request) {
+      const now = "2026-07-19T14:40:00.000Z";
+      draft = { contractVersion: "1.0", draftId: request.draftId ?? "draft-api-01", revision: 1, state: "draft", createdAt: now, updatedAt: now, spec: request.spec, firstMessageStartsSession: true };
+      calls.push(["draft-create", request]);
+      return draft;
+    },
+    async getSessionDraft(draftId) { calls.push(["draft-get", draftId]); return draft; },
+    async cancelSessionDraft(draftId, request) { calls.push(["draft-cancel", draftId, request]); draft = { ...draft, revision: draft.revision + 1, state: "cancelled" }; return draft; },
+    async sendSessionDraft(draftId, request) {
+      calls.push(["draft-send", draftId, request]);
+      const now = "2026-07-19T14:40:01.000Z";
+      draftTicket = { ticketId: "draft-send-api-01", draftId, draftRevision: request.expectedRevision, requestId: request.requestId, idempotencyKey: request.idempotencyKey, state: "queued", submittedAt: now, updatedAt: now };
+      return draftTicket;
+    },
+    async getSessionDraftSend(ticketId) { calls.push(["draft-send-get", ticketId]); return draftTicket; },
     async renewLease(sessionRef, leaseId) {
       calls.push(["lease", sessionRef, leaseId]);
       return {
@@ -1049,6 +1067,43 @@ test("authenticated neutral Dashboard API preserves resources, idempotency, path
   assert.equal(lease.value.requestId, "lease-request");
   assert.equal(lease.value.data.ownership.mode, "direct");
 
+  const draftSpec = {
+    cwd: "/private/work",
+    persistence: "persistent",
+    tools: { mode: "none" },
+    resources: { noExtensions: true, noSkills: true, noPromptTemplates: true, noThemes: true, noContextFiles: true, projectTrust: "deny" },
+    isolation: { mode: "unisolated" },
+  };
+  const createdDraft = await requestJson(harness.address, {
+    method: "POST",
+    path: "/v1/dashboard/session-drafts",
+    headers: { ...authorization, "Idempotency-Key": "draft-create-key" },
+    body: JSON.stringify({ requestId: "draft-create-request", idempotencyKey: "draft-create-key", draftId: "draft-api-01", spec: draftSpec }),
+  });
+  assert.equal(createdDraft.status, 201);
+  const draftEtag = createdDraft.headers.etag;
+  assert.ok(draftEtag);
+  const sentDraft = await requestJson(harness.address, {
+    method: "POST",
+    path: "/v1/dashboard/session-drafts/draft-api-01/send",
+    headers: { ...authorization, "Idempotency-Key": "draft-send-key", "If-Match": draftEtag },
+    body: JSON.stringify({ requestId: "draft-send-request", idempotencyKey: "draft-send-key", expectedRevision: 1, message: "start once" }),
+  });
+  assert.equal(sentDraft.status, 202);
+  assert.equal(sentDraft.headers.location, "/v1/dashboard/session-draft-send/draft-send-api-01");
+  assert.equal((await requestJson(harness.address, {
+    path: "/v1/dashboard/session-draft-send/draft-send-api-01",
+    headers: authorization,
+  })).value.data.draftRevision, 1);
+  const cancelledDraft = await requestJson(harness.address, {
+    method: "DELETE",
+    path: "/v1/dashboard/session-drafts/draft-api-01",
+    headers: { ...authorization, "Idempotency-Key": "draft-cancel-key", "If-Match": draftEtag },
+    body: JSON.stringify({ requestId: "draft-cancel-request", idempotencyKey: "draft-cancel-key", expectedRevision: 1 }),
+  });
+  assert.equal(cancelledDraft.status, 200);
+  assert.equal(cancelledDraft.value.data.state, "cancelled");
+
   const client = new SessionApiClient({
     baseUrl: `http://[${harness.address.host}]:${harness.address.port}`,
     bearerToken: TOKEN,
@@ -1065,6 +1120,26 @@ test("authenticated neutral Dashboard API preserves resources, idempotency, path
       })
     ).data.ticketId,
     "activation-ticket",
+  );
+  const clientDraft = (
+    await client.createDashboardSessionDraft({
+      requestId: "client-draft-create",
+      idempotencyKey: "client-draft-create-key",
+      draftId: "draft-api-01",
+      spec: draftSpec,
+    })
+  ).data;
+  assert.equal(clientDraft.firstMessageStartsSession, true);
+  assert.equal(
+    (
+      await client.sendDashboardSessionDraft("draft-api-01", {
+        requestId: "client-draft-send",
+        idempotencyKey: "client-draft-send-key",
+        expectedRevision: clientDraft.revision,
+        message: "start through client",
+      })
+    ).data.draftRevision,
+    clientDraft.revision,
   );
   assert.equal(
     (
@@ -1159,18 +1234,27 @@ const requestJsonOnce = async (address, options) =>
         port: address.port,
         method: options.method ?? "GET",
         path: options.path,
-        headers: options.headers,
+        headers: {
+          ...options.headers,
+          ...(options.body === undefined || options.headers?.["Content-Length"] !== undefined
+            ? {}
+            : { "Content-Length": String(Buffer.byteLength(options.body, "utf8")) }),
+        },
       },
       (response) => {
         let body = "";
         response.setEncoding("utf8");
         response.on("data", (chunk) => (body += chunk));
         response.on("end", () => {
-          resolve({
-            status: response.statusCode,
-            headers: response.headers,
-            value: JSON.parse(body),
-          });
+          try {
+            resolve({
+              status: response.statusCode,
+              headers: response.headers,
+              value: JSON.parse(body),
+            });
+          } catch (error) {
+            reject(new Error(`invalid JSON response for ${options.path}: status=${response.statusCode} bytes=${body.length}`, { cause: error }));
+          }
         });
       },
     );

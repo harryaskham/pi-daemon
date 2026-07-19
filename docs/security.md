@@ -57,6 +57,7 @@ project code or tools.
 - the initial Dash HTTP listener is loopback-only; an HTTPS public origin sets a `Secure` `__Host-` cookie through a loopback TLS proxy
 - packaged Dash assets are hash-named and regular/non-writable, with traversal/symlink rejection and a deny-by-default CSP
 - Dash workspace/settings files are owner-only, atomic, bounded, revision/ETag checked, and UI overlays cannot mutate service authority
+- lazy Dash session drafts use a separate owner-private atomic store; create/get/cancel perform no runtime/model/tool work, private first-message content never enters browser resources, and prompt-submitting crash/cancel races become indeterminate rather than replayed
 - shadow-TUI frames come from a bounded in-process cell grid; raw ANSI, OSC 52 clipboard access, image/device payloads, unsafe links, terminal queries, and unsupported controls never reach the browser
 - a TUI view shares one resident runtime, extension instance, and JSONL writer; a child Pi/PTY is not a supported rendering path
 

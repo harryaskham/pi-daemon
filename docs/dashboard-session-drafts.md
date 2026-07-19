@@ -1,0 +1,119 @@
+---
+layout: default
+title: Dash lazy session drafts
+---
+
+# Dash lazy session drafts
+
+A Dash **session draft** is durable configuration for a new logical session that
+has not yet earned runtime or prompt authority. Creating, reading, refreshing,
+or cancelling an unsent draft never constructs `AgentSessionRuntime`, calls the
+Pi session factory, loads provider/model/extension/tool resources, acquires a
+controller, starts a process, or submits a prompt.
+
+The machine-readable contract is
+[`dashboard-session-draft.schema.json`](dashboard-session-draft.schema.json).
+Browser-safe types and ETag helpers come from
+`dashboard-session-draft-contract`; daemon-side persistence/execution interfaces
+come from `dashboard-session-drafts`.
+
+## Browser-safe policy
+
+The draft spec is intentionally smaller than the trusted Session API spec:
+
+- canonical cwd beneath a configured allowed root;
+- optional bounded name;
+- `persistent` or `memory` new-session persistence;
+- optional provider/model/thinking selection;
+- `none` or bounded explicit built-in tool allowlist;
+- boolean discovery-denial choices and `default`/`deny` project trust;
+- honest `unisolated` isolation.
+
+It cannot carry raw environment, settings, extension/skill/template/theme paths,
+system prompts, `approve` trust, service bearers, or host tool-adapter
+capabilities. The daemon revalidates the canonical cwd and policy before the
+draft is atomically stored.
+
+## Resources and routes
+
+Both the authenticated neutral service API and browser BFF expose the same
+logical operations under their existing prefixes:
+
+| Method/path | Meaning |
+|---|---|
+| `POST /session-drafts` | idempotently create one validated draft |
+| `GET /session-drafts/{draftId}` | inspect current revision/state |
+| `DELETE /session-drafts/{draftId}` | revision-guarded cancellation |
+| `POST /session-drafts/{draftId}/send` | admit the first message once |
+| `GET /session-draft-send/{ticketId}` | inspect durable first-send truth |
+
+Browser routes retain cookie/Origin/CSRF policy. Dedicated mode keeps the daemon
+service bearer in the server process and never forwards it to JavaScript.
+Create and cancel carry request and idempotency keys; cancel also carries the
+expected draft revision.
+
+A draft resource has an immutable ID, monotonic revision, timestamps, safe spec,
+`firstMessageStartsSession: true`, and one state:
+
+```text
+draft -> materializing -> live
+                      \-> failed
+                      \-> indeterminate
+draft/materializing -> cancelled (only before prompt submission)
+```
+
+`materialization` and public send tickets bind the immutable managed
+`sessionId` plus numeric generation. Every ticket also retains the exact
+`draftRevision` admitted by its first message, so a later draft revision cannot
+be confused with earlier work.
+
+## One atomic private store
+
+`FileDashboardSessionDraftStore` owns draft records, private first-message work,
+and public tickets in one owner-only, byte/count-bounded, atomically replaced
+state file. Corrupt bounded data is quarantined; insecure permissions fail
+closed. Terminal records are retained for bounded reconciliation and then
+pruned.
+
+Public resources and tickets never expose the first-message content. Executors
+receive it only through the injected private `DashboardSessionDraftStore`
+interface. `submitSend` atomically persists:
+
+- message and semantic fingerprint;
+- a deterministic target `{sessionId,generation}` derived before side effects;
+- immutable admitted draft revision;
+- queued public ticket; and
+- materializing draft state.
+
+Duplicate keys join the existing ticket; semantic reuse is rejected.
+
+## Crash and cancellation phases
+
+The public ticket remains `queued`/`running` while private work records a finer
+monotonic checkpoint:
+
+1. `materializing` — deterministic target exists; no prompt authority crossed.
+2. `ready-to-prompt` — managed session identity is durably confirmed.
+3. `prompt-submitting` — prompt acceptance may already have crossed.
+
+The materializer updates these checkpoints with compare-and-swap transitions in
+the same store. Recovery returns bounded `recoverableTicketIds` for queued,
+materializing, and ready-to-prompt work. A running `prompt-submitting` record is
+changed to `indeterminate`; it is never blindly replayed.
+
+Cancellation is phase-aware. Queued/materializing/ready-to-prompt work can fail
+atomically with `draft_cancelled`. Cancellation racing `prompt-submitting`
+becomes `draft_cancel_indeterminate`, because claiming cancellation success
+would be dishonest after acceptance may have occurred.
+
+## First send and UI
+
+The runtime gateway, implemented separately, consumes the persisted target and
+work rather than inventing new identity. It creates/rejoins one managed session,
+obtains controller state, advances to `prompt-submitting`, and admits exactly one
+prompt through normal durable policy.
+
+The SPA presents a draft as an ordinary empty conversation with a fixed-bottom
+composer and inline “first message starts this session” notice. It reuses the
+same preview first-send semantics as existing dormant sessions; no blocking
+activation modal or second competing state machine is introduced.

@@ -32,6 +32,13 @@ import type {
   SessionInfoResource,
   TuiChannelOptions,
 } from "@harryaskham/pi-daemon/dashboard-contract";
+import type {
+  DashboardSessionDraftCancelRequest,
+  DashboardSessionDraftCreateRequest,
+  DashboardSessionDraftResource,
+  DashboardSessionDraftSendRequest,
+  DashboardSessionDraftSendTicket,
+} from "@harryaskham/pi-daemon/dashboard-session-draft-contract";
 import type { ScheduleCapabilities } from "@harryaskham/pi-daemon/schedule-contract";
 import type { JsonObject, JsonValue, SessionResource } from "@harryaskham/pi-daemon/session-api";
 import { LocalFixtureBackend } from "./fixture-backend";
@@ -54,6 +61,8 @@ export class LiveFixtureDashboardBackend extends LocalFixtureBackend implements 
   readonly #exports = new Map<string, SessionExportTicket>();
   readonly #hubs = new Map<string, FixtureRichHub>();
   readonly #schedules = new Map<string, DashboardScheduleResource>();
+  readonly #drafts = new Map<string, DashboardSessionDraftResource>();
+  readonly #draftTickets = new Map<string, DashboardSessionDraftSendTicket>();
 
   override get transcript(): NormalizedTranscriptRecord[] {
     return this.#liveTranscript ??= [
@@ -68,7 +77,7 @@ export class LiveFixtureDashboardBackend extends LocalFixtureBackend implements 
       streamSubprotocol: DASH_STREAM_SUBPROTOCOL,
       sameBrowserProtocolAcrossDeployments: true,
       authentication: { browserSession: "http-only-cookie", csrf: "same-origin-header", daemonBearerExposed: false },
-      resources: { inventory: true, transcriptPreview: true, activation: true, export: true, workspaces: true, settings: true, schedules: false },
+      resources: { inventory: true, transcriptPreview: true, activation: true, export: true, workspaces: true, settings: true, schedules: false, sessionDrafts: true },
       presentations: {
         rich: { available: true, replay: true, controller: true, commands: [...COMMANDS] },
         tui: { available: false, replay: true, controller: true, commands: [...COMMANDS], unavailableReason: "fixture-uses-local-tui-story" },
@@ -146,6 +155,72 @@ export class LiveFixtureDashboardBackend extends LocalFixtureBackend implements 
   async getExport(ticketId: string): Promise<SessionExportTicket> {
     const ticket = this.#exports.get(ticketId);
     if (!ticket) throw new Error("export ticket not found");
+    return structuredClone(ticket);
+  }
+
+  async createSessionDraft(request: DashboardSessionDraftCreateRequest): Promise<DashboardSessionDraftResource> {
+    const existing = [...this.#drafts.values()].find((draft) => draft.draftId === request.draftId);
+    if (existing !== undefined) return structuredClone(existing);
+    const now = new Date().toISOString();
+    const draft: DashboardSessionDraftResource = {
+      contractVersion: "1.0",
+      draftId: request.draftId ?? `draft-${request.idempotencyKey}`,
+      revision: 1,
+      state: "draft",
+      createdAt: now,
+      updatedAt: now,
+      spec: structuredClone(request.spec),
+      firstMessageStartsSession: true,
+    };
+    this.#drafts.set(draft.draftId, draft);
+    return structuredClone(draft);
+  }
+  async getSessionDraft(draftId: string): Promise<DashboardSessionDraftResource> {
+    const draft = this.#drafts.get(draftId);
+    if (draft === undefined) throw new Error("fixture draft not found");
+    return structuredClone(draft);
+  }
+  async cancelSessionDraft(draftId: string, request: DashboardSessionDraftCancelRequest): Promise<DashboardSessionDraftResource> {
+    const current = await this.getSessionDraft(draftId);
+    if (current.revision !== request.expectedRevision) throw new Error("fixture draft revision conflict");
+    const cancelled: DashboardSessionDraftResource = {
+      ...current,
+      revision: current.revision + 1,
+      state: "cancelled",
+      updatedAt: new Date().toISOString(),
+    };
+    this.#drafts.set(draftId, cancelled);
+    return structuredClone(cancelled);
+  }
+  async sendSessionDraft(draftId: string, request: DashboardSessionDraftSendRequest): Promise<DashboardSessionDraftSendTicket> {
+    const current = await this.getSessionDraft(draftId);
+    if (current.revision !== request.expectedRevision) throw new Error("fixture draft revision conflict");
+    const now = new Date().toISOString();
+    const session = { sessionId: `session-${draftId}`, generation: 1 };
+    const ticket: DashboardSessionDraftSendTicket = {
+      ticketId: `draft-send-${request.idempotencyKey}`,
+      draftId,
+      draftRevision: request.expectedRevision,
+      requestId: request.requestId,
+      idempotencyKey: request.idempotencyKey,
+      state: "succeeded",
+      submittedAt: now,
+      updatedAt: now,
+      session,
+    };
+    this.#draftTickets.set(ticket.ticketId, ticket);
+    this.#drafts.set(draftId, {
+      ...current,
+      revision: current.revision + 1,
+      state: "live",
+      updatedAt: now,
+      materialization: { ticketId: ticket.ticketId, state: "succeeded", session },
+    });
+    return structuredClone(ticket);
+  }
+  async getSessionDraftSend(ticketId: string): Promise<DashboardSessionDraftSendTicket> {
+    const ticket = this.#draftTickets.get(ticketId);
+    if (ticket === undefined) throw new Error("fixture draft ticket not found");
     return structuredClone(ticket);
   }
 

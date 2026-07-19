@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -14,6 +14,10 @@ import { createDashboardStreamHandler } from "../dist/dashboard-stream-router.js
 import { Multiplexer } from "../dist/multiplexer.js";
 import { FileSessionCatalog } from "../dist/session-catalog.js";
 import { FileScheduleStore } from "../dist/schedule-store.js";
+import {
+  DashboardSessionDraftService,
+  FileDashboardSessionDraftStore,
+} from "../dist/dashboard-session-drafts.js";
 import {
   assertDashboardBackendResourceConformance,
   assertDashboardRichChannelConformance,
@@ -147,6 +151,8 @@ async function harness(t, options = {}) {
   const stateDir = await mkdtemp(join(tmpdir(), "pi-daemon-dashboard-backend-"));
   t.after(() => rm(stateDir, { recursive: true, force: true }));
   const catalog = new FileSessionCatalog({ stateDir });
+  const work = join(stateDir, "work");
+  await mkdir(work, { mode: 0o700 });
   const factory = new FakeFactory();
   const multiplexer = new Multiplexer({
     factory,
@@ -187,17 +193,25 @@ async function harness(t, options = {}) {
     async getExport() { return fixtures.exportTicket; },
   };
   const schedules = options.schedules ? new FileScheduleStore({ stateDir }) : undefined;
+  const drafts = options.drafts
+    ? new DashboardSessionDraftService({
+        store: new FileDashboardSessionDraftStore({ stateDir }),
+        allowedRoots: [work],
+      })
+    : undefined;
+  if (drafts !== undefined) await drafts.recover();
   const backend = new InProcessDashboardBackend({
     inventory,
     projector,
     ownership,
     multiplexer,
     ...(schedules === undefined ? {} : { schedules }),
+    ...(drafts === undefined ? {} : { drafts }),
     ...(options.tuiChannels === undefined ? {} : { tuiChannels: options.tuiChannels }),
     limits: { leaseTtlMs: 3_000, ...(options.limits ?? {}) },
   });
   t.after(() => backend.dispose());
-  return { backend, calls, factory, fixtures, multiplexer, schedules };
+  return { backend, calls, factory, fixtures, multiplexer, schedules, drafts, work };
 }
 
 test("embedded backend delegates inventory, preview, ownership and catalog without transport policy", async (t) => {
@@ -222,6 +236,45 @@ test("shared schedule conformance passes for the embedded backend with prompt-re
     backend,
     sessionRef: fixtures.sessionInfo.managed.sessionId,
   });
+});
+
+test("lazy draft CRUD delegates to private persistence without opening runtime or RPC", async (t) => {
+  const { backend, factory, work } = await harness(t, { drafts: true });
+  assert.equal((await backend.capabilities()).resources.sessionDrafts, true);
+  const initialOpens = factory.opens.length;
+  const initialRpc = factory.controller.handles.length;
+  const request = {
+    requestId: "draft-create-backend",
+    idempotencyKey: "draft-create-backend-key",
+    draftId: "draft-backend-01",
+    spec: {
+      cwd: work,
+      persistence: "persistent",
+      tools: { mode: "none" },
+      resources: { noExtensions: true, noSkills: true, noPromptTemplates: true, noThemes: true, noContextFiles: true, projectTrust: "deny" },
+      isolation: { mode: "unisolated" },
+    },
+  };
+  const draft = await backend.createSessionDraft(request);
+  assert.equal(draft.state, "draft");
+  assert.deepEqual(await backend.getSessionDraft(draft.draftId), draft);
+  const cancelled = await backend.cancelSessionDraft(draft.draftId, {
+    requestId: "draft-cancel-backend",
+    idempotencyKey: "draft-cancel-backend-key",
+    expectedRevision: draft.revision,
+  });
+  assert.equal(cancelled.state, "cancelled");
+  assert.equal(factory.opens.length, initialOpens);
+  assert.equal(factory.controller.handles.length, initialRpc);
+  assert.throws(
+    () => backend.sendSessionDraft(draft.draftId, {
+      requestId: "draft-send-backend",
+      idempotencyKey: "draft-send-backend-key",
+      expectedRevision: cancelled.revision,
+      message: "must not queue without executor",
+    }),
+    (error) => error instanceof InProcessDashboardBackendError && error.code === "draft_execution_unavailable",
+  );
 });
 
 test("shared Rich-channel conformance passes for the embedded backend", async (t) => {

@@ -1,0 +1,29 @@
+{
+  "contractVersion": "1.0",
+  "draftId": "draft-fixture-01",
+  "revision": 1,
+  "state": "draft",
+  "createdAt": "2026-07-19T14:40:00.000Z",
+  "updatedAt": "2026-07-19T14:40:00.000Z",
+  "spec": {
+    "cwd": "/workspace/project",
+    "name": "Fresh session",
+    "persistence": "persistent",
+    "model": {
+      "provider": "github-copilot",
+      "id": "gpt-5-mini",
+      "thinkingLevel": "medium"
+    },
+    "tools": { "mode": "none" },
+    "resources": {
+      "noExtensions": true,
+      "noSkills": true,
+      "noPromptTemplates": true,
+      "noThemes": true,
+      "noContextFiles": true,
+      "projectTrust": "deny"
+    },
+    "isolation": { "mode": "unisolated" }
+  },
+  "firstMessageStartsSession": true
+}

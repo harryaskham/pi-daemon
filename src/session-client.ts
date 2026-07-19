@@ -18,6 +18,14 @@ import type {
   TranscriptPage,
   TranscriptQuery,
 } from "./dashboard-contract.js";
+import { dashboardSessionDraftEtag } from "./dashboard-session-draft-contract.js";
+import {
+  type DashboardSessionDraftCancelRequest,
+  type DashboardSessionDraftCreateRequest,
+  type DashboardSessionDraftResource,
+  type DashboardSessionDraftSendRequest,
+  type DashboardSessionDraftSendTicket,
+} from "./dashboard-session-drafts.js";
 import {
   DEFAULT_SCHEDULE_LIMITS,
   validateScheduleResource,
@@ -331,6 +339,72 @@ export class SessionApiClient {
     return this.request(
       "GET",
       `/v1/dashboard/export/${encodeURIComponent(ticketReference(ticketId))}`,
+    );
+  }
+
+  createDashboardSessionDraft(
+    request: DashboardSessionDraftCreateRequest,
+  ): Promise<SessionApiResult<DashboardSessionDraftResource>> {
+    return this.request("POST", "/v1/dashboard/session-drafts", {
+      body: request,
+      headers: {
+        "Idempotency-Key": request.idempotencyKey,
+        "X-Request-Id": request.requestId,
+      },
+    });
+  }
+
+  getDashboardSessionDraft(
+    draftId: string,
+  ): Promise<SessionApiResult<DashboardSessionDraftResource>> {
+    return this.request(
+      "GET",
+      `/v1/dashboard/session-drafts/${encodeURIComponent(sessionReference(draftId))}`,
+    );
+  }
+
+  cancelDashboardSessionDraft(
+    draftId: string,
+    request: DashboardSessionDraftCancelRequest,
+  ): Promise<SessionApiResult<DashboardSessionDraftResource>> {
+    return this.request(
+      "DELETE",
+      `/v1/dashboard/session-drafts/${encodeURIComponent(sessionReference(draftId))}`,
+      {
+        body: request,
+        headers: {
+          "Idempotency-Key": request.idempotencyKey,
+          "X-Request-Id": request.requestId,
+          "If-Match": dashboardSessionDraftEtag(draftId, request.expectedRevision),
+        },
+      },
+    );
+  }
+
+  sendDashboardSessionDraft(
+    draftId: string,
+    request: DashboardSessionDraftSendRequest,
+  ): Promise<SessionApiResult<DashboardSessionDraftSendTicket>> {
+    return this.request(
+      "POST",
+      `/v1/dashboard/session-drafts/${encodeURIComponent(sessionReference(draftId))}/send`,
+      {
+        body: request,
+        headers: {
+          "Idempotency-Key": request.idempotencyKey,
+          "X-Request-Id": request.requestId,
+          "If-Match": dashboardSessionDraftEtag(draftId, request.expectedRevision),
+        },
+      },
+    );
+  }
+
+  getDashboardSessionDraftSend(
+    ticketId: string,
+  ): Promise<SessionApiResult<DashboardSessionDraftSendTicket>> {
+    return this.request(
+      "GET",
+      `/v1/dashboard/session-draft-send/${encodeURIComponent(ticketReference(ticketId))}`,
     );
   }
 

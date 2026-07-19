@@ -29,6 +29,7 @@ remain neutral service surfaces—not Cacophony components.
 - [Dash session inventory](dashboard-inventory) — owner-safe persisted 10k-session index, keyed search, opaque paging, and measured bootstrap
 - [Dash shadow TUI](shadow-tui) — bounded in-process virtual terminal, control stripping, performance proof, and the minimal Pi view seam
 - [Dash session ownership](dashboard-ownership) — explicit direct/fork leases, conflict guards, atomic export/append-back, and indeterminate recovery
+- [Dash lazy session drafts](dashboard-session-drafts) — no-runtime create/cancel persistence and exact-once first-send crash checkpoints
 - [Neutral Dash service API](dashboard-service-api) — service-bearer inventory, preview, activation/export/lease routes and TUI negotiation for remote backends
 - [Dash v1 acceptance](dashboard-acceptance) — live embedded/dedicated receipts, browser/security/performance gates, and wall-clock soak status
 - [Session configuration](session-configuration) — Pi CLI mapping, environment handling, resources, tools, and honest isolation limits

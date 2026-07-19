@@ -1,0 +1,5 @@
+{
+  "requestId": "draft-cancel-1",
+  "idempotencyKey": "draft-cancel-key-1",
+  "expectedRevision": 1
+}

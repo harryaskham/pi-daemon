@@ -57,7 +57,8 @@
           cp -R dist node_modules package.json CHANGELOG.md README.md SECURITY.md LICENSE \
             protocol.schema.json protocol-v2.schema.json tool-adapter.schema.json \
             session-api.schema.json session-api.openapi.json dashboard-api.schema.json \
-            dashboard-api.openapi.json schedule.schema.json "$packageRoot/"
+            dashboard-api.openapi.json dashboard-session-draft.schema.json \
+            schedule.schema.json "$packageRoot/"
           makeWrapper ${pkgs.nodejs_24}/bin/node "$out/bin/pi-daemon" \
             --add-flags "$packageRoot/dist/cli.js"
           makeWrapper ${pkgs.nodejs_24}/bin/node "$out/bin/pi-daemon-rpc" \
@@ -129,6 +130,7 @@
         cp ${./session-api.openapi.json} "$out/session-api.openapi.json"
         cp ${./dashboard-api.schema.json} "$out/dashboard-api.schema.json"
         cp ${./dashboard-api.openapi.json} "$out/dashboard-api.openapi.json"
+        cp ${./dashboard-session-draft.schema.json} "$out/dashboard-session-draft.schema.json"
         cp ${./schedule.schema.json} "$out/schedule.schema.json"
         touch "$out/.nojekyll"
         test -s "$out/index.html"
@@ -144,6 +146,8 @@
         test -s "$out/dashboard-service-api/index.html"
         test -s "$out/dashboard-api.schema.json"
         test -s "$out/dashboard-api.openapi.json"
+        test -s "$out/dashboard-session-drafts/index.html"
+        test -s "$out/dashboard-session-draft.schema.json"
         test -s "$out/schedules/index.html"
         test -s "$out/schedule.schema.json"
       '';

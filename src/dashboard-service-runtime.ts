@@ -6,6 +6,10 @@ import {
   type InProcessDashboardTuiChannels,
 } from "./dashboard-backend.js";
 import { DashboardNeutralApiController } from "./dashboard-neutral-api.js";
+import {
+  DashboardSessionDraftService,
+  FileDashboardSessionDraftStore,
+} from "./dashboard-session-drafts.js";
 import { Multiplexer } from "./multiplexer.js";
 import type { RpcAttachmentManager } from "./rpc-attachments.js";
 import type { SessionCatalogStore } from "./session-catalog.js";
@@ -39,6 +43,11 @@ export interface EmbeddedDashboardServiceRecovery {
   queuedOwnershipTickets: number;
   indeterminateOwnershipTickets: number;
   ownershipRecords: number;
+  sessionDrafts: number;
+  sessionDraftTickets: number;
+  queuedSessionDraftTickets: number;
+  runningSessionDraftTickets: number;
+  indeterminateSessionDraftTickets: number;
 }
 
 /**
@@ -50,6 +59,7 @@ export class EmbeddedDashboardServiceRuntime {
   readonly inventory: SessionInventory;
   readonly projector: TranscriptProjector;
   readonly ownership: SessionOwnershipService;
+  readonly drafts: DashboardSessionDraftService;
   readonly backend: InProcessDashboardBackend;
   readonly neutralApi: DashboardNeutralApiController;
   readonly recovery: EmbeddedDashboardServiceRecovery;
@@ -60,6 +70,7 @@ export class EmbeddedDashboardServiceRuntime {
     inventory: SessionInventory;
     projector: TranscriptProjector;
     ownership: SessionOwnershipService;
+    drafts: DashboardSessionDraftService;
     backend: InProcessDashboardBackend;
     neutralApi: DashboardNeutralApiController;
     recovery: EmbeddedDashboardServiceRecovery;
@@ -67,6 +78,7 @@ export class EmbeddedDashboardServiceRuntime {
     this.inventory = options.inventory;
     this.projector = options.projector;
     this.ownership = options.ownership;
+    this.drafts = options.drafts;
     this.backend = options.backend;
     this.neutralApi = options.neutralApi;
     this.recovery = options.recovery;
@@ -92,6 +104,10 @@ export class EmbeddedDashboardServiceRuntime {
     });
     const projector = new TranscriptProjector({ stateDir: options.stateDir });
     const ownershipRuntime = new MultiplexerSessionOwnershipRuntime(options.multiplexer);
+    const drafts = new DashboardSessionDraftService({
+      store: new FileDashboardSessionDraftStore({ stateDir: options.stateDir }),
+      allowedRoots: options.allowedRoots,
+    });
     let backend: InProcessDashboardBackend | undefined;
     ownership = new SessionOwnershipService({
       stateDir: options.stateDir,
@@ -130,6 +146,7 @@ export class EmbeddedDashboardServiceRuntime {
       projector,
       ownership,
       multiplexer: options.multiplexer,
+      drafts,
       ...(options.schedules === undefined ? {} : { schedules: options.schedules }),
       ...(options.scheduler === undefined ? {} : { scheduler: options.scheduler }),
       ...(options.tuiChannels === undefined ? {} : { tuiChannels: options.tuiChannels }),
@@ -138,6 +155,7 @@ export class EmbeddedDashboardServiceRuntime {
       inventory,
       projector,
       ownership,
+      drafts,
       tuiAvailable: options.tuiChannels !== undefined,
       schedulesAvailable: options.schedules !== undefined,
       ...(options.tuiChannels === undefined
@@ -147,18 +165,27 @@ export class EmbeddedDashboardServiceRuntime {
 
     try {
       await ownership.initialize();
-      const recovered = await ownership.recover();
+      const [recovered, draftRecovery] = await Promise.all([
+        ownership.recover(),
+        drafts.recover(),
+      ]);
       await inventory.start();
       return new EmbeddedDashboardServiceRuntime({
         inventory,
         projector,
         ownership,
+        drafts,
         backend,
         neutralApi,
         recovery: {
           queuedOwnershipTickets: recovered.queued,
           indeterminateOwnershipTickets: recovered.indeterminate,
           ownershipRecords: recovered.records,
+          sessionDrafts: draftRecovery.drafts,
+          sessionDraftTickets: draftRecovery.tickets,
+          queuedSessionDraftTickets: draftRecovery.queuedTickets,
+          runningSessionDraftTickets: draftRecovery.runningTickets,
+          indeterminateSessionDraftTickets: draftRecovery.indeterminateTickets,
         },
       });
     } catch (error) {

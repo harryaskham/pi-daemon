@@ -978,6 +978,445 @@
           }
         }
       }
+    },
+    "/session-drafts": {
+      "post": {
+        "operationId": "createDashboardSessionDraft",
+        "summary": "Persist a validated new-session draft without hydrating Pi",
+        "security": [
+          {
+            "dashSession": [],
+            "csrfHeader": []
+          }
+        ],
+        "x-origin-check-required": true,
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RequestId"
+          },
+          {
+            "$ref": "#/components/parameters/ClientId"
+          },
+          {
+            "$ref": "#/components/parameters/WorkspaceId"
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "./dashboard-session-draft.schema.json#/$defs/createRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Durable no-runtime session draft",
+            "headers": {
+              "ETag": {
+                "description": "Draft revision tag",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Location": {
+                "description": "Draft resource URL",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "./dashboard-api.schema.json#/$defs/httpEnvelopeBase"
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "data"
+                      ],
+                      "properties": {
+                        "ok": {
+                          "const": true
+                        },
+                        "data": {
+                          "$ref": "./dashboard-session-draft.schema.json#/$defs/resource"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "429": {
+            "$ref": "#/components/responses/Capacity"
+          }
+        }
+      }
+    },
+    "/session-drafts/{draftId}": {
+      "parameters": [
+        {
+          "name": "draftId",
+          "in": "path",
+          "required": true,
+          "description": "Opaque dashboard session draft ID",
+          "schema": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "getDashboardSessionDraft",
+        "summary": "Inspect a lazy session draft without runtime hydration",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RequestId"
+          },
+          {
+            "$ref": "#/components/parameters/ClientId"
+          },
+          {
+            "$ref": "#/components/parameters/WorkspaceId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Current draft resource",
+            "headers": {
+              "ETag": {
+                "description": "Draft revision tag",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "./dashboard-api.schema.json#/$defs/httpEnvelopeBase"
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "data"
+                      ],
+                      "properties": {
+                        "ok": {
+                          "const": true
+                        },
+                        "data": {
+                          "$ref": "./dashboard-session-draft.schema.json#/$defs/resource"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "cancelDashboardSessionDraft",
+        "summary": "Cancel an unsent draft with phase-aware first-send truth",
+        "security": [
+          {
+            "dashSession": [],
+            "csrfHeader": []
+          }
+        ],
+        "x-origin-check-required": true,
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RequestId"
+          },
+          {
+            "$ref": "#/components/parameters/ClientId"
+          },
+          {
+            "$ref": "#/components/parameters/WorkspaceId"
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          },
+          {
+            "$ref": "#/components/parameters/IfMatch"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "./dashboard-session-draft.schema.json#/$defs/cancelRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Cancelled or cancellation-indeterminate draft",
+            "headers": {
+              "ETag": {
+                "description": "Updated draft revision tag",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "./dashboard-api.schema.json#/$defs/httpEnvelopeBase"
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "data"
+                      ],
+                      "properties": {
+                        "ok": {
+                          "const": true
+                        },
+                        "data": {
+                          "$ref": "./dashboard-session-draft.schema.json#/$defs/resource"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "412": {
+            "$ref": "#/components/responses/Precondition"
+          }
+        }
+      }
+    },
+    "/session-drafts/{draftId}/send": {
+      "parameters": [
+        {
+          "name": "draftId",
+          "in": "path",
+          "required": true,
+          "description": "Opaque dashboard session draft ID",
+          "schema": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+          }
+        }
+      ],
+      "post": {
+        "operationId": "sendDashboardSessionDraft",
+        "summary": "Admit one durable exact-once first message",
+        "security": [
+          {
+            "dashSession": [],
+            "csrfHeader": []
+          }
+        ],
+        "x-origin-check-required": true,
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RequestId"
+          },
+          {
+            "$ref": "#/components/parameters/ClientId"
+          },
+          {
+            "$ref": "#/components/parameters/WorkspaceId"
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          },
+          {
+            "$ref": "#/components/parameters/IfMatch"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "./dashboard-session-draft.schema.json#/$defs/sendRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Durable first-send ticket",
+            "headers": {
+              "Location": {
+                "description": "First-send ticket URL",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "./dashboard-api.schema.json#/$defs/httpEnvelopeBase"
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "data"
+                      ],
+                      "properties": {
+                        "ok": {
+                          "const": true
+                        },
+                        "data": {
+                          "$ref": "./dashboard-session-draft.schema.json#/$defs/sendTicket"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "412": {
+            "$ref": "#/components/responses/Precondition"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/session-draft-send/{ticketId}": {
+      "parameters": [
+        {
+          "name": "ticketId",
+          "in": "path",
+          "required": true,
+          "description": "Durable dashboard first-send ticket ID",
+          "schema": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "getDashboardSessionDraftSend",
+        "summary": "Inspect durable first-send terminal or indeterminate truth",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RequestId"
+          },
+          {
+            "$ref": "#/components/parameters/ClientId"
+          },
+          {
+            "$ref": "#/components/parameters/WorkspaceId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Current first-send ticket",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "./dashboard-api.schema.json#/$defs/httpEnvelopeBase"
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "data"
+                      ],
+                      "properties": {
+                        "ok": {
+                          "const": true
+                        },
+                        "data": {
+                          "$ref": "./dashboard-session-draft.schema.json#/$defs/sendTicket"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
     }
   },
   "components": {

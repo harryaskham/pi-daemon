@@ -47,6 +47,13 @@ import {
   type TuiDimensions,
 } from "./dashboard-contract.js";
 import { DEFAULT_SCHEDULE_LIMITS, type ScheduleCapabilities } from "./schedule-contract.js";
+import type {
+  DashboardSessionDraftCancelRequest,
+  DashboardSessionDraftCreateRequest,
+  DashboardSessionDraftResource,
+  DashboardSessionDraftSendRequest,
+  DashboardSessionDraftSendTicket,
+} from "./dashboard-session-drafts.js";
 import { browserScheduleResource, scheduleEtag } from "./dashboard-schedule-resources.js";
 import type {
   JsonObject,
@@ -107,6 +114,11 @@ export interface RemoteDashboardBackendClient extends Pick<
   | "getDashboardActivation"
   | "exportDashboardSession"
   | "getDashboardExport"
+  | "createDashboardSessionDraft"
+  | "getDashboardSessionDraft"
+  | "cancelDashboardSessionDraft"
+  | "sendDashboardSessionDraft"
+  | "getDashboardSessionDraftSend"
   | "scheduleCapabilities"
   | "listSchedules"
   | "getSchedule"
@@ -246,6 +258,44 @@ export class RemoteDashboardBackend implements DashboardBackend {
   async getExport(ticketId: string): Promise<SessionExportTicket> {
     this.#assertOpen();
     return this.#call(() => this.#client.getDashboardExport(ticketId));
+  }
+
+  async createSessionDraft(
+    request: DashboardSessionDraftCreateRequest,
+  ): Promise<DashboardSessionDraftResource> {
+    this.#assertOpen();
+    await this.#assertDrafts();
+    return this.#call(() => this.#client.createDashboardSessionDraft(request));
+  }
+
+  async getSessionDraft(draftId: string): Promise<DashboardSessionDraftResource> {
+    this.#assertOpen();
+    await this.#assertDrafts();
+    return this.#call(() => this.#client.getDashboardSessionDraft(draftId));
+  }
+
+  async cancelSessionDraft(
+    draftId: string,
+    request: DashboardSessionDraftCancelRequest,
+  ): Promise<DashboardSessionDraftResource> {
+    this.#assertOpen();
+    await this.#assertDrafts();
+    return this.#call(() => this.#client.cancelDashboardSessionDraft(draftId, request));
+  }
+
+  async sendSessionDraft(
+    draftId: string,
+    request: DashboardSessionDraftSendRequest,
+  ): Promise<DashboardSessionDraftSendTicket> {
+    this.#assertOpen();
+    await this.#assertDrafts();
+    return this.#call(() => this.#client.sendDashboardSessionDraft(draftId, request));
+  }
+
+  async getSessionDraftSend(ticketId: string): Promise<DashboardSessionDraftSendTicket> {
+    this.#assertOpen();
+    await this.#assertDrafts();
+    return this.#call(() => this.#client.getDashboardSessionDraftSend(ticketId));
   }
 
   async scheduleCapabilities(): Promise<ScheduleCapabilities> {
@@ -483,6 +533,15 @@ export class RemoteDashboardBackend implements DashboardBackend {
       ...(olderCursor === undefined ? {} : { olderCursor }),
       ...(newerCursor === undefined ? {} : { newerCursor }),
     };
+  }
+
+  async #assertDrafts(): Promise<void> {
+    if (!(await this.capabilities()).resources.sessionDrafts) {
+      throw new RemoteDashboardBackendError(
+        "drafts_unavailable",
+        "remote daemon does not advertise Dashboard session draft resources",
+      );
+    }
   }
 
   async #assertSchedules(): Promise<void> {
@@ -2153,6 +2212,7 @@ function dashboardCapabilities(
       workspaces: true,
       settings: true,
       schedules: service.resources.schedules === true,
+      sessionDrafts: service.resources.sessionDrafts === true,
     },
     presentations: {
       rich: { available: true, replay: true, controller: true, commands },

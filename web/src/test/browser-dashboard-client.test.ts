@@ -36,7 +36,7 @@ const capabilities: DashboardCapabilities = {
   streamSubprotocol: DASH_STREAM_SUBPROTOCOL,
   sameBrowserProtocolAcrossDeployments: true,
   authentication: { browserSession: "http-only-cookie", csrf: "same-origin-header", daemonBearerExposed: false },
-  resources: { inventory: true, transcriptPreview: true, activation: true, export: true, workspaces: true, settings: true, schedules: false },
+  resources: { inventory: true, transcriptPreview: true, activation: true, export: true, workspaces: true, settings: true, schedules: false, sessionDrafts: true },
   presentations: {
     rich: { available: true, replay: true, controller: true, commands: ["prompt"] },
     tui: { available: false, replay: true, controller: true, commands: [], unavailableReason: "test" },
@@ -235,6 +235,35 @@ describe("same-origin browser dashboard client", () => {
     expect(calls[1]?.init?.headers).toMatchObject({ "x-pi-daemon-csrf": "csrf-test", "Idempotency-Key": "schedule-key", "X-Request-ID": "schedule-create" });
     expect(calls[2]?.url).toBe("/dash/v1/schedules/dash-job");
     expect(calls[2]?.init?.headers).toMatchObject({ "If-Match": '"ZGFzaC1qb2I:0"' });
+    expect(JSON.stringify(calls.map((call) => call.init?.headers))).not.toMatch(/authorization|bearer/i);
+  });
+
+  it("uses only cookie BFF draft routes with CSRF, idempotency and exact draft ETags", async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const spec = {
+      cwd: "/work/test",
+      persistence: "persistent" as const,
+      tools: { mode: "none" as const },
+      resources: { noExtensions: true, noSkills: true, noPromptTemplates: true, noThemes: true, noContextFiles: true, projectTrust: "deny" as const },
+      isolation: { mode: "unisolated" as const },
+    };
+    const draft = { contractVersion: "1.0" as const, draftId: "draft-browser-01", revision: 1, state: "draft" as const, createdAt: "2026-07-19T00:00:00.000Z", updatedAt: "2026-07-19T00:00:00.000Z", spec, firstMessageStartsSession: true as const };
+    const fetch = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      calls.push({ url: String(url), ...(init === undefined ? {} : { init }) });
+      if (String(url).endsWith("/login")) return new Response(JSON.stringify(envelope({ clientId: CLIENT, workspaceId: WORKSPACE, expiresAt: "2026-07-20T00:00:00.000Z", csrfToken: "csrf-test" })));
+      if (String(url).endsWith("/send")) return new Response(JSON.stringify(envelope({ ticketId: "draft-send-01", draftId: draft.draftId, draftRevision: 1, requestId: "draft-send", idempotencyKey: "draft-send-key", state: "queued", submittedAt: draft.createdAt, updatedAt: draft.updatedAt })), { status: 202 });
+      return new Response(JSON.stringify(envelope(draft)), { status: init?.method === "POST" ? 201 : 200 });
+    });
+    const client = new BrowserDashboardClient({ fetch: fetch as typeof globalThis.fetch });
+    await client.login("owner-private-credential");
+    await client.createSessionDraft({ requestId: "draft-create", idempotencyKey: "draft-create-key", draftId: draft.draftId, spec });
+    await client.sendSessionDraft(draft.draftId, { requestId: "draft-send", idempotencyKey: "draft-send-key", expectedRevision: 1, message: "start once" });
+    await client.cancelSessionDraft(draft.draftId, { requestId: "draft-cancel", idempotencyKey: "draft-cancel-key", expectedRevision: 1 });
+    expect(calls[1]?.url).toBe("/dash/v1/session-drafts");
+    expect(calls[1]?.init?.headers).toMatchObject({ "x-pi-daemon-csrf": "csrf-test", "Idempotency-Key": "draft-create-key" });
+    expect(calls[2]?.url).toBe("/dash/v1/session-drafts/draft-browser-01/send");
+    expect(calls[2]?.init?.headers).toMatchObject({ "If-Match": '"ZHJhZnQtYnJvd3Nlci0wMQ:1"' });
+    expect(calls[3]?.init?.headers).toMatchObject({ "If-Match": '"ZHJhZnQtYnJvd3Nlci0wMQ:1"' });
     expect(JSON.stringify(calls.map((call) => call.init?.headers))).not.toMatch(/authorization|bearer/i);
   });
 

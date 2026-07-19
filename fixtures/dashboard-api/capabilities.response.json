@@ -21,7 +21,8 @@
       "export": true,
       "workspaces": true,
       "settings": true,
-      "schedules": false
+      "schedules": false,
+      "sessionDrafts": false
     },
     "presentations": {
       "rich": {

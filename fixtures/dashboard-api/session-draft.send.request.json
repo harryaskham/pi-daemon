@@ -1,0 +1,6 @@
+{
+  "requestId": "draft-send-1",
+  "idempotencyKey": "draft-send-key-1",
+  "expectedRevision": 1,
+  "message": "Start this session exactly once."
+}

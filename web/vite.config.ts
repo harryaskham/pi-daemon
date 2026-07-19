@@ -9,6 +9,7 @@ export default defineConfig({
     alias: {
       "@harryaskham/pi-daemon/dashboard-contract": fileURLToPath(new URL("../src/dashboard-contract.ts", import.meta.url)),
       "@harryaskham/pi-daemon/dashboard-fixtures": fileURLToPath(new URL("../src/dashboard-fixtures.ts", import.meta.url)),
+      "@harryaskham/pi-daemon/dashboard-session-draft-contract": fileURLToPath(new URL("../src/dashboard-session-draft-contract.ts", import.meta.url)),
     },
   },
   build: {

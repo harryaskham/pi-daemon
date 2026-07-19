@@ -54,6 +54,15 @@ import type {
 import { catalogRecordToSessionResource } from "./session-catalog.js";
 import { ensureSessionResident } from "./session-residency.js";
 import type { JsonObject, JsonValue, PiRpcEvent, SessionResource } from "./session-api.js";
+import type {
+  DashboardSessionDraftCancelRequest,
+  DashboardSessionDraftCreateRequest,
+  DashboardSessionDraftExecution,
+  DashboardSessionDraftResource,
+  DashboardSessionDraftSendRequest,
+  DashboardSessionDraftSendTicket,
+  DashboardSessionDraftService,
+} from "./dashboard-session-drafts.js";
 import type { SessionInventory } from "./session-inventory.js";
 import {
   browserScheduleResource,
@@ -128,6 +137,8 @@ export interface InProcessDashboardBackendOptions {
   multiplexer: Multiplexer;
   schedules?: Pick<FileScheduleStore, "list" | "get" | "create" | "update" | "delete" | "limits">;
   scheduler?: Pick<SchedulerRuntime, "recompute" | "status">;
+  drafts?: Pick<DashboardSessionDraftService, "create" | "get" | "cancel">;
+  draftExecution?: DashboardSessionDraftExecution;
   tuiChannels?: InProcessDashboardTuiChannels;
   capabilities?: DashboardCapabilities;
   limits?: Partial<InProcessDashboardBackendLimits>;
@@ -157,6 +168,8 @@ export class InProcessDashboardBackend implements DashboardBackend {
   readonly #multiplexer: Multiplexer;
   readonly #schedules: InProcessDashboardBackendOptions["schedules"];
   readonly #scheduler: InProcessDashboardBackendOptions["scheduler"];
+  readonly #drafts: InProcessDashboardBackendOptions["drafts"];
+  readonly #draftExecution: DashboardSessionDraftExecution | undefined;
   readonly #tuiChannels: InProcessDashboardTuiChannels | undefined;
   readonly #capabilities: DashboardCapabilities;
   readonly #limits: InProcessDashboardBackendLimits;
@@ -172,11 +185,14 @@ export class InProcessDashboardBackend implements DashboardBackend {
     this.#multiplexer = options.multiplexer;
     this.#schedules = options.schedules;
     this.#scheduler = options.scheduler;
+    this.#drafts = options.drafts;
+    this.#draftExecution = options.draftExecution;
     this.#tuiChannels = options.tuiChannels;
     this.#limits = resolveLimits(options.limits);
     this.#capabilities = options.capabilities ?? defaultCapabilities(
       options.tuiChannels !== undefined,
       options.schedules !== undefined,
+      options.drafts !== undefined,
       this.#limits,
     );
     this.#unsubscribeMultiplexer = this.#multiplexer.subscribe((event) => {
@@ -294,6 +310,61 @@ export class InProcessDashboardBackend implements DashboardBackend {
   async getExport(ticketId: string): Promise<SessionExportTicket> {
     this.#assertOpen();
     return this.#ownership.getExport(ticketId);
+  }
+
+  async createSessionDraft(
+    request: DashboardSessionDraftCreateRequest,
+  ): Promise<DashboardSessionDraftResource> {
+    this.#assertOpen();
+    return this.#draftService().create(request);
+  }
+
+  async getSessionDraft(draftId: string): Promise<DashboardSessionDraftResource> {
+    this.#assertOpen();
+    const draft = await this.#draftService().get(draftId);
+    if (draft === undefined) {
+      throw new InProcessDashboardBackendError("draft_not_found", "dashboard session draft not found");
+    }
+    return draft;
+  }
+
+  cancelSessionDraft(
+    draftId: string,
+    request: DashboardSessionDraftCancelRequest,
+  ): Promise<DashboardSessionDraftResource> {
+    this.#assertOpen();
+    return this.#draftService().cancel(draftId, request);
+  }
+
+  sendSessionDraft(
+    draftId: string,
+    request: DashboardSessionDraftSendRequest,
+  ): Promise<DashboardSessionDraftSendTicket> {
+    this.#assertOpen();
+    if (this.#draftExecution === undefined) {
+      throw new InProcessDashboardBackendError(
+        "draft_execution_unavailable",
+        "dashboard session draft execution is unavailable",
+        true,
+      );
+    }
+    return this.#draftExecution.submitSend(draftId, request);
+  }
+
+  async getSessionDraftSend(ticketId: string): Promise<DashboardSessionDraftSendTicket> {
+    this.#assertOpen();
+    if (this.#draftExecution === undefined) {
+      throw new InProcessDashboardBackendError(
+        "draft_execution_unavailable",
+        "dashboard session draft execution is unavailable",
+        true,
+      );
+    }
+    const ticket = await this.#draftExecution.getSend(ticketId);
+    if (ticket === undefined) {
+      throw new InProcessDashboardBackendError("draft_ticket_not_found", "draft send ticket not found");
+    }
+    return ticket;
   }
 
   async scheduleCapabilities(): Promise<ScheduleCapabilities> {
@@ -466,6 +537,16 @@ export class InProcessDashboardBackend implements DashboardBackend {
     for (const hub of this.#richHubs.values()) hub.dispose("dashboard backend disposed");
     this.#richHubs.clear();
     this.#tuiChannels?.dispose?.();
+  }
+
+  #draftService(): NonNullable<InProcessDashboardBackendOptions["drafts"]> {
+    if (this.#drafts === undefined) {
+      throw new InProcessDashboardBackendError(
+        "drafts_unavailable",
+        "dashboard session drafts are unavailable",
+      );
+    }
+    return this.#drafts;
   }
 
   async #residentContext(
@@ -1036,6 +1117,7 @@ class LeasedTuiChannel implements DashboardTuiChannel {
 function defaultCapabilities(
   tuiAvailable: boolean,
   schedulesAvailable: boolean,
+  draftsAvailable: boolean,
   backendLimits: InProcessDashboardBackendLimits,
 ): DashboardCapabilities {
   const commands: DashboardCommandOperation[] = [
@@ -1078,6 +1160,7 @@ function defaultCapabilities(
       workspaces: true,
       settings: true,
       schedules: schedulesAvailable,
+      sessionDrafts: draftsAvailable,
     },
     presentations: {
       rich: { available: true, replay: true, controller: true, commands },

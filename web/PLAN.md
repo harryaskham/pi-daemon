@@ -1356,6 +1356,17 @@ These lanes intentionally begin in parallel:
   on runtime, API, and Dash schedule UX.
 - [ ] `bd-4e10da` — scheduler parent epic; depends on `bd-aa4260`.
 
+### Lazy new-session follow-on
+
+- [ ] `bd-e9fce1` — parent browser new-session flow: no runtime/model/tool work
+  before the first explicit message and exactly one materialized first turn.
+- [ ] `bd-6a4170` — browser-safe draft contract, owner-private atomic draft/send
+  ticket store, authenticated service/BFF CRUD, schema, fixtures, and docs.
+- [ ] `bd-96c3e1` — exact-once embedded/remote first-send materializer consuming
+  deterministic private store checkpoints.
+- [ ] `bd-72d6fd` — sidebar/form/empty-pane UX reusing `bd-930d31`'s
+  preview-composer first-send state machine.
+
 ### Other post-v1 work
 
 - [ ] `bd-470f81` — declarative cross-mode rich extension renderer contract.

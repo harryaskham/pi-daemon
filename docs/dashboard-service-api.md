@@ -36,6 +36,10 @@ same backend contract as embedded mode without importing in-process services.
 | `POST /v1/dashboard/session/{sessionRef}/export` | durable export-as-new or guarded append-back ticket |
 | `GET /v1/dashboard/export/{ticketId}` | export ticket |
 | `POST /v1/dashboard/session/{sessionRef}/lease` | renew the exact cooperative ownership lease |
+| `POST /v1/dashboard/session-drafts` | persist a validated new-session draft without runtime/model/tool work |
+| `GET\|DELETE /v1/dashboard/session-drafts/{draftId}` | inspect or revision-cancel a durable unsent draft |
+| `POST /v1/dashboard/session-drafts/{draftId}/send` | admit the exact first message through the injected materializer |
+| `GET /v1/dashboard/session-draft-send/{ticketId}` | inspect queued/running/terminal/indeterminate first-send truth |
 | `GET /v1/dashboard/session/{sessionRef}/tui` | capability-gated `pi-daemon-tui.v1` WebSocket |
 
 HTTP successes use the normal session API envelope (`apiVersion`, `requestId`,
@@ -44,7 +48,10 @@ minor fields remain additive.
 
 ## Admission and idempotency
 
-Activation/export bodies already contain `requestId` and `idempotencyKey`. The
+Activation/export and draft create/cancel/send bodies contain `requestId` and
+`idempotencyKey`. Draft cancel/send additionally require exact `If-Match` and
+`expectedRevision`; every first-send ticket retains the admitted revision and
+deterministic target session identity. The
 HTTP `X-Request-Id` and `Idempotency-Key` headers must match when present/required;
 a mismatch fails before mutation. The ownership service retains the durable
 ticket and enforces semantic key reuse. A running operation interrupted by a
@@ -117,6 +124,9 @@ writer.
 - `activateDashboardSession()` / `getDashboardActivation()`;
 - `exportDashboardSession()` / `getDashboardExport()`;
 - `renewDashboardLease()`;
+- `createDashboardSessionDraft()` / `getDashboardSessionDraft()` /
+  `cancelDashboardSessionDraft()`;
+- `sendDashboardSessionDraft()` / `getDashboardSessionDraftSend()`;
 - `createDashboardRpcSocket()` / `connectDashboardRpc()`; and
 - `createDashboardTuiSocket()` / `connectDashboardTui()`.
 
@@ -129,4 +139,6 @@ response size, request timeout, service-bearer header, and safe error mapping.
 - `session-api.schema.json` publishes service envelopes.
 - `dashboard-api.schema.json` publishes neutral capabilities and lease resources
   alongside shared Dash resources.
+- `dashboard-session-draft.schema.json` publishes the browser-safe draft and
+  first-send ticket contract.
 - `fixtures/session-api/dashboard.*.response.json` are language-neutral examples.

@@ -17,6 +17,7 @@ for (const contract of [
   "session-api.openapi.json",
   "dashboard-api.schema.json",
   "dashboard-api.openapi.json",
+  "dashboard-session-draft.schema.json",
   "schedule.schema.json",
 ]) {
   await copyFile(new URL(`../${contract}`, import.meta.url), new URL(`../dist/${contract}`, import.meta.url));

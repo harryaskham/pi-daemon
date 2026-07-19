@@ -137,6 +137,7 @@ export function createDashboardCapabilitiesFixture(): DashboardCapabilities {
       workspaces: true,
       settings: true,
       schedules: false,
+      sessionDrafts: false,
     },
     presentations: {
       rich: {

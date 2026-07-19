@@ -46,6 +46,14 @@ import type {
   TuiChannelOptions,
   TuiDimensions,
 } from "@harryaskham/pi-daemon/dashboard-contract";
+import {
+  dashboardSessionDraftEtag,
+  type DashboardSessionDraftCancelRequest,
+  type DashboardSessionDraftCreateRequest,
+  type DashboardSessionDraftResource,
+  type DashboardSessionDraftSendRequest,
+  type DashboardSessionDraftSendTicket,
+} from "@harryaskham/pi-daemon/dashboard-session-draft-contract";
 import type { ScheduleCapabilities } from "@harryaskham/pi-daemon/schedule-contract";
 import type { JsonObject, JsonValue, SessionResource } from "@harryaskham/pi-daemon/session-api";
 import {
@@ -222,6 +230,58 @@ export class BrowserDashboardClient implements DashboardBackend, DashboardPrefer
 
   getExport(ticketId: string): Promise<SessionExportTicket> {
     return this.#request("GET", `/export/${pathPart(ticketId)}`);
+  }
+
+  createSessionDraft(
+    request: DashboardSessionDraftCreateRequest,
+  ): Promise<DashboardSessionDraftResource> {
+    return this.#request(
+      "POST",
+      "/session-drafts",
+      request,
+      true,
+      draftMutationHeaders(request),
+    );
+  }
+
+  getSessionDraft(draftId: string): Promise<DashboardSessionDraftResource> {
+    return this.#request("GET", `/session-drafts/${pathPart(draftId)}`);
+  }
+
+  cancelSessionDraft(
+    draftId: string,
+    request: DashboardSessionDraftCancelRequest,
+  ): Promise<DashboardSessionDraftResource> {
+    return this.#request(
+      "DELETE",
+      `/session-drafts/${pathPart(draftId)}`,
+      request,
+      true,
+      {
+        ...draftMutationHeaders(request),
+        "If-Match": dashboardSessionDraftEtag(draftId, request.expectedRevision),
+      },
+    );
+  }
+
+  sendSessionDraft(
+    draftId: string,
+    request: DashboardSessionDraftSendRequest,
+  ): Promise<DashboardSessionDraftSendTicket> {
+    return this.#request(
+      "POST",
+      `/session-drafts/${pathPart(draftId)}/send`,
+      request,
+      true,
+      {
+        ...draftMutationHeaders(request),
+        "If-Match": dashboardSessionDraftEtag(draftId, request.expectedRevision),
+      },
+    );
+  }
+
+  getSessionDraftSend(ticketId: string): Promise<DashboardSessionDraftSendTicket> {
+    return this.#request("GET", `/session-draft-send/${pathPart(ticketId)}`);
   }
 
   scheduleCapabilities(): Promise<ScheduleCapabilities> {
@@ -951,6 +1011,13 @@ function workspaceEtag(workspaceId: string, revision: number): string {
 
 function settingsEtag(revision: number): string {
   return `"settings:${revision}"`;
+}
+
+function draftMutationHeaders(request: { requestId: string; idempotencyKey: string }): Record<string, string> {
+  return {
+    "X-Request-ID": request.requestId,
+    "Idempotency-Key": request.idempotencyKey,
+  };
 }
 
 function scheduleMutationHeaders(request: { requestId: string; idempotencyKey: string }): Record<string, string> {

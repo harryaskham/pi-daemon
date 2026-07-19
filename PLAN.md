@@ -649,6 +649,14 @@ implementation order. This list is a human-readable crosswalk.
   - [x] `bd-ea2019` — production same-origin login/REST/WS SPA integration,
     preview-first hydration, live commands/replay/liveness, seen cursors, and
     serializable extension interactions.
+  - [ ] `bd-e9fce1` — lazy browser creation of a brand-new logical session with
+    zero runtime/model/tool work before the first explicit message.
+    - [ ] `bd-6a4170` — browser-safe contract, owner-private atomic draft/send
+      ticket store, authenticated neutral/BFF CRUD, schemas, fixtures, and docs.
+    - [ ] `bd-96c3e1` — embedded/remote exact-once first-send materializer with
+      durable private crash checkpoints and no blind prompt replay.
+    - [ ] `bd-72d6fd` — accessible sidebar/form/empty-pane UX reusing the
+      preview-composer first-send flow from `bd-930d31`.
 - [x] `bd-71cfa2` — concise GitHub Pages quickstart for collision-free Home
   Manager instances, authenticated session tickets, Pi RPC, ACP, and the
   `unisolated` trust boundary.

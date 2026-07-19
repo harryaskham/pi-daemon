@@ -95,7 +95,7 @@ class FakeRemoteService {
     };
     this.serviceCapabilities = {
       ...this.fixtures.serviceCapabilities,
-      resources: { ...this.fixtures.serviceCapabilities.resources, schedules: true },
+      resources: { ...this.fixtures.serviceCapabilities.resources, schedules: true, sessionDrafts: true },
       presentations: {
         ...this.fixtures.serviceCapabilities.presentations,
         tui: {
@@ -151,6 +151,16 @@ class FakeRemoteService {
   getDashboardExport() {
     return this.result(this.fixtures.exportTicket);
   }
+
+  createDashboardSessionDraft(request) {
+    const now = "2026-07-19T14:40:00.000Z";
+    this.draft = { contractVersion: "1.0", draftId: request.draftId ?? "draft-remote-01", revision: 1, state: "draft", createdAt: now, updatedAt: now, spec: request.spec, firstMessageStartsSession: true };
+    return this.result(this.draft);
+  }
+  getDashboardSessionDraft() { return this.result(this.draft); }
+  cancelDashboardSessionDraft(_draftId, request) { this.draft = { ...this.draft, revision: request.expectedRevision + 1, state: "cancelled" }; return this.result(this.draft); }
+  sendDashboardSessionDraft(draftId, request) { const now = "2026-07-19T14:40:01.000Z"; this.draftTicket = { ticketId: "draft-send-remote-01", draftId, draftRevision: request.expectedRevision, requestId: request.requestId, idempotencyKey: request.idempotencyKey, state: "queued", submittedAt: now, updatedAt: now }; return this.result(this.draftTicket); }
+  getDashboardSessionDraftSend() { return this.result(this.draftTicket); }
 
   scheduleCapabilities() {
     return this.result({ contractVersion: "1.0", persistence: true, timerRuntime: false, cronSyntax: "posix-five-field", timezoneDatabase: "runtime-iana", optimisticConcurrency: "expected-revision", overlapPolicies: ["skip", "queue-one", "reject"], missedWakePolicies: ["skip", "run-once", "bounded-catch-up"], promptHandling: "owner-private-sensitive-content", terminalTicketSummary: "content-free", clock: "wall-clock-utc-instants", limits: { maxSchedules: 1024, maxSchedulesPerSession: 32, maxPromptBytes: 65536, maxRecordBytes: 131072, maxRecoveryBytes: 134217728, maxCatchUpRuns: 24, maxJitterMs: 86400000, maxAdmissionDelayMs: 86400000 } });
@@ -435,6 +445,25 @@ test("remote backend delegates neutral resources with exact fingerprint and capa
   const capabilities = await remote.capabilities();
   assert.equal(capabilities.presentations.tui.available, true);
   assert.equal(service.transcriptFingerprints.at(-1), fixtures.sessionInfo.source.fingerprint.value);
+});
+
+test("remote backend delegates lazy draft CRUD and send ticket routes", async () => {
+  const service = new FakeRemoteService();
+  const remote = backend(service);
+  const spec = {
+    cwd: "/work/remote",
+    persistence: "persistent",
+    tools: { mode: "none" },
+    resources: { noExtensions: true, noSkills: true, noPromptTemplates: true, noThemes: true, noContextFiles: true, projectTrust: "deny" },
+    isolation: { mode: "unisolated" },
+  };
+  const draft = await remote.createSessionDraft({ requestId: "remote-create", idempotencyKey: "remote-create-key", draftId: "draft-remote-01", spec });
+  assert.equal(draft.state, "draft");
+  const ticket = await remote.sendSessionDraft(draft.draftId, { requestId: "remote-send", idempotencyKey: "remote-send-key", expectedRevision: draft.revision, message: "start" });
+  assert.equal(ticket.draftRevision, draft.revision);
+  assert.deepEqual(await remote.getSessionDraftSend(ticket.ticketId), ticket);
+  assert.equal((await remote.cancelSessionDraft(draft.draftId, { requestId: "remote-cancel", idempotencyKey: "remote-cancel-key", expectedRevision: draft.revision })).state, "cancelled");
+  remote.dispose();
 });
 
 test("shared schedule conformance passes for the remote backend with server-side prompt retention", async () => {

@@ -37,9 +37,11 @@ async function fixture(t, overrides = {}) {
   const calls = [];
   const fixtures = createDashboardContractFixtures();
   let schedule;
+  let draft;
+  let draftTicket;
   const scheduleCapabilities = { contractVersion: "1.0", persistence: true, timerRuntime: false, cronSyntax: "posix-five-field", timezoneDatabase: "runtime-iana", optimisticConcurrency: "expected-revision", overlapPolicies: ["skip", "queue-one", "reject"], missedWakePolicies: ["skip", "run-once", "bounded-catch-up"], promptHandling: "owner-private-sensitive-content", terminalTicketSummary: "content-free", clock: "wall-clock-utc-instants", limits: { maxSchedules: 1024, maxSchedulesPerSession: 32, maxPromptBytes: 65536, maxRecordBytes: 131072, maxRecoveryBytes: 134217728, maxCatchUpRuns: 24, maxJitterMs: 86400000, maxAdmissionDelayMs: 86400000 } };
   const backend = {
-    async capabilities() { calls.push("capabilities"); return { ...fixtures.capabilities, resources: { ...fixtures.capabilities.resources, schedules: true } }; },
+    async capabilities() { calls.push("capabilities"); return { ...fixtures.capabilities, resources: { ...fixtures.capabilities.resources, schedules: true, sessionDrafts: true } }; },
     async listSessions(query) { calls.push(["listSessions", query]); return fixtures.inventory; },
     async getSessionInfo(id) { calls.push(["getSessionInfo", id]); return fixtures.sessionInfo; },
     async getTranscript(id, query) { calls.push(["getTranscript", id, query]); return fixtures.transcript; },
@@ -47,6 +49,11 @@ async function fixture(t, overrides = {}) {
     async getActivation(id) { calls.push(["getActivation", id]); return fixtures.activationTicket; },
     async exportSession(id, request) { calls.push(["exportSession", id, request]); return fixtures.exportTicket; },
     async getExport(id) { calls.push(["getExport", id]); return fixtures.exportTicket; },
+    async createSessionDraft(request) { const now = "2026-07-19T14:40:00.000Z"; draft = { contractVersion: "1.0", draftId: request.draftId ?? "draft-server-01", revision: 1, state: "draft", createdAt: now, updatedAt: now, spec: request.spec, firstMessageStartsSession: true }; calls.push(["createSessionDraft", request]); return draft; },
+    async getSessionDraft(id) { calls.push(["getSessionDraft", id]); if (draft === undefined) throw new Error("draft not found"); return draft; },
+    async cancelSessionDraft(id, request) { calls.push(["cancelSessionDraft", id, request]); draft = { ...draft, revision: draft.revision + 1, state: "cancelled" }; return draft; },
+    async sendSessionDraft(id, request) { calls.push(["sendSessionDraft", id, request]); const now = "2026-07-19T14:40:01.000Z"; draftTicket = { ticketId: "draft-send-server-01", draftId: id, draftRevision: request.expectedRevision, requestId: request.requestId, idempotencyKey: request.idempotencyKey, state: "queued", submittedAt: now, updatedAt: now }; return draftTicket; },
+    async getSessionDraftSend(id) { calls.push(["getSessionDraftSend", id]); if (draftTicket === undefined) throw new Error("ticket not found"); return draftTicket; },
     async scheduleCapabilities() { return scheduleCapabilities; },
     async listSchedules() { return schedule === undefined ? [] : [schedule]; },
     async getSchedule() { return schedule; },
@@ -300,6 +307,113 @@ test("bootstrap stays preview-only and backend resources use bounded typed query
   });
   assert.equal(exported.status, 202);
   assert.deepEqual(calls[1], ["exportSession", "session-fixture-01", fixtures.exportRequest]);
+});
+
+test("lazy draft BFF CRUD is authenticated, revisioned, and separate from first-send execution", async (t) => {
+  const h = await fixture(t);
+  const session = await login(h.origin);
+  const mutation = privateHeaders(h.origin, session, true);
+  const spec = {
+    cwd: h.root,
+    persistence: "persistent",
+    tools: { mode: "none" },
+    resources: {
+      noExtensions: true,
+      noSkills: true,
+      noPromptTemplates: true,
+      noThemes: true,
+      noContextFiles: true,
+      projectTrust: "deny",
+    },
+    isolation: { mode: "unisolated" },
+  };
+  const createBody = {
+    requestId: "draft-create-server",
+    idempotencyKey: "draft-create-server-key",
+    draftId: "draft-server-01",
+    spec,
+  };
+  const created = await fetch(`${h.origin}/dash/v1/session-drafts`, {
+    method: "POST",
+    headers: {
+      ...mutation,
+      "Content-Type": "application/json",
+      "X-Request-ID": createBody.requestId,
+      "Idempotency-Key": createBody.idempotencyKey,
+    },
+    body: JSON.stringify(createBody),
+  });
+  assert.equal(created.status, 201);
+  const etag = created.headers.get("etag");
+  assert.ok(etag);
+  const createdBody = await created.json();
+  assert.equal(createdBody.data.state, "draft");
+  assert.equal(h.calls.some(([kind]) => kind === "createSessionDraft"), true);
+
+  const read = await fetch(`${h.origin}/dash/v1/session-drafts/draft-server-01`, {
+    headers: privateHeaders(h.origin, session),
+  });
+  assert.equal(read.status, 200);
+  assert.equal(read.headers.get("etag"), etag);
+
+  const sendBody = {
+    requestId: "draft-send-server",
+    idempotencyKey: "draft-send-server-key",
+    expectedRevision: 1,
+    message: "start once",
+  };
+  const sent = await fetch(`${h.origin}/dash/v1/session-drafts/draft-server-01/send`, {
+    method: "POST",
+    headers: {
+      ...mutation,
+      "Content-Type": "application/json",
+      "X-Request-ID": sendBody.requestId,
+      "Idempotency-Key": sendBody.idempotencyKey,
+      "If-Match": etag,
+    },
+    body: JSON.stringify(sendBody),
+  });
+  assert.equal(sent.status, 202);
+  const sentBody = await sent.json();
+  assert.equal(sentBody.data.state, "queued");
+  assert.equal(
+    (await fetch(`${h.origin}/dash/v1/session-draft-send/${sentBody.data.ticketId}`, {
+      headers: privateHeaders(h.origin, session),
+    })).status,
+    200,
+  );
+
+  const cancelBody = {
+    requestId: "draft-cancel-server",
+    idempotencyKey: "draft-cancel-server-key",
+    expectedRevision: 1,
+  };
+  const cancelled = await fetch(`${h.origin}/dash/v1/session-drafts/draft-server-01`, {
+    method: "DELETE",
+    headers: {
+      ...mutation,
+      "Content-Type": "application/json",
+      "X-Request-ID": cancelBody.requestId,
+      "Idempotency-Key": cancelBody.idempotencyKey,
+      "If-Match": etag,
+    },
+    body: JSON.stringify(cancelBody),
+  });
+  assert.equal(cancelled.status, 200);
+  assert.equal((await cancelled.json()).data.state, "cancelled");
+
+  const missingPrecondition = await fetch(`${h.origin}/dash/v1/session-drafts/draft-server-01/send`, {
+    method: "POST",
+    headers: {
+      ...mutation,
+      "Content-Type": "application/json",
+      "X-Request-ID": sendBody.requestId,
+      "Idempotency-Key": sendBody.idempotencyKey,
+    },
+    body: JSON.stringify(sendBody),
+  });
+  assert.equal(missingPrecondition.status, 412);
+  assert.doesNotMatch(JSON.stringify(createdBody), /bearer|authorization|api[_-]?key/i);
 });
 
 test("schedule BFF routes keep prompts input-only and enforce CSRF, idempotency and exact ETags", async (t) => {

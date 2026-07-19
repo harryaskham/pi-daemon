@@ -560,7 +560,8 @@
             "export",
             "workspaces",
             "settings",
-            "schedules"
+            "schedules",
+            "sessionDrafts"
           ],
           "properties": {
             "inventory": {
@@ -582,6 +583,9 @@
               "const": true
             },
             "schedules": {
+              "type": "boolean"
+            },
+            "sessionDrafts": {
               "type": "boolean"
             }
           },
@@ -658,6 +662,9 @@
               "const": true
             },
             "schedules": {
+              "const": true
+            },
+            "sessionDrafts": {
               "const": true
             }
           },

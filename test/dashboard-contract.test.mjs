@@ -274,6 +274,7 @@ test("schema rejects unkeyed/oversized ambiguity but permits additive minor fiel
 
 test("OpenAPI publishes every route with browser-cookie auth and no daemon bearer scheme", async () => {
   const schema = await readJson("dashboard-api.schema.json");
+  const draftSchema = await readJson("dashboard-session-draft.schema.json");
   const openapi = await readJson("dashboard-api.openapi.json");
   assert.equal(openapi.openapi, "3.1.0");
   assert.deepEqual(openapi.security, [{ dashSession: [] }]);
@@ -304,6 +305,9 @@ test("OpenAPI publishes every route with browser-cookie auth and no daemon beare
       if (value.$ref.startsWith("./dashboard-api.schema.json#/$defs/")) {
         const definition = value.$ref.slice(value.$ref.lastIndexOf("/") + 1);
         assert.ok(schema.$defs[definition], `unresolved dashboard schema ref: ${value.$ref}`);
+      } else if (value.$ref.startsWith("./dashboard-session-draft.schema.json#/$defs/")) {
+        const definition = value.$ref.slice(value.$ref.lastIndexOf("/") + 1);
+        assert.ok(draftSchema.$defs[definition], `unresolved draft schema ref: ${value.$ref}`);
       } else if (value.$ref.startsWith("#/")) {
         assert.notEqual(resolvePointer(value.$ref), undefined, `unresolved OpenAPI ref: ${value.$ref}`);
       }

@@ -141,9 +141,10 @@ test("Pi RPC compatibility inventory is exact and includes settled-era commands"
 });
 
 test("OpenAPI publishes every route, service bearer auth, and resolvable contract refs", async () => {
-  const [schema, dashboardSchema, openapi] = await Promise.all([
+  const [schema, dashboardSchema, draftSchema, openapi] = await Promise.all([
     readJson("session-api.schema.json"),
     readJson("dashboard-api.schema.json"),
+    readJson("dashboard-session-draft.schema.json"),
     readJson("session-api.openapi.json"),
   ]);
   assert.equal(openapi.openapi, "3.1.0");
@@ -185,6 +186,13 @@ test("OpenAPI publishes every route, service bearer auth, and resolvable contrac
         assert.ok(
           dashboardSchema.$defs[definition],
           `unresolved Dashboard schema ref: ${value.$ref}`,
+        );
+      }
+      if (value.$ref.startsWith("./dashboard-session-draft.schema.json#/$defs/")) {
+        const definition = value.$ref.slice(value.$ref.lastIndexOf("/") + 1);
+        assert.ok(
+          draftSchema.$defs[definition],
+          `unresolved draft schema ref: ${value.$ref}`,
         );
       }
     }

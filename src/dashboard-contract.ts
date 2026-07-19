@@ -1,4 +1,11 @@
 import type {
+  DashboardSessionDraftCancelRequest,
+  DashboardSessionDraftCreateRequest,
+  DashboardSessionDraftResource,
+  DashboardSessionDraftSendRequest,
+  DashboardSessionDraftSendTicket,
+} from "./dashboard-session-drafts.js";
+import type {
   ApiErrorBody,
   JsonObject,
   JsonValue,
@@ -26,6 +33,10 @@ export const DASH_API_PATHS = {
   session: "/dash/v1/sessions/{inventoryId}",
   transcript: "/dash/v1/sessions/{inventoryId}/transcript",
   activate: "/dash/v1/sessions/{inventoryId}/activate",
+  sessionDrafts: "/dash/v1/session-drafts",
+  sessionDraft: "/dash/v1/session-drafts/{draftId}",
+  sessionDraftSend: "/dash/v1/session-drafts/{draftId}/send",
+  sessionDraftSendTicket: "/dash/v1/session-draft-send/{ticketId}",
   activation: "/dash/v1/activation/{ticketId}",
   export: "/dash/v1/sessions/{sessionRef}/export",
   exportTicket: "/dash/v1/export/{ticketId}",
@@ -241,6 +252,8 @@ export interface DashboardServiceCapabilities {
     leases: true;
     /** Absent on older compatible daemons. */
     schedules?: true;
+    /** Absent on older compatible daemons. */
+    sessionDrafts?: true;
   };
   presentations: {
     rich: { available: true };
@@ -282,6 +295,7 @@ export interface DashboardCapabilities {
     workspaces: true;
     settings: true;
     schedules: boolean;
+    sessionDrafts: boolean;
   };
   presentations: {
     rich: DashboardPresentationCapability;
@@ -890,6 +904,11 @@ export interface DashboardBackend {
   getActivation(ticketId: string): Promise<ActivationTicket>;
   exportSession(sessionRef: string, request: SessionExportRequest): Promise<SessionExportTicket>;
   getExport(ticketId: string): Promise<SessionExportTicket>;
+  createSessionDraft(request: DashboardSessionDraftCreateRequest): Promise<DashboardSessionDraftResource>;
+  getSessionDraft(draftId: string): Promise<DashboardSessionDraftResource>;
+  cancelSessionDraft(draftId: string, request: DashboardSessionDraftCancelRequest): Promise<DashboardSessionDraftResource>;
+  sendSessionDraft(draftId: string, request: DashboardSessionDraftSendRequest): Promise<DashboardSessionDraftSendTicket>;
+  getSessionDraftSend(ticketId: string): Promise<DashboardSessionDraftSendTicket>;
   scheduleCapabilities(): Promise<ScheduleCapabilities>;
   listSchedules(sessionRef?: string): Promise<DashboardScheduleResource[]>;
   getSchedule(scheduleId: string): Promise<DashboardScheduleResource>;

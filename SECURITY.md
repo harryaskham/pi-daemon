@@ -69,6 +69,15 @@ and UI-only overlays are owner-private, byte/count/depth bounded, revisioned,
 atomically written, and cannot mutate bind/auth/roots/credentials/resource
 policy.
 
+Lazy Dash session drafts are stored in one owner-private, count/byte-bounded,
+atomically replaced state file. Draft CRUD validates canonical allowed-root cwd
+and a browser-safe policy subset but never opens Pi, resolves a model, loads
+resources/tools, acquires control, or starts a process. The private first message
+is absent from browser resources/tickets. Deterministic target identity and
+monotonic materializing/ready-to-prompt/prompt-submitting checkpoints prevent
+duplicate first turns; prompt-boundary crash or cancellation races become
+indeterminate and are never blindly replayed.
+
 Shadow-TUI output is interpreted inside a bounded `VirtualTerminal`; raw ANSI
 is never sent to browser JavaScript. OSC 52 clipboard access, terminal image
 payloads, DCS/APC/PM/SOS device channels, unsafe links, terminal queries, and
