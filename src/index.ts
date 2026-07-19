@@ -42,6 +42,7 @@ export * from "./shadow-tui-attachments.js";
 export * from "./shadow-tui-host.js";
 export * from "./tickets.js";
 export * from "./tool-adapter-protocol.js";
+export * from "./tool-adapter-runtime.js";
 export * from "./transcript-projector.js";
 export * from "./virtual-terminal.js";
 export * from "./version.js";

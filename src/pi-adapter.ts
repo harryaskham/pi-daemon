@@ -46,6 +46,12 @@ import type {
   SessionFactory,
   SessionOpenRequest,
 } from "./multiplexer.js";
+import {
+  HOST_TOOL_NAMES,
+  HostToolAdapterRegistry,
+  createHostToolDefinitions,
+} from "./tool-adapter-runtime.js";
+import type { HostToolAdapterDescriptor } from "./tool-adapter-protocol.js";
 
 export interface PiSessionFactoryOptions {
   stateDir: string;
@@ -55,7 +61,13 @@ export interface PiSessionFactoryOptions {
   modelRegistry?: ModelRegistry;
   createSession?: (options: CreateAgentSessionOptions) => Promise<CreateAgentSessionResult>;
   rpcControllerOptions?: PiRpcControllerOptions;
+  hostToolAdapters?: HostToolAdapterRegistry;
 }
+
+type HostToolSessionOpenRequest = SessionOpenRequest & {
+  hostInstanceId?: string;
+  hostToolAdapter?: HostToolAdapterDescriptor;
+};
 
 export interface PiFactoryReadiness {
   ready: boolean;
@@ -81,6 +93,7 @@ export class PiSessionFactory implements SessionFactory {
     options: CreateAgentSessionOptions,
   ) => Promise<CreateAgentSessionResult>;
   readonly #rpcControllerOptions: PiRpcControllerOptions;
+  readonly #hostToolAdapters: HostToolAdapterRegistry;
   readonly #authErrorCodes: string[] = [];
 
   constructor(options: PiSessionFactoryOptions) {
@@ -99,6 +112,7 @@ export class PiSessionFactory implements SessionFactory {
       ModelRegistry.create(this.authStorage, join(this.agentDir, "models.json"));
     this.#createSession = options.createSession ?? createAgentSession;
     this.#rpcControllerOptions = { ...(options.rpcControllerOptions ?? {}) };
+    this.#hostToolAdapters = options.hostToolAdapters ?? new HostToolAdapterRegistry();
   }
 
   readiness(): PiFactoryReadiness {
@@ -156,6 +170,20 @@ export class PiSessionFactory implements SessionFactory {
         allowedRoots,
       );
     const cwd = await validateCwd(configuredSpec?.cwd ?? request.cwd);
+    const hostRequest = request as HostToolSessionOpenRequest;
+    const hostToolAdapter = hostRequest.hostToolAdapter;
+    if (
+      hostToolAdapter !== undefined &&
+      (hostRequest.hostInstanceId === undefined ||
+        hostRequest.hostInstanceId !== hostToolAdapter.binding.hostInstanceId ||
+        request.sessionId !== hostToolAdapter.binding.sessionId ||
+        request.generation !== hostToolAdapter.binding.generation)
+    ) {
+      throw new PiAdapterError(
+        "tool_adapter_binding_mismatch",
+        "host tool adapter binding does not match the logical session incarnation",
+      );
+    }
 
     const sessionsRoot = join(this.#stateDir, "sessions");
     const logicalSessionRoot = join(sessionsRoot, encodedSessionId(request.sessionId));
@@ -219,12 +247,28 @@ export class PiSessionFactory implements SessionFactory {
     }
     const thinkingLevel =
       resolvedModel?.thinkingLevel ?? configuredModel?.thinkingLevel ?? request.model?.thinkingLevel;
+    const hostToolNames =
+      hostToolAdapter === undefined
+        ? []
+        : hostToolAdapter.operations.map((operation) => HOST_TOOL_NAMES[operation]);
     const configuredTools =
-      configuredSpec === undefined
-        ? { noTools: "all" as const, tools: [] as string[], excludeTools: undefined }
-        : toolConfiguration(configuredSpec);
+      hostToolAdapter !== undefined
+        ? {
+            noTools: "builtin" as const,
+            tools: hostToolNames,
+            excludeTools: undefined,
+          }
+        : configuredSpec === undefined
+          ? { noTools: "all" as const, tools: [] as string[], excludeTools: undefined }
+          : toolConfiguration(configuredSpec);
     const configuredExtensionFlags =
       configuredSpec === undefined ? undefined : extensionFlagValues(configuredSpec);
+    const hostToolSession =
+      hostToolAdapter === undefined
+        ? undefined
+        : await this.#hostToolAdapters.open(hostToolAdapter, { cwd });
+    const hostToolDefinitions =
+      hostToolSession === undefined ? [] : createHostToolDefinitions(hostToolSession);
 
     const createRuntime: CreateAgentSessionRuntimeFactory = async ({
       cwd: runtimeCwd,
@@ -268,7 +312,10 @@ export class PiSessionFactory implements SessionFactory {
               ...(configuredExtensionFlags === undefined
                 ? {}
                 : { extensionFlagValues: configuredExtensionFlags }),
-              resourceLoaderOptions: resourceLoaderOptions(configuredSpec),
+              resourceLoaderOptions: resourceLoaderOptions(
+                configuredSpec,
+                hostToolAdapter !== undefined,
+              ),
             });
       services.diagnostics.push(
         ...scope.diagnostics.map((diagnostic) => ({
@@ -281,13 +328,15 @@ export class PiSessionFactory implements SessionFactory {
         canonicalCwd,
       );
       const customTools =
-        runtimeOptions === undefined
-          ? []
-          : environmentToolOverrides(
-              canonicalCwd,
-              runtimeOptions.environmentOverlay,
-              runtimeOptions.persistedSpec,
-            );
+        hostToolAdapter !== undefined
+          ? hostToolDefinitions
+          : runtimeOptions === undefined
+            ? []
+            : environmentToolOverrides(
+                canonicalCwd,
+                runtimeOptions.environmentOverlay,
+                runtimeOptions.persistedSpec,
+              );
       request.signal?.throwIfAborted();
       const result = await this.#createSession({
         cwd: canonicalCwd,
@@ -312,7 +361,23 @@ export class PiSessionFactory implements SessionFactory {
         result.session.dispose();
         throw new DOMException("operation aborted", "AbortError");
       }
-      if (runtimeOptions === undefined && result.session.getActiveToolNames().length !== 0) {
+      const activeToolNames = result.session.getActiveToolNames();
+      if (
+        hostToolAdapter !== undefined &&
+        (activeToolNames.length !== hostToolNames.length ||
+          activeToolNames.some((name, index) => name !== hostToolNames[index]))
+      ) {
+        result.session.dispose();
+        throw new PiAdapterError(
+          "unsafe_tool_profile",
+          "Pi SDK enabled tools outside the host adapter allowlist",
+        );
+      }
+      if (
+        hostToolAdapter === undefined &&
+        runtimeOptions === undefined &&
+        activeToolNames.length !== 0
+      ) {
         result.session.dispose();
         throw new PiAdapterError(
           "unsafe_tool_profile",
@@ -322,21 +387,31 @@ export class PiSessionFactory implements SessionFactory {
       return { ...result, services, diagnostics: services.diagnostics };
     };
 
-    const runtime = await createAgentSessionRuntime(createRuntime, {
-      cwd,
-      agentDir: selectedAgentDir,
-      sessionManager,
-    });
+    let runtime: AgentSessionRuntime;
+    try {
+      runtime = await createAgentSessionRuntime(createRuntime, {
+        cwd,
+        agentDir: selectedAgentDir,
+        sessionManager,
+      });
+    } catch (error) {
+      await hostToolSession?.dispose().catch(() => undefined);
+      throw error;
+    }
     try {
       const adapter = await PiSessionAdapter.create(runtime, {
         sessionRoot: canonicalSessionDir,
         validateCwd,
+        ...(hostToolSession === undefined
+          ? {}
+          : { disposeSessionResources: () => hostToolSession.dispose() }),
       });
       await adapter.rpcController(
         configuredRpcControllerOptions(this.#rpcControllerOptions, runtimeOptions),
       );
       return adapter;
     } catch (error) {
+      await hostToolSession?.dispose().catch(() => undefined);
       await runtime.dispose().catch(() => {});
       throw error;
     }
@@ -351,6 +426,7 @@ export interface PiSessionIdentity {
 export interface PiSessionAdapterOptions {
   sessionRoot: string;
   validateCwd: (cwd: string) => Promise<string>;
+  disposeSessionResources?: () => Promise<void>;
 }
 
 type SessionExtensionBindings = Parameters<AgentSession["bindExtensions"]>[0];
@@ -359,6 +435,7 @@ export class PiSessionAdapter implements SessionAdapter {
   readonly #runtime: AgentSessionRuntime;
   readonly #sessionRoot: string;
   readonly #validateCwd: (cwd: string) => Promise<string>;
+  readonly #disposeSessionResources: (() => Promise<void>) | undefined;
   #unsubscribe: (() => void) | undefined;
   #identityChangeHandler: ((identity: PiSessionIdentity) => Promise<void>) | undefined;
   #sessionNameChangeHandler: ((name: string) => Promise<void>) | undefined;
@@ -373,6 +450,7 @@ export class PiSessionAdapter implements SessionAdapter {
     this.#runtime = runtime;
     this.#sessionRoot = options.sessionRoot;
     this.#validateCwd = options.validateCwd;
+    this.#disposeSessionResources = options.disposeSessionResources;
     runtime.setBeforeSessionInvalidate(() => this.#invalidateSession());
     runtime.setRebindSession(async (session) => this.#bindSession(session, true, true));
   }
@@ -538,6 +616,7 @@ export class PiSessionAdapter implements SessionAdapter {
     this.#rpcController = undefined;
     this.#rpcEventListeners.clear();
     this.#invalidateSession();
+    await this.#disposeSessionResources?.().catch(() => undefined);
     await this.#runtime.dispose();
   }
 
@@ -694,6 +773,7 @@ function legacyServices(
 
 function resourceLoaderOptions(
   spec: PreparedSessionRuntimeOptions["persistedSpec"],
+  forceNoExtensions = false,
 ): NonNullable<Parameters<typeof createAgentSessionServices>[0]["resourceLoaderOptions"]> {
   const resources = spec.resources;
   const approved = resources?.projectTrust === "approve";
@@ -706,7 +786,8 @@ function resourceLoaderOptions(
     additionalSkillPaths: [...skills],
     additionalPromptTemplatePaths: [...prompts],
     additionalThemePaths: [...themes],
-    noExtensions: resources?.noExtensions === true || (!approved && extensions.length === 0),
+    noExtensions:
+      forceNoExtensions || resources?.noExtensions === true || (!approved && extensions.length === 0),
     noSkills: resources?.noSkills === true || (!approved && skills.length === 0),
     noPromptTemplates:
       resources?.noPromptTemplates === true || (!approved && prompts.length === 0),

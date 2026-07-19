@@ -60,6 +60,7 @@ class FakePiSession {
   followUps = [];
   lastText = undefined;
   preflight = true;
+  activeToolNames = [];
 
   constructor(id, model, sessionManager) {
     this.sessionId = id;
@@ -74,7 +75,7 @@ class FakePiSession {
   }
 
   getActiveToolNames() {
-    return [];
+    return [...this.activeToolNames];
   }
 
   async bindExtensions() {
@@ -228,6 +229,112 @@ test("factory shares auth/models while isolating session, settings, and locked r
   await second.dispose();
   assert.equal(sessions[0].disposed, 1);
   assert.equal(sessions[1].disposed, 1);
+});
+
+test("factory injects only descriptor-granted host tools and revokes them with the session", async () => {
+  const stateDir = await temporaryDirectory();
+  const agentDir = await temporaryDirectory();
+  const cwd = await temporaryDirectory();
+  const { authStorage, modelRegistry, model } = modelHarness();
+  const captures = [];
+  const registryCalls = [];
+  const invocations = [];
+  let disposed = 0;
+  const hostSession = {
+    operations: ["fs.read", "fs.stat"],
+    limits: {
+      maxRequestBytes: 4096,
+      maxResponseBytes: 4096,
+      maxConcurrentRequests: 2,
+      maxQueuedRequests: 2,
+      requestTimeoutMs: 1000,
+      maxIdempotencyKeys: 32,
+      idempotencyTtlMs: 10_000,
+    },
+    async normalizePath(path) {
+      return path;
+    },
+    async invoke(operation, payload, options) {
+      invocations.push({ operation, payload, options });
+      return operation === "fs.read"
+        ? { content: "adapter content", bytesRead: 15, eof: true }
+        : { type: "file", size: 15 };
+    },
+    async dispose() {
+      disposed += 1;
+    },
+  };
+  const hostToolAdapters = {
+    async open(descriptor, options) {
+      registryCalls.push({ descriptor, options });
+      return hostSession;
+    },
+  };
+  const factory = new PiSessionFactory({
+    stateDir,
+    agentDir,
+    allowedRoots: [cwd],
+    authStorage,
+    modelRegistry,
+    hostToolAdapters,
+    async createSession(options) {
+      captures.push(options);
+      const session = new FakePiSession("host-tools", options.model, options.sessionManager);
+      session.activeToolNames = options.customTools.map((tool) => tool.name);
+      return {
+        session,
+        extensionsResult: options.resourceLoader.getExtensions(),
+      };
+    },
+  });
+  const descriptor = {
+    protocolVersion: "1.0",
+    adapterId: "fixture-adapter",
+    adapterVersion: "1.0.0",
+    endpoint: { transport: "unix", path: join(stateDir, "adapter.sock") },
+    binding: {
+      hostInstanceId: "host-runtime",
+      sessionId: "host-session",
+      generation: 4,
+      capabilityHandle: "A".repeat(43),
+    },
+    operations: ["fs.read", "fs.stat"],
+    limits: { ...hostSession.limits },
+  };
+  const request = openRequest(cwd, model, "host-session");
+  request.generation = 4;
+  request.hostInstanceId = "host-runtime";
+  request.hostToolAdapter = descriptor;
+  const adapter = await factory.open(request);
+  assert.equal(registryCalls.length, 1);
+  assert.deepEqual(registryCalls[0], { descriptor, options: { cwd } });
+  assert.equal(captures[0].noTools, "builtin");
+  assert.deepEqual(captures[0].tools, ["fs_read", "fs_stat"]);
+  assert.deepEqual(captures[0].customTools.map((tool) => tool.name), ["fs_read", "fs_stat"]);
+  assert.deepEqual(captures[0].resourceLoader.getExtensions().extensions, []);
+  const read = captures[0].customTools[0];
+  const readResult = await read.execute(
+    "host-tool-call",
+    { path: "file.txt" },
+    new AbortController().signal,
+    undefined,
+    { cwd },
+  );
+  assert.equal(readResult.content[0].text, "adapter content");
+  assert.deepEqual(invocations[0].operation, "fs.read");
+  assert.deepEqual(invocations[0].payload, { path: "file.txt" });
+  assert.match(invocations[0].options.idempotencyKey, /^tool-[a-f0-9]{64}$/);
+  await adapter.dispose();
+  assert.equal(disposed, 1);
+
+  const missingHost = openRequest(cwd, model, "host-session");
+  missingHost.generation = 4;
+  missingHost.hostToolAdapter = descriptor;
+  await assert.rejects(
+    factory.open(missingHost),
+    (error) => error instanceof PiAdapterError && error.code === "tool_adapter_binding_mismatch",
+  );
+  assert.equal(registryCalls.length, 1);
 });
 
 test("configured factory applies scoped model auth, settings, resources, and tool environment", async () => {
@@ -682,6 +789,63 @@ test("real Pi SDK accepts the configured bash override without a model turn", as
   assert.equal(bash.success, true);
   assert.equal(bash.data.output, "real-sdk");
   await adapter.dispose();
+});
+
+test("real Pi SDK activates only host-adapter custom tools without a model turn", async () => {
+  const stateDir = await temporaryDirectory();
+  const agentDir = await temporaryDirectory();
+  const cwd = await temporaryDirectory();
+  const { authStorage, modelRegistry, model } = modelHarness();
+  let disposed = 0;
+  const hostSession = {
+    operations: ["fs.read", "fs.write"],
+    limits: {
+      maxRequestBytes: 4096,
+      maxResponseBytes: 4096,
+      maxConcurrentRequests: 2,
+      maxQueuedRequests: 2,
+      requestTimeoutMs: 1000,
+      maxIdempotencyKeys: 32,
+      idempotencyTtlMs: 10_000,
+    },
+    async normalizePath(path) { return path; },
+    async invoke(operation) {
+      return operation === "fs.read"
+        ? { content: "fixture", bytesRead: 7, eof: true }
+        : { created: true, bytesWritten: 7, digest: "a".repeat(64) };
+    },
+    async dispose() { disposed += 1; },
+  };
+  const factory = new PiSessionFactory({
+    stateDir,
+    agentDir,
+    allowedRoots: [cwd],
+    authStorage,
+    modelRegistry,
+    hostToolAdapters: { async open() { return hostSession; } },
+  });
+  const request = openRequest(cwd, model, "real-host-tools");
+  request.generation = 2;
+  request.hostInstanceId = "host-real";
+  request.hostToolAdapter = {
+    protocolVersion: "1.0",
+    adapterId: "fixture-adapter",
+    adapterVersion: "1.0.0",
+    endpoint: { transport: "unix", path: join(stateDir, "adapter.sock") },
+    binding: {
+      hostInstanceId: "host-real",
+      sessionId: "real-host-tools",
+      generation: 2,
+      capabilityHandle: "A".repeat(43),
+    },
+    operations: ["fs.read", "fs.write"],
+    limits: { ...hostSession.limits },
+  };
+  const adapter = await factory.open(request);
+  assert.deepEqual(adapter.rpcSession().getActiveToolNames(), ["fs_read", "fs_write"]);
+  assert.equal((await adapter.rpcController()).capabilities.policy.bash, false);
+  await adapter.dispose();
+  assert.equal(disposed, 1);
 });
 
 test("readiness caches redacted auth errors without exposing private paths", async () => {
