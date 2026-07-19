@@ -93,14 +93,23 @@ that public seam is injected.
 
 ## Wall-clock soak
 
-A 24-hour owner-private rolling soak started at `2026-07-19T02:11:18Z` against
-the exact embedded test BFF. Every minute it requests the packaged SPA,
-performs a credential exchange, and fetches bootstrap, real inventory and
-settings through the issued cookie. It records only timestamps, bounded status,
-latency and row counts—never credentials or session content—under
+The initial acceptance harness deliberately performed a fresh credential
+exchange every minute. After 374 successful logins it reached the configured
+browser-session capacity and received bounded 503 responses—correct fail-closed
+product behavior, but not representative of a browser that reuses its HttpOnly
+cookie. That exploratory receipt is retained owner-privately as
+`dashboard-soak-capacity-finding.jsonl`; no credential or session content was
+recorded.
+
+The corrected 24-hour owner-private rolling soak started at
+`2026-07-19T09:07:03Z` against the exact embedded test BFF. It reuses one cookie
+like the production SPA, re-authenticates once after an intentional daemon
+restart/401, and every minute requests the packaged SPA plus bootstrap, real
+inventory and settings. It records only timestamps, bounded status, latency and
+row counts—never credentials or session content—under
 `~/.local/state/pi-daemon/test/soak/`.
 
 `bd-7de9ec` remains open until the summary is written after
-`2026-07-20T02:11:18Z` with zero unexplained failures. Deterministic replay,
+`2026-07-20T09:07:03Z` with zero unexplained failures. Deterministic replay,
 restart, cache, scheduler and fake-clock long-soak tests are already green; the
 wall-clock receipt is the final unwaived gate.
