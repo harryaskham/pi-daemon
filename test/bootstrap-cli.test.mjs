@@ -87,12 +87,14 @@ test("serve bootstraps an empty standalone instance before constructing the Pi f
   assert.equal((await stat(tokenFile)).mode & 0o777, 0o600);
   assert.equal(await readFile(join(agentDir, "auth.json"), "utf8"), await readFile(authSeed, "utf8"));
 
-  child.kill("SIGTERM");
-  const exitCode = await new Promise((resolve, reject) => {
+  const exit = new Promise((resolve, reject) => {
     child.once("error", reject);
-    child.once("exit", resolve);
+    child.once("exit", (code, signal) => resolve({ code, signal }));
   });
-  assert.equal(exitCode, 0);
+  child.kill("SIGTERM");
+  await delay(10);
+  if (child.exitCode === null) child.kill("SIGTERM");
+  assert.deepEqual(await exit, { code: 0, signal: null });
   const bearer = (await readFile(tokenFile, "utf8")).trimEnd();
   assert.ok(bearer.length >= 16);
   assert.equal(output.includes(bearer), false);

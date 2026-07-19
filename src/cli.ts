@@ -777,19 +777,24 @@ function latchShutdownSignal(): {
   dispose: () => void;
 } {
   let resolveSignal!: (signal: "SIGTERM" | "SIGINT") => void;
+  let settled = false;
   const signal = new Promise<"SIGTERM" | "SIGINT">((resolve) => { resolveSignal = resolve; });
   const dispose = (): void => {
     process.off("SIGTERM", onSigterm);
     process.off("SIGINT", onSigint);
   };
   const settle = (received: "SIGTERM" | "SIGINT"): void => {
-    dispose();
+    if (settled) return;
+    settled = true;
     resolveSignal(received);
   };
   const onSigterm = (): void => settle("SIGTERM");
   const onSigint = (): void => settle("SIGINT");
-  process.once("SIGTERM", onSigterm);
-  process.once("SIGINT", onSigint);
+  // Keep handlers installed through the drain. Supervisors may repeat a stop
+  // signal; dropping back to the platform default mid-shutdown would surface as
+  // a null exit code and bypass the bounded lifecycle cleanup.
+  process.on("SIGTERM", onSigterm);
+  process.on("SIGINT", onSigint);
   return { signal, dispose };
 }
 
