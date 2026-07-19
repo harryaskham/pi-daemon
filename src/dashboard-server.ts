@@ -28,6 +28,10 @@ import {
   type DashboardErrorEnvelope,
   type DashboardLimits,
   type DashboardLoginRequest,
+  type DashboardScheduleDeleteRequest,
+  type DashboardScheduleMutationRequest,
+  type DashboardScheduleResource,
+  type DashboardScheduleWrite,
   type DashboardSettingsPatchRequest,
   type DashboardSuccessEnvelope,
   type DashboardWorkspaceUpdateRequest,
@@ -55,6 +59,8 @@ import {
   type PiDaemonWebConfig,
 } from "./config.js";
 import { HostMetrics } from "./observability.js";
+import { scheduleEtag } from "./dashboard-schedule-resources.js";
+import { DEFAULT_SCHEDULE_LIMITS } from "./schedule-contract.js";
 import type { ApiErrorBody, JsonValue } from "./session-api.js";
 
 const DEFAULT_MAX_HEADER_BYTES = 32 * 1024;
@@ -466,6 +472,71 @@ export class DashboardServer {
         return;
       }
 
+      if (request.method === "GET" && url.pathname === `${DASH_API_BASE_PATH}/schedules/capabilities`) {
+        const capabilities = await this.backend.scheduleCapabilities();
+        sendJson(response, 200, successEnvelopeFrom(context, capabilities), this.limits.dashboard.maxOutboundBytesPerConnection);
+        return;
+      }
+      if (request.method === "GET" && url.pathname === `${DASH_API_BASE_PATH}/schedules/status`) {
+        const status = await this.backend.scheduleStatus();
+        sendJson(response, 200, successEnvelopeFrom(context, status), this.limits.dashboard.maxOutboundBytesPerConnection);
+        return;
+      }
+      if (url.pathname === `${DASH_API_BASE_PATH}/schedules`) {
+        if (request.method === "GET") {
+          const sessionRef = scheduleListQuery(url);
+          const schedules = (await this.backend.listSchedules(sessionRef)).map(contentSafeSchedule);
+          if (schedules.length > DEFAULT_SCHEDULE_LIMITS.maxSchedules) {
+            throw new DashboardServerError(500, "schedule_response_capacity", "schedule response count exceeds its bound");
+          }
+          sendJson(response, 200, successEnvelopeFrom(context, { schedules }), this.limits.dashboard.maxOutboundBytesPerConnection);
+          return;
+        }
+        if (request.method === "POST") {
+          const body = scheduleMutationRequest(await readJsonBody(request, Math.min(
+            this.limits.dashboard.maxHttpBodyBytes,
+            DEFAULT_SCHEDULE_LIMITS.maxRecordBytes,
+          )), false);
+          assertMutationHeaders(request, body);
+          const resource = contentSafeSchedule(await this.backend.createSchedule(body));
+          sendJson(response, 201, successEnvelopeFrom(context, resource), this.limits.dashboard.maxOutboundBytesPerConnection, {
+            ETag: scheduleEtag(resource.scheduleId, resource.revision),
+          });
+          return;
+        }
+      }
+      const scheduleMatch = matchPath(url.pathname, `${DASH_API_BASE_PATH}/schedules/`, "");
+      if (scheduleMatch !== undefined) {
+        if (request.method === "GET") {
+          const resource = contentSafeSchedule(await this.backend.getSchedule(scheduleMatch));
+          sendJson(response, 200, successEnvelopeFrom(context, resource), this.limits.dashboard.maxOutboundBytesPerConnection, {
+            ETag: scheduleEtag(resource.scheduleId, resource.revision),
+          });
+          return;
+        }
+        if (request.method === "PUT") {
+          const body = scheduleMutationRequest(await readJsonBody(request, Math.min(
+            this.limits.dashboard.maxHttpBodyBytes,
+            DEFAULT_SCHEDULE_LIMITS.maxRecordBytes,
+          )), true);
+          assertMutationHeaders(request, body);
+          assertScheduleIfMatch(request, scheduleMatch, body.expectedRevision!);
+          const resource = contentSafeSchedule(await this.backend.updateSchedule(scheduleMatch, body));
+          sendJson(response, 200, successEnvelopeFrom(context, resource), this.limits.dashboard.maxOutboundBytesPerConnection, {
+            ETag: scheduleEtag(resource.scheduleId, resource.revision),
+          });
+          return;
+        }
+        if (request.method === "DELETE") {
+          const body = scheduleDeleteRequest(await readJsonBody(request, 4096));
+          assertMutationHeaders(request, body);
+          assertScheduleIfMatch(request, scheduleMatch, body.expectedRevision);
+          await this.backend.deleteSchedule(scheduleMatch, body);
+          sendJson(response, 200, successEnvelopeFrom(context, { deleted: true }), this.limits.dashboard.maxOutboundBytesPerConnection);
+          return;
+        }
+      }
+
       const workspaceMatch = matchPath(url.pathname, `${DASH_API_BASE_PATH}/workspaces/`, "");
       if (workspaceMatch !== undefined) {
         if (workspaceMatch !== session.workspaceId) {
@@ -845,6 +916,120 @@ function mergeWebConfig(config: PiDaemonWebConfig | undefined): {
     },
     ui: config?.ui ?? DEFAULT_PI_DAEMON_WEB_CONFIG.ui,
   };
+}
+
+function contentSafeSchedule(value: DashboardScheduleResource): DashboardScheduleResource {
+  const { prompt: _prompt, ...safe } = value as DashboardScheduleResource & { prompt?: unknown };
+  return { ...safe, promptConfigured: true };
+}
+
+function scheduleMutationRequest(
+  value: unknown,
+  update: boolean,
+): DashboardScheduleMutationRequest {
+  const object = requestObject(value, "schedule mutation request");
+  exactRequestKeys(
+    object,
+    ["requestId", "idempotencyKey", "expectedRevision", "schedule"],
+    update ? [] : ["expectedRevision"],
+  );
+  const expectedRevision = object.expectedRevision === undefined
+    ? undefined
+    : requestRevision(object.expectedRevision);
+  if (update && expectedRevision === undefined) {
+    throw new DashboardServerError(400, "invalid_request", "expectedRevision is required");
+  }
+  const schedule = scheduleWrite(object.schedule, update);
+  return {
+    requestId: requiredId(object.requestId, "requestId"),
+    idempotencyKey: requiredId(object.idempotencyKey, "idempotencyKey"),
+    ...(expectedRevision === undefined ? {} : { expectedRevision }),
+    schedule,
+  };
+}
+
+function scheduleDeleteRequest(value: unknown): DashboardScheduleDeleteRequest {
+  const object = requestObject(value, "schedule delete request");
+  exactRequestKeys(object, ["requestId", "idempotencyKey", "expectedRevision"]);
+  return {
+    requestId: requiredId(object.requestId, "requestId"),
+    idempotencyKey: requiredId(object.idempotencyKey, "idempotencyKey"),
+    expectedRevision: requestRevision(object.expectedRevision),
+  };
+}
+
+function scheduleWrite(value: unknown, update: boolean): DashboardScheduleWrite {
+  const object = requestObject(value, "schedule");
+  const keys = [
+    "scheduleId", "sessionRef", "enabled", "cron", "timezone", "prompt", "execution",
+    "overlapPolicy", "missedWakePolicy", "jitterMs", "maxAdmissionDelayMs",
+  ];
+  exactRequestKeys(object, keys, update ? ["prompt", "execution"] : ["execution"]);
+  if (typeof object.enabled !== "boolean") throw invalidScheduleRequest();
+  if (typeof object.cron !== "string" || typeof object.timezone !== "string") throw invalidScheduleRequest();
+  if (object.prompt !== undefined && (
+    typeof object.prompt !== "string" || object.prompt.length === 0 || object.prompt.includes("\0") ||
+    Buffer.byteLength(object.prompt, "utf8") > DEFAULT_SCHEDULE_LIMITS.maxPromptBytes
+  )) throw invalidScheduleRequest();
+  if (!(object.overlapPolicy === "skip" || object.overlapPolicy === "queue-one" || object.overlapPolicy === "reject")) {
+    throw invalidScheduleRequest();
+  }
+  if (!isRecord(object.missedWakePolicy) || !["skip", "run-once", "bounded-catch-up"].includes(String(object.missedWakePolicy.mode))) {
+    throw invalidScheduleRequest();
+  }
+  if (!Number.isSafeInteger(object.jitterMs) || !Number.isSafeInteger(object.maxAdmissionDelayMs)) throw invalidScheduleRequest();
+  return {
+    scheduleId: requiredId(object.scheduleId, "scheduleId"),
+    sessionRef: requiredId(object.sessionRef, "sessionRef"),
+    enabled: object.enabled,
+    cron: object.cron,
+    timezone: object.timezone,
+    ...(object.prompt === undefined ? {} : { prompt: object.prompt as string }),
+    ...(object.execution === undefined ? {} : { execution: object.execution as NonNullable<DashboardScheduleWrite["execution"]> }),
+    overlapPolicy: object.overlapPolicy,
+    missedWakePolicy: object.missedWakePolicy as unknown as DashboardScheduleWrite["missedWakePolicy"],
+    jitterMs: object.jitterMs as number,
+    maxAdmissionDelayMs: object.maxAdmissionDelayMs as number,
+  };
+}
+
+function assertMutationHeaders(
+  request: IncomingMessage,
+  body: { requestId: string; idempotencyKey: string },
+): void {
+  if (requiredHeader(request.headers["idempotency-key"], "Idempotency-Key") !== body.idempotencyKey) {
+    throw new DashboardServerError(400, "invalid_header", "Idempotency-Key does not match the request body");
+  }
+  const suppliedRequestId = request.headers["x-request-id"];
+  if (suppliedRequestId !== undefined && suppliedRequestId !== body.requestId) {
+    throw new DashboardServerError(400, "invalid_header", "X-Request-ID does not match the request body");
+  }
+}
+
+function assertScheduleIfMatch(
+  request: IncomingMessage,
+  scheduleId: string,
+  revision: number,
+): void {
+  if (requiredHeader(request.headers["if-match"], "If-Match") !== scheduleEtag(scheduleId, revision)) {
+    throw new DashboardServerError(412, "schedule_precondition_failed", "If-Match does not match expectedRevision");
+  }
+}
+
+function requestRevision(value: unknown): number {
+  if (!Number.isSafeInteger(value) || (value as number) < 0) throw invalidScheduleRequest();
+  return value as number;
+}
+
+function invalidScheduleRequest(): DashboardServerError {
+  return new DashboardServerError(400, "invalid_schedule_request", "schedule request is invalid");
+}
+
+function scheduleListQuery(url: URL): string | undefined {
+  for (const key of url.searchParams.keys()) if (key !== "session") throw invalidQuery();
+  const session = singleQueryValue(url, "session");
+  if (session === null) return undefined;
+  return safeId(session, "session");
 }
 
 function activationRequest(value: unknown): ActivationRequest {
@@ -1233,6 +1418,27 @@ function safeHttpError(error: unknown): { status: number; body: ApiErrorBody } {
         code: error.code,
         message: error.message,
         retryable: error instanceof DashboardServerError ? error.retryable : false,
+      },
+    };
+  }
+  if (
+    error instanceof Error &&
+    (error.name === "InProcessDashboardBackendError" || error.name === "RemoteDashboardBackendError") &&
+    "code" in error && typeof error.code === "string"
+  ) {
+    const status = error.code.includes("not_found") ? 404
+      : error.code.includes("precondition") ? 412
+      : error.code.includes("unavailable") ? 501
+      : error.code.includes("capacity") ? 429
+      : error.code.includes("conflict") ? 409
+      : error.code.includes("invalid") ? 400
+      : 500;
+    return {
+      status,
+      body: {
+        code: error.code,
+        message: status === 500 ? "dashboard backend operation failed" : error.message,
+        retryable: "retryable" in error && error.retryable === true,
       },
     };
   }

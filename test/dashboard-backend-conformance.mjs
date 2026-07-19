@@ -43,6 +43,54 @@ export async function assertDashboardBackendResourceConformance({
   assert.equal((await backend.getManagedSession(sessionRef)).generation, 3);
 }
 
+export async function assertDashboardScheduleConformance({ backend, sessionRef }) {
+  const capabilities = await backend.scheduleCapabilities();
+  assert.equal(capabilities.promptHandling, "owner-private-sensitive-content");
+  const create = {
+    requestId: "schedule-create-request",
+    idempotencyKey: "schedule-create-key",
+    schedule: {
+      scheduleId: "dash-schedule-fixture",
+      sessionRef,
+      enabled: true,
+      cron: "0 9 * * 1-5",
+      timezone: "UTC",
+      prompt: "private schedule prompt sentinel",
+      overlapPolicy: "skip",
+      missedWakePolicy: { mode: "skip" },
+      jitterMs: 0,
+      maxAdmissionDelayMs: 300000,
+    },
+  };
+  const created = await backend.createSchedule(create);
+  assert.equal(created.revision, 0);
+  assert.equal(created.promptConfigured, true);
+  assert.equal("prompt" in created, false);
+  assert.deepEqual(await backend.createSchedule(create), created);
+  assert.deepEqual((await backend.listSchedules(sessionRef)).map((value) => value.scheduleId), [created.scheduleId]);
+  assert.equal((await backend.getSchedule(created.scheduleId)).promptConfigured, true);
+  const updated = await backend.updateSchedule(created.scheduleId, {
+    requestId: "schedule-update-request",
+    idempotencyKey: "schedule-update-key",
+    expectedRevision: created.revision,
+    schedule: { ...create.schedule, prompt: undefined, enabled: false },
+  });
+  assert.equal(updated.revision, 1);
+  assert.equal(updated.enabled, false);
+  assert.equal((await backend.scheduleStatus()).enabledCount, 0);
+  await backend.deleteSchedule(created.scheduleId, {
+    requestId: "schedule-delete-request",
+    idempotencyKey: "schedule-delete-key",
+    expectedRevision: updated.revision,
+  });
+  await backend.deleteSchedule(created.scheduleId, {
+    requestId: "schedule-delete-request",
+    idempotencyKey: "schedule-delete-key",
+    expectedRevision: updated.revision,
+  });
+  assert.deepEqual(await backend.listSchedules(), []);
+}
+
 /** Shared Rich-channel controller/replay contract for both deployment modes. */
 export async function assertDashboardRichChannelConformance({
   backend,

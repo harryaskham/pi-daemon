@@ -36,8 +36,10 @@ async function fixture(t, overrides = {}) {
   });
   const calls = [];
   const fixtures = createDashboardContractFixtures();
+  let schedule;
+  const scheduleCapabilities = { contractVersion: "1.0", persistence: true, timerRuntime: false, cronSyntax: "posix-five-field", timezoneDatabase: "runtime-iana", optimisticConcurrency: "expected-revision", overlapPolicies: ["skip", "queue-one", "reject"], missedWakePolicies: ["skip", "run-once", "bounded-catch-up"], promptHandling: "owner-private-sensitive-content", terminalTicketSummary: "content-free", clock: "wall-clock-utc-instants", limits: { maxSchedules: 1024, maxSchedulesPerSession: 32, maxPromptBytes: 65536, maxRecordBytes: 131072, maxRecoveryBytes: 134217728, maxCatchUpRuns: 24, maxJitterMs: 86400000, maxAdmissionDelayMs: 86400000 } };
   const backend = {
-    async capabilities() { calls.push("capabilities"); return fixtures.capabilities; },
+    async capabilities() { calls.push("capabilities"); return { ...fixtures.capabilities, resources: { ...fixtures.capabilities.resources, schedules: true } }; },
     async listSessions(query) { calls.push(["listSessions", query]); return fixtures.inventory; },
     async getSessionInfo(id) { calls.push(["getSessionInfo", id]); return fixtures.sessionInfo; },
     async getTranscript(id, query) { calls.push(["getTranscript", id, query]); return fixtures.transcript; },
@@ -45,6 +47,13 @@ async function fixture(t, overrides = {}) {
     async getActivation(id) { calls.push(["getActivation", id]); return fixtures.activationTicket; },
     async exportSession(id, request) { calls.push(["exportSession", id, request]); return fixtures.exportTicket; },
     async getExport(id) { calls.push(["getExport", id]); return fixtures.exportTicket; },
+    async scheduleCapabilities() { return scheduleCapabilities; },
+    async listSchedules() { return schedule === undefined ? [] : [schedule]; },
+    async getSchedule() { return schedule; },
+    async createSchedule(request) { const now = "2026-07-18T12:00:00.000Z"; schedule = { contractVersion: "1.0", ...request.schedule, revision: 0, createdAt: now, updatedAt: now }; return schedule; },
+    async updateSchedule(_id, request) { schedule = { ...schedule, ...request.schedule, prompt: request.schedule.prompt ?? schedule.prompt, revision: schedule.revision + 1 }; return schedule; },
+    async deleteSchedule() { schedule = undefined; },
+    async scheduleStatus() { return { timerRuntime: false, externalTimersSupported: true, scheduleCount: schedule === undefined ? 0 : 1, enabledCount: schedule?.enabled ? 1 : 0 }; },
     async getManagedSession() { throw new Error("not used by HTTP fixture"); },
     async openSessionChannel() { throw new Error("not used by HTTP fixture"); },
     async openTuiChannel() { throw new Error("not used by HTTP fixture"); },
@@ -291,6 +300,33 @@ test("bootstrap stays preview-only and backend resources use bounded typed query
   });
   assert.equal(exported.status, 202);
   assert.deepEqual(calls[1], ["exportSession", "session-fixture-01", fixtures.exportRequest]);
+});
+
+test("schedule BFF routes keep prompts input-only and enforce CSRF, idempotency and exact ETags", async (t) => {
+  const { origin } = await fixture(t);
+  const session = await login(origin);
+  const schedule = { scheduleId: "dash-job", sessionRef: "session-fixture-01", enabled: true, cron: "0 9 * * 1-5", timezone: "UTC", prompt: "private prompt sentinel", overlapPolicy: "skip", missedWakePolicy: { mode: "skip" }, jitterMs: 0, maxAdmissionDelayMs: 300000 };
+  const request = { requestId: "schedule-create", idempotencyKey: "schedule-key", schedule };
+  const missingCsrf = await fetch(`${origin}/dash/v1/schedules`, { method: "POST", headers: { Cookie: session.cookie, Origin: origin, "Content-Type": "application/json", "Idempotency-Key": request.idempotencyKey, "X-Request-ID": request.requestId }, body: JSON.stringify(request) });
+  assert.equal(missingCsrf.status, 403);
+  const created = await jsonResponse(await fetch(`${origin}/dash/v1/schedules`, { method: "POST", headers: { ...privateHeaders(origin, session, true), "Content-Type": "application/json", "Idempotency-Key": request.idempotencyKey, "X-Request-ID": request.requestId }, body: JSON.stringify(request) }));
+  assert.equal(created.response.status, 201);
+  assert.equal(created.response.headers.get("etag"), '"ZGFzaC1qb2I:0"');
+  assert.equal(created.json.data.promptConfigured, true);
+  assert.equal(JSON.stringify(created.json).includes("private prompt sentinel"), false);
+  const listed = await jsonResponse(await fetch(`${origin}/dash/v1/schedules`, { headers: privateHeaders(origin, session) }));
+  assert.equal(listed.json.data.schedules.length, 1);
+  assert.equal(JSON.stringify(listed.json).includes("private prompt sentinel"), false);
+  const update = { requestId: "schedule-update", idempotencyKey: "schedule-update-key", expectedRevision: 0, schedule: { ...schedule, enabled: false } };
+  delete update.schedule.prompt;
+  const stale = await fetch(`${origin}/dash/v1/schedules/dash-job`, { method: "PUT", headers: { ...privateHeaders(origin, session, true), "Content-Type": "application/json", "Idempotency-Key": update.idempotencyKey, "X-Request-ID": update.requestId, "If-Match": '"stale:0"' }, body: JSON.stringify(update) });
+  assert.equal(stale.status, 412);
+  const updated = await jsonResponse(await fetch(`${origin}/dash/v1/schedules/dash-job`, { method: "PUT", headers: { ...privateHeaders(origin, session, true), "Content-Type": "application/json", "Idempotency-Key": update.idempotencyKey, "X-Request-ID": update.requestId, "If-Match": '"ZGFzaC1qb2I:0"' }, body: JSON.stringify(update) }));
+  assert.equal(updated.response.status, 200);
+  assert.equal(updated.json.data.enabled, false);
+  assert.equal(JSON.stringify(updated.json).includes("private prompt sentinel"), false);
+  assert.equal((await fetch(`${origin}/dash/v1/schedules/capabilities`, { headers: privateHeaders(origin, session) })).status, 200);
+  assert.equal((await fetch(`${origin}/dash/v1/schedules/status`, { headers: privateHeaders(origin, session) })).status, 200);
 });
 
 test("workspace and UI settings routes persist only the authenticated workspace with ETags", async (t) => {

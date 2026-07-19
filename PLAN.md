@@ -473,6 +473,12 @@ process appears per wake.
 9. Only after the standalone contracts are stable does Cacophony implement its
    own shared-host lifecycle adapter.
 
+## Provisional Beads work board
+
+- [x] `bd-c39242` Add capability-gated, prompt-redacted schedule resources to
+  `DashboardBackend`, remote delegation, and authenticated same-origin
+  `/dash/v1/schedules` browser BFF routes.
+
 ## 18. Completed scaffold board (historical PD identifiers)
 
 These items are implemented. “Complete” here means the original no-tools

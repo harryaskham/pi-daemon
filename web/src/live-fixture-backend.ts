@@ -18,6 +18,10 @@ import type {
   DashboardCommandResult,
   DashboardControllerRole,
   DashboardCursor,
+  DashboardScheduleDeleteRequest,
+  DashboardScheduleMutationRequest,
+  DashboardScheduleResource,
+  DashboardScheduleStatus,
   DashboardSessionIdentity,
   DashboardTuiChannel,
   NormalizedTranscriptRecord,
@@ -27,6 +31,7 @@ import type {
   SessionInfoResource,
   TuiChannelOptions,
 } from "@harryaskham/pi-daemon/dashboard-contract";
+import type { ScheduleCapabilities } from "@harryaskham/pi-daemon/schedule-contract";
 import type { JsonObject, JsonValue, SessionResource } from "@harryaskham/pi-daemon/session-api";
 import { LocalFixtureBackend } from "./fixture-backend";
 import { createTranscriptFixtures, createTranscriptShowcaseFixtures } from "./fixtures";
@@ -141,6 +146,14 @@ export class LiveFixtureDashboardBackend extends LocalFixtureBackend implements 
     if (!ticket) throw new Error("export ticket not found");
     return structuredClone(ticket);
   }
+
+  async scheduleCapabilities(): Promise<ScheduleCapabilities> { throw new Error("fixture schedules unavailable"); }
+  async listSchedules(_sessionRef?: string): Promise<DashboardScheduleResource[]> { return []; }
+  async getSchedule(_scheduleId: string): Promise<DashboardScheduleResource> { throw new Error("fixture schedules unavailable"); }
+  async createSchedule(_request: DashboardScheduleMutationRequest): Promise<DashboardScheduleResource> { throw new Error("fixture schedules unavailable"); }
+  async updateSchedule(_scheduleId: string, _request: DashboardScheduleMutationRequest): Promise<DashboardScheduleResource> { throw new Error("fixture schedules unavailable"); }
+  async deleteSchedule(_scheduleId: string, _request: DashboardScheduleDeleteRequest): Promise<void> { throw new Error("fixture schedules unavailable"); }
+  async scheduleStatus(): Promise<DashboardScheduleStatus> { return { timerRuntime: false, externalTimersSupported: false, scheduleCount: 0, enabledCount: 0 }; }
 
   async getManagedSession(sessionRef: string): Promise<SessionResource> {
     const session = this.sessions.find((candidate) => candidate.sessionId === sessionRef);

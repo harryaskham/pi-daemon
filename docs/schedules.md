@@ -113,6 +113,22 @@ a bounded cron search horizon prevent timer and memory backlog growth.
 Exceeding global or per-session capacity fails closed rather than partially
 scheduling resources.
 
+## Dashboard browser BFF
+
+The browser never calls the service-bearer routes below. Authenticated Dash
+JavaScript uses the same-origin cookie BFF under `/dash/v1/schedules` for
+capabilities, bounded list/get/status, create, update, and delete. Mutations
+require exact Host and Origin, the browser-session CSRF header,
+`Idempotency-Key`, and (for update/delete) an exact ETag matching the body
+revision. Responses remove `prompt` and expose only `promptConfigured: true`.
+Prompt text is required on create and may be omitted on update to preserve the
+existing private value. Dedicated Dash performs the corresponding operation
+server-to-server through its bounded `SessionApiClient`; the service bearer is
+never sent to JavaScript.
+
+A daemon predating this surface omits the Dashboard schedule capability. The
+remote backend reports `schedules_unavailable` without probing private routes.
+
 ## Authenticated HTTP and CLI
 
 When the JSON API is enabled, every schedule route authenticates the service

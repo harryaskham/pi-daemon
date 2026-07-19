@@ -13,9 +13,11 @@ import { createDashboardContractFixtures } from "../dist/dashboard-fixtures.js";
 import { createDashboardStreamHandler } from "../dist/dashboard-stream-router.js";
 import { Multiplexer } from "../dist/multiplexer.js";
 import { FileSessionCatalog } from "../dist/session-catalog.js";
+import { FileScheduleStore } from "../dist/schedule-store.js";
 import {
   assertDashboardBackendResourceConformance,
   assertDashboardRichChannelConformance,
+  assertDashboardScheduleConformance,
 } from "./dashboard-backend-conformance.mjs";
 
 class FakeRpcController {
@@ -184,16 +186,18 @@ async function harness(t, options = {}) {
     },
     async getExport() { return fixtures.exportTicket; },
   };
+  const schedules = options.schedules ? new FileScheduleStore({ stateDir }) : undefined;
   const backend = new InProcessDashboardBackend({
     inventory,
     projector,
     ownership,
     multiplexer,
+    ...(schedules === undefined ? {} : { schedules }),
     ...(options.tuiChannels === undefined ? {} : { tuiChannels: options.tuiChannels }),
     limits: { leaseTtlMs: 3_000, ...(options.limits ?? {}) },
   });
   t.after(() => backend.dispose());
-  return { backend, calls, factory, fixtures, multiplexer };
+  return { backend, calls, factory, fixtures, multiplexer, schedules };
 }
 
 test("embedded backend delegates inventory, preview, ownership and catalog without transport policy", async (t) => {
@@ -209,6 +213,15 @@ test("embedded backend delegates inventory, preview, ownership and catalog witho
     backend.openTuiChannel({ sessionRef: fixtures.sessionInfo.managed.sessionId, role: "observer", dimensions: { rows: 24, columns: 80 } }),
     (error) => error instanceof InProcessDashboardBackendError && error.code === "tui_unavailable",
   );
+});
+
+test("shared schedule conformance passes for the embedded backend with prompt-redacted output", async (t) => {
+  const { backend, fixtures } = await harness(t, { schedules: true });
+  assert.equal((await backend.capabilities()).resources.schedules, true);
+  await assertDashboardScheduleConformance({
+    backend,
+    sessionRef: fixtures.sessionInfo.managed.sessionId,
+  });
 });
 
 test("shared Rich-channel conformance passes for the embedded backend", async (t) => {

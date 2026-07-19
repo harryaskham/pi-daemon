@@ -217,6 +217,27 @@ describe("same-origin browser dashboard client", () => {
     expect(calls[2]?.init?.headers).toMatchObject({ "x-pi-daemon-csrf": "csrf-test" });
   });
 
+  it("uses only cookie BFF schedule routes with CSRF, idempotency and exact revision ETags", async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const safe = { contractVersion: "1.0", scheduleId: "dash-job", sessionRef: "session-test", revision: 0, enabled: true, cron: "0 9 * * 1-5", timezone: "UTC", overlapPolicy: "skip", missedWakePolicy: { mode: "skip" }, jitterMs: 0, maxAdmissionDelayMs: 1, createdAt: "2026-07-19T00:00:00.000Z", updatedAt: "2026-07-19T00:00:00.000Z", promptConfigured: true } as const;
+    const fetch = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      calls.push({ url: String(url), ...(init === undefined ? {} : { init }) });
+      if (String(url).endsWith("/login")) return new Response(JSON.stringify(envelope({ clientId: CLIENT, workspaceId: WORKSPACE, expiresAt: "2026-07-20T00:00:00.000Z", csrfToken: "csrf-test" })));
+      return new Response(JSON.stringify(envelope(safe)), { status: init?.method === "POST" ? 201 : 200 });
+    });
+    const client = new BrowserDashboardClient({ fetch: fetch as typeof globalThis.fetch });
+    await client.login("owner-private-credential");
+    const create = { requestId: "schedule-create", idempotencyKey: "schedule-key", schedule: { scheduleId: "dash-job", sessionRef: "session-test", enabled: true, cron: "0 9 * * 1-5", timezone: "UTC", prompt: "input-only prompt", overlapPolicy: "skip" as const, missedWakePolicy: { mode: "skip" as const }, jitterMs: 0, maxAdmissionDelayMs: 1 } };
+    await client.createSchedule(create);
+    const { prompt: _prompt, ...scheduleWithoutPrompt } = create.schedule;
+    await client.updateSchedule("dash-job", { ...create, requestId: "schedule-update", idempotencyKey: "schedule-update-key", expectedRevision: 0, schedule: scheduleWithoutPrompt });
+    expect(calls[1]?.url).toBe("/dash/v1/schedules");
+    expect(calls[1]?.init?.headers).toMatchObject({ "x-pi-daemon-csrf": "csrf-test", "Idempotency-Key": "schedule-key", "X-Request-ID": "schedule-create" });
+    expect(calls[2]?.url).toBe("/dash/v1/schedules/dash-job");
+    expect(calls[2]?.init?.headers).toMatchObject({ "If-Match": '"ZGFzaC1qb2I:0"' });
+    expect(JSON.stringify(calls.map((call) => call.init?.headers))).not.toMatch(/authorization|bearer/i);
+  });
+
   it("negotiates one multiplexed stream and exposes rich events and commands", async () => {
     let socket: FakeWebSocket | undefined;
     const fetch = vi.fn(async () => new Response(JSON.stringify(envelope(bootstrap))));

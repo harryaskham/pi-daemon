@@ -24,6 +24,10 @@ import type {
   DashboardCursor,
   DashboardExtensionUiEvent,
   DashboardReplayGap,
+  DashboardScheduleDeleteRequest,
+  DashboardScheduleMutationRequest,
+  DashboardScheduleResource,
+  DashboardScheduleStatus,
   DashboardSessionEvent,
   DashboardSessionIdentity,
   DashboardTuiChannel,
@@ -51,6 +55,13 @@ import { catalogRecordToSessionResource } from "./session-catalog.js";
 import { ensureSessionResident } from "./session-residency.js";
 import type { JsonObject, JsonValue, PiRpcEvent, SessionResource } from "./session-api.js";
 import type { SessionInventory } from "./session-inventory.js";
+import {
+  browserScheduleResource,
+  scheduleDefinition,
+  scheduleStatus,
+} from "./dashboard-schedule-resources.js";
+import { scheduleCapabilities, type ScheduleCapabilities } from "./schedule-contract.js";
+import { ScheduleStoreError, type FileScheduleStore } from "./schedule-store.js";
 import type { SessionOwnershipService } from "./session-ownership.js";
 import type { TranscriptProjector } from "./transcript-projector.js";
 
@@ -114,6 +125,7 @@ export interface InProcessDashboardBackendOptions {
     "activateSession" | "getActivation" | "exportSession" | "getExport"
   >;
   multiplexer: Multiplexer;
+  schedules?: Pick<FileScheduleStore, "list" | "get" | "create" | "update" | "delete" | "limits">;
   tuiChannels?: InProcessDashboardTuiChannels;
   capabilities?: DashboardCapabilities;
   limits?: Partial<InProcessDashboardBackendLimits>;
@@ -141,10 +153,12 @@ export class InProcessDashboardBackend implements DashboardBackend {
   readonly #projector: InProcessDashboardBackendOptions["projector"];
   readonly #ownership: InProcessDashboardBackendOptions["ownership"];
   readonly #multiplexer: Multiplexer;
+  readonly #schedules: InProcessDashboardBackendOptions["schedules"];
   readonly #tuiChannels: InProcessDashboardTuiChannels | undefined;
   readonly #capabilities: DashboardCapabilities;
   readonly #limits: InProcessDashboardBackendLimits;
   readonly #richHubs = new Map<string, InProcessRichHub>();
+  readonly #scheduleMutations = new Map<string, { fingerprint: string; result: Promise<DashboardScheduleResource | void> }>();
   readonly #unsubscribeMultiplexer: () => void;
   #disposed = false;
 
@@ -153,10 +167,12 @@ export class InProcessDashboardBackend implements DashboardBackend {
     this.#projector = options.projector;
     this.#ownership = options.ownership;
     this.#multiplexer = options.multiplexer;
+    this.#schedules = options.schedules;
     this.#tuiChannels = options.tuiChannels;
     this.#limits = resolveLimits(options.limits);
     this.#capabilities = options.capabilities ?? defaultCapabilities(
       options.tuiChannels !== undefined,
+      options.schedules !== undefined,
       this.#limits,
     );
     this.#unsubscribeMultiplexer = this.#multiplexer.subscribe((event) => {
@@ -274,6 +290,87 @@ export class InProcessDashboardBackend implements DashboardBackend {
   async getExport(ticketId: string): Promise<SessionExportTicket> {
     this.#assertOpen();
     return this.#ownership.getExport(ticketId);
+  }
+
+  async scheduleCapabilities(): Promise<ScheduleCapabilities> {
+    this.#assertOpen();
+    return scheduleCapabilities(this.#scheduleStore().limits);
+  }
+
+  async listSchedules(sessionRef?: string): Promise<DashboardScheduleResource[]> {
+    this.#assertOpen();
+    const store = this.#scheduleStore();
+    const canonical = sessionRef === undefined
+      ? undefined
+      : (await this.#retainedScheduleSession(sessionRef)).sessionId;
+    return (await store.list(canonical)).map(browserScheduleResource);
+  }
+
+  async getSchedule(scheduleId: string): Promise<DashboardScheduleResource> {
+    this.#assertOpen();
+    const resource = await this.#scheduleStore().get(scheduleId);
+    if (resource === undefined) {
+      throw new InProcessDashboardBackendError("schedule_not_found", "schedule does not exist");
+    }
+    return browserScheduleResource(resource);
+  }
+
+  createSchedule(request: DashboardScheduleMutationRequest): Promise<DashboardScheduleResource> {
+    this.#assertOpen();
+    return this.#scheduleMutation(`create:${request.idempotencyKey}`, request, async () => {
+      if (request.expectedRevision !== undefined) {
+        throw new InProcessDashboardBackendError("invalid_schedule_request", "create must not include expectedRevision");
+      }
+      if (request.schedule.prompt === undefined) {
+        throw new InProcessDashboardBackendError("invalid_schedule_request", "prompt is required when creating a schedule");
+      }
+      const session = await this.#retainedScheduleSession(request.schedule.sessionRef);
+      const write = { ...request.schedule, sessionRef: session.sessionId };
+      return browserScheduleResource(await this.#scheduleStore().create(
+        scheduleDefinition(write, request.schedule.prompt),
+      ));
+    }) as Promise<DashboardScheduleResource>;
+  }
+
+  updateSchedule(scheduleId: string, request: DashboardScheduleMutationRequest): Promise<DashboardScheduleResource> {
+    this.#assertOpen();
+    return this.#scheduleMutation(`update:${scheduleId}:${request.idempotencyKey}`, request, async () => {
+      if (request.schedule.scheduleId !== scheduleId || request.expectedRevision === undefined) {
+        throw new InProcessDashboardBackendError("invalid_schedule_request", "schedule identity and expectedRevision are required");
+      }
+      const current = await this.#scheduleStore().get(scheduleId);
+      if (current === undefined) throw new InProcessDashboardBackendError("schedule_not_found", "schedule does not exist");
+      if (request.expectedRevision !== current.revision) {
+        throw new InProcessDashboardBackendError("schedule_precondition_failed", "schedule revision precondition failed");
+      }
+      const session = await this.#retainedScheduleSession(request.schedule.sessionRef);
+      if (session.sessionId !== current.sessionRef) {
+        throw new InProcessDashboardBackendError("schedule_identity_conflict", "schedule session is immutable");
+      }
+      const write = { ...request.schedule, sessionRef: session.sessionId };
+      return browserScheduleResource(await this.#scheduleStore().update(
+        scheduleId,
+        current.revision,
+        scheduleDefinition(write, request.schedule.prompt ?? current.prompt),
+      ));
+    }) as Promise<DashboardScheduleResource>;
+  }
+
+  deleteSchedule(scheduleId: string, request: DashboardScheduleDeleteRequest): Promise<void> {
+    this.#assertOpen();
+    return this.#scheduleMutation(`delete:${scheduleId}:${request.idempotencyKey}`, request, async () => {
+      const current = await this.#scheduleStore().get(scheduleId);
+      if (current === undefined) throw new InProcessDashboardBackendError("schedule_not_found", "schedule does not exist");
+      if (request.expectedRevision !== current.revision) {
+        throw new InProcessDashboardBackendError("schedule_precondition_failed", "schedule revision precondition failed");
+      }
+      await this.#scheduleStore().delete(scheduleId, current.revision);
+    }) as Promise<void>;
+  }
+
+  async scheduleStatus(): Promise<DashboardScheduleStatus> {
+    this.#assertOpen();
+    return scheduleStatus(await this.#scheduleStore().list());
   }
 
   async getManagedSession(sessionRef: string): Promise<SessionResource> {
@@ -403,6 +500,50 @@ export class InProcessDashboardBackend implements DashboardBackend {
     const match = page.sessions.find((record) => record.managed?.sessionId === session.sessionId);
     if (match === undefined) return [];
     return (await this.getTranscript(match.inventoryId, { limit: DASH_DEFAULT_LIMITS.maxTranscriptPageRecords })).records;
+  }
+
+  #scheduleStore(): NonNullable<InProcessDashboardBackendOptions["schedules"]> {
+    if (this.#schedules === undefined || !this.#capabilities.resources.schedules) {
+      throw new InProcessDashboardBackendError("schedules_unavailable", "schedule resources are unavailable");
+    }
+    return this.#schedules;
+  }
+
+  async #retainedScheduleSession(sessionRef: string) {
+    const retained = await this.#multiplexer.retainedSession(sessionRef);
+    if (retained === undefined) throw new InProcessDashboardBackendError("session_not_found", "managed session does not exist");
+    return retained;
+  }
+
+  #scheduleMutation<T extends DashboardScheduleResource | void>(
+    key: string,
+    input: unknown,
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    const fingerprint = JSON.stringify(input);
+    const existing = this.#scheduleMutations.get(key);
+    if (existing !== undefined) {
+      if (existing.fingerprint !== fingerprint) {
+        throw new InProcessDashboardBackendError("idempotency_conflict", "idempotency key was reused with different schedule content");
+      }
+      return existing.result.then((value) => structuredClone(value)) as Promise<T>;
+    }
+    if (this.#scheduleMutations.size >= 1024) {
+      const oldest = this.#scheduleMutations.keys().next().value;
+      if (oldest !== undefined) this.#scheduleMutations.delete(oldest);
+    }
+    const result = operation().catch((error: unknown) => {
+      this.#scheduleMutations.delete(key);
+      if (error instanceof ScheduleStoreError) {
+        throw new InProcessDashboardBackendError(
+          error.code === "revision_conflict" ? "schedule_precondition_failed" : `schedule_${error.code}`,
+          error.message,
+        );
+      }
+      throw error;
+    });
+    this.#scheduleMutations.set(key, { fingerprint, result });
+    return result.then((value) => structuredClone(value)) as Promise<T>;
   }
 
   #assertOpen(): void {
@@ -881,6 +1022,7 @@ class LeasedTuiChannel implements DashboardTuiChannel {
 
 function defaultCapabilities(
   tuiAvailable: boolean,
+  schedulesAvailable: boolean,
   backendLimits: InProcessDashboardBackendLimits,
 ): DashboardCapabilities {
   const commands: DashboardCommandOperation[] = [
@@ -922,7 +1064,7 @@ function defaultCapabilities(
       export: true,
       workspaces: true,
       settings: true,
-      schedules: false,
+      schedules: schedulesAvailable,
     },
     presentations: {
       rich: { available: true, replay: true, controller: true, commands },

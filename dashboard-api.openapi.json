@@ -11,7 +11,11 @@
       "description": "Provisional authenticated loopback Dash endpoint; non-loopback deployments require HTTPS or explicit insecure-development policy."
     }
   ],
-  "security": [{ "dashSession": [] }],
+  "security": [
+    {
+      "dashSession": []
+    }
+  ],
   "paths": {
     "/login": {
       "post": {
@@ -23,23 +27,37 @@
           "required": true,
           "content": {
             "application/json": {
-              "schema": { "$ref": "./dashboard-api.schema.json#/$defs/loginRequest" }
+              "schema": {
+                "$ref": "./dashboard-api.schema.json#/$defs/loginRequest"
+              }
             }
           }
         },
         "responses": {
           "200": {
             "description": "Authenticated browser session metadata; the session cookie is emitted only as Set-Cookie",
-            "headers": { "Set-Cookie": { "$ref": "#/components/headers/SetCookie" } },
+            "headers": {
+              "Set-Cookie": {
+                "$ref": "#/components/headers/SetCookie"
+              }
+            },
             "content": {
               "application/json": {
-                "schema": { "$ref": "./dashboard-api.schema.json#/$defs/loginEnvelope" }
+                "schema": {
+                  "$ref": "./dashboard-api.schema.json#/$defs/loginEnvelope"
+                }
               }
             }
           },
-          "400": { "$ref": "#/components/responses/InvalidRequest" },
-          "401": { "$ref": "#/components/responses/Unauthorized" },
-          "429": { "$ref": "#/components/responses/Capacity" }
+          "400": {
+            "$ref": "#/components/responses/InvalidRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "429": {
+            "$ref": "#/components/responses/Capacity"
+          }
         }
       }
     },
@@ -47,12 +65,23 @@
       "post": {
         "operationId": "logoutDashboard",
         "summary": "Revoke the current browser session",
-        "security": [{ "dashSession": [], "csrfHeader": [] }],
+        "security": [
+          {
+            "dashSession": [],
+            "csrfHeader": []
+          }
+        ],
         "x-origin-check-required": true,
         "responses": {
-          "204": { "description": "Browser session revoked" },
-          "401": { "$ref": "#/components/responses/Unauthorized" },
-          "403": { "$ref": "#/components/responses/Forbidden" }
+          "204": {
+            "description": "Browser session revoked"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
         }
       }
     },
@@ -61,21 +90,33 @@
         "operationId": "getDashboardBootstrap",
         "summary": "Fetch capabilities, effective settings, one workspace, and persisted-index rows without hydrating a Pi runtime",
         "parameters": [
-          { "$ref": "#/components/parameters/RequestId" },
-          { "$ref": "#/components/parameters/ClientId" },
-          { "$ref": "#/components/parameters/WorkspaceId" }
+          {
+            "$ref": "#/components/parameters/RequestId"
+          },
+          {
+            "$ref": "#/components/parameters/ClientId"
+          },
+          {
+            "$ref": "#/components/parameters/WorkspaceId"
+          }
         ],
         "responses": {
           "200": {
             "description": "Bounded preview-first bootstrap",
             "content": {
               "application/json": {
-                "schema": { "$ref": "./dashboard-api.schema.json#/$defs/bootstrapEnvelope" }
+                "schema": {
+                  "$ref": "./dashboard-api.schema.json#/$defs/bootstrapEnvelope"
+                }
               }
             }
           },
-          "401": { "$ref": "#/components/responses/Unauthorized" },
-          "503": { "$ref": "#/components/responses/Unavailable" }
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
         }
       }
     },
@@ -84,33 +125,64 @@
         "operationId": "listDashboardSessions",
         "summary": "List the merged managed/external inventory without canonical source paths",
         "parameters": [
-          { "$ref": "#/components/parameters/RequestId" },
-          { "$ref": "#/components/parameters/ClientId" },
-          { "$ref": "#/components/parameters/WorkspaceId" },
-          { "$ref": "#/components/parameters/PageCursor" },
-          { "$ref": "#/components/parameters/PageLimit" },
-          { "name": "search", "in": "query", "schema": { "type": "string", "maxLength": 1024 } }
+          {
+            "$ref": "#/components/parameters/RequestId"
+          },
+          {
+            "$ref": "#/components/parameters/ClientId"
+          },
+          {
+            "$ref": "#/components/parameters/WorkspaceId"
+          },
+          {
+            "$ref": "#/components/parameters/PageCursor"
+          },
+          {
+            "$ref": "#/components/parameters/PageLimit"
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 1024
+            }
+          }
         ],
         "responses": {
           "200": {
             "description": "Stable bounded inventory page",
             "content": {
               "application/json": {
-                "schema": { "$ref": "./dashboard-api.schema.json#/$defs/inventoryEnvelope" }
+                "schema": {
+                  "$ref": "./dashboard-api.schema.json#/$defs/inventoryEnvelope"
+                }
               }
             }
           },
-          "400": { "$ref": "#/components/responses/InvalidRequest" },
-          "401": { "$ref": "#/components/responses/Unauthorized" }
+          "400": {
+            "$ref": "#/components/responses/InvalidRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
         }
       }
     },
     "/sessions/{inventoryId}": {
       "parameters": [
-        { "$ref": "#/components/parameters/InventoryId" },
-        { "$ref": "#/components/parameters/RequestId" },
-        { "$ref": "#/components/parameters/ClientId" },
-        { "$ref": "#/components/parameters/WorkspaceId" }
+        {
+          "$ref": "#/components/parameters/InventoryId"
+        },
+        {
+          "$ref": "#/components/parameters/RequestId"
+        },
+        {
+          "$ref": "#/components/parameters/ClientId"
+        },
+        {
+          "$ref": "#/components/parameters/WorkspaceId"
+        }
       ],
       "get": {
         "operationId": "getDashboardSessionInfo",
@@ -120,23 +192,41 @@
             "description": "Full information resource; unlike inventory pages it may include an authenticated canonical source path",
             "content": {
               "application/json": {
-                "schema": { "$ref": "./dashboard-api.schema.json#/$defs/sessionInfoEnvelope" }
+                "schema": {
+                  "$ref": "./dashboard-api.schema.json#/$defs/sessionInfoEnvelope"
+                }
               }
             }
           },
-          "401": { "$ref": "#/components/responses/Unauthorized" },
-          "404": { "$ref": "#/components/responses/NotFound" }
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
         }
       }
     },
     "/sessions/{inventoryId}/transcript": {
       "parameters": [
-        { "$ref": "#/components/parameters/InventoryId" },
-        { "$ref": "#/components/parameters/RequestId" },
-        { "$ref": "#/components/parameters/ClientId" },
-        { "$ref": "#/components/parameters/WorkspaceId" },
-        { "$ref": "#/components/parameters/PageCursor" },
-        { "$ref": "#/components/parameters/TranscriptLimit" }
+        {
+          "$ref": "#/components/parameters/InventoryId"
+        },
+        {
+          "$ref": "#/components/parameters/RequestId"
+        },
+        {
+          "$ref": "#/components/parameters/ClientId"
+        },
+        {
+          "$ref": "#/components/parameters/WorkspaceId"
+        },
+        {
+          "$ref": "#/components/parameters/PageCursor"
+        },
+        {
+          "$ref": "#/components/parameters/TranscriptLimit"
+        }
       ],
       "get": {
         "operationId": "getDashboardTranscript",
@@ -146,33 +236,56 @@
             "description": "Normalized active-branch transcript page keyed by Pi entry/message/tool identities",
             "content": {
               "application/json": {
-                "schema": { "$ref": "./dashboard-api.schema.json#/$defs/transcriptEnvelope" }
+                "schema": {
+                  "$ref": "./dashboard-api.schema.json#/$defs/transcriptEnvelope"
+                }
               }
             }
           },
-          "401": { "$ref": "#/components/responses/Unauthorized" },
-          "404": { "$ref": "#/components/responses/NotFound" },
-          "413": { "$ref": "#/components/responses/TooLarge" }
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "413": {
+            "$ref": "#/components/responses/TooLarge"
+          }
         }
       }
     },
     "/sessions/{inventoryId}/activate": {
       "parameters": [
-        { "$ref": "#/components/parameters/InventoryId" },
-        { "$ref": "#/components/parameters/ClientId" },
-        { "$ref": "#/components/parameters/WorkspaceId" },
-        { "$ref": "#/components/parameters/IdempotencyKey" }
+        {
+          "$ref": "#/components/parameters/InventoryId"
+        },
+        {
+          "$ref": "#/components/parameters/ClientId"
+        },
+        {
+          "$ref": "#/components/parameters/WorkspaceId"
+        },
+        {
+          "$ref": "#/components/parameters/IdempotencyKey"
+        }
       ],
       "post": {
         "operationId": "activateDashboardSession",
         "summary": "Durably admit explicit reuse, direct/co-opt, fork/import, or preview-only activation",
-        "security": [{ "dashSession": [], "csrfHeader": [] }],
+        "security": [
+          {
+            "dashSession": [],
+            "csrfHeader": []
+          }
+        ],
         "x-origin-check-required": true,
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
-              "schema": { "$ref": "./dashboard-api.schema.json#/$defs/activationRequest" }
+              "schema": {
+                "$ref": "./dashboard-api.schema.json#/$defs/activationRequest"
+              }
             }
           }
         },
@@ -181,15 +294,27 @@
             "description": "Activation admitted or joined by idempotency key",
             "content": {
               "application/json": {
-                "schema": { "$ref": "./dashboard-api.schema.json#/$defs/activationTicketEnvelope" }
+                "schema": {
+                  "$ref": "./dashboard-api.schema.json#/$defs/activationTicketEnvelope"
+                }
               }
             }
           },
-          "401": { "$ref": "#/components/responses/Unauthorized" },
-          "403": { "$ref": "#/components/responses/Forbidden" },
-          "409": { "$ref": "#/components/responses/Conflict" },
-          "412": { "$ref": "#/components/responses/Precondition" },
-          "429": { "$ref": "#/components/responses/Capacity" }
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "412": {
+            "$ref": "#/components/responses/Precondition"
+          },
+          "429": {
+            "$ref": "#/components/responses/Capacity"
+          }
         }
       }
     },
@@ -198,22 +323,36 @@
         "operationId": "getDashboardActivation",
         "summary": "Inspect a retained activation ticket",
         "parameters": [
-          { "$ref": "#/components/parameters/TicketId" },
-          { "$ref": "#/components/parameters/RequestId" },
-          { "$ref": "#/components/parameters/ClientId" },
-          { "$ref": "#/components/parameters/WorkspaceId" }
+          {
+            "$ref": "#/components/parameters/TicketId"
+          },
+          {
+            "$ref": "#/components/parameters/RequestId"
+          },
+          {
+            "$ref": "#/components/parameters/ClientId"
+          },
+          {
+            "$ref": "#/components/parameters/WorkspaceId"
+          }
         ],
         "responses": {
           "200": {
             "description": "Current activation state",
             "content": {
               "application/json": {
-                "schema": { "$ref": "./dashboard-api.schema.json#/$defs/activationTicketEnvelope" }
+                "schema": {
+                  "$ref": "./dashboard-api.schema.json#/$defs/activationTicketEnvelope"
+                }
               }
             }
           },
-          "401": { "$ref": "#/components/responses/Unauthorized" },
-          "404": { "$ref": "#/components/responses/NotFound" }
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
         }
       }
     },
@@ -221,19 +360,34 @@
       "post": {
         "operationId": "exportDashboardSession",
         "summary": "Durably export as a new Pi session or guarded unchanged-prefix append",
-        "security": [{ "dashSession": [], "csrfHeader": [] }],
+        "security": [
+          {
+            "dashSession": [],
+            "csrfHeader": []
+          }
+        ],
         "x-origin-check-required": true,
         "parameters": [
-          { "$ref": "#/components/parameters/SessionRef" },
-          { "$ref": "#/components/parameters/ClientId" },
-          { "$ref": "#/components/parameters/WorkspaceId" },
-          { "$ref": "#/components/parameters/IdempotencyKey" }
+          {
+            "$ref": "#/components/parameters/SessionRef"
+          },
+          {
+            "$ref": "#/components/parameters/ClientId"
+          },
+          {
+            "$ref": "#/components/parameters/WorkspaceId"
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
         ],
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
-              "schema": { "$ref": "./dashboard-api.schema.json#/$defs/exportRequest" }
+              "schema": {
+                "$ref": "./dashboard-api.schema.json#/$defs/exportRequest"
+              }
             }
           }
         },
@@ -242,14 +396,24 @@
             "description": "Export admitted or joined by idempotency key",
             "content": {
               "application/json": {
-                "schema": { "$ref": "./dashboard-api.schema.json#/$defs/exportTicketEnvelope" }
+                "schema": {
+                  "$ref": "./dashboard-api.schema.json#/$defs/exportTicketEnvelope"
+                }
               }
             }
           },
-          "401": { "$ref": "#/components/responses/Unauthorized" },
-          "403": { "$ref": "#/components/responses/Forbidden" },
-          "409": { "$ref": "#/components/responses/Conflict" },
-          "412": { "$ref": "#/components/responses/Precondition" }
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "412": {
+            "$ref": "#/components/responses/Precondition"
+          }
         }
       }
     },
@@ -258,29 +422,47 @@
         "operationId": "getDashboardExport",
         "summary": "Inspect a retained export ticket",
         "parameters": [
-          { "$ref": "#/components/parameters/TicketId" },
-          { "$ref": "#/components/parameters/RequestId" },
-          { "$ref": "#/components/parameters/ClientId" },
-          { "$ref": "#/components/parameters/WorkspaceId" }
+          {
+            "$ref": "#/components/parameters/TicketId"
+          },
+          {
+            "$ref": "#/components/parameters/RequestId"
+          },
+          {
+            "$ref": "#/components/parameters/ClientId"
+          },
+          {
+            "$ref": "#/components/parameters/WorkspaceId"
+          }
         ],
         "responses": {
           "200": {
             "description": "Current export state",
             "content": {
               "application/json": {
-                "schema": { "$ref": "./dashboard-api.schema.json#/$defs/exportTicketEnvelope" }
+                "schema": {
+                  "$ref": "./dashboard-api.schema.json#/$defs/exportTicketEnvelope"
+                }
               }
             }
           },
-          "401": { "$ref": "#/components/responses/Unauthorized" },
-          "404": { "$ref": "#/components/responses/NotFound" }
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
         }
       }
     },
     "/workspaces/{workspaceId}": {
       "parameters": [
-        { "$ref": "#/components/parameters/WorkspacePathId" },
-        { "$ref": "#/components/parameters/ClientId" }
+        {
+          "$ref": "#/components/parameters/WorkspacePathId"
+        },
+        {
+          "$ref": "#/components/parameters/ClientId"
+        }
       ],
       "get": {
         "operationId": "getDashboardWorkspace",
@@ -288,48 +470,83 @@
         "responses": {
           "200": {
             "description": "Current workspace",
-            "headers": { "ETag": { "$ref": "#/components/headers/ETag" } },
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              }
+            },
             "content": {
               "application/json": {
-                "schema": { "$ref": "./dashboard-api.schema.json#/$defs/workspaceEnvelope" }
+                "schema": {
+                  "$ref": "./dashboard-api.schema.json#/$defs/workspaceEnvelope"
+                }
               }
             }
           },
-          "401": { "$ref": "#/components/responses/Unauthorized" },
-          "404": { "$ref": "#/components/responses/NotFound" }
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
         }
       },
       "put": {
         "operationId": "updateDashboardWorkspace",
         "summary": "Optimistically replace one bounded split-tree workspace",
-        "security": [{ "dashSession": [], "csrfHeader": [] }],
+        "security": [
+          {
+            "dashSession": [],
+            "csrfHeader": []
+          }
+        ],
         "x-origin-check-required": true,
         "parameters": [
-          { "$ref": "#/components/parameters/IfMatch" },
-          { "$ref": "#/components/parameters/IdempotencyKey" }
+          {
+            "$ref": "#/components/parameters/IfMatch"
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
         ],
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
-              "schema": { "$ref": "./dashboard-api.schema.json#/$defs/workspaceUpdateRequest" }
+              "schema": {
+                "$ref": "./dashboard-api.schema.json#/$defs/workspaceUpdateRequest"
+              }
             }
           }
         },
         "responses": {
           "200": {
             "description": "Updated workspace",
-            "headers": { "ETag": { "$ref": "#/components/headers/ETag" } },
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              }
+            },
             "content": {
               "application/json": {
-                "schema": { "$ref": "./dashboard-api.schema.json#/$defs/workspaceEnvelope" }
+                "schema": {
+                  "$ref": "./dashboard-api.schema.json#/$defs/workspaceEnvelope"
+                }
               }
             }
           },
-          "401": { "$ref": "#/components/responses/Unauthorized" },
-          "403": { "$ref": "#/components/responses/Forbidden" },
-          "412": { "$ref": "#/components/responses/Precondition" },
-          "413": { "$ref": "#/components/responses/TooLarge" }
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "412": {
+            "$ref": "#/components/responses/Precondition"
+          },
+          "413": {
+            "$ref": "#/components/responses/TooLarge"
+          }
         }
       }
     },
@@ -338,37 +555,62 @@
         "operationId": "getDashboardSettings",
         "summary": "Read effective UI settings and source provenance",
         "parameters": [
-          { "$ref": "#/components/parameters/RequestId" },
-          { "$ref": "#/components/parameters/ClientId" },
-          { "$ref": "#/components/parameters/WorkspaceId" }
+          {
+            "$ref": "#/components/parameters/RequestId"
+          },
+          {
+            "$ref": "#/components/parameters/ClientId"
+          },
+          {
+            "$ref": "#/components/parameters/WorkspaceId"
+          }
         ],
         "responses": {
           "200": {
             "description": "Effective UI settings",
-            "headers": { "ETag": { "$ref": "#/components/headers/ETag" } },
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              }
+            },
             "content": {
               "application/json": {
-                "schema": { "$ref": "./dashboard-api.schema.json#/$defs/settingsEnvelope" }
+                "schema": {
+                  "$ref": "./dashboard-api.schema.json#/$defs/settingsEnvelope"
+                }
               }
             }
           },
-          "401": { "$ref": "#/components/responses/Unauthorized" }
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
         }
       },
       "patch": {
         "operationId": "patchDashboardSettings",
         "summary": "Update only the allowlisted mutable UI overlay",
-        "security": [{ "dashSession": [], "csrfHeader": [] }],
+        "security": [
+          {
+            "dashSession": [],
+            "csrfHeader": []
+          }
+        ],
         "x-origin-check-required": true,
         "parameters": [
-          { "$ref": "#/components/parameters/IfMatch" },
-          { "$ref": "#/components/parameters/IdempotencyKey" }
+          {
+            "$ref": "#/components/parameters/IfMatch"
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
         ],
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
-              "schema": { "$ref": "./dashboard-api.schema.json#/$defs/settingsPatchRequest" }
+              "schema": {
+                "$ref": "./dashboard-api.schema.json#/$defs/settingsPatchRequest"
+              }
             }
           }
         },
@@ -377,34 +619,61 @@
             "description": "Updated effective settings",
             "content": {
               "application/json": {
-                "schema": { "$ref": "./dashboard-api.schema.json#/$defs/settingsEnvelope" }
+                "schema": {
+                  "$ref": "./dashboard-api.schema.json#/$defs/settingsEnvelope"
+                }
               }
             }
           },
-          "401": { "$ref": "#/components/responses/Unauthorized" },
-          "403": { "$ref": "#/components/responses/Forbidden" },
-          "412": { "$ref": "#/components/responses/Precondition" },
-          "422": { "$ref": "#/components/responses/Unsupported" }
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "412": {
+            "$ref": "#/components/responses/Precondition"
+          },
+          "422": {
+            "$ref": "#/components/responses/Unsupported"
+          }
         }
       },
       "delete": {
         "operationId": "resetDashboardSettings",
         "summary": "Delete the mutable UI overlay and restore configured defaults",
-        "security": [{ "dashSession": [], "csrfHeader": [] }],
+        "security": [
+          {
+            "dashSession": [],
+            "csrfHeader": []
+          }
+        ],
         "x-origin-check-required": true,
-        "parameters": [{ "$ref": "#/components/parameters/IfMatch" }],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IfMatch"
+          }
+        ],
         "responses": {
           "200": {
             "description": "Configured defaults after reset",
             "content": {
               "application/json": {
-                "schema": { "$ref": "./dashboard-api.schema.json#/$defs/settingsEnvelope" }
+                "schema": {
+                  "$ref": "./dashboard-api.schema.json#/$defs/settingsEnvelope"
+                }
               }
             }
           },
-          "401": { "$ref": "#/components/responses/Unauthorized" },
-          "403": { "$ref": "#/components/responses/Forbidden" },
-          "412": { "$ref": "#/components/responses/Precondition" }
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "412": {
+            "$ref": "#/components/responses/Precondition"
+          }
         }
       }
     },
@@ -415,17 +684,298 @@
         "x-websocket-subprotocol": "pi-daemon-dash.v1",
         "x-daemon-service-bearer-exposed": false,
         "parameters": [
-          { "$ref": "#/components/parameters/ClientId" },
-          { "$ref": "#/components/parameters/WorkspaceId" }
+          {
+            "$ref": "#/components/parameters/ClientId"
+          },
+          {
+            "$ref": "#/components/parameters/WorkspaceId"
+          }
         ],
         "responses": {
           "101": {
             "description": "Authenticated multiplexed browser WebSocket; messages validate as streamClientFrame or streamServerFrame"
           },
-          "401": { "$ref": "#/components/responses/Unauthorized" },
-          "403": { "$ref": "#/components/responses/Forbidden" },
-          "426": { "$ref": "#/components/responses/UpgradeRequired" },
-          "429": { "$ref": "#/components/responses/Capacity" }
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "426": {
+            "$ref": "#/components/responses/UpgradeRequired"
+          },
+          "429": {
+            "$ref": "#/components/responses/Capacity"
+          }
+        }
+      }
+    },
+    "/schedules": {
+      "get": {
+        "operationId": "listDashboardSchedules",
+        "summary": "List bounded prompt-redacted schedules",
+        "parameters": [
+          {
+            "name": "session",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 256
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Prompt-redacted schedules",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./dashboard-api.schema.json#/$defs/scheduleListEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createDashboardSchedule",
+        "summary": "Create a schedule; prompt content is input-only",
+        "security": [
+          {
+            "dashSession": [],
+            "csrfHeader": []
+          }
+        ],
+        "x-origin-check-required": true,
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "./dashboard-api.schema.json#/$defs/scheduleMutationRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created prompt-redacted schedule",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./dashboard-api.schema.json#/$defs/scheduleEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        }
+      }
+    },
+    "/schedules/capabilities": {
+      "get": {
+        "operationId": "getDashboardScheduleCapabilities",
+        "summary": "Get effective schedule validation limits",
+        "responses": {
+          "200": {
+            "description": "Schedule capabilities",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./dashboard-api.schema.json#/$defs/scheduleCapabilitiesEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        }
+      }
+    },
+    "/schedules/status": {
+      "get": {
+        "operationId": "getDashboardScheduleStatus",
+        "summary": "Get content-free schedule runtime status",
+        "responses": {
+          "200": {
+            "description": "Schedule status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./dashboard-api.schema.json#/$defs/scheduleStatusEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        }
+      }
+    },
+    "/schedules/{scheduleId}": {
+      "parameters": [
+        {
+          "name": "scheduleId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "getDashboardSchedule",
+        "summary": "Get one prompt-redacted schedule",
+        "responses": {
+          "200": {
+            "description": "Prompt-redacted schedule",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./dashboard-api.schema.json#/$defs/scheduleEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        }
+      },
+      "put": {
+        "operationId": "updateDashboardSchedule",
+        "summary": "Update with exact revision; omitted prompt retains private content",
+        "security": [
+          {
+            "dashSession": [],
+            "csrfHeader": []
+          }
+        ],
+        "x-origin-check-required": true,
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          },
+          {
+            "$ref": "#/components/parameters/IfMatch"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "./dashboard-api.schema.json#/$defs/scheduleMutationRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated prompt-redacted schedule",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./dashboard-api.schema.json#/$defs/scheduleEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "412": {
+            "description": "Revision precondition failed"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteDashboardSchedule",
+        "summary": "Delete with exact revision and idempotency",
+        "security": [
+          {
+            "dashSession": [],
+            "csrfHeader": []
+          }
+        ],
+        "x-origin-check-required": true,
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          },
+          {
+            "$ref": "#/components/parameters/IfMatch"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "./dashboard-api.schema.json#/$defs/scheduleDeleteRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Deleted"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "412": {
+            "description": "Revision precondition failed"
+          }
         }
       }
     }
@@ -445,40 +995,180 @@
       }
     },
     "parameters": {
-      "RequestId": { "name": "X-Request-Id", "in": "header", "schema": { "type": "string", "minLength": 1, "maxLength": 128 } },
-      "ClientId": { "name": "X-Pi-Daemon-Client-Id", "in": "header", "required": true, "schema": { "type": "string", "minLength": 1, "maxLength": 256 } },
-      "WorkspaceId": { "name": "X-Pi-Daemon-Workspace-Id", "in": "header", "required": true, "schema": { "type": "string", "minLength": 1, "maxLength": 256 } },
-      "PageCursor": { "name": "cursor", "in": "query", "schema": { "type": "string", "minLength": 1, "maxLength": 1024 } },
-      "PageLimit": { "name": "limit", "in": "query", "schema": { "type": "integer", "minimum": 1, "maximum": 100, "default": 50 } },
-      "TranscriptLimit": { "name": "limit", "in": "query", "schema": { "type": "integer", "minimum": 1, "maximum": 200, "default": 100 } },
-      "InventoryId": { "name": "inventoryId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1, "maxLength": 256 } },
-      "SessionRef": { "name": "sessionRef", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1, "maxLength": 256 } },
-      "TicketId": { "name": "ticketId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1, "maxLength": 256 } },
-      "WorkspacePathId": { "name": "workspaceId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1, "maxLength": 256 } },
-      "IdempotencyKey": { "name": "Idempotency-Key", "in": "header", "required": true, "schema": { "type": "string", "minLength": 1, "maxLength": 512 } },
-      "IfMatch": { "name": "If-Match", "in": "header", "required": true, "schema": { "type": "string", "minLength": 1, "maxLength": 256 } }
+      "RequestId": {
+        "name": "X-Request-Id",
+        "in": "header",
+        "schema": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        }
+      },
+      "ClientId": {
+        "name": "X-Pi-Daemon-Client-Id",
+        "in": "header",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        }
+      },
+      "WorkspaceId": {
+        "name": "X-Pi-Daemon-Workspace-Id",
+        "in": "header",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        }
+      },
+      "PageCursor": {
+        "name": "cursor",
+        "in": "query",
+        "schema": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        }
+      },
+      "PageLimit": {
+        "name": "limit",
+        "in": "query",
+        "schema": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100,
+          "default": 50
+        }
+      },
+      "TranscriptLimit": {
+        "name": "limit",
+        "in": "query",
+        "schema": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 200,
+          "default": 100
+        }
+      },
+      "InventoryId": {
+        "name": "inventoryId",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        }
+      },
+      "SessionRef": {
+        "name": "sessionRef",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        }
+      },
+      "TicketId": {
+        "name": "ticketId",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        }
+      },
+      "WorkspacePathId": {
+        "name": "workspaceId",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        }
+      },
+      "IdempotencyKey": {
+        "name": "Idempotency-Key",
+        "in": "header",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "maxLength": 128
+        }
+      },
+      "IfMatch": {
+        "name": "If-Match",
+        "in": "header",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "maxLength": 1024
+        }
+      }
     },
     "headers": {
-      "ETag": { "description": "Strong nonsecret resource revision tag", "schema": { "type": "string", "minLength": 1, "maxLength": 256 } },
-      "SetCookie": { "description": "Owner-private opaque browser session cookie; Secure is required whenever TLS is used", "schema": { "type": "string" } }
+      "ETag": {
+        "description": "Strong nonsecret resource revision tag",
+        "schema": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        }
+      },
+      "SetCookie": {
+        "description": "Owner-private opaque browser session cookie; Secure is required whenever TLS is used",
+        "schema": {
+          "type": "string"
+        }
+      }
     },
     "responses": {
-      "InvalidRequest": { "$ref": "#/components/responses/Error" },
-      "Unauthorized": { "$ref": "#/components/responses/Error" },
-      "Forbidden": { "$ref": "#/components/responses/Error" },
-      "NotFound": { "$ref": "#/components/responses/Error" },
-      "Conflict": { "$ref": "#/components/responses/Error" },
-      "Precondition": { "$ref": "#/components/responses/Error" },
-      "TooLarge": { "$ref": "#/components/responses/Error" },
-      "Unsupported": { "$ref": "#/components/responses/Error" },
-      "Capacity": { "$ref": "#/components/responses/Error" },
-      "UpgradeRequired": { "$ref": "#/components/responses/Error" },
-      "Unavailable": { "$ref": "#/components/responses/Error" },
+      "InvalidRequest": {
+        "$ref": "#/components/responses/Error"
+      },
+      "Unauthorized": {
+        "$ref": "#/components/responses/Error"
+      },
+      "Forbidden": {
+        "$ref": "#/components/responses/Error"
+      },
+      "NotFound": {
+        "$ref": "#/components/responses/Error"
+      },
+      "Conflict": {
+        "$ref": "#/components/responses/Error"
+      },
+      "Precondition": {
+        "$ref": "#/components/responses/Error"
+      },
+      "TooLarge": {
+        "$ref": "#/components/responses/Error"
+      },
+      "Unsupported": {
+        "$ref": "#/components/responses/Error"
+      },
+      "Capacity": {
+        "$ref": "#/components/responses/Error"
+      },
+      "UpgradeRequired": {
+        "$ref": "#/components/responses/Error"
+      },
+      "Unavailable": {
+        "$ref": "#/components/responses/Error"
+      },
       "Error": {
         "description": "Safe typed error envelope; authentication failures reveal no session existence",
         "content": {
           "application/json": {
-            "schema": { "$ref": "./dashboard-api.schema.json#/$defs/errorEnvelope" }
+            "schema": {
+              "$ref": "./dashboard-api.schema.json#/$defs/errorEnvelope"
+            }
           }
         }
       }

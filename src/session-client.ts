@@ -18,7 +18,12 @@ import type {
   TranscriptPage,
   TranscriptQuery,
 } from "./dashboard-contract.js";
-import type { ScheduleResource } from "./schedule-contract.js";
+import {
+  DEFAULT_SCHEDULE_LIMITS,
+  validateScheduleResource,
+  type ScheduleCapabilities,
+  type ScheduleResource,
+} from "./schedule-contract.js";
 import {
   DASHBOARD_TUI_SUBPROTOCOL,
   type ApiErrorBody,
@@ -170,13 +175,34 @@ export class SessionApiClient {
     return this.request("GET", `/v1/ticket/${encodeURIComponent(ticketReference(ticketId))}`);
   }
 
-  listSchedules(sessionRef?: string): Promise<SessionApiResult<{ schedules: ScheduleResource[] }>> {
+  async listSchedules(sessionRef?: string): Promise<SessionApiResult<{ schedules: ScheduleResource[] }>> {
     const query = sessionRef === undefined ? "" : `?session=${encodeURIComponent(sessionReference(sessionRef))}`;
-    return this.request("GET", `/v1/schedule${query}`);
+    const result = await this.request<{ schedules: ScheduleResource[] }>("GET", `/v1/schedule${query}`);
+    if (!Array.isArray(result.data.schedules) || result.data.schedules.length > DEFAULT_SCHEDULE_LIMITS.maxSchedules) {
+      throw new Error("session API schedule count exceeds limit");
+    }
+    return {
+      ...result,
+      data: { schedules: result.data.schedules.map((value) => validateScheduleResource(value)) },
+    };
   }
 
-  getSchedule(scheduleId: string): Promise<SessionApiResult<ScheduleResource>> {
-    return this.request("GET", `/v1/schedule/${encodeURIComponent(scheduleReference(scheduleId))}`);
+  async getSchedule(scheduleId: string): Promise<SessionApiResult<ScheduleResource>> {
+    const result = await this.request<ScheduleResource>("GET", `/v1/schedule/${encodeURIComponent(scheduleReference(scheduleId))}`);
+    return { ...result, data: validateScheduleResource(result.data) };
+  }
+
+  async scheduleCapabilities(): Promise<SessionApiResult<ScheduleCapabilities>> {
+    const result = await this.request<{ schedules?: ScheduleCapabilities | { available: false } }>("GET", "/v1/capabilities");
+    const schedules = result.data.schedules;
+    if (schedules === undefined || "available" in schedules) {
+      throw new SessionApiClientError(501, {
+        code: "schedules_unavailable",
+        message: "remote daemon does not advertise schedule resources",
+        retryable: false,
+      });
+    }
+    return { ...result, data: schedules };
   }
 
   scheduleStatus(): Promise<SessionApiResult<{ timerRuntime: boolean; externalTimersSupported: boolean; scheduleCount: number; enabledCount: number; nextWakeAt?: string }>> {
@@ -184,10 +210,12 @@ export class SessionApiClient {
   }
 
   createSchedule(scheduleId: string, definition: unknown, idempotencyKey: string): Promise<SessionApiResult<ScheduleResource>> {
+    assertBoundedScheduleBody(definition);
     return this.request("POST", `/v1/schedule/${encodeURIComponent(scheduleReference(scheduleId))}`, { body: definition, headers: { "Idempotency-Key": idempotencyKey } });
   }
 
   updateSchedule(scheduleId: string, definition: unknown, etag: string, idempotencyKey: string): Promise<SessionApiResult<ScheduleResource>> {
+    assertBoundedScheduleBody(definition);
     return this.request("PUT", `/v1/schedule/${encodeURIComponent(scheduleReference(scheduleId))}`, { body: definition, headers: { "If-Match": etag, "Idempotency-Key": idempotencyKey } });
   }
 
@@ -606,6 +634,13 @@ function rawDataBuffer(value: RawData): Buffer {
   if (Array.isArray(value)) return Buffer.concat(value);
   if (value instanceof ArrayBuffer) return Buffer.from(value);
   throw new Error("unsupported WebSocket payload");
+}
+
+function assertBoundedScheduleBody(value: unknown): void {
+  const encoded = JSON.stringify(value);
+  if (encoded === undefined || Buffer.byteLength(encoded, "utf8") > DEFAULT_SCHEDULE_LIMITS.maxRecordBytes) {
+    throw new Error("schedule request exceeds byte limit");
+  }
 }
 
 function positiveInteger(value: number, name: string): number {

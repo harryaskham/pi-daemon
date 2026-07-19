@@ -577,6 +577,7 @@ async function runServe(
         allowedRoots,
         catalog,
         multiplexer,
+        schedules: scheduleStore,
         ...(rpcAttachments === undefined ? {} : { rpcAttachments }),
       });
       if (embeddedWebEnabled) {

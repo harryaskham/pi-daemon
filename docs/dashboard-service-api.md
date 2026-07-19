@@ -15,7 +15,7 @@ a dedicated `DashboardBackend`. It is separate from the same-origin
 - authentication runs before route lookup, inventory/session existence, body
   reads, or path disclosure; and
 - resources reuse the exact `dashboard-contract` inventory, transcript,
-  activation, export, lease, and capability types used by the in-process
+  activation, export, lease, schedule-capability, and capability types used by the in-process
   backend.
 
 The TypeScript controller is `DashboardNeutralApiController`; `ApiServer`
@@ -27,7 +27,7 @@ same backend contract as embedded mode without importing in-process services.
 
 | Method/path | Purpose |
 | --- | --- |
-| `GET /v1/dashboard/capabilities` | neutral resources, effective limits, Rich availability, and capability-gated TUI status |
+| `GET /v1/dashboard/capabilities` | neutral resources, effective limits, Rich availability, capability-gated TUI status, and optional schedule support for version negotiation |
 | `GET /v1/dashboard/inventory` | bounded search/filter/page over public inventory rows |
 | `GET /v1/dashboard/inventory/{inventoryId}` | authenticated full info, including source path/ownership diagnostics |
 | `GET /v1/dashboard/inventory/{inventoryId}/transcript` | preview-only normalized projection with optional exact fingerprint precondition |

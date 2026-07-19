@@ -5,6 +5,13 @@ import type {
   PiRpcEvent,
   SessionResource,
 } from "./session-api.js";
+import type {
+  ScheduleCapabilities,
+  ScheduleExecutionOverride,
+  ScheduleMissedWakePolicy,
+  ScheduleOverlapPolicy,
+  ScheduleResource,
+} from "./schedule-contract.js";
 
 export const DASH_API_VERSION = "1.0" as const;
 export const DASH_API_MAJOR = 1;
@@ -24,6 +31,10 @@ export const DASH_API_PATHS = {
   exportTicket: "/dash/v1/export/{ticketId}",
   workspace: "/dash/v1/workspaces/{workspaceId}",
   settings: "/dash/v1/settings",
+  schedules: "/dash/v1/schedules",
+  schedule: "/dash/v1/schedules/{scheduleId}",
+  scheduleStatus: "/dash/v1/schedules/status",
+  scheduleCapabilities: "/dash/v1/schedules/capabilities",
   stream: "/dash/v1/stream",
 } as const;
 
@@ -228,6 +239,8 @@ export interface DashboardServiceCapabilities {
     ownership: true;
     export: true;
     leases: true;
+    /** Absent on older compatible daemons. */
+    schedules?: true;
   };
   presentations: {
     rich: { available: true };
@@ -276,6 +289,47 @@ export interface DashboardCapabilities {
   };
   limits: DashboardLimits;
   performanceBudgets: DashboardPerformanceBudgets;
+}
+
+/** Schedule metadata safe to return to browser JavaScript. Prompt content is input-only. */
+export type DashboardScheduleResource = Omit<ScheduleResource, "prompt"> & {
+  promptConfigured: true;
+};
+
+export interface DashboardScheduleWrite {
+  scheduleId: string;
+  sessionRef: string;
+  enabled: boolean;
+  cron: string;
+  timezone: string;
+  /** Required on create; omitted on update to retain the existing private prompt. */
+  prompt?: string;
+  execution?: ScheduleExecutionOverride;
+  overlapPolicy: ScheduleOverlapPolicy;
+  missedWakePolicy: ScheduleMissedWakePolicy;
+  jitterMs: number;
+  maxAdmissionDelayMs: number;
+}
+
+export interface DashboardScheduleMutationRequest {
+  requestId: string;
+  idempotencyKey: string;
+  expectedRevision?: number;
+  schedule: DashboardScheduleWrite;
+}
+
+export interface DashboardScheduleDeleteRequest {
+  requestId: string;
+  idempotencyKey: string;
+  expectedRevision: number;
+}
+
+export interface DashboardScheduleStatus {
+  timerRuntime: boolean;
+  externalTimersSupported: boolean;
+  scheduleCount: number;
+  enabledCount: number;
+  nextWakeAt?: string;
 }
 
 export interface DashboardSchedulePresence {
@@ -836,6 +890,13 @@ export interface DashboardBackend {
   getActivation(ticketId: string): Promise<ActivationTicket>;
   exportSession(sessionRef: string, request: SessionExportRequest): Promise<SessionExportTicket>;
   getExport(ticketId: string): Promise<SessionExportTicket>;
+  scheduleCapabilities(): Promise<ScheduleCapabilities>;
+  listSchedules(sessionRef?: string): Promise<DashboardScheduleResource[]>;
+  getSchedule(scheduleId: string): Promise<DashboardScheduleResource>;
+  createSchedule(request: DashboardScheduleMutationRequest): Promise<DashboardScheduleResource>;
+  updateSchedule(scheduleId: string, request: DashboardScheduleMutationRequest): Promise<DashboardScheduleResource>;
+  deleteSchedule(scheduleId: string, request: DashboardScheduleDeleteRequest): Promise<void>;
+  scheduleStatus(): Promise<DashboardScheduleStatus>;
   getManagedSession(sessionRef: string): Promise<SessionResource>;
   openSessionChannel(options: SessionChannelOptions): Promise<DashboardChannel>;
   openTuiChannel(options: TuiChannelOptions): Promise<DashboardTuiChannel>;

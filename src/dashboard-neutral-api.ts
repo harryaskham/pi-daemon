@@ -52,6 +52,7 @@ export interface DashboardNeutralApiControllerOptions {
   limits?: Partial<DashboardLimits>;
   tuiAvailable?: boolean;
   tuiUnavailableReason?: string;
+  schedulesAvailable?: boolean;
 }
 
 /** Transport-neutral service API used by authenticated HTTP and remote backends. */
@@ -62,6 +63,7 @@ export class DashboardNeutralApiController implements DashboardNeutralApi {
   readonly #limits: DashboardLimits;
   readonly #tuiAvailable: boolean;
   readonly #tuiUnavailableReason: string | undefined;
+  readonly #schedulesAvailable: boolean;
 
   constructor(options: DashboardNeutralApiControllerOptions) {
     this.#inventory = options.inventory;
@@ -70,6 +72,7 @@ export class DashboardNeutralApiController implements DashboardNeutralApi {
     this.#limits = mergeLimits(options.limits);
     this.#tuiAvailable = options.tuiAvailable ?? false;
     this.#tuiUnavailableReason = options.tuiUnavailableReason;
+    this.#schedulesAvailable = options.schedulesAvailable ?? false;
   }
 
   async capabilities(): Promise<DashboardServiceCapabilities> {
@@ -83,6 +86,7 @@ export class DashboardNeutralApiController implements DashboardNeutralApi {
         ownership: true,
         export: true,
         leases: true,
+        ...(this.#schedulesAvailable ? { schedules: true } : {}),
       },
       presentations: {
         rich: { available: true },

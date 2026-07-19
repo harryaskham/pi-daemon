@@ -12,6 +12,7 @@ import { createDashboardContractFixtures } from "../dist/dashboard-fixtures.js";
 import {
   assertDashboardBackendResourceConformance,
   assertDashboardRichChannelConformance,
+  assertDashboardScheduleConformance,
 } from "./dashboard-backend-conformance.mjs";
 
 const immediate = () => new Promise((resolve) => setImmediate(resolve));
@@ -94,6 +95,7 @@ class FakeRemoteService {
     };
     this.serviceCapabilities = {
       ...this.fixtures.serviceCapabilities,
+      resources: { ...this.fixtures.serviceCapabilities.resources, schedules: true },
       presentations: {
         ...this.fixtures.serviceCapabilities.presentations,
         tui: {
@@ -149,6 +151,25 @@ class FakeRemoteService {
   getDashboardExport() {
     return this.result(this.fixtures.exportTicket);
   }
+
+  scheduleCapabilities() {
+    return this.result({ contractVersion: "1.0", persistence: true, timerRuntime: false, cronSyntax: "posix-five-field", timezoneDatabase: "runtime-iana", optimisticConcurrency: "expected-revision", overlapPolicies: ["skip", "queue-one", "reject"], missedWakePolicies: ["skip", "run-once", "bounded-catch-up"], promptHandling: "owner-private-sensitive-content", terminalTicketSummary: "content-free", clock: "wall-clock-utc-instants", limits: { maxSchedules: 1024, maxSchedulesPerSession: 32, maxPromptBytes: 65536, maxRecordBytes: 131072, maxRecoveryBytes: 134217728, maxCatchUpRuns: 24, maxJitterMs: 86400000, maxAdmissionDelayMs: 86400000 } });
+  }
+
+  listSchedules() { return this.result({ schedules: this.schedule === undefined ? [] : [this.schedule] }); }
+  getSchedule() { return this.result(this.schedule); }
+  createSchedule(scheduleId, definition) {
+    const now = "2026-07-18T12:00:00.000Z";
+    this.schedule = { contractVersion: "1.0", ...definition, scheduleId, revision: 0, createdAt: now, updatedAt: now };
+    return this.result(this.schedule);
+  }
+  updateSchedule(scheduleId, definition) {
+    const { expectedRevision: _expectedRevision, ...write } = definition;
+    this.schedule = { ...this.schedule, ...write, scheduleId, revision: this.schedule.revision + 1 };
+    return this.result(this.schedule);
+  }
+  deleteSchedule() { this.schedule = undefined; return this.result({ deleted: true }); }
+  scheduleStatus() { return this.result({ timerRuntime: false, externalTimersSupported: true, scheduleCount: this.schedule === undefined ? 0 : 1, enabledCount: this.schedule?.enabled ? 1 : 0 }); }
 
   getSession(sessionRef) {
     assert.equal(sessionRef, this.session.sessionId);
@@ -414,6 +435,22 @@ test("remote backend delegates neutral resources with exact fingerprint and capa
   const capabilities = await remote.capabilities();
   assert.equal(capabilities.presentations.tui.available, true);
   assert.equal(service.transcriptFingerprints.at(-1), fixtures.sessionInfo.source.fingerprint.value);
+});
+
+test("shared schedule conformance passes for the remote backend with server-side prompt retention", async () => {
+  const service = new FakeRemoteService();
+  const backend = new RemoteDashboardBackend({ client: service });
+  await assertDashboardScheduleConformance({ backend, sessionRef: service.session.sessionId });
+  backend.dispose();
+});
+
+test("older remote daemons expose typed schedule capability absence", async () => {
+  const service = new FakeRemoteService();
+  delete service.serviceCapabilities.resources.schedules;
+  const backend = new RemoteDashboardBackend({ client: service });
+  assert.equal((await backend.capabilities()).resources.schedules, false);
+  await assert.rejects(backend.listSchedules(), (error) => error instanceof RemoteDashboardBackendError && error.code === "schedules_unavailable");
+  backend.dispose();
 });
 
 test("shared Rich-channel conformance passes for the remote backend", async (t) => {

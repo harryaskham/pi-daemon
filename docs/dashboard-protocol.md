@@ -56,8 +56,8 @@ and dedicated backends consume it through the
 
 `DashboardBackend` is the conformance boundary implemented by both deployment
 modes. It exposes capabilities, inventory, authenticated information, preview
-transcripts, activation/export tickets, managed session lookup, and rich/TUI
-channels. `InProcessDashboardBackend` may call transport-neutral services
+transcripts, activation/export tickets, prompt-redacted schedule CRUD/status,
+managed session lookup, and rich/TUI channels. `InProcessDashboardBackend` may call transport-neutral services
 without serialization; `RemoteDashboardBackend` uses the daemon REST and framed
 Pi RPC APIs. Neither may bypass generation, controller, idempotency, root,
 resource, or event-order policy.
@@ -147,6 +147,9 @@ The provisional routes are fixed under `/dash/v1`:
 | `GET /export/{ticketId}` | retained export ticket |
 | `GET|PUT /workspaces/{workspaceId}` | strong-ETag split-tree and seen-cursor state |
 | `GET|PATCH|DELETE /settings` | effective UI settings, allowlisted overlay, and reset |
+| `GET /schedules/capabilities` | effective cron/timezone and schedule validation limits |
+| `GET /schedules`, `GET /schedules/{scheduleId}`, `GET /schedules/status` | bounded prompt-redacted schedule metadata and content-free status |
+| `POST /schedules`, `PUT|DELETE /schedules/{scheduleId}` | CSRF-protected idempotent CRUD with exact ETag/revision preconditions; prompt is input-only |
 | `GET /stream` | `pi-daemon-dash.v1` WebSocket upgrade |
 
 Successful JSON envelopes carry:
@@ -165,7 +168,12 @@ Successful JSON envelopes carry:
 
 Errors replace `data` with the existing safe `ApiErrorBody` shape. Unknown minor
 fields are ignored. Bodies, pages, records, and output are bounded before full
-allocation or serialization.
+allocation or serialization. Schedule responses omit the private `prompt` and
+return only `promptConfigured: true`; create requires prompt content, while an
+update that omits it retains the existing owner-private value. Dedicated mode
+reads that value only over the server-side service-bearer connection. Older
+daemons that do not advertise `resources.schedules` produce the typed
+`schedules_unavailable` capability result rather than speculative requests.
 
 ## Preview, ownership, and hydration are separate
 

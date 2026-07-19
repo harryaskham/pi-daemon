@@ -21,6 +21,10 @@ import type {
   DashboardControllerRole,
   DashboardCursor,
   DashboardErrorEnvelope,
+  DashboardScheduleDeleteRequest,
+  DashboardScheduleMutationRequest,
+  DashboardScheduleResource,
+  DashboardScheduleStatus,
   DashboardSessionIdentity,
   DashboardSettingsPatchRequest,
   DashboardSettingsResource,
@@ -42,6 +46,7 @@ import type {
   TuiChannelOptions,
   TuiDimensions,
 } from "@harryaskham/pi-daemon/dashboard-contract";
+import type { ScheduleCapabilities } from "@harryaskham/pi-daemon/schedule-contract";
 import type { JsonObject, JsonValue, SessionResource } from "@harryaskham/pi-daemon/session-api";
 import {
   DashboardRevisionConflict,
@@ -217,6 +222,45 @@ export class BrowserDashboardClient implements DashboardBackend, DashboardPrefer
 
   getExport(ticketId: string): Promise<SessionExportTicket> {
     return this.#request("GET", `/export/${pathPart(ticketId)}`);
+  }
+
+  scheduleCapabilities(): Promise<ScheduleCapabilities> {
+    return this.#request("GET", "/schedules/capabilities");
+  }
+
+  async listSchedules(sessionRef?: string): Promise<DashboardScheduleResource[]> {
+    const query = sessionRef === undefined ? "" : `?session=${encodeURIComponent(sessionRef)}`;
+    const result = await this.#request<{ schedules: DashboardScheduleResource[] }>("GET", `/schedules${query}`);
+    return result.schedules;
+  }
+
+  getSchedule(scheduleId: string): Promise<DashboardScheduleResource> {
+    return this.#request("GET", `/schedules/${pathPart(scheduleId)}`);
+  }
+
+  createSchedule(request: DashboardScheduleMutationRequest): Promise<DashboardScheduleResource> {
+    return this.#request("POST", "/schedules", request, true, scheduleMutationHeaders(request));
+  }
+
+  updateSchedule(scheduleId: string, request: DashboardScheduleMutationRequest): Promise<DashboardScheduleResource> {
+    if (request.expectedRevision === undefined) {
+      return Promise.reject(new DashboardBrowserClientError("invalid_schedule_request", "expectedRevision is required"));
+    }
+    return this.#request("PUT", `/schedules/${pathPart(scheduleId)}`, request, true, {
+      ...scheduleMutationHeaders(request),
+      "If-Match": scheduleEtag(scheduleId, request.expectedRevision),
+    });
+  }
+
+  deleteSchedule(scheduleId: string, request: DashboardScheduleDeleteRequest): Promise<void> {
+    return this.#request<{ deleted: true }>("DELETE", `/schedules/${pathPart(scheduleId)}`, request, true, {
+      ...scheduleMutationHeaders(request),
+      "If-Match": scheduleEtag(scheduleId, request.expectedRevision),
+    }).then(() => undefined);
+  }
+
+  scheduleStatus(): Promise<DashboardScheduleStatus> {
+    return this.#request("GET", "/schedules/status");
   }
 
   async getManagedSession(sessionRef: string): Promise<SessionResource> {
@@ -907,6 +951,20 @@ function workspaceEtag(workspaceId: string, revision: number): string {
 
 function settingsEtag(revision: number): string {
   return `"settings:${revision}"`;
+}
+
+function scheduleMutationHeaders(request: { requestId: string; idempotencyKey: string }): Record<string, string> {
+  return {
+    "X-Request-ID": request.requestId,
+    "Idempotency-Key": request.idempotencyKey,
+  };
+}
+
+function scheduleEtag(scheduleId: string, revision: number): string {
+  const bytes = new TextEncoder().encode(scheduleId);
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return `"${btoa(binary).replace(/\+/gu, "-").replace(/\//gu, "_").replace(/=+$/gu, "")}:${revision}"`;
 }
 
 function asClientError(error: unknown): DashboardBrowserClientError {

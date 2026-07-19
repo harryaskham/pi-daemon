@@ -23,6 +23,10 @@ import {
   type DashboardExtensionUiEvent,
   type DashboardFingerprint,
   type DashboardReplayGap,
+  type DashboardScheduleDeleteRequest,
+  type DashboardScheduleMutationRequest,
+  type DashboardScheduleResource,
+  type DashboardScheduleStatus,
   type DashboardServiceCapabilities,
   type DashboardSessionEvent,
   type DashboardSessionIdentity,
@@ -42,6 +46,8 @@ import {
   type TuiChannelOptions,
   type TuiDimensions,
 } from "./dashboard-contract.js";
+import { DEFAULT_SCHEDULE_LIMITS, type ScheduleCapabilities } from "./schedule-contract.js";
+import { browserScheduleResource, scheduleEtag } from "./dashboard-schedule-resources.js";
 import type {
   JsonObject,
   JsonValue,
@@ -101,6 +107,13 @@ export interface RemoteDashboardBackendClient extends Pick<
   | "getDashboardActivation"
   | "exportDashboardSession"
   | "getDashboardExport"
+  | "scheduleCapabilities"
+  | "listSchedules"
+  | "getSchedule"
+  | "createSchedule"
+  | "updateSchedule"
+  | "deleteSchedule"
+  | "scheduleStatus"
   | "getSession"
   | "createDashboardRpcSocket"
   | "createDashboardTuiSocket"
@@ -233,6 +246,79 @@ export class RemoteDashboardBackend implements DashboardBackend {
   async getExport(ticketId: string): Promise<SessionExportTicket> {
     this.#assertOpen();
     return this.#call(() => this.#client.getDashboardExport(ticketId));
+  }
+
+  async scheduleCapabilities(): Promise<ScheduleCapabilities> {
+    this.#assertOpen();
+    await this.#assertSchedules();
+    return this.#call(() => this.#client.scheduleCapabilities());
+  }
+
+  async listSchedules(sessionRef?: string): Promise<DashboardScheduleResource[]> {
+    this.#assertOpen();
+    await this.#assertSchedules();
+    const result = await this.#call(() => this.#client.listSchedules(sessionRef));
+    if (result.schedules.length > DEFAULT_SCHEDULE_LIMITS.maxSchedules) {
+      throw new RemoteDashboardBackendError("remote_schedule_capacity", "remote schedule count exceeds its bound");
+    }
+    return result.schedules.map(browserScheduleResource);
+  }
+
+  async getSchedule(scheduleId: string): Promise<DashboardScheduleResource> {
+    this.#assertOpen();
+    await this.#assertSchedules();
+    return browserScheduleResource(await this.#call(() => this.#client.getSchedule(scheduleId)));
+  }
+
+  async createSchedule(request: DashboardScheduleMutationRequest): Promise<DashboardScheduleResource> {
+    this.#assertOpen();
+    await this.#assertSchedules();
+    if (request.expectedRevision !== undefined || request.schedule.prompt === undefined) {
+      throw new RemoteDashboardBackendError("invalid_schedule_request", "create requires prompt and no expectedRevision");
+    }
+    return browserScheduleResource(await this.#call(() => this.#client.createSchedule(
+      request.schedule.scheduleId,
+      request.schedule,
+      request.idempotencyKey,
+    )));
+  }
+
+  async updateSchedule(scheduleId: string, request: DashboardScheduleMutationRequest): Promise<DashboardScheduleResource> {
+    this.#assertOpen();
+    await this.#assertSchedules();
+    if (request.schedule.scheduleId !== scheduleId || request.expectedRevision === undefined) {
+      throw new RemoteDashboardBackendError("invalid_schedule_request", "schedule identity and expectedRevision are required");
+    }
+    const expectedRevision = request.expectedRevision;
+    const current = request.schedule.prompt === undefined
+      ? await this.#call(() => this.#client.getSchedule(scheduleId))
+      : undefined;
+    return browserScheduleResource(await this.#call(() => this.#client.updateSchedule(
+      scheduleId,
+      {
+        ...request.schedule,
+        prompt: request.schedule.prompt ?? current!.prompt,
+        expectedRevision,
+      },
+      scheduleEtag(scheduleId, expectedRevision),
+      request.idempotencyKey,
+    )));
+  }
+
+  async deleteSchedule(scheduleId: string, request: DashboardScheduleDeleteRequest): Promise<void> {
+    this.#assertOpen();
+    await this.#assertSchedules();
+    await this.#call(() => this.#client.deleteSchedule(
+      scheduleId,
+      scheduleEtag(scheduleId, request.expectedRevision),
+      request.idempotencyKey,
+    ));
+  }
+
+  async scheduleStatus(): Promise<DashboardScheduleStatus> {
+    this.#assertOpen();
+    await this.#assertSchedules();
+    return this.#call(() => this.#client.scheduleStatus());
   }
 
   async getManagedSession(sessionRef: string): Promise<SessionResource> {
@@ -397,6 +483,15 @@ export class RemoteDashboardBackend implements DashboardBackend {
       ...(olderCursor === undefined ? {} : { olderCursor }),
       ...(newerCursor === undefined ? {} : { newerCursor }),
     };
+  }
+
+  async #assertSchedules(): Promise<void> {
+    if (!(await this.capabilities()).resources.schedules) {
+      throw new RemoteDashboardBackendError(
+        "schedules_unavailable",
+        "remote daemon does not advertise Dashboard schedule resources",
+      );
+    }
   }
 
   async #call<T>(operation: () => Promise<{ data: T }>): Promise<T> {
@@ -2057,7 +2152,7 @@ function dashboardCapabilities(
       export: service.resources.export,
       workspaces: true,
       settings: true,
-      schedules: false,
+      schedules: service.resources.schedules === true,
     },
     presentations: {
       rich: { available: true, replay: true, controller: true, commands },

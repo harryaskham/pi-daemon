@@ -9,6 +9,7 @@ import { DashboardNeutralApiController } from "./dashboard-neutral-api.js";
 import { Multiplexer } from "./multiplexer.js";
 import type { RpcAttachmentManager } from "./rpc-attachments.js";
 import type { SessionCatalogStore } from "./session-catalog.js";
+import type { FileScheduleStore } from "./schedule-store.js";
 import {
   resolveSessionInventoryConfig,
   SessionInventory,
@@ -27,6 +28,7 @@ export interface EmbeddedDashboardServiceRuntimeOptions {
   allowedRoots: readonly string[];
   catalog: Pick<SessionCatalogStore, "recover">;
   multiplexer: Multiplexer;
+  schedules?: FileScheduleStore;
   rpcAttachments?: Pick<RpcAttachmentManager, "hasController">;
   tuiChannels?: InProcessDashboardTuiChannels;
 }
@@ -126,6 +128,7 @@ export class EmbeddedDashboardServiceRuntime {
       projector,
       ownership,
       multiplexer: options.multiplexer,
+      ...(options.schedules === undefined ? {} : { schedules: options.schedules }),
       ...(options.tuiChannels === undefined ? {} : { tuiChannels: options.tuiChannels }),
     });
     const neutralApi = new DashboardNeutralApiController({
@@ -133,6 +136,7 @@ export class EmbeddedDashboardServiceRuntime {
       projector,
       ownership,
       tuiAvailable: options.tuiChannels !== undefined,
+      schedulesAvailable: options.schedules !== undefined,
       ...(options.tuiChannels === undefined
         ? { tuiUnavailableReason: "server-side interactive view is unavailable" }
         : {}),
