@@ -17,6 +17,7 @@ interface ConnectedChatPaneProps {
   streamText: string;
   vimEnabled: boolean;
   composerHistory: string[];
+  initialManaged?: { sessionId: string; generation: number };
   onStateChange?(state: DashboardLiveSessionState): void;
   onSeen?(inventoryId: string, cursor: DashboardCursor): void;
   onPresentationChange(presentation: "rich" | "tui"): void;
@@ -36,6 +37,7 @@ export function ConnectedChatPane({
   streamText,
   vimEnabled,
   composerHistory,
+  initialManaged,
   onStateChange,
   onSeen,
   onPresentationChange,
@@ -44,7 +46,13 @@ export function ConnectedChatPane({
   onSubmitted,
 }: ConnectedChatPaneProps) {
   const markSeen = useCallback((cursor: DashboardCursor) => onSeen?.(session.inventoryId, cursor), [onSeen, session.inventoryId]);
-  const live = useDashboardLiveSession(backend, session.inventoryId, "controller", markSeen);
+  const live = useDashboardLiveSession(
+    backend,
+    session.inventoryId,
+    "controller",
+    markSeen,
+    initialManaged,
+  );
   useEffect(() => onStateChange?.(live.state), [live.state, onStateChange]);
   useEffect(() => {
     if (active && live.state.unread && document.visibilityState === "visible") live.controller.markSeen();

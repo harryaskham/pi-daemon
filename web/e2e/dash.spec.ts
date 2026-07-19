@@ -185,6 +185,30 @@ test("settings hot-switch, source reporting, reset, and keyboard guide are revis
   await help.getByRole("button", { name: "Done" }).click();
 });
 
+test("new session draft persists, cancels safely, and transitions one first send into live chat", async ({ page }) => {
+  await page.goto("./?fixture=1&state=ready");
+  await page.getByRole("button", { name: "Create new session draft" }).click();
+  const pane = page.locator(".workspace-pane--selected");
+  await expect(pane.getByRole("heading", { name: "An empty conversation" })).toBeVisible();
+  await expect(pane.locator(".composer-status")).toContainText("No network or runtime work has started");
+  await pane.getByRole("button", { name: "Cancel new session draft" }).click();
+  await expect(pane.getByRole("heading", { name: "Choose a session" })).toBeVisible();
+
+  await page.getByRole("button", { name: "Open session drawer" }).click();
+  await page.getByRole("button", { name: "Create new session draft" }).click();
+  await pane.getByLabel("Session name optional").fill("Fresh browser session");
+  await pane.getByRole("button", { name: "Save draft" }).click();
+  await expect(pane).toHaveAttribute("data-pane-content", /chat:draft:/);
+  await expect(pane.locator(".composer-status")).toContainText("Draft saved");
+  const editor = pane.getByTestId("composer-editor");
+  await editor.click();
+  await page.keyboard.type("first message starts once");
+  await pane.getByRole("button", { name: "Start session" }).click();
+  await expect(pane.getByRole("button", { name: "Send message" })).toBeVisible();
+  await expect(pane.locator(".live-session-strip")).toContainText(/live|streaming/);
+  await expect(pane.locator('[data-record-source="optimistic"]')).toHaveCount(0);
+});
+
 test("dormant preview stays scrollable and wakes on first composer send", async ({ page }) => {
   await page.goto("./?fixture=1&state=ready");
   await page.getByTestId("session-search").fill("session-00001");
@@ -335,7 +359,7 @@ test("production boot uses same-origin login and never paints fixture data", asy
     streamSubprotocol: DASH_STREAM_SUBPROTOCOL,
     sameBrowserProtocolAcrossDeployments: true,
     authentication: { browserSession: "http-only-cookie", csrf: "same-origin-header", daemonBearerExposed: false },
-    resources: { inventory: true, transcriptPreview: true, activation: true, export: true, workspaces: true, settings: true, schedules: false },
+    resources: { inventory: true, transcriptPreview: true, activation: true, export: true, workspaces: true, settings: true, schedules: false, sessionDrafts: true },
     presentations: {
       rich: { available: true, replay: true, controller: true, commands: ["prompt"] },
       tui: { available: false, replay: true, controller: true, commands: [], unavailableReason: "test" },

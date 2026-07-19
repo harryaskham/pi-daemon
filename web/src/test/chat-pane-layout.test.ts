@@ -63,6 +63,15 @@ describe("preview composer layout", () => {
     expect(css).toMatch(/\.chat-pane__footer \{[^}]*position: relative;[^}]*z-index: 8;/);
   });
 
+  it("keeps new-session configuration scrollable with a fixed composer footer", async () => {
+    const css = await readFile(new URL("../app.css", import.meta.url), "utf8");
+    expect(css).toMatch(
+      /\.new-session-pane \{[^}]*grid-template-rows: var\(--dash-header-height\) minmax\(0, 1fr\) auto;/,
+    );
+    expect(css).toMatch(/\.new-session-body \{[^}]*overflow: auto;/);
+    expect(css).toMatch(/@media \(max-width: 720px\)[\s\S]*\.new-session-form, \.new-session-resource-grid \{ grid-template-columns: 1fr; \}/);
+  });
+
   it("does not render the former transcript-blocking preview action card", async () => {
     const source = await readFile(
       new URL("../components/LiveSessionControls.tsx", import.meta.url),

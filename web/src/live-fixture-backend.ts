@@ -216,6 +216,45 @@ export class LiveFixtureDashboardBackend extends LocalFixtureBackend implements 
       updatedAt: now,
       materialization: { ticketId: ticket.ticketId, state: "succeeded", session },
     });
+    if (!this.sessions.some((candidate) => candidate.sessionId === session.sessionId)) {
+      const project = current.spec.cwd.split("/").filter(Boolean).at(-2) ?? "fixture";
+      this.sessions.unshift({
+        inventoryId: `draft-live:${draftId}`,
+        sourceKind: "memory",
+        title: current.spec.name ?? "New session",
+        cwdBasename: current.spec.cwd.split("/").filter(Boolean).at(-1) ?? "session",
+        projectLabel: project,
+        createdAt: now,
+        modifiedAt: now,
+        messageCount: 0,
+        entryCount: 0,
+        toolCallCount: 0,
+        managed: {
+          sessionId: session.sessionId,
+          generation: session.generation,
+          revision: 1,
+          residency: "resident",
+          state: "idle",
+        },
+        activation: { eligible: true, modes: ["reuse", "fork"] },
+        presence: {
+          runtime: "resident-idle",
+          activation: "user-turn",
+          focusedPaneCount: 1,
+          unread: false,
+        },
+        sessionId: session.sessionId,
+        generation: session.generation,
+        cwd: current.spec.cwd,
+        project,
+        model: current.spec.model?.id ?? "gpt-5.6",
+        thinking:
+          current.spec.model?.thinkingLevel === "xhigh" || current.spec.model?.thinkingLevel === "max"
+            ? "high"
+            : current.spec.model?.thinkingLevel ?? "off",
+        contextPercent: 0,
+      });
+    }
     return structuredClone(ticket);
   }
   async getSessionDraftSend(ticketId: string): Promise<DashboardSessionDraftSendTicket> {

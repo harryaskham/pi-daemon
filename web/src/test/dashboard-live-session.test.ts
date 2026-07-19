@@ -258,6 +258,53 @@ describe("Dashboard live session controller", () => {
     await controller.stop();
   });
 
+  it("attaches a materialized draft directly without preview lookup or prompt replay", async () => {
+    const backend = new LiveFixtureDashboardBackend();
+    const draft = await backend.createSessionDraft({
+      requestId: "draft-create-controller",
+      idempotencyKey: "draft-create-controller-key",
+      draftId: "draft-controller-01",
+      spec: {
+        cwd: "/work/controller-draft",
+        persistence: "persistent",
+        tools: { mode: "none" },
+        resources: {
+          noExtensions: true,
+          noSkills: true,
+          noPromptTemplates: true,
+          noThemes: true,
+          noContextFiles: true,
+          projectTrust: "deny",
+        },
+        isolation: { mode: "unisolated" },
+      },
+    });
+    const ticket = await backend.sendSessionDraft(draft.draftId, {
+      requestId: "draft-send-controller",
+      idempotencyKey: "draft-send-controller-key",
+      expectedRevision: draft.revision,
+      message: "first message already admitted",
+    });
+    expect(ticket.session).toBeDefined();
+    if (ticket.session === undefined) return;
+    backend.getTranscript = async () => {
+      throw new Error("materialized draft must not request preview transcript");
+    };
+    backend.getSessionInfo = async () => {
+      throw new Error("materialized draft must not request inventory info");
+    };
+    const controller = new DashboardLiveSessionController(
+      backend,
+      `draft-live:${draft.draftId}`,
+      { initialManaged: ticket.session },
+    );
+    await controller.start();
+    expect(controller.state.phase).toBe("live");
+    expect(controller.state.managedSession?.sessionId).toBe(ticket.session.sessionId);
+    expect(controller.state.transcript?.records.some((record) => record.source === "optimistic")).toBe(false);
+    await controller.stop();
+  });
+
   it("offers direct/fork activation choices and preserves indeterminate export", async () => {
     const backend = new LiveFixtureDashboardBackend();
     const session = backend.sessions[11]!;

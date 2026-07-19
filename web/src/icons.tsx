@@ -25,6 +25,7 @@ export {
   MoreHorizontal,
   PanelLeftClose,
   Play,
+  Plus,
   Search,
   Send,
   Settings2,

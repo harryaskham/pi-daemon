@@ -17,24 +17,33 @@ import type {
   SessionInventoryRecord,
   TuiDimensions,
 } from "@harryaskham/pi-daemon/dashboard-contract";
+import type { DashboardSessionDraftResource } from "@harryaskham/pi-daemon/dashboard-session-draft-contract";
 import { BrowserDashboardClient, DashboardBrowserClientError } from "./browser-dashboard-client";
 import { ConnectedChatPane } from "./components/ConnectedChatPane";
 import { ConnectedInfoPane } from "./components/ConnectedInfoPane";
 import { ConnectedTuiPane } from "./components/ConnectedTuiPane";
 import { EmptyPane } from "./components/EmptyPane";
 import { KeyboardHelp } from "./components/KeyboardHelp";
+import { NewSessionPane } from "./components/NewSessionPane";
 import { SettingsModal } from "./components/SettingsModal";
 import { Sidebar, type SidebarStatus } from "./components/Sidebar";
 import { TuiPane } from "./components/TuiPane";
 import { Workspace } from "./components/Workspace";
 import type { DashboardLiveSessionState } from "./dashboard-live-session";
 import { liveFixtureBackend } from "./live-fixture-backend";
-import { CircleHelp, Menu } from "./icons";
+import { CircleHelp, Clock3, Menu } from "./icons";
 import { createSessionFixtures, createTranscriptFixtures, createTranscriptShowcaseFixtures } from "./fixtures";
 import { createTuiInputRuns, createTuiSnapshot, TUI_FIXTURE_OVERLAYS, TUI_FIXTURE_SELECTION } from "./tui-fixtures";
 import { closePane, collectPaneIds, INITIAL_LAYOUT, splitPane, toDashboardLayout, updatePaneTarget } from "./layout";
 import type { DemoState, InventoryId, LayoutNode, SessionFixture } from "./model";
 import { hasScheduleBackend } from "./schedule";
+import {
+  draftIdForLocalTarget,
+  draftIdFromTarget,
+  draftLiveTargetId,
+  draftTargetId,
+  materializedDraftSession,
+} from "./session-draft";
 import type { DashboardPreferencesBackend } from "./preferences-backend";
 import { markFirstRows, recordFrameWork, setFixtureCount } from "./performance";
 import { createTuiFrameStore, TuiFrameCache, tuiFrameStoreReducer, type TuiFrameStoreState } from "./tui-frame-store";
@@ -46,6 +55,30 @@ const INITIAL_TRANSCRIPT_RECORDS = [
   ...createTranscriptFixtures(232),
   ...createTranscriptShowcaseFixtures(),
 ];
+
+interface DraftPaneState {
+  initialCwd: string;
+  loading: boolean;
+  draft?: DashboardSessionDraftResource;
+  error?: string;
+}
+
+function collectDraftTargets(node: LayoutNode, result = new Set<string>()): Set<string> {
+  if (node.type === "leaf") {
+    if (
+      node.target.type === "chat" &&
+      (node.target.inventoryId.startsWith("draft-local:") ||
+        node.target.inventoryId.startsWith("draft:") ||
+        node.target.inventoryId.startsWith("draft-live:"))
+    ) {
+      result.add(node.target.inventoryId);
+    }
+    return result;
+  }
+  collectDraftTargets(node.first, result);
+  collectDraftTargets(node.second, result);
+  return result;
+}
 
 function transcriptIdentity(session: SessionFixture): DashboardSessionIdentity {
   return {
@@ -179,6 +212,7 @@ function DashWorkspace({
   const [query, setQuery] = useState("");
   const [composerHistory, setComposerHistory] = useState<string[]>([]);
   const [liveStates, setLiveStates] = useState<ReadonlyMap<InventoryId, DashboardLiveSessionState>>(() => new Map());
+  const [draftPanes, setDraftPanes] = useState<ReadonlyMap<string, DraftPaneState>>(() => new Map());
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [sidebarStatus, setSidebarStatus] = useState<SidebarStatus>(() => fixtureMode ? initialSidebarStatus() : initialSessions.length === 0 ? "empty" : "ready");
   const [demoState, setDemoState] = useState<DemoState>(() => fixtureMode ? initialDemoState() : "ready");
@@ -236,6 +270,67 @@ function DashWorkspace({
   }, [backend, capabilities.limits.maxInventoryPageItems, fixtureMode, query]);
 
   useEffect(() => {
+    const targets = collectDraftTargets(layout);
+    const missing = [...targets].filter((targetId) => !draftPanes.has(targetId));
+    const stale = [...draftPanes.keys()].filter((targetId) => !targets.has(targetId));
+    if (missing.length === 0 && stale.length === 0) return;
+    setDraftPanes((current) => {
+      const next = new Map(current);
+      for (const targetId of stale) next.delete(targetId);
+      for (const targetId of missing) {
+        next.set(targetId, {
+          initialCwd: "",
+          loading: true,
+        });
+      }
+      return next;
+    });
+    let cancelled = false;
+    for (const targetId of missing) {
+      const localDraftId = draftIdForLocalTarget(targetId);
+      const draftId = localDraftId ?? draftIdFromTarget(targetId);
+      if (draftId === undefined) continue;
+      void backend.getSessionDraft(draftId).then(async (draft) => {
+        if (cancelled) return;
+        if (targetId.startsWith("draft-live:") && draft.materialization?.session !== undefined) {
+          const resource = await backend.getManagedSession(draft.materialization.session.sessionId);
+          if (cancelled) return;
+          const session = materializedDraftSession(targetId, draft, resource);
+          setSessions((current) => [
+            session,
+            ...current.filter((candidate) => candidate.inventoryId !== targetId),
+          ]);
+        }
+        setDraftPanes((current) => {
+          const next = new Map(current);
+          next.set(targetId, { initialCwd: draft.spec.cwd, loading: false, draft });
+          return next;
+        });
+      }).catch((reason) => {
+        if (cancelled) return;
+        const missingLocalDraft = localDraftId !== undefined && (
+          (reason instanceof DashboardBrowserClientError && reason.status === 404) ||
+          (reason instanceof Error && /not found/iu.test(reason.message))
+        );
+        setDraftPanes((current) => {
+          const next = new Map(current);
+          next.set(targetId, missingLocalDraft
+            ? { initialCwd: "", loading: false }
+            : {
+                initialCwd: "",
+                loading: false,
+                error: reason instanceof Error ? reason.message : "Draft restore failed",
+              });
+          return next;
+        });
+      });
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [backend, layout]);
+
+  useEffect(() => {
     if (!fixtureMode || demoState !== "streaming" || reducedMotion) return;
     const interval = window.setInterval(() => {
       streamWorkStartedAt.current = performance.now();
@@ -265,9 +360,34 @@ function DashWorkspace({
     tuiWorkStartedAt.current = undefined;
   }, [tuiStoreRevision]);
 
+  const openNewSession = useCallback(() => {
+    if (!capabilities.resources.sessionDrafts) return;
+    const localId = crypto.randomUUID();
+    const targetId = `draft-local:${localId}`;
+    const selected = sessions.find((session) => session.inventoryId === selectedInventoryId);
+    const initialCwd = selected?.cwd.startsWith("/") ? selected.cwd : "";
+    setDraftPanes((current) => {
+      const next = new Map(current);
+      next.set(targetId, { initialCwd, loading: false });
+      return next;
+    });
+    workspaceWorkStartedAt.current = performance.now();
+    setLayout(updatePaneTarget(layout, selectedPaneId, {
+      type: "chat",
+      inventoryId: targetId,
+      presentation: "rich",
+    }));
+    setSelectedInventoryId(undefined);
+    setSidebarOpen(false);
+    setNotice("Local session draft opened · no network or runtime work started");
+  }, [capabilities.resources.sessionDrafts, layout, selectedInventoryId, selectedPaneId, sessions, setLayout]);
+
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent): void {
-      if ((event.metaKey || event.ctrlKey) && event.key === ",") {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLocaleLowerCase() === "n") {
+        event.preventDefault();
+        openNewSession();
+      } else if ((event.metaKey || event.ctrlKey) && event.key === ",") {
         event.preventDefault();
         setSettingsOpen(true);
       } else if (event.key === "?" && !(event.target instanceof Element && event.target.closest("[data-editor-root]"))) {
@@ -277,7 +397,7 @@ function DashWorkspace({
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
+  }, [openNewSession]);
 
   const streamText = STREAM_WORDS.slice(0, streamIndex).join("");
   const displaySessions = useMemo(() => sessions.map((session) => {
@@ -387,8 +507,87 @@ function DashWorkspace({
 
   const renderPane = useCallback((node: Extract<LayoutNode, { type: "leaf" }>) => {
     if (node.target.type === "empty") return <EmptyPane />;
-    const session = sessionById.get(node.target.inventoryId);
-    if (!session) return <EmptyPane />;
+    const targetId = node.target.inventoryId;
+    const session = sessionById.get(targetId);
+    const draftPane = draftPanes.get(targetId);
+    if (
+      node.target.type === "chat" &&
+      (targetId.startsWith("draft-local:") || targetId.startsWith("draft:"))
+    ) {
+      if (draftPane?.loading) {
+        return <div className="state-panel"><Clock3 size={22} /><h3>Restoring session draft</h3><p>No runtime or prompt is started while durable draft policy loads.</p></div>;
+      }
+      if (draftPane?.error) {
+        return <div className="state-panel state-panel--error" role="alert"><h3>Draft unavailable</h3><p>{draftPane.error}</p></div>;
+      }
+      return (
+        <NewSessionPane
+          backend={backend}
+          targetId={targetId}
+          initialCwd={draftPane?.initialCwd ?? ""}
+          {...(draftPane?.draft === undefined ? {} : { draft: draftPane.draft })}
+          vimEnabled={vimEnabled}
+          composerHistory={composerHistory}
+          onToggleVim={() => settings.patch({ editor: { mode: vimEnabled ? "multiline" : "vim" } })}
+          onSubmitted={(value) => {
+            setComposerHistory((current) => [...current.slice(-49), value]);
+          }}
+          onPersisted={(previousTargetId, draft) => {
+            const nextTargetId = draftTargetId(draft.draftId);
+            setDraftPanes((current) => {
+              const next = new Map(current);
+              next.delete(previousTargetId);
+              next.set(nextTargetId, { initialCwd: draft.spec.cwd, loading: false, draft });
+              return next;
+            });
+            commitLayout(updatePaneTarget(layout, node.paneId, {
+              type: "chat",
+              inventoryId: nextTargetId,
+              presentation: "rich",
+            }));
+            setNotice(`Draft ${draft.draftId} saved · no runtime exists yet`);
+          }}
+          onCancelled={(cancelledTargetId) => {
+            setDraftPanes((current) => {
+              const next = new Map(current);
+              next.delete(cancelledTargetId);
+              return next;
+            });
+            commitLayout(updatePaneTarget(layout, node.paneId, { type: "empty" }));
+            setNotice("Unsent session draft cancelled safely");
+          }}
+          onMaterialized={async (previousTargetId, draft, ticket) => {
+            if (ticket.session === undefined) throw new Error("Draft send completed without a managed session");
+            const resource = await backend.getManagedSession(ticket.session.sessionId);
+            const nextTargetId = draftLiveTargetId(draft.draftId);
+            const created = materializedDraftSession(nextTargetId, draft, resource);
+            setSessions((current) => [
+              created,
+              ...current.filter((candidate) => candidate.inventoryId !== nextTargetId),
+            ]);
+            setDraftPanes((current) => {
+              const next = new Map(current);
+              next.delete(previousTargetId);
+              next.set(nextTargetId, { initialCwd: draft.spec.cwd, loading: false, draft });
+              return next;
+            });
+            commitLayout(updatePaneTarget(layout, node.paneId, {
+              type: "chat",
+              inventoryId: nextTargetId,
+              presentation: "rich",
+            }));
+            setSelectedInventoryId(nextTargetId);
+            setNotice("First message admitted exactly once · attaching managed live session");
+          }}
+        />
+      );
+    }
+    if (!session) {
+      if (targetId.startsWith("draft-live:")) {
+        return <div className="state-panel"><Clock3 size={22} /><h3>Attaching new session</h3><p>The first message is already admitted; waiting for the managed live snapshot without replay.</p></div>;
+      }
+      return <EmptyPane />;
+    }
     if (node.target.type === "info") return <ConnectedInfoPane backend={backend} session={session} fixtureMode={fixtureMode} {...(capabilities.resources.schedules && hasScheduleBackend(backend) ? { scheduleBackend: backend } : {})} />;
     const presentation = node.target.presentation;
     const canonicalTui = fixtureMode ? getTuiState(session) : undefined;
@@ -410,6 +609,14 @@ function DashWorkspace({
         streamText={streamText}
         vimEnabled={vimEnabled}
         composerHistory={composerHistory}
+        {...(session.inventoryId.startsWith("draft-live:") && session.managed !== undefined
+          ? {
+              initialManaged: {
+                sessionId: session.managed.sessionId,
+                generation: session.managed.generation,
+              },
+            }
+          : {})}
         onSeen={workspace.markSeen}
         onStateChange={(state) => {
           setLiveStates((current) => {
@@ -462,7 +669,7 @@ function DashWorkspace({
         </div> : null}
       </div>
     );
-  }, [backend, capabilities.presentations.tui.available, composerHistory, demoState, fixtureMode, getTuiState, mountedTuiPanes, replaceTuiState, resizeTui, selectedPaneId, sendTuiInput, sessionById, setPanePresentation, settings, streamText, tuiStoreRevision, vimEnabled]);
+  }, [backend, capabilities.presentations.tui.available, commitLayout, composerHistory, demoState, draftPanes, fixtureMode, getTuiState, layout, mountedTuiPanes, replaceTuiState, resizeTui, selectedPaneId, sendTuiInput, sessionById, setPanePresentation, settings, streamText, tuiStoreRevision, vimEnabled]);
 
   return (
     <div className="dash-app" data-theme={settings.resource.effective.theme.name} data-density={density} data-reduced-motion={reducedMotion ? "true" : "false"} data-sidebar-open={sidebarOpen ? "true" : "false"}>
@@ -477,7 +684,9 @@ function DashWorkspace({
         connectionLabel={fixtureMode ? "Local fixture · 4 ms" : "Same-origin authenticated stream"}
         summaryLabel={fixtureMode ? "indexed sessions" : "loaded sessions"}
         schedulesAvailable={capabilities.resources.schedules}
+        draftsAvailable={capabilities.resources.sessionDrafts}
         onQueryChange={setQuery}
+        onNewSession={openNewSession}
         onOpenChat={(session) => openTarget(session, "chat")}
         onOpenInfo={(session) => openTarget(session, "info")}
         onOpenSettings={() => setSettingsOpen(true)}

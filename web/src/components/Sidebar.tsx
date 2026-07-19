@@ -1,7 +1,7 @@
 import { createPortal } from "react-dom";
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { AlertCircle, ChevronDown, Info, PanelLeftClose, Search, Settings2, Sparkles } from "../icons";
+import { AlertCircle, ChevronDown, Info, PanelLeftClose, Plus, Search, Settings2, Sparkles } from "../icons";
 import type { InventoryId, SessionFixture } from "../model";
 import { recordSearch } from "../performance";
 import { scheduleCountdown } from "../schedule";
@@ -20,7 +20,9 @@ interface SidebarProps {
   connectionLabel?: string;
   summaryLabel?: string;
   schedulesAvailable?: boolean;
+  draftsAvailable?: boolean;
   onQueryChange(query: string): void;
+  onNewSession(): void;
   onOpenChat(session: SessionFixture): void;
   onOpenInfo(session: SessionFixture): void;
   onOpenSettings(): void;
@@ -97,7 +99,9 @@ export function Sidebar({
   connectionLabel = "Same-origin authenticated stream",
   summaryLabel = "indexed sessions",
   schedulesAvailable = false,
+  draftsAvailable = false,
   onQueryChange,
+  onNewSession,
   onOpenChat,
   onOpenInfo,
   onOpenSettings,
@@ -174,6 +178,14 @@ export function Sidebar({
         <span>{summaryLabel}</span>
         <span className="summary-pulse"><i />{counts.running} live</span>
       </div>
+
+      {draftsAvailable ? (
+        <button type="button" className="new-session-button" onClick={onNewSession} aria-label="Create new session draft">
+          <Plus size={15} />
+          <span>New session</span>
+          <kbd>⌘N</kbd>
+        </button>
+      ) : <span className="new-session-button-placeholder" aria-hidden="true" />}
 
       <label className="search-field">
         <Search size={15} aria-hidden="true" />

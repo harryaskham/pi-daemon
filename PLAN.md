@@ -655,7 +655,7 @@ implementation order. This list is a human-readable crosswalk.
       ticket store, authenticated neutral/BFF CRUD, schemas, fixtures, and docs.
     - [x] `bd-96c3e1` — embedded/remote exact-once first-send materializer with
       durable private crash checkpoints and no blind prompt replay.
-    - [ ] `bd-72d6fd` — accessible sidebar/form/empty-pane UX reusing the
+    - [x] `bd-72d6fd` — accessible sidebar/form/empty-pane UX reusing the
       preview-composer first-send flow from `bd-930d31`.
 - [x] `bd-71cfa2` — concise GitHub Pages quickstart for collision-free Home
   Manager instances, authenticated session tickets, Pi RPC, ACP, and the

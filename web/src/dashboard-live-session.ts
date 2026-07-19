@@ -89,6 +89,7 @@ export interface DashboardLiveSessionOptions {
   role?: DashboardControllerRole;
   ticketPollMs?: number;
   maxTicketPolls?: number;
+  initialManaged?: { sessionId: string; generation: number };
   onSeen?(cursor: import("@harryaskham/pi-daemon/dashboard-contract").DashboardCursor): void;
 }
 
@@ -104,7 +105,8 @@ type StatePatch = Omit<
 export class DashboardLiveSessionController {
   readonly backend: DashboardBackend;
   readonly inventoryId: string;
-  readonly options: Required<DashboardLiveSessionOptions>;
+  readonly options: Required<Omit<DashboardLiveSessionOptions, "initialManaged">> &
+    Pick<DashboardLiveSessionOptions, "initialManaged">;
   #state: DashboardLiveSessionState;
   #channel: DashboardChannel | undefined;
   #unsubscribeChannel: (() => void) | undefined;
@@ -126,6 +128,9 @@ export class DashboardLiveSessionController {
       role: options.role ?? "controller",
       ticketPollMs: options.ticketPollMs ?? 100,
       maxTicketPolls: options.maxTicketPolls ?? 100,
+      ...(options.initialManaged === undefined
+        ? {}
+        : { initialManaged: options.initialManaged }),
       onSeen: options.onSeen ?? (() => undefined),
     };
     this.#state = {
@@ -161,6 +166,30 @@ export class DashboardLiveSessionController {
       selectedActivationMode: undefined,
       error: undefined,
     });
+    const initialManaged = this.options.initialManaged;
+    if (initialManaged !== undefined) {
+      const identity: DashboardSessionIdentity = {
+        hostInstanceId: "draft-materialized",
+        sessionId: initialManaged.sessionId,
+        generation: initialManaged.generation,
+      };
+      this.#patch({
+        phase: "preview",
+        activationModes: ["reuse"],
+        selectedActivationMode: "reuse",
+        transcript: createTranscriptStore(identity, []),
+      });
+      try {
+        await this.#connect(
+          initialManaged.sessionId,
+          initialManaged.generation,
+          generation,
+        );
+      } catch (error) {
+        if (this.#current(generation)) this.#fail(error, "draft_attach_failed", true);
+      }
+      return;
+    }
     const previewPromise = this.backend.getTranscript(this.inventoryId, { limit: 200 });
     const infoPromise = this.backend.getSessionInfo(this.inventoryId);
     try {

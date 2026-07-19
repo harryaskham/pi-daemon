@@ -10,13 +10,18 @@ export function useDashboardLiveSession(
   inventoryId: string,
   role: DashboardControllerRole = "controller",
   onSeen?: (cursor: DashboardCursor) => void,
+  initialManaged?: { sessionId: string; generation: number },
 ): {
   controller: DashboardLiveSessionController;
   state: DashboardLiveSessionState;
 } {
   const controller = useMemo(
-    () => new DashboardLiveSessionController(backend, inventoryId, { role, ...(onSeen === undefined ? {} : { onSeen }) }),
-    [backend, inventoryId, onSeen, role],
+    () => new DashboardLiveSessionController(backend, inventoryId, {
+      role,
+      ...(onSeen === undefined ? {} : { onSeen }),
+      ...(initialManaged === undefined ? {} : { initialManaged }),
+    }),
+    [backend, initialManaged?.generation, initialManaged?.sessionId, inventoryId, onSeen, role],
   );
   const [state, setState] = useState(controller.state);
 
