@@ -22,24 +22,23 @@ class FakeClock {
   };
   clearTimer = (id) => { this.timers.delete(id); };
   async advance(ms, wallMs = ms) {
-    const target = this.monotonic + ms;
-    this.now += wallMs;
+    const startedAt = this.monotonic;
+    const wallStartedAt = this.now;
+    const target = startedAt + ms;
     while (true) {
-      const due = [...this.timers.entries()].filter(([, timer]) => timer.at <= target).sort((a, b) => a[1].at - b[1].at)[0];
+      const due = [...this.timers.entries()]
+        .filter(([, timer]) => timer.at <= target)
+        .sort((a, b) => a[1].at - b[1].at || a[0] - b[0])[0];
       if (due === undefined) break;
       this.monotonic = due[1].at;
+      this.now = wallStartedAt + (ms === 0 ? wallMs : wallMs * ((this.monotonic - startedAt) / ms));
       this.timers.delete(due[0]);
-      due[1].callback();
-      await settle();
+      await due[1].callback();
     }
     this.monotonic = target;
-    await settle();
+    this.now = wallStartedAt + wallMs;
   }
 }
-
-const settle = async () => {
-  for (let count = 0; count < 12; count += 1) await new Promise((resolve) => setImmediate(resolve));
-};
 
 async function fixture(t, instant = "2026-07-20T08:59:00.000Z") {
   const root = await mkdtemp(join(tmpdir(), "pi-daemon-scheduler-runtime-"));
@@ -93,10 +92,10 @@ test("fake clock fires once, persists before admission, and retains terminal tic
   assert.equal((await store.get("schedule-01")).nextTriggerAt, "2026-07-20T09:00:00.000Z");
   await clock.advance(60_000);
   await runtime.reload();
+  await runtime.settle();
   assert.equal(admission.admissions.length, 1);
   assert.equal(preAdmission.lastTrigger.disposition, "rejected");
   assert.equal(preAdmission.nextTriggerAt, "2026-07-21T09:00:00.000Z");
-  await settle();
   const resource = await store.get("schedule-01");
   assert.equal(resource.lastTrigger.disposition, "admitted");
   assert.equal(resource.lastTrigger.terminalTicket.state, "completed");
@@ -135,7 +134,7 @@ test("overlap policies are bounded and queue-one coalesces to one deferred admis
   assert.equal(admission.admissions.length, 1);
   admission.setRunning(false);
   resolveCompletion();
-  await settle();
+  await runtime.settle();
   await runtime.reload();
   assert.equal(admission.admissions.length, 2);
   assert.equal(runtime.status().queuedOverlaps, 0);
@@ -154,6 +153,7 @@ test("missed-wake catch-up is oldest-first and globally bounded", async (t) => {
     "2026-07-20T09:02:00.000Z",
   ]);
   assert.equal((await store.get("schedule-01")).nextTriggerAt, "2026-07-20T12:01:00.000Z");
+  await runtime.settle();
   runtime.stop();
 });
 
@@ -185,6 +185,7 @@ test("backward wall-clock correction and restart do not repeat a decided instant
   const admission = gateway({ initialState: "succeeded" });
   const first = new SchedulerRuntime({ store, gateway: admission, clock });
   await first.start();
+  await first.settle();
   assert.equal(admission.admissions.length, 1);
   first.stop();
 
@@ -205,6 +206,7 @@ test("long fake-clock soak keeps timers, overlap state and retained memory bound
   for (let minute = 0; minute < 200; minute += 1) {
     await clock.advance(60_000);
     await runtime.reload();
+    await runtime.settle();
   }
   assert.ok(admission.admissions.length >= 199 && admission.admissions.length <= 200);
   assert.ok(clock.timers.size <= 1);

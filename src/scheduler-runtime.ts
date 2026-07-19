@@ -13,7 +13,7 @@ const CLOCK_RECHECK_MS = 60_000;
 export interface SchedulerClock {
   wallNow(): number;
   monotonicNow(): number;
-  setTimer(callback: () => void, delayMs: number): unknown;
+  setTimer(callback: () => void | Promise<void>, delayMs: number): unknown;
   clearTimer(handle: unknown): void;
 }
 
@@ -134,6 +134,12 @@ export class SchedulerRuntime {
 
   notifyClockChange(): Promise<void> {
     return this.recompute();
+  }
+
+  /** Flush serialized work and the admission settlements it has tracked. */
+  async settle(): Promise<void> {
+    await this.#tail;
+    await Promise.allSettled([...this.#settlements]);
   }
 
   async schedules(): Promise<SchedulerScheduleStatus[]> {
@@ -363,7 +369,7 @@ export class SchedulerRuntime {
       // The monotonic timer is only a wakeup hint; cron selection always uses
       // fresh wall time, preventing elapsed monotonic time from inventing work.
       void anchor;
-      void this.recompute().catch(() => {});
+      return this.recompute().catch(() => {});
     }, delay);
   }
 
@@ -490,6 +496,6 @@ function schedulerTicket(ticket: TicketResource): SchedulerTicket {
 const systemSchedulerClock: SchedulerClock = {
   wallNow: Date.now,
   monotonicNow: () => performance.now(),
-  setTimer: (callback, delayMs) => setTimeout(callback, delayMs),
+  setTimer: (callback, delayMs) => setTimeout(() => { void callback(); }, delayMs),
   clearTimer: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
 };

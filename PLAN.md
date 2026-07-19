@@ -670,6 +670,8 @@ implementation order. This list is a human-readable crosswalk.
     terminal history, validation, and dormant/unread visual semantics.
   - [x] `bd-aa4260` — native lifecycle integration plus all-IANA timezone/DST,
     wall-clock, restart, overlap, security, compatibility, and soak acceptance.
+  - [x] `bd-f86c45` — deterministic injected-clock callbacks and scheduler
+    admission settlement under loaded full-suite execution.
 
 All standalone delivery and acceptance blockers are landed. Cutting the first
 release tag is an explicit operator action under `docs/release.md`; the remaining
