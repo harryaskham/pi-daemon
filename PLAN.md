@@ -651,9 +651,9 @@ implementation order. This list is a human-readable crosswalk.
     serializable extension interactions.
   - [ ] `bd-e9fce1` — lazy browser creation of a brand-new logical session with
     zero runtime/model/tool work before the first explicit message.
-    - [ ] `bd-6a4170` — browser-safe contract, owner-private atomic draft/send
+    - [x] `bd-6a4170` — browser-safe contract, owner-private atomic draft/send
       ticket store, authenticated neutral/BFF CRUD, schemas, fixtures, and docs.
-    - [ ] `bd-96c3e1` — embedded/remote exact-once first-send materializer with
+    - [x] `bd-96c3e1` — embedded/remote exact-once first-send materializer with
       durable private crash checkpoints and no blind prompt replay.
     - [ ] `bd-72d6fd` — accessible sidebar/form/empty-pane UX reusing the
       preview-composer first-send flow from `bd-930d31`.

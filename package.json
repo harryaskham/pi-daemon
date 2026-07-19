@@ -101,6 +101,10 @@
       "types": "./dist/dashboard-session-drafts.d.ts",
       "import": "./dist/dashboard-session-drafts.js"
     },
+    "./dashboard-session-materializer": {
+      "types": "./dist/dashboard-session-materializer.d.ts",
+      "import": "./dist/dashboard-session-materializer.js"
+    },
     "./dashboard-neutral-api": {
       "types": "./dist/dashboard-neutral-api.d.ts",
       "import": "./dist/dashboard-neutral-api.js"

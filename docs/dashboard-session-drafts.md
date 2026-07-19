@@ -108,10 +108,22 @@ would be dishonest after acceptance may have occurred.
 
 ## First send and UI
 
-The runtime gateway, implemented separately, consumes the persisted target and
-work rather than inventing new identity. It creates/rejoins one managed session,
-obtains controller state, advances to `prompt-submitting`, and admits exactly one
-prompt through normal durable policy.
+The runtime gateway consumes the persisted target and work rather than inventing
+new identity. Embedded/service delivery uses the normal `Multiplexer` prepared
+session policy, verifies that no existing Dashboard or RPC controller conflicts,
+advances durably to `prompt-submitting`, and admits the first message through Pi
+RPC's preflight boundary. Dedicated Dash delegates the same authenticated service
+routes; its daemon bearer remains server-side. A dormant persistent target is
+rejoined idempotently. A pre-prompt memory target lost across restart is safely
+recreated at the same deterministic identity only after its matching dormant
+catalog record is deleted with generation/revision guards.
+
+A definitive preflight rejection fails the ticket and removes the empty managed
+session. Unknown failure after `prompt-submitting` is indeterminate and retains
+the session for reconciliation. Cancellation or controller conflict before that
+boundary fails without a prompt and best-effort removes any empty materialized
+session. Materializer construction and draft CRUD perform no Pi/runtime/model or
+process work.
 
 The SPA presents a draft as an ordinary empty conversation with a fixed-bottom
 composer and inline “first message starts this session” notice. It reuses the

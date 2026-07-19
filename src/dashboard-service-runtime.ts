@@ -10,6 +10,10 @@ import {
   DashboardSessionDraftService,
   FileDashboardSessionDraftStore,
 } from "./dashboard-session-drafts.js";
+import {
+  DashboardSessionDraftMaterializer,
+  MultiplexerDashboardSessionDraftRuntime,
+} from "./dashboard-session-materializer.js";
 import { Multiplexer } from "./multiplexer.js";
 import type { RpcAttachmentManager } from "./rpc-attachments.js";
 import type { SessionCatalogStore } from "./session-catalog.js";
@@ -60,6 +64,7 @@ export class EmbeddedDashboardServiceRuntime {
   readonly projector: TranscriptProjector;
   readonly ownership: SessionOwnershipService;
   readonly drafts: DashboardSessionDraftService;
+  readonly draftMaterializer: DashboardSessionDraftMaterializer;
   readonly backend: InProcessDashboardBackend;
   readonly neutralApi: DashboardNeutralApiController;
   readonly recovery: EmbeddedDashboardServiceRecovery;
@@ -71,6 +76,7 @@ export class EmbeddedDashboardServiceRuntime {
     projector: TranscriptProjector;
     ownership: SessionOwnershipService;
     drafts: DashboardSessionDraftService;
+    draftMaterializer: DashboardSessionDraftMaterializer;
     backend: InProcessDashboardBackend;
     neutralApi: DashboardNeutralApiController;
     recovery: EmbeddedDashboardServiceRecovery;
@@ -79,6 +85,7 @@ export class EmbeddedDashboardServiceRuntime {
     this.projector = options.projector;
     this.ownership = options.ownership;
     this.drafts = options.drafts;
+    this.draftMaterializer = options.draftMaterializer;
     this.backend = options.backend;
     this.neutralApi = options.neutralApi;
     this.recovery = options.recovery;
@@ -104,11 +111,21 @@ export class EmbeddedDashboardServiceRuntime {
     });
     const projector = new TranscriptProjector({ stateDir: options.stateDir });
     const ownershipRuntime = new MultiplexerSessionOwnershipRuntime(options.multiplexer);
+    const draftStore = new FileDashboardSessionDraftStore({ stateDir: options.stateDir });
     const drafts = new DashboardSessionDraftService({
-      store: new FileDashboardSessionDraftStore({ stateDir: options.stateDir }),
+      store: draftStore,
       allowedRoots: options.allowedRoots,
     });
     let backend: InProcessDashboardBackend | undefined;
+    const draftMaterializer = new DashboardSessionDraftMaterializer({
+      store: draftStore,
+      runtime: new MultiplexerDashboardSessionDraftRuntime({
+        multiplexer: options.multiplexer,
+        hasController: (sessionId) =>
+          (backend?.hasController(sessionId) ?? false) ||
+          (options.rpcAttachments?.hasController(sessionId) ?? false),
+      }),
+    });
     ownership = new SessionOwnershipService({
       stateDir: options.stateDir,
       inventory,
@@ -147,6 +164,7 @@ export class EmbeddedDashboardServiceRuntime {
       ownership,
       multiplexer: options.multiplexer,
       drafts,
+      draftExecution: draftMaterializer,
       ...(options.schedules === undefined ? {} : { schedules: options.schedules }),
       ...(options.scheduler === undefined ? {} : { scheduler: options.scheduler }),
       ...(options.tuiChannels === undefined ? {} : { tuiChannels: options.tuiChannels }),
@@ -156,6 +174,7 @@ export class EmbeddedDashboardServiceRuntime {
       projector,
       ownership,
       drafts,
+      draftExecution: draftMaterializer,
       tuiAvailable: options.tuiChannels !== undefined,
       schedulesAvailable: options.schedules !== undefined,
       ...(options.tuiChannels === undefined
@@ -167,7 +186,7 @@ export class EmbeddedDashboardServiceRuntime {
       await ownership.initialize();
       const [recovered, draftRecovery] = await Promise.all([
         ownership.recover(),
-        drafts.recover(),
+        draftMaterializer.recover(),
       ]);
       await inventory.start();
       return new EmbeddedDashboardServiceRuntime({
@@ -175,6 +194,7 @@ export class EmbeddedDashboardServiceRuntime {
         projector,
         ownership,
         drafts,
+        draftMaterializer,
         backend,
         neutralApi,
         recovery: {
@@ -189,6 +209,8 @@ export class EmbeddedDashboardServiceRuntime {
         },
       });
     } catch (error) {
+      draftMaterializer.beginDrain();
+      await draftMaterializer.settle().catch(() => undefined);
       backend.dispose();
       await inventory.stop().catch(() => undefined);
       throw error;
@@ -198,6 +220,8 @@ export class EmbeddedDashboardServiceRuntime {
   async stop(): Promise<void> {
     if (this.#stopped) return;
     this.#stopped = true;
+    this.draftMaterializer.beginDrain();
+    await this.draftMaterializer.settle();
     this.backend.dispose();
     await this.inventory.stop();
   }

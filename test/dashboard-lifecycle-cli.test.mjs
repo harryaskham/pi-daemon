@@ -8,8 +8,10 @@ import test from "node:test";
 import { runCli } from "../dist/cli.js";
 
 class EmptyFactory {
+  opens = 0;
   async open() {
-    throw new Error("not used by embedded dashboard lifecycle test");
+    this.opens += 1;
+    throw new Error("fixture runtime open rejected");
   }
 }
 
@@ -58,13 +60,14 @@ web:
 `, { mode: 0o600 });
 
   const logs = [];
+  const factory = new EmptyFactory();
   let index = "";
   let callbackError;
   const code = await runCli(
     ["serve", "--config", configPath, "--instance", "embedded-test"],
     { stdout: () => {}, stderr: (line) => logs.push(line) },
     {
-      factory: new EmptyFactory(),
+      factory,
       waitForShutdown: async (shutdown) => {
         try {
           const origin = `http://127.0.0.1:${webPort}`;
@@ -83,6 +86,85 @@ web:
         const capabilities = await capabilitiesResponse.json();
         assert.equal(capabilities.data.presentations.rich.available, true);
         assert.equal(capabilities.data.presentations.tui.available, false);
+        assert.equal(capabilities.data.resources.sessionDrafts, true);
+
+        const apiOrigin = `http://127.0.0.1:${apiPort}`;
+        const draftCreate = await fetch(`${apiOrigin}/v1/dashboard/session-drafts`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${apiToken}`,
+            "Content-Type": "application/json",
+            "X-Request-ID": "draft-create-lifecycle",
+            "Idempotency-Key": "draft-create-key-lifecycle",
+          },
+          body: JSON.stringify({
+            requestId: "draft-create-lifecycle",
+            idempotencyKey: "draft-create-key-lifecycle",
+            draftId: "draft-lifecycle",
+            spec: {
+              cwd: work,
+              persistence: "memory",
+              tools: { mode: "none" },
+              resources: {
+                noExtensions: true,
+                noSkills: true,
+                noPromptTemplates: true,
+                noThemes: true,
+                noContextFiles: true,
+                projectTrust: "deny",
+              },
+              isolation: { mode: "unisolated" },
+            },
+          }),
+        });
+        const draftCreateText = await draftCreate.text();
+        assert.equal(draftCreate.status, 201, draftCreateText);
+        const draftEtag = draftCreate.headers.get("etag");
+        assert.ok(draftEtag);
+        const draft = JSON.parse(draftCreateText);
+        assert.equal(draft.data.state, "draft");
+        assert.equal(factory.opens, 0, "draft CRUD must not open a runtime");
+
+        const privateMessage = "private first-send lifecycle fixture";
+        const draftSend = await fetch(
+          `${apiOrigin}/v1/dashboard/session-drafts/${draft.data.draftId}/send`,
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${apiToken}`,
+              "Content-Type": "application/json",
+              "X-Request-ID": "draft-send-lifecycle",
+              "Idempotency-Key": "draft-send-key-lifecycle",
+              "If-Match": draftEtag,
+            },
+            body: JSON.stringify({
+              requestId: "draft-send-lifecycle",
+              idempotencyKey: "draft-send-key-lifecycle",
+              expectedRevision: draft.data.revision,
+              message: privateMessage,
+            }),
+          },
+        );
+        const draftSendText = await draftSend.text();
+        assert.equal(draftSend.status, 202, draftSendText);
+        const sendTicket = JSON.parse(draftSendText);
+        let terminal = sendTicket.data;
+        const draftDeadline = Date.now() + 10_000;
+        while (
+          !["failed", "succeeded", "indeterminate"].includes(terminal.state) &&
+          Date.now() < draftDeadline
+        ) {
+          await new Promise((resolve) => setTimeout(resolve, 25));
+          const response = await fetch(
+            `${apiOrigin}/v1/dashboard/session-draft-send/${sendTicket.data.ticketId}`,
+            { headers: { Authorization: `Bearer ${apiToken}` } },
+          );
+          assert.equal(response.status, 200);
+          terminal = (await response.json()).data;
+        }
+        assert.equal(terminal.state, "failed");
+        assert.equal(factory.opens, 1, "first send must attempt exactly one runtime");
+        assert.equal(JSON.stringify(terminal).includes(privateMessage), false);
 
         const webTokenPath = join(root, "state", "web-token");
         const webToken = (await readFile(webTokenPath, "utf8")).trimEnd();
