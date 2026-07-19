@@ -134,8 +134,9 @@ test("overlap policies are bounded and queue-one coalesces to one deferred admis
   assert.equal(admission.admissions.length, 1);
   admission.setRunning(false);
   resolveCompletion();
+  // settle must include the nested serialized admission scheduled by the
+  // first ticket's finally callback; callers must not need an extra reload.
   await runtime.settle();
-  await runtime.reload();
   assert.equal(admission.admissions.length, 2);
   assert.equal(runtime.status().queuedOverlaps, 0);
   await runtime.drain(100);

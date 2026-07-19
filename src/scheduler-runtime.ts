@@ -136,10 +136,15 @@ export class SchedulerRuntime {
     return this.recompute();
   }
 
-  /** Flush serialized work and the admission settlements it has tracked. */
+  /** Flush current settlements and serialized work they causally enqueue. */
   async settle(): Promise<void> {
-    await this.#tail;
-    await Promise.allSettled([...this.#settlements]);
+    const settlements = [...this.#settlements];
+    let tail = this.#tail;
+    await Promise.allSettled([tail, ...settlements]);
+    while (tail !== this.#tail) {
+      tail = this.#tail;
+      await Promise.allSettled([tail]);
+    }
   }
 
   async schedules(): Promise<SchedulerScheduleStatus[]> {
