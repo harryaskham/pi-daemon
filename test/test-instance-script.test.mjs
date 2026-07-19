@@ -23,7 +23,8 @@ test("rolling test-instance helper is syntax-safe, immutable-build based, and ne
   assert.match(source, /PI_DAEMON_TEST_ALLOWED_ROOT/);
   assert.match(source, /PI_DAEMON_TEST_API_PORT/);
   assert.match(source, /PI_DAEMON_TEST_WEB_PORT/);
-  assert.match(source, /tmux new-session -d -s "\$TMUX_SESSION"/);
+  assert.match(source, /tmux -L "\$TMUX_SOCKET"/);
+  assert.match(source, /tmux_cmd new-session -d -s "\$TMUX_SESSION"/);
   assert.match(source, /--config %q --instance %q/);
   assert.doesNotMatch(source, /launchctl|systemctl|Authorization|Bearer|token-file/);
 });
@@ -38,6 +39,7 @@ test("paths and stopped status are side-effect free under isolated overrides", a
     PI_DAEMON_TEST_STATE: join(root, "state"),
     PI_DAEMON_TEST_CONFIG: join(root, "config.yaml"),
     PI_DAEMON_TEST_TMUX: `pi-daemon-test-${process.pid}`,
+    PI_DAEMON_TEST_TMUX_SOCKET: `pi-daemon-test-socket-${process.pid}`,
   };
   const paths = await execFileAsync("bash", [script, "paths"], { env: environment });
   assert.match(paths.stdout, /instance=fixture/);
@@ -65,6 +67,7 @@ test("init-config creates a complete owner-private node-local config once", asyn
     PI_DAEMON_TEST_API_PORT: "18473",
     PI_DAEMON_TEST_WEB_PORT: "18474",
     PI_DAEMON_TEST_TMUX: `pi-daemon-test-config-${process.pid}`,
+    PI_DAEMON_TEST_TMUX_SOCKET: `pi-daemon-test-config-socket-${process.pid}`,
   };
   const initialized = await execFileAsync("bash", [script, "init-config"], { env: environment });
   assert.match(initialized.stdout, /created test instance config/);

@@ -282,7 +282,8 @@ scripts/pi-daemon-test-instance.sh stop
 Set `PI_DAEMON_TEST_ALLOWED_ROOT`, `PI_DAEMON_TEST_API_PORT`, and
 `PI_DAEMON_TEST_WEB_PORT` before the first command when node defaults would
 collide. `PI_DAEMON_TEST_INSTANCE` gives every runner separate state/config,
-agent, socket and tmux names. `PI_DAEMON_TEST_REMOTE` can select an HTTPS or
+agent, socket, tmux session **and tmux server socket** names, so unrelated
+`tmux kill-server` commands cannot stop it. `PI_DAEMON_TEST_REMOTE` can select an HTTPS or
 other authenticated Git remote when SSH is unavailable. Existing configs are
 never overwritten.
 

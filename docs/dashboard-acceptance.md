@@ -101,15 +101,22 @@ cookie. That exploratory receipt is retained owner-privately as
 `dashboard-soak-capacity-finding.jsonl`; no credential or session content was
 recorded.
 
-The corrected 24-hour owner-private rolling soak started at
-`2026-07-19T09:07:03Z` against the exact embedded test BFF. It reuses one cookie
-like the production SPA, re-authenticates once after an intentional daemon
-restart/401, and every minute requests the packaged SPA plus bootstrap, real
-inventory and settings. It records only timestamps, bounded status, latency and
-row counts—never credentials or session content—under
-`~/.local/state/pi-daemon/test/soak/`.
+The cookie-reuse harness then ran from `2026-07-19T09:07:03Z` through an
+external default-tmux server teardown at approximately 13:05Z with zero product
+failures. The daemon and soak tmux sessions disappeared together without a
+daemon drain/crash record, so this was operator/process-supervisor interruption,
+not an availability result. The helper now uses its own named tmux socket so an
+unrelated default `tmux kill-server` cannot remove the test service.
+
+The final uninterrupted 24-hour owner-private rolling soak started at
+`2026-07-19T14:28:50Z` against the exact embedded test BFF on dedicated tmux
+sockets. It reuses one cookie like the production SPA, re-authenticates once
+after an intentional daemon restart/401, and every minute requests the packaged
+SPA plus bootstrap, real inventory and settings. It records only timestamps,
+bounded status, latency and row counts—never credentials or session content—
+under `~/.local/state/pi-daemon/test/soak/`.
 
 `bd-7de9ec` remains open until the summary is written after
-`2026-07-20T09:07:03Z` with zero unexplained failures. Deterministic replay,
+`2026-07-20T14:28:50Z` with zero unexplained failures. Deterministic replay,
 restart, cache, scheduler and fake-clock long-soak tests are already green; the
 wall-clock receipt is the final unwaived gate.

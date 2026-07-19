@@ -16,6 +16,7 @@ WEB_PORT="${PI_DAEMON_TEST_WEB_PORT:-7474}"
 REMOTE="${PI_DAEMON_TEST_REMOTE:-ssh://git@github.com/harryaskham/pi-daemon.git}"
 BRANCH="${PI_DAEMON_TEST_BRANCH:-main}"
 TMUX_SESSION="${PI_DAEMON_TEST_TMUX:-pi-daemon-$INSTANCE}"
+TMUX_SOCKET="${PI_DAEMON_TEST_TMUX_SOCKET:-pi-daemon-test-$INSTANCE}"
 CURRENT="$STATE/current"
 LOG="$STATE/service.log"
 LOCK="$STATE/update.lock"
@@ -47,8 +48,12 @@ require_command() {
   }
 }
 
+tmux_cmd() {
+  tmux -L "$TMUX_SOCKET" "$@"
+}
+
 is_running() {
-  tmux has-session -t "$TMUX_SESSION" 2>/dev/null
+  tmux_cmd has-session -t "$TMUX_SESSION" 2>/dev/null
 }
 
 acquire_update_lock() {
@@ -195,7 +200,7 @@ start_instance() {
   local command
   printf -v command 'exec %q serve --config %q --instance %q >>%q 2>&1' \
     "$CURRENT/bin/pi-daemon" "$CONFIG" "$INSTANCE" "$LOG"
-  tmux new-session -d -s "$TMUX_SESSION" -c "$STATE" "$command"
+  tmux_cmd new-session -d -s "$TMUX_SESSION" -c "$STATE" "$command"
   local attempt
   for attempt in {1..100}; do
     if [[ -S "$STATE/run/pi-daemon.sock" ]]; then
@@ -219,7 +224,7 @@ stop_instance() {
     printf 'test instance is not running\n'
     return 0
   fi
-  tmux send-keys -t "$TMUX_SESSION" C-c
+  tmux_cmd send-keys -t "$TMUX_SESSION" C-c
   local attempt
   for attempt in {1..100}; do
     if ! is_running; then
@@ -230,13 +235,13 @@ stop_instance() {
     sleep 0.1
   done
   printf 'test instance exceeded graceful stop deadline; killing only tmux session %s\n' "$TMUX_SESSION" >&2
-  tmux kill-session -t "$TMUX_SESSION"
+  tmux_cmd kill-session -t "$TMUX_SESSION"
   rm -f "$STATE/run/pi-daemon.sock"
 }
 
 status_instance() {
-  printf 'instance=%s\nsource=%s\nconfig=%s\nstate=%s\nagent_dir=%s\nallowed_root=%s\napi_url=http://127.0.0.1:%s\ndash_url=http://127.0.0.1:%s/dash/\ntmux=%s\n' \
-    "$INSTANCE" "$SOURCE" "$CONFIG" "$STATE" "$AGENT_DIR" "$ALLOWED_ROOT" "$API_PORT" "$WEB_PORT" "$TMUX_SESSION"
+  printf 'instance=%s\nsource=%s\nconfig=%s\nstate=%s\nagent_dir=%s\nallowed_root=%s\napi_url=http://127.0.0.1:%s\ndash_url=http://127.0.0.1:%s/dash/\ntmux=%s\ntmux_socket=%s\n' \
+    "$INSTANCE" "$SOURCE" "$CONFIG" "$STATE" "$AGENT_DIR" "$ALLOWED_ROOT" "$API_PORT" "$WEB_PORT" "$TMUX_SESSION" "$TMUX_SOCKET"
   if [[ -d "$SOURCE/.git" ]]; then
     printf 'source_commit=%s\n' "$(git -C "$SOURCE" rev-parse HEAD)"
   else
@@ -288,11 +293,11 @@ case "${1:-}" in
     ;;
   attach)
     require_command tmux
-    exec tmux attach-session -t "$TMUX_SESSION"
+    exec tmux -L "$TMUX_SOCKET" attach-session -t "$TMUX_SESSION"
     ;;
   paths)
-    printf 'instance=%s\nsource=%s\nconfig=%s\nstate=%s\nagent_dir=%s\nallowed_root=%s\napi_url=http://127.0.0.1:%s\ndash_url=http://127.0.0.1:%s/dash/\ntmux=%s\n' \
-      "$INSTANCE" "$SOURCE" "$CONFIG" "$STATE" "$AGENT_DIR" "$ALLOWED_ROOT" "$API_PORT" "$WEB_PORT" "$TMUX_SESSION"
+    printf 'instance=%s\nsource=%s\nconfig=%s\nstate=%s\nagent_dir=%s\nallowed_root=%s\napi_url=http://127.0.0.1:%s\ndash_url=http://127.0.0.1:%s/dash/\ntmux=%s\ntmux_socket=%s\n' \
+      "$INSTANCE" "$SOURCE" "$CONFIG" "$STATE" "$AGENT_DIR" "$ALLOWED_ROOT" "$API_PORT" "$WEB_PORT" "$TMUX_SESSION" "$TMUX_SOCKET"
     ;;
   *)
     usage >&2
