@@ -8,18 +8,22 @@ import {
   DEFAULT_MAX_LINE_BYTES,
   NdjsonDecoder,
   PROTOCOL_VERSION,
+  SUPPORTED_PROTOCOL_VERSIONS,
   ProtocolSerializationError,
   ProtocolValidationError,
   encodeBoundedLine,
   errorResponse,
   eventEnvelope,
-  parseCommand,
   successResponse,
   type EventEnvelope,
-  type ProtocolCommand,
   type ProtocolErrorBody,
   type ResponseEnvelope,
 } from "./protocol.js";
+import {
+  parseSupportedProtocolCommand,
+  type SupportedProtocolCommand as ProtocolCommand,
+} from "./protocol-v2.js";
+import { NEUTRAL_TOOL_OPERATIONS } from "./tool-adapter-protocol.js";
 import { PI_DAEMON_VERSION } from "./version.js";
 
 export interface ProtocolServerLimits {
@@ -292,10 +296,12 @@ export class ProtocolServer {
   #handleValue(connection: ClientConnection, value: unknown): void {
     let command: ProtocolCommand;
     try {
-      command = parseCommand(value);
+      command = parseSupportedProtocolCommand(value, {
+        expectedHostInstanceId: this.#multiplexer.hostInstanceId,
+      });
     } catch (error) {
       const requestId = fallbackRequestId(extractRequestId(value));
-      this.#sendError(connection, requestId, error);
+      this.#sendError(connection, requestId, error, undefined, extractProtocolVersion(value));
       if (error instanceof ProtocolValidationError && error.code === "incompatible_protocol") {
         this.#endConnection(connection);
       }
@@ -334,8 +340,11 @@ export class ProtocolServer {
   ): Promise<ResponseEnvelope> {
     switch (command.operation) {
       case "handshake":
-        return successResponse(command.requestId, this.#multiplexer.hostInstanceId, {
+        return this.#success(command, {
           protocolVersion: PROTOCOL_VERSION,
+          ...(command.protocolVersion.startsWith("2.")
+            ? { supportedProtocolVersions: SUPPORTED_PROTOCOL_VERSIONS }
+            : {}),
           packageVersion: PI_DAEMON_VERSION,
           nodeVersion: process.version,
           capabilities: {
@@ -354,6 +363,12 @@ export class ProtocolServer {
             ],
             transport: "unix-ndjson",
             durable: this.#multiplexer.status().durable,
+            ...(command.protocolVersion.startsWith("2.")
+              ? {
+                  hostToolAdapter: true,
+                  hostToolOperationCount: NEUTRAL_TOOL_OPERATIONS.length,
+                }
+              : {}),
           },
           limits: {
             ...this.limits,
@@ -363,7 +378,7 @@ export class ProtocolServer {
         });
       case "open": {
         const result = await this.#multiplexer.open(command);
-        return successResponse(command.requestId, this.#multiplexer.hostInstanceId, result, {
+        return this.#success(command, result, {
           sessionId: command.sessionId,
           sequence: result.session.sequence,
         });
@@ -371,53 +386,44 @@ export class ProtocolServer {
       case "wake": {
         if (command.payload.waitForTerminal === false) {
           const admission = await this.#multiplexer.submitWake(command);
-          return successResponse(
-            command.requestId,
-            this.#multiplexer.hostInstanceId,
+          return this.#success(
+            command,
             { ticket: admission.ticket },
             { sessionId: command.sessionId },
           );
         }
         const result = await this.#multiplexer.wake(command);
-        return successResponse(command.requestId, this.#multiplexer.hostInstanceId, result, {
+        return this.#success(command, result, {
           sessionId: command.sessionId,
           sequence: result.session.sequence,
         });
       }
       case "steer":
         await this.#multiplexer.steer(command);
-        return successResponse(command.requestId, this.#multiplexer.hostInstanceId, { queued: true }, {
-          sessionId: command.sessionId,
-        });
+        return this.#success(command, { queued: true }, { sessionId: command.sessionId });
       case "followUp":
         await this.#multiplexer.followUp(command);
-        return successResponse(command.requestId, this.#multiplexer.hostInstanceId, { queued: true }, {
-          sessionId: command.sessionId,
-        });
+        return this.#success(command, { queued: true }, { sessionId: command.sessionId });
       case "status": {
         const status =
           command.sessionId === undefined
             ? this.#multiplexer.status()
             : this.#multiplexer.status(command.sessionId);
-        return successResponse(
-          command.requestId,
-          this.#multiplexer.hostInstanceId,
+        return this.#success(
+          command,
           status,
           command.sessionId === undefined ? {} : { sessionId: command.sessionId },
         );
       }
       case "abort": {
         const aborted = await this.#multiplexer.abort(command);
-        return successResponse(command.requestId, this.#multiplexer.hostInstanceId, { aborted }, {
-          sessionId: command.sessionId,
-        });
+        return this.#success(command, { aborted }, { sessionId: command.sessionId });
       }
       case "attach": {
         const session = this.#sessionForGeneration(command.sessionId, command.generation);
         connection.subscribedSessions.set(command.sessionId, command.generation);
-        return successResponse(
-          command.requestId,
-          this.#multiplexer.hostInstanceId,
+        return this.#success(
+          command,
           { attached: true, generation: command.generation, sequence: session.sequence },
           { sessionId: command.sessionId, sequence: session.sequence },
         );
@@ -426,9 +432,8 @@ export class ProtocolServer {
         const session = this.#sessionForGeneration(command.sessionId, command.generation);
         const detached = connection.subscribedSessions.get(command.sessionId) === command.generation;
         if (detached) connection.subscribedSessions.delete(command.sessionId);
-        return successResponse(
-          command.requestId,
-          this.#multiplexer.hostInstanceId,
+        return this.#success(
+          command,
           { detached, generation: command.generation, sequence: session.sequence },
           { sessionId: command.sessionId, sequence: session.sequence },
         );
@@ -436,20 +441,29 @@ export class ProtocolServer {
       case "close": {
         const closed = await this.#multiplexer.close(command);
         this.#clearSessionSubscriptions(command.sessionId);
-        return successResponse(command.requestId, this.#multiplexer.hostInstanceId, { closed }, {
-          sessionId: command.sessionId,
-        });
+        return this.#success(command, { closed }, { sessionId: command.sessionId });
       }
       case "drain": {
         const timeoutMs = command.payload.timeoutMs ?? 30_000;
         const result = await this.#multiplexer.drain(timeoutMs);
-        return successResponse(command.requestId, this.#multiplexer.hostInstanceId, {
+        return this.#success(command, {
           draining: true,
           timeoutMs,
           ...result,
         });
       }
     }
+  }
+
+  #success<T>(
+    command: ProtocolCommand,
+    data: T,
+    options: { sessionId?: string; sequence?: number } = {},
+  ): ResponseEnvelope<T> {
+    return successResponse(command.requestId, this.#multiplexer.hostInstanceId, data, {
+      ...options,
+      protocolVersion: command.protocolVersion,
+    });
   }
 
   #sendResponse(connection: ClientConnection, response: ResponseEnvelope): void {
@@ -459,7 +473,10 @@ export class ProtocolServer {
       response.requestId,
       this.#multiplexer.hostInstanceId,
       serializationErrorBody(failure, this.limits.maxResponseBytes),
-      response.sessionId === undefined ? {} : { sessionId: response.sessionId },
+      {
+        ...(response.sessionId === undefined ? {} : { sessionId: response.sessionId }),
+        protocolVersion: response.protocolVersion,
+      },
     );
     const fallbackFailure = connection.writer.send(fallback, this.limits.maxResponseBytes);
     if (fallbackFailure !== undefined) {
@@ -476,6 +493,7 @@ export class ProtocolServer {
       sessionId: event.sessionId,
       generation: event.generation,
       sequence: event.sequence,
+      protocolVersion: event.protocolVersion,
       ...(event.requestId === undefined ? {} : { requestId: event.requestId }),
       data: {
         originalEvent: event.event,
@@ -522,9 +540,14 @@ export class ProtocolServer {
     requestId: string,
     error: unknown,
     command?: ProtocolCommand,
+    protocolVersion?: string,
   ): void {
     const body = protocolError(error);
-    const options: { sessionId?: string } = {};
+    const options: { sessionId?: string; protocolVersion?: string } = {};
+    const responseProtocolVersion = command?.protocolVersion ?? protocolVersion;
+    if (responseProtocolVersion !== undefined) {
+      options.protocolVersion = responseProtocolVersion;
+    }
     if (command !== undefined && "sessionId" in command && typeof command.sessionId === "string") {
       options.sessionId = command.sessionId;
     }
@@ -572,6 +595,12 @@ function protocolError(error: unknown): ProtocolErrorBody {
     message: "internal server error",
     retryable: false,
   };
+}
+
+function extractProtocolVersion(value: unknown): string | undefined {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const version = (value as Record<string, unknown>).protocolVersion;
+  return typeof version === "string" && /^\d+\.\d+$/.test(version) ? version : undefined;
 }
 
 function extractRequestId(value: unknown): string | undefined {

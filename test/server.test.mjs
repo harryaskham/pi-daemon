@@ -20,6 +20,49 @@ const openCommand = (sessionId) => ({
   payload: { cwd: `/work/${sessionId}`, session: { mode: "memory" } },
 });
 
+const hostToolOpenCommand = (sessionId, hostInstanceId = "host-test") => ({
+  ...openCommand(sessionId),
+  protocolVersion: "2.0",
+  payload: {
+    ...openCommand(sessionId).payload,
+    resources: {
+      extensions: "none",
+      skills: "none",
+      promptTemplates: "none",
+      themes: "none",
+      contextFiles: "none",
+      tools: {
+        mode: "host-adapter",
+        descriptor: {
+          protocolVersion: "1.0",
+          adapterId: "fixture-adapter",
+          adapterVersion: "1.2.3",
+          endpoint: {
+            transport: "unix",
+            path: "/run/user/1000/pi-daemon-tool-adapter.sock",
+          },
+          binding: {
+            hostInstanceId,
+            sessionId,
+            generation: 1,
+            capabilityHandle: "fixture_capability_handle_0123456789",
+          },
+          operations: ["fs.list", "fs.stat", "fs.read", "fs.search"],
+          limits: {
+            maxRequestBytes: 16_384,
+            maxResponseBytes: 65_536,
+            maxConcurrentRequests: 2,
+            maxQueuedRequests: 4,
+            requestTimeoutMs: 5_000,
+            maxIdempotencyKeys: 128,
+            idempotencyTtlMs: 60_000,
+          },
+        },
+      },
+    },
+  },
+});
+
 const attachCommand = (sessionId, operation = "attach", generation = 1) => ({
   protocolVersion: "1.0",
   requestId: `${operation}-${sessionId}-${generation}`,
@@ -65,8 +108,10 @@ class EventAdapter {
 
 class EventFactory {
   adapters = new Map();
+  requests = [];
 
   async open(request) {
+    this.requests.push(request);
     const adapter = new EventAdapter(
       request.sessionId,
       request.session.mode === "memory"
@@ -99,6 +144,8 @@ test("Unix client/server handshake open wake and status round trip", async (t) =
   assert.equal(handshake.data.protocolVersion, "1.0");
   assert.equal(handshake.data.host.hostInstanceId, "host-test");
   assert.equal(handshake.data.capabilities.transport, "unix-ndjson");
+  assert.equal("supportedProtocolVersions" in handshake.data, false);
+  assert.equal("hostToolAdapter" in handshake.data.capabilities, false);
 
   const opened = await client.request(openCommand("a"));
   assert.equal(opened.data.created, true);
@@ -119,6 +166,42 @@ test("Unix client/server handshake open wake and status round trip", async (t) =
   assert.equal(status.data.sessionId, "a");
   assert.equal(status.data.state, "idle");
   assert.equal((await lstat(harness.socketPath)).mode & 0o777, 0o600);
+});
+
+test("protocol v2 handshake/open responses echo version and never expose capability errors", async (t) => {
+  const harness = await startServer();
+  t.after(async () => harness.server.stop());
+  const client = await PiDaemonClient.connect({ socketPath: harness.socketPath });
+  t.after(() => client.close());
+
+  const handshake = await client.request({
+    protocolVersion: "2.0",
+    requestId: "v2-handshake",
+    operation: "handshake",
+    payload: {},
+  });
+  assert.equal(handshake.protocolVersion, "2.0");
+  assert.deepEqual(handshake.data.supportedProtocolVersions, ["1.0", "2.0"]);
+  assert.equal(handshake.data.capabilities.hostToolAdapter, true);
+  assert.equal(handshake.data.capabilities.hostToolOperationCount, 6);
+
+  const opened = await client.request(hostToolOpenCommand("v2-session"));
+  assert.equal(opened.protocolVersion, "2.0");
+  assert.equal(opened.data.created, true);
+  assert.equal(harness.factory.requests[0].hostInstanceId, "host-test");
+  assert.equal(
+    harness.factory.requests[0].hostToolAdapter.binding.capabilityHandle,
+    "fixture_capability_handle_0123456789",
+  );
+
+  const error = await client.request(hostToolOpenCommand("wrong-host", "stale-host")).then(
+    () => undefined,
+    (caught) => caught,
+  );
+  assert.ok(error instanceof ProtocolResponseError);
+  assert.equal(error.code, "tool_adapter_binding_mismatch");
+  assert.equal(error.response.protocolVersion, "2.0");
+  assert.equal(JSON.stringify(error.response).includes("fixture_capability_handle"), false);
 });
 
 test("wake can durably acknowledge a prompt ticket without waiting for terminal completion", async (t) => {

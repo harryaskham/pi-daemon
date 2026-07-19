@@ -19,7 +19,7 @@ import { Multiplexer, type SessionFactory } from "./multiplexer.js";
 import { JsonLineLogger } from "./observability.js";
 import { PiSessionFactory } from "./pi-adapter.js";
 import { installProcessStdioErrorHandlers } from "./process-stdio.js";
-import { parseCommand } from "./protocol.js";
+import { parseSupportedProtocolCommand } from "./protocol-v2.js";
 import { RpcAttachmentManager } from "./rpc-attachments.js";
 import { importConfiguredSchedules } from "./schedule-config.js";
 import { FileScheduleStore } from "./schedule-store.js";
@@ -164,7 +164,7 @@ async function runRequest(args: string[], io: CliIo): Promise<number> {
   } catch {
     throw new CliUsageError("--json must contain one valid JSON command object");
   }
-  const command = parseCommand(value);
+  const command = parseSupportedProtocolCommand(value);
   const timeoutMs = options.has("timeout-ms")
     ? integerOption(options, "timeout-ms", 1)
     : 30_000;

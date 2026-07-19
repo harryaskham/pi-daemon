@@ -13,7 +13,8 @@ import {
 import { PiAdapterError, PiSessionAdapter, PiSessionFactory } from "../dist/pi-adapter.js";
 import { parseSessionConfiguration } from "../dist/session-config.js";
 
-const temporaryDirectory = () => mkdtemp(join(tmpdir(), "pi-daemon-adapter-"));
+const temporaryDirectory = async () =>
+  realpath(await mkdtemp(join(tmpdir(), "pi-daemon-adapter-")));
 
 const modelHarness = () => {
   const seedRegistry = ModelRegistry.inMemory(AuthStorage.inMemory());

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { chmod, mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -62,7 +62,9 @@ function commonFrame(input, kind) {
 }
 
 async function harness(t, options = {}) {
-  const root = await mkdtemp(join(tmpdir(), "pi-daemon-tool-adapter-"));
+  const root = await realpath(
+    await mkdtemp(join(tmpdir(), "pi-daemon-tool-adapter-")),
+  );
   const cwd = join(root, "cwd");
   const socketDir = join(root, "socket");
   const socketPath = join(socketDir, "adapter.sock");

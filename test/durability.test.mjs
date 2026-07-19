@@ -40,6 +40,49 @@ const persistentOpenCommand = (sessionId = "agent/a", generation = 1) => {
   return command;
 };
 
+const hostToolAdapterDescriptor = (
+  sessionId = "agent/a",
+  generation = 1,
+  hostInstanceId = "host-before-restart",
+  capabilityHandle = "fixture_capability_handle_0123456789",
+) => ({
+  protocolVersion: "1.0",
+  adapterId: "fixture-adapter",
+  adapterVersion: "1.2.3",
+  endpoint: { transport: "unix", path: "/run/user/1000/pi-daemon-tool-adapter.sock" },
+  binding: { hostInstanceId, sessionId, generation, capabilityHandle },
+  operations: ["fs.list", "fs.stat", "fs.read", "fs.search"],
+  limits: {
+    maxRequestBytes: 16_384,
+    maxResponseBytes: 65_536,
+    maxConcurrentRequests: 2,
+    maxQueuedRequests: 4,
+    requestTimeoutMs: 5_000,
+    maxIdempotencyKeys: 128,
+    idempotencyTtlMs: 60_000,
+  },
+});
+
+const hostToolPersistentOpenCommand = (
+  sessionId = "agent/a",
+  generation = 1,
+  hostInstanceId = "host-before-restart",
+  capabilityHandle,
+) => {
+  const command = persistentOpenCommand(sessionId, generation);
+  command.protocolVersion = "2.0";
+  command.payload.resources.tools = {
+    mode: "host-adapter",
+    descriptor: hostToolAdapterDescriptor(
+      sessionId,
+      generation,
+      hostInstanceId,
+      capabilityHandle,
+    ),
+  };
+  return command;
+};
+
 const conversationIdentity = (sessionId = "agent/a", generation = 1) => ({
   sessionId: `pi-${sessionId}-${generation}`,
   sessionFile: `/state/pi/${encodeURIComponent(sessionId)}-${generation}.jsonl`,
@@ -94,6 +137,42 @@ test("manifests use traversal-safe paths and owner-only atomic files", async () 
   assert.equal((await stat(path)).mode & 0o777, 0o600);
   assert.equal((await stat(stateDir)).mode & 0o777, 0o700);
   assert.equal(encodedSessionId(command.sessionId).includes("/"), false);
+});
+
+test("tool adapter manifests retain only nonsecret reprovision policy", async () => {
+  const stateDir = await temporaryState();
+  const store = new FileDurabilityStore({ stateDir });
+  await store.recover();
+  const command = hostToolPersistentOpenCommand();
+  const identity = conversationIdentity();
+  const manifest = await store.saveManifest(command, identity);
+  assert.equal(manifest.protocolVersion, "2.0");
+  assert.equal(manifest.payload.resources.tools, "none");
+  assert.deepEqual(manifest.toolAdapter, {
+    protocolVersion: "1.0",
+    adapterId: "fixture-adapter",
+    adapterVersion: "1.2.3",
+    operations: ["fs.list", "fs.stat", "fs.read", "fs.search"],
+    limits: command.payload.resources.tools.descriptor.limits,
+  });
+
+  const path = join(stateDir, "sessions", encodedSessionId(command.sessionId), "manifest.json");
+  const persistedText = await readFile(path, "utf8");
+  assert.equal(persistedText.includes("fixture_capability_handle"), false);
+  assert.equal(persistedText.includes("pi-daemon-tool-adapter.sock"), false);
+  const recovered = await new FileDurabilityStore({ stateDir }).recover();
+  assert.deepEqual(recovered.manifests[0].toolAdapter, manifest.toolAdapter);
+
+  const malformed = persistentOpenCommand("malformed-adapter");
+  malformed.payload.resources.tools = {
+    mode: "unrecognized",
+    descriptor: { capabilityHandle: "must_never_reach_disk" },
+  };
+  await assert.rejects(
+    store.saveManifest(malformed, conversationIdentity("malformed-adapter")),
+    (error) =>
+      error instanceof DurabilityError && error.code === "invalid_tool_adapter_policy",
+  );
 });
 
 test("journal transitions are append-only and terminal duplicates are cached", async () => {
@@ -426,6 +505,79 @@ test("legacy new manifests without resolved identity never admit queued replay",
     ),
   );
   assert.equal(factory.requests.length, 0);
+});
+
+test("protocol v2 no-tools recovery preserves the session event version", async () => {
+  const stateDir = await temporaryState();
+  const first = new FileDurabilityStore({ stateDir });
+  await first.recover();
+  const command = persistentOpenCommand("v2-no-tools");
+  command.protocolVersion = "2.0";
+  await first.saveManifest(command, conversationIdentity("v2-no-tools"));
+
+  const mux = new Multiplexer({
+    factory: new ImmediateFactory(),
+    durability: new FileDurabilityStore({ stateDir }),
+  });
+  const events = [];
+  mux.subscribe((event) => events.push(event));
+  const report = await mux.recover();
+  assert.deepEqual(report.opened, ["v2-no-tools"], JSON.stringify(report.failures));
+  assert.equal(events.find((event) => event.event === "opened")?.protocolVersion, "2.0");
+});
+
+test("restart requires adapter reprovisioning and never silently reopens no-tools", async () => {
+  const stateDir = await temporaryState();
+  const first = new FileDurabilityStore({ stateDir });
+  await first.recover();
+  await first.saveManifest(hostToolPersistentOpenCommand(), conversationIdentity());
+  const queued = wakeCommand("adapter-queued");
+  queued.protocolVersion = "2.0";
+  await first.beginRequest(queued);
+
+  const factory = new ImmediateFactory();
+  const mux = new Multiplexer({
+    factory,
+    durability: new FileDurabilityStore({ stateDir }),
+    hostInstanceId: "host-after-restart",
+  });
+  const report = await mux.recover();
+  assert.deepEqual(report.opened, []);
+  assert.ok(
+    report.failures.some((failure) => failure.code === "tool_adapter_reprovision_required"),
+    JSON.stringify(report.failures),
+  );
+  assert.equal(factory.requests.length, 0);
+  assert.equal(report.pendingReplays, 0);
+  const afterRecovery = new FileDurabilityStore({ stateDir });
+  await afterRecovery.recover();
+  const failedQueued = await afterRecovery.getRequest("agent/a", "adapter-queued");
+  assert.equal(failedQueued.state, "failed");
+  assert.equal(failedQueued.error.code, "tool_adapter_reprovision_required");
+  assert.equal(failedQueued.error.retryable, true);
+
+  const noTools = persistentOpenCommand();
+  noTools.protocolVersion = "2.0";
+  await assert.rejects(
+    mux.open(noTools),
+    (error) =>
+      error instanceof MultiplexerError &&
+      error.code === "tool_adapter_reprovision_required",
+  );
+
+  const reprovisioned = hostToolPersistentOpenCommand(
+    "agent/a",
+    1,
+    "host-after-restart",
+    "replacement_capability_handle_0123456789",
+  );
+  await mux.open(reprovisioned);
+  assert.equal(factory.requests.length, 1);
+  assert.equal(factory.requests[0].hostInstanceId, "host-after-restart");
+  assert.equal(
+    factory.requests[0].hostToolAdapter.binding.capabilityHandle,
+    "replacement_capability_handle_0123456789",
+  );
 });
 
 test("session recovery open is deadline bounded and records degraded health", async () => {

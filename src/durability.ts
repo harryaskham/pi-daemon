@@ -12,23 +12,53 @@ import {
 } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 
-import type { OpenPayload, ProtocolCommand } from "./protocol.js";
+import type { ProtocolCommand } from "./protocol.js";
+import type { SupportedProtocolCommand } from "./protocol-v2.js";
+import {
+  NEUTRAL_TOOL_OPERATIONS,
+  TOOL_ADAPTER_LIMIT_BOUNDS,
+  TOOL_ADAPTER_PROTOCOL_VERSION,
+} from "./tool-adapter-protocol.js";
 
 export const DURABILITY_FORMAT_VERSION = 1 as const;
 
-export type DurableOpenCommand = Extract<ProtocolCommand, { operation: "open" }>;
+export type DurableOpenCommand = Extract<SupportedProtocolCommand, { operation: "open" }>;
 export type DurableWakeCommand = Extract<ProtocolCommand, { operation: "wake" }>;
+export type DurableOpenPayload = DurableOpenCommand["payload"];
 
 export interface DurableConversationIdentity {
   sessionId: string;
   sessionFile?: string;
 }
 
+export interface DurableToolAdapterLimits {
+  maxRequestBytes: number;
+  maxResponseBytes: number;
+  maxConcurrentRequests: number;
+  maxQueuedRequests: number;
+  requestTimeoutMs: number;
+  maxIdempotencyKeys: number;
+  idempotencyTtlMs: number;
+}
+
+/** Nonsecret policy retained so a restarted host cannot silently downgrade a tool session. */
+export interface DurableToolAdapterSummary {
+  protocolVersion: string;
+  adapterId: string;
+  adapterVersion: string;
+  operations: string[];
+  limits: DurableToolAdapterLimits;
+}
+
 export interface SessionManifest {
   formatVersion: typeof DURABILITY_FORMAT_VERSION;
+  /** Absent only on legacy v1 manifests written before protocol-v2 support. */
+  protocolVersion?: string;
   sessionId: string;
   generation: number;
-  payload: OpenPayload;
+  payload: DurableOpenPayload;
+  /** The endpoint, binding, and opaque capability handle are deliberately never persisted. */
+  toolAdapter?: DurableToolAdapterSummary;
   conversation?: DurableConversationIdentity;
   createdAt: string;
   updatedAt: string;
@@ -222,11 +252,14 @@ export class FileDurabilityStore implements DurabilityStore {
         return undefined;
       }
       const now = this.#timestamp();
+      const toolAdapter = durableToolAdapterSummary(command.payload);
       const manifest: SessionManifest = {
         formatVersion: DURABILITY_FORMAT_VERSION,
+        protocolVersion: command.protocolVersion,
         sessionId: command.sessionId,
         generation: command.generation,
-        payload: structuredClone(command.payload),
+        payload: durableOpenPayload(command.payload, toolAdapter !== undefined),
+        ...(toolAdapter === undefined ? {} : { toolAdapter }),
         ...(conversation === undefined
           ? {}
           : { conversation: structuredClone(conversation) }),
@@ -753,6 +786,12 @@ function validateManifest(value: unknown, path: string): asserts value is Sessio
   if (value.formatVersion !== DURABILITY_FORMAT_VERSION) {
     throw corrupt("unsupported manifest format", path);
   }
+  if (
+    value.protocolVersion !== undefined &&
+    (typeof value.protocolVersion !== "string" || !/^\d+\.\d+$/.test(value.protocolVersion))
+  ) {
+    throw corrupt("manifest protocol version is invalid", path);
+  }
   if (typeof value.sessionId !== "string" || value.sessionId.length === 0) {
     throw corrupt("manifest sessionId is invalid", path);
   }
@@ -760,6 +799,16 @@ function validateManifest(value: unknown, path: string): asserts value is Sessio
     throw corrupt("manifest generation is invalid", path);
   }
   if (!isRecord(value.payload)) throw corrupt("manifest payload is invalid", path);
+  const resources = value.payload.resources;
+  if (isRecord(resources) && isRecord(resources.tools)) {
+    throw corrupt("manifest contains an unredacted tool adapter policy", path);
+  }
+  if (value.toolAdapter !== undefined) {
+    validateDurableToolAdapterSummary(value.toolAdapter, path);
+    if (!isRecord(resources) || resources.tools !== "none") {
+      throw corrupt("manifest tool adapter marker requires a redacted no-tools payload", path);
+    }
+  }
   if (value.conversation !== undefined) {
     if (!isRecord(value.conversation)) {
       throw corrupt("manifest conversation identity is invalid", path);
@@ -781,6 +830,46 @@ function validateManifest(value: unknown, path: string): asserts value is Sessio
   }
   if (typeof value.createdAt !== "string" || typeof value.updatedAt !== "string") {
     throw corrupt("manifest timestamps are invalid", path);
+  }
+}
+
+function validateDurableToolAdapterSummary(
+  value: unknown,
+  path: string,
+): asserts value is DurableToolAdapterSummary {
+  if (!isRecord(value)) throw corrupt("manifest tool adapter summary is invalid", path);
+  if (value.protocolVersion !== TOOL_ADAPTER_PROTOCOL_VERSION) {
+    throw corrupt("manifest tool adapter protocolVersion is invalid", path);
+  }
+  if (
+    typeof value.adapterId !== "string" ||
+    !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(value.adapterId)
+  ) {
+    throw corrupt("manifest tool adapter adapterId is invalid", path);
+  }
+  if (
+    typeof value.adapterVersion !== "string" ||
+    !SEMVER_PATTERN.test(value.adapterVersion)
+  ) {
+    throw corrupt("manifest tool adapter adapterVersion is invalid", path);
+  }
+  if (
+    !Array.isArray(value.operations) ||
+    value.operations.length === 0 ||
+    new Set(value.operations).size !== value.operations.length ||
+    !value.operations.every(
+      (operation) =>
+        typeof operation === "string" &&
+        (NEUTRAL_TOOL_OPERATIONS as readonly string[]).includes(operation),
+    )
+  ) {
+    throw corrupt("manifest tool adapter operations are invalid", path);
+  }
+  if (!isRecord(value.limits)) throw corrupt("manifest tool adapter limits are invalid", path);
+  for (const field of TOOL_ADAPTER_LIMIT_FIELDS) {
+    if (!validDurableToolAdapterLimit(field, value.limits[field])) {
+      throw corrupt(`manifest tool adapter limit ${field} is invalid`, path);
+    }
   }
 }
 
@@ -935,6 +1024,95 @@ function canonicalJson(value: unknown): string {
       .join(",")}}`;
   }
   return JSON.stringify(value);
+}
+
+const SEMVER_PATTERN =
+  /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
+
+const TOOL_ADAPTER_LIMIT_FIELDS = [
+  "maxRequestBytes",
+  "maxResponseBytes",
+  "maxConcurrentRequests",
+  "maxQueuedRequests",
+  "requestTimeoutMs",
+  "maxIdempotencyKeys",
+  "idempotencyTtlMs",
+] as const;
+
+export function durableToolAdapterSummary(
+  payload: DurableOpenPayload,
+): DurableToolAdapterSummary | undefined {
+  const tools: unknown = payload.resources?.tools;
+  if (!isRecord(tools)) return undefined;
+  if (tools.mode !== "host-adapter" || !isRecord(tools.descriptor)) {
+    throw new DurabilityError(
+      "invalid_tool_adapter_policy",
+      "refusing to persist an unrecognized tool adapter policy",
+    );
+  }
+  const descriptor = tools.descriptor;
+  if (
+    descriptor.protocolVersion !== TOOL_ADAPTER_PROTOCOL_VERSION ||
+    typeof descriptor.adapterId !== "string" ||
+    !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(descriptor.adapterId) ||
+    typeof descriptor.adapterVersion !== "string" ||
+    !SEMVER_PATTERN.test(descriptor.adapterVersion) ||
+    !Array.isArray(descriptor.operations) ||
+    new Set(descriptor.operations).size !== descriptor.operations.length ||
+    !descriptor.operations.every(
+      (operation) =>
+        typeof operation === "string" &&
+        (NEUTRAL_TOOL_OPERATIONS as readonly string[]).includes(operation),
+    ) ||
+    !isRecord(descriptor.limits)
+  ) {
+    throw new DurabilityError(
+      "invalid_tool_adapter_policy",
+      "validated tool adapter descriptor has an invalid durable policy shape",
+    );
+  }
+  const limits = {} as Record<(typeof TOOL_ADAPTER_LIMIT_FIELDS)[number], number>;
+  for (const field of TOOL_ADAPTER_LIMIT_FIELDS) {
+    const value = descriptor.limits[field];
+    if (!validDurableToolAdapterLimit(field, value)) {
+      throw new DurabilityError(
+        "invalid_tool_adapter_policy",
+        "validated tool adapter descriptor has an invalid durable limit",
+        { field },
+      );
+    }
+    limits[field] = value as number;
+  }
+  return {
+    protocolVersion: descriptor.protocolVersion,
+    adapterId: descriptor.adapterId,
+    adapterVersion: descriptor.adapterVersion,
+    operations: [...descriptor.operations] as string[],
+    limits,
+  };
+}
+
+function validDurableToolAdapterLimit(
+  field: (typeof TOOL_ADAPTER_LIMIT_FIELDS)[number],
+  value: unknown,
+): value is number {
+  const bounds = TOOL_ADAPTER_LIMIT_BOUNDS[field];
+  return (
+    Number.isSafeInteger(value) &&
+    (value as number) >= bounds.min &&
+    (value as number) <= bounds.max
+  );
+}
+
+function durableOpenPayload(
+  payload: DurableOpenPayload,
+  redactToolAdapter: boolean,
+): DurableOpenPayload {
+  if (!redactToolAdapter || payload.resources === undefined) return structuredClone(payload);
+  return {
+    ...structuredClone(payload),
+    resources: { ...structuredClone(payload.resources), tools: "none" as const },
+  };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

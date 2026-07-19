@@ -3,8 +3,10 @@ import { isAbsolute, resolve } from "node:path";
 
 import {
   DurabilityError,
+  durableToolAdapterSummary,
   requestFingerprint,
   type DurableOpenCommand,
+  type DurableToolAdapterSummary,
   type DurabilityStore,
   type JournalEntry,
   type RecoverySnapshot,
@@ -13,17 +15,22 @@ import type { SessionEnvironmentSummary, TicketResource } from "./session-api.js
 import { wakeTicketResource } from "./tickets.js";
 import type {
   OpenPayload,
-  ProtocolCommand,
   SessionTarget,
   WakePayload,
 } from "./protocol.js";
+import {
+  parseSupportedProtocolCommand,
+  type OpenPayloadV2,
+  type SupportedProtocolCommand as ProtocolCommand,
+} from "./protocol-v2.js";
+import type { HostToolAdapterDescriptor } from "./tool-adapter-protocol.js";
 import {
   HostMetrics,
   NOOP_LOGGER,
   type MetricsSnapshot,
   type StructuredLogger,
 } from "./observability.js";
-import { eventEnvelope, parseCommand, type EventEnvelope } from "./protocol.js";
+import { eventEnvelope, type EventEnvelope } from "./protocol.js";
 import type { PiRpcController } from "./pi-rpc-controller.js";
 import {
   SessionConfigurationError,
@@ -43,6 +50,8 @@ import {
   type SessionTerminalRecord,
 } from "./session-catalog.js";
 
+type SupportedOpenPayload = OpenPayload | OpenPayloadV2;
+
 export type SessionState = "opening" | "idle" | "running" | "failed" | "closing";
 
 export interface SessionOpenRequest {
@@ -52,7 +61,11 @@ export interface SessionOpenRequest {
   agentDir?: string;
   session?: SessionTarget;
   model?: OpenPayload["model"];
-  resources?: OpenPayload["resources"];
+  resources?: SupportedOpenPayload["resources"];
+  /** Current host identity, supplied by Multiplexer for session-bound capabilities. */
+  hostInstanceId?: string;
+  /** Validated, memory-only protocol v2 adapter capability. Never persist or log this value. */
+  hostToolAdapter?: HostToolAdapterDescriptor;
   runtimeOptions?: PreparedSessionRuntimeOptions;
   signal?: AbortSignal;
 }
@@ -203,12 +216,13 @@ interface NormalizedOpenPolicy {
   agentDir?: string;
   session: SessionTarget;
   model?: OpenPayload["model"];
-  resources?: OpenPayload["resources"];
+  resources?: SupportedOpenPayload["resources"];
 }
 
 interface SessionSlot {
   sessionId: string;
   generation: number;
+  protocolVersion: string;
   state: SessionState;
   policy: NormalizedOpenPolicy;
   policyKey: string;
@@ -334,6 +348,10 @@ export class Multiplexer {
   readonly #turns: Semaphore;
   readonly #sessions = new Map<string, SessionSlot>();
   readonly #catalogRecords = new Map<string, SessionCatalogRecord>();
+  readonly #toolAdapterPolicies = new Map<
+    string,
+    { generation: number; summary: DurableToolAdapterSummary }
+  >();
   readonly #lifecycleTails = new Map<string, Promise<void>>();
   readonly #recoveryBlockedSessions = new Set<string>();
   readonly #listeners = new Set<EventListener>();
@@ -534,11 +552,21 @@ export class Multiplexer {
     const manifests = new Map(
       recovered.manifests.map((manifest) => [manifest.sessionId, manifest]),
     );
+    this.#toolAdapterPolicies.clear();
+    for (const manifest of recovered.manifests) {
+      if (manifest.toolAdapter !== undefined) {
+        this.#toolAdapterPolicies.set(manifest.sessionId, {
+          generation: manifest.generation,
+          summary: structuredClone(manifest.toolAdapter),
+        });
+      }
+    }
     const restoredIds = new Set<string>();
     const restore = async (
       sessionId: string,
       generation: number,
-      payload: OpenPayload,
+      payload: SupportedOpenPayload,
+      protocolVersion = "1.0",
       openOptions: {
         runtimeOptions?: PreparedSessionRuntimeOptions;
         catalogSpec?: PersistedSessionSpec;
@@ -546,14 +574,17 @@ export class Multiplexer {
       } = {},
     ): Promise<void> => {
       try {
-        const parsed = parseCommand({
-          protocolVersion: "1.0",
-          requestId: `restore-open-${randomUUID()}`,
-          operation: "open",
-          sessionId,
-          generation,
-          payload,
-        });
+        const parsed = parseSupportedProtocolCommand(
+          {
+            protocolVersion,
+            requestId: `restore-open-${randomUUID()}`,
+            operation: "open",
+            sessionId,
+            generation,
+            payload,
+          },
+          { expectedHostInstanceId: this.hostInstanceId },
+        );
         if (parsed.operation !== "open") throw new Error("restored command is not open");
         const remainingMs = openDeadline - this.#now();
         if (remainingMs <= 0) {
@@ -594,7 +625,16 @@ export class Multiplexer {
         });
         continue;
       }
-      let payload: OpenPayload;
+      if (manifest.toolAdapter !== undefined) {
+        restoredIds.add(record.sessionId);
+        report.failures.push({
+          sessionId: record.sessionId,
+          code: "tool_adapter_reprovision_required",
+          message: "host tool adapter capability must be re-provisioned after restart",
+        });
+        continue;
+      }
+      let payload: SupportedOpenPayload;
       let conversation = record.conversation ?? manifest.conversation;
       try {
         payload = manifest.payload;
@@ -637,7 +677,12 @@ export class Multiplexer {
       }
       restoredIds.add(record.sessionId);
       if (record.configuration !== "prepared") {
-        await restore(record.sessionId, record.generation, payload);
+        await restore(
+          record.sessionId,
+          record.generation,
+          payload,
+          manifest.protocolVersion ?? "1.0",
+        );
         continue;
       }
       try {
@@ -653,11 +698,17 @@ export class Multiplexer {
           },
           environmentOverlay: Object.freeze({}),
         };
-        await restore(record.sessionId, record.generation, payload, {
-          runtimeOptions,
-          catalogSpec: record.spec,
-          environmentSummary: record.environment,
-        });
+        await restore(
+          record.sessionId,
+          record.generation,
+          payload,
+          manifest.protocolVersion ?? "1.0",
+          {
+            runtimeOptions,
+            catalogSpec: record.spec,
+            environmentSummary: record.environment,
+          },
+        );
       } catch (error) {
         const normalized = asMultiplexerError(
           error,
@@ -676,6 +727,14 @@ export class Multiplexer {
       if (restoredIds.has(manifest.sessionId) || this.#catalogRecords.has(manifest.sessionId)) {
         continue;
       }
+      if (manifest.toolAdapter !== undefined) {
+        report.failures.push({
+          sessionId: manifest.sessionId,
+          code: "tool_adapter_reprovision_required",
+          message: "host tool adapter capability must be re-provisioned after restart",
+        });
+        continue;
+      }
       if (manifest.payload.session.mode === "memory") continue;
       let payload = manifest.payload;
       if (manifest.conversation?.sessionFile !== undefined) {
@@ -691,7 +750,12 @@ export class Multiplexer {
         });
         continue;
       }
-      await restore(manifest.sessionId, manifest.generation, payload);
+      await restore(
+        manifest.sessionId,
+        manifest.generation,
+        payload,
+        manifest.protocolVersion ?? "1.0",
+      );
     }
 
     this.#ready = true;
@@ -733,7 +797,20 @@ export class Multiplexer {
         [...bySession.entries()].map(async ([sessionId, entries]) => {
           for (const entry of entries) {
             try {
-              const parsed = parseCommand(entry.command);
+              if (
+                this.#toolAdapterPolicies.has(sessionId) &&
+                !this.#sessions.has(sessionId)
+              ) {
+                await this.#durability?.markFailed(sessionId, entry.idempotencyKey, {
+                  code: "tool_adapter_reprovision_required",
+                  message: "host tool adapter capability must be re-provisioned after restart",
+                  retryable: true,
+                });
+                continue;
+              }
+              const parsed = parseSupportedProtocolCommand(entry.command, {
+                expectedHostInstanceId: this.hostInstanceId,
+              });
               if (parsed.operation !== "wake") throw new Error("restored command is not wake");
               await this.wake(parsed);
               report.replayed.push(entry.idempotencyKey);
@@ -867,6 +944,42 @@ export class Multiplexer {
         }
       }
 
+      const hostToolAdapter = hostToolAdapterFromOpen(command);
+      const toolAdapterSummary = durableToolAdapterSummary(command.payload);
+      assertHostToolAdapterBinding(
+        hostToolAdapter,
+        this.hostInstanceId,
+        command.sessionId,
+        command.generation,
+      );
+      const retainedToolAdapter = this.#toolAdapterPolicies.get(command.sessionId);
+      if (retainedToolAdapter !== undefined) {
+        if (command.generation < retainedToolAdapter.generation) {
+          throw new MultiplexerError("stale_generation", "session generation is stale", {
+            details: {
+              currentGeneration: retainedToolAdapter.generation,
+              receivedGeneration: command.generation,
+            },
+          });
+        }
+        if (command.generation === retainedToolAdapter.generation) {
+          if (toolAdapterSummary === undefined) {
+            throw new MultiplexerError(
+              "tool_adapter_reprovision_required",
+              "host tool adapter capability must be re-provisioned for this session generation",
+              { retryable: true },
+            );
+          }
+          if (canonicalJson(toolAdapterSummary) !== canonicalJson(retainedToolAdapter.summary)) {
+            throw new MultiplexerError(
+              "session_policy_conflict",
+              "host tool adapter policy differs for the retained generation",
+              { details: { generation: retainedToolAdapter.generation } },
+            );
+          }
+        }
+      }
+
       const runtimePolicy =
         existing === undefined
           ? resolvedRuntimePolicy(policy, retained, command.generation)
@@ -908,10 +1021,19 @@ export class Multiplexer {
         });
       }
 
+      if (toolAdapterSummary !== undefined) {
+        this.#toolAdapterPolicies.set(command.sessionId, {
+          generation: command.generation,
+          summary: structuredClone(toolAdapterSummary),
+        });
+      }
+
       const request: SessionOpenRequest = {
         sessionId: command.sessionId,
         generation: command.generation,
         ...runtimePolicy,
+        hostInstanceId: this.hostInstanceId,
+        ...(hostToolAdapter === undefined ? {} : { hostToolAdapter }),
         ...(options.runtimeOptions === undefined
           ? {}
           : { runtimeOptions: options.runtimeOptions }),
@@ -928,6 +1050,13 @@ export class Multiplexer {
       let adapter: SessionAdapter | undefined;
       let conversation: SessionConversationIdentity | undefined;
       try {
+        if (
+          toolAdapterSummary !== undefined &&
+          command.payload.session.mode !== "memory"
+        ) {
+          // Persist the nonsecret reprovision marker before granting the capability to Pi.
+          await this.#durability?.saveManifest(command);
+        }
         adapter = await this.#factory.open(request);
         throwIfAborted(options.signal);
         conversation = validateOpenedConversation(
@@ -1001,6 +1130,7 @@ export class Multiplexer {
           "openFailed",
           command.requestId,
           { error: safeError(error) },
+          command.protocolVersion,
         );
         throw asMultiplexerError(error, "open_failed", "failed to open logical session");
       }
@@ -1008,6 +1138,7 @@ export class Multiplexer {
       const slot: SessionSlot = {
         sessionId: command.sessionId,
         generation: command.generation,
+        protocolVersion: command.protocolVersion,
         state: "idle",
         policy,
         policyKey,
@@ -1022,6 +1153,13 @@ export class Multiplexer {
         controls: new Map(),
       };
       this.#sessions.set(command.sessionId, slot);
+      if (
+        toolAdapterSummary === undefined &&
+        retainedToolAdapter !== undefined &&
+        command.generation > retainedToolAdapter.generation
+      ) {
+        this.#toolAdapterPolicies.delete(command.sessionId);
+      }
       adapter.setIdentityChangeHandler?.(async (identity) =>
         this.#persistConversationIdentity(slot, identity),
       );
@@ -1308,12 +1446,14 @@ export class Multiplexer {
           await this.#durability?.closeSession(retained.sessionId, false);
           await this.#catalog?.delete(retained.sessionId);
           this.#catalogRecords.delete(retained.sessionId);
+          this.#toolAdapterPolicies.delete(retained.sessionId);
           this.#emitProvisional(
             retained.sessionId,
             retained.generation,
             "sessionDeleted",
             command.requestId,
             {},
+            command.protocolVersion,
           );
         }
         return true;
@@ -1342,6 +1482,7 @@ export class Multiplexer {
       this.#emit(slot, "sessionClosed", command.requestId, { retainSession: retainArtifacts });
       this.#sessions.delete(command.sessionId);
       this.#residencyLeases.delete(command.sessionId);
+      if (!retainArtifacts) this.#toolAdapterPolicies.delete(command.sessionId);
       this.metrics.increment("sessions_closed");
       this.#logger.write("info", "session_closed", {
         sessionId: command.sessionId,
@@ -1491,6 +1632,7 @@ export class Multiplexer {
       await this.#durability?.closeSession(latest.sessionId, false);
       await catalog.delete(latest.sessionId);
       this.#catalogRecords.delete(latest.sessionId);
+      this.#toolAdapterPolicies.delete(latest.sessionId);
       this.#emitProvisional(
         latest.sessionId,
         latest.generation,
@@ -1986,6 +2128,7 @@ export class Multiplexer {
       sessionId: slot.sessionId,
       generation: slot.generation,
       sequence: slot.sequence,
+      protocolVersion: slot.protocolVersion,
     };
     if (requestId !== undefined) input.requestId = requestId;
     if (data !== undefined) input.data = data;
@@ -1998,6 +2141,7 @@ export class Multiplexer {
     event: string,
     requestId?: string,
     data?: unknown,
+    protocolVersion?: string,
   ): void {
     const input: Parameters<typeof eventEnvelope>[0] = {
       event,
@@ -2008,6 +2152,7 @@ export class Multiplexer {
     };
     if (requestId !== undefined) input.requestId = requestId;
     if (data !== undefined) input.data = data;
+    if (protocolVersion !== undefined) input.protocolVersion = protocolVersion;
     this.#publish(eventEnvelope(input));
   }
 
@@ -2036,7 +2181,33 @@ export class Multiplexer {
   }
 }
 
-function normalizeOpenPolicy(payload: OpenPayload): NormalizedOpenPolicy {
+function hostToolAdapterFromOpen(
+  command: Extract<ProtocolCommand, { operation: "open" }>,
+): HostToolAdapterDescriptor | undefined {
+  const tools = command.payload.resources?.tools;
+  return tools === undefined || tools === "none" ? undefined : tools.descriptor;
+}
+
+function assertHostToolAdapterBinding(
+  descriptor: HostToolAdapterDescriptor | undefined,
+  hostInstanceId: string,
+  sessionId: string,
+  generation: number,
+): void {
+  if (descriptor === undefined) return;
+  const expected = { hostInstanceId, sessionId, generation };
+  for (const field of ["hostInstanceId", "sessionId", "generation"] as const) {
+    if (descriptor.binding[field] !== expected[field]) {
+      throw new MultiplexerError(
+        "tool_adapter_binding_mismatch",
+        "host tool adapter binding does not match the opened session",
+        { details: { field } },
+      );
+    }
+  }
+}
+
+function normalizeOpenPolicy(payload: SupportedOpenPayload): NormalizedOpenPolicy {
   const policy: NormalizedOpenPolicy = {
     cwd: payload.cwd,
     session: { ...payload.session },
@@ -2116,7 +2287,7 @@ function validateOpenedConversation(
   return structuredClone(identity);
 }
 
-function persistedSpecFromOpen(payload: OpenPayload): PersistedSessionSpec {
+function persistedSpecFromOpen(payload: SupportedOpenPayload): PersistedSessionSpec {
   const target: PersistedSessionSpec["target"] = { mode: payload.session.mode };
   if (payload.session.path !== undefined) target.path = payload.session.path;
   const spec: PersistedSessionSpec = {

@@ -4,12 +4,14 @@ import {
   DEFAULT_MAX_LINE_BYTES,
   NdjsonDecoder,
   encodeLine,
-  parseCommand,
   type EventEnvelope,
-  type ProtocolCommand,
   type ProtocolErrorBody,
   type ResponseEnvelope,
 } from "./protocol.js";
+import {
+  parseSupportedProtocolCommand,
+  type SupportedProtocolCommand as ProtocolCommand,
+} from "./protocol-v2.js";
 
 export interface PiDaemonClientOptions {
   socketPath: string;
@@ -124,7 +126,7 @@ export class PiDaemonClient {
     if (this.#closed) return Promise.reject(new Error("pi-daemon client is closed"));
     let command: ProtocolCommand;
     try {
-      command = parseCommand(commandValue);
+      command = parseSupportedProtocolCommand(commandValue);
     } catch (error) {
       return Promise.reject(error);
     }

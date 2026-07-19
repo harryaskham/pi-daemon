@@ -34,6 +34,60 @@ const openCommand = (sessionId, generation = 1, overrides = {}) => ({
   },
 });
 
+const hostToolAdapterDescriptor = (
+  sessionId,
+  generation = 1,
+  hostInstanceId = "host-test",
+  overrides = {},
+) => ({
+  protocolVersion: "1.0",
+  adapterId: "fixture-adapter",
+  adapterVersion: "1.2.3",
+  endpoint: { transport: "unix", path: "/run/user/1000/pi-daemon-tool-adapter.sock" },
+  binding: {
+    hostInstanceId,
+    sessionId,
+    generation,
+    capabilityHandle: "fixture_capability_handle_0123456789",
+  },
+  operations: ["fs.list", "fs.stat", "fs.read", "fs.search"],
+  limits: {
+    maxRequestBytes: 16_384,
+    maxResponseBytes: 65_536,
+    maxConcurrentRequests: 2,
+    maxQueuedRequests: 4,
+    requestTimeoutMs: 5_000,
+    maxIdempotencyKeys: 128,
+    idempotencyTtlMs: 60_000,
+  },
+  ...overrides,
+});
+
+const hostToolOpenCommand = (
+  sessionId,
+  generation = 1,
+  hostInstanceId = "host-test",
+  descriptorOverrides = {},
+) => ({
+  ...openCommand(sessionId, generation),
+  protocolVersion: "2.0",
+  payload: {
+    ...openCommand(sessionId, generation).payload,
+    resources: {
+      ...openCommand(sessionId, generation).payload.resources,
+      tools: {
+        mode: "host-adapter",
+        descriptor: hostToolAdapterDescriptor(
+          sessionId,
+          generation,
+          hostInstanceId,
+          descriptorOverrides,
+        ),
+      },
+    },
+  },
+});
+
 const wakeCommand = (sessionId, requestId, generation = 1) => ({
   protocolVersion: "1.0",
   requestId,
@@ -154,6 +208,40 @@ test("open is generation-aware idempotent and replaces only idle sessions", asyn
   assert.equal(replacement.created, true);
   assert.equal(replacement.session.generation, 2);
   assert.equal(oldAdapter.disposed, 1);
+});
+
+test("protocol v2 tool adapters are host/session/generation bound before factory open", async () => {
+  const factory = new ControlledFactory();
+  const mux = new Multiplexer({ factory, hostInstanceId: "host-test" });
+  const events = [];
+  mux.subscribe((event) => events.push(event));
+  const command = hostToolOpenCommand("bound");
+
+  const opened = await mux.open(command);
+  assert.equal(opened.created, true);
+  assert.equal(factory.opens[0].hostInstanceId, "host-test");
+  assert.deepEqual(factory.opens[0].hostToolAdapter, command.payload.resources.tools.descriptor);
+  assert.equal(events[0].protocolVersion, "2.0");
+
+  for (const [field, descriptorOverrides] of [
+    ["hostInstanceId", { binding: { ...hostToolAdapterDescriptor("host-mismatch").binding, hostInstanceId: "old-host" } }],
+    ["sessionId", { binding: { ...hostToolAdapterDescriptor("session-mismatch").binding, sessionId: "other" } }],
+    ["generation", { binding: { ...hostToolAdapterDescriptor("generation-mismatch").binding, generation: 2 } }],
+  ]) {
+    const isolatedFactory = new ControlledFactory();
+    const isolatedMux = new Multiplexer({ factory: isolatedFactory, hostInstanceId: "host-test" });
+    const error = await isolatedMux
+      .open(hostToolOpenCommand(`${field}-mismatch`, 1, "host-test", descriptorOverrides))
+      .then(
+        () => undefined,
+        (caught) => caught,
+      );
+    assert.ok(error instanceof MultiplexerError);
+    assert.equal(error.code, "tool_adapter_binding_mismatch");
+    assert.deepEqual(error.details, { field });
+    assert.equal(JSON.stringify(error).includes("fixture_capability_handle"), false);
+    assert.equal(isolatedFactory.opens.length, 0);
+  }
 });
 
 test("concurrent duplicate opens create only one adapter", async () => {
