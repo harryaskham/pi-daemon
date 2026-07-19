@@ -33,6 +33,7 @@ remain neutral service surfaces—not Cacophony components.
 - [Dash v1 acceptance](dashboard-acceptance) — live embedded/dedicated receipts, browser/security/performance gates, and wall-clock soak status
 - [Session configuration](session-configuration) — Pi CLI mapping, environment handling, resources, tools, and honest isolation limits
 - [Schedule contract](schedules) — versioned cron/timezone/prompt resources, durable bounded timers, recovery, clock and DST semantics
+- [Scheduler acceptance](scheduler-acceptance) — measured all-IANA DST, restart, overlap, secrecy, and accelerated-soak release gate
 - [Operations](operations) — install, serve, probe, status, drain, and recovery
 - [Session management CLI](session-cli) — JSON CRUD, tickets, prompts/controls, and endpoint discovery
 - [Security](security) — shared-process trust boundary and root policy

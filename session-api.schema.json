@@ -579,7 +579,7 @@
       "type": "object",
       "required": ["timerRuntime", "externalTimersSupported", "scheduleCount", "enabledCount"],
       "properties": {
-        "timerRuntime": { "const": false },
+        "timerRuntime": { "type": "boolean" },
         "externalTimersSupported": { "const": true },
         "scheduleCount": { "type": "integer", "minimum": 0 },
         "enabledCount": { "type": "integer", "minimum": 0 },

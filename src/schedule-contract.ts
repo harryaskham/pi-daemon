@@ -78,7 +78,7 @@ export type SchedulePut = Omit<ScheduleResource, "contractVersion" | "revision" 
 export interface ScheduleCapabilities {
   contractVersion: typeof SCHEDULE_CONTRACT_VERSION;
   persistence: true;
-  timerRuntime: false;
+  timerRuntime: boolean;
   cronSyntax: "posix-five-field";
   timezoneDatabase: "runtime-iana";
   optimisticConcurrency: "expected-revision";
@@ -90,11 +90,14 @@ export interface ScheduleCapabilities {
   limits: ScheduleLimits;
 }
 
-export function scheduleCapabilities(limits: Partial<ScheduleLimits> = {}): ScheduleCapabilities {
+export function scheduleCapabilities(
+  limits: Partial<ScheduleLimits> = {},
+  timerRuntime = false,
+): ScheduleCapabilities {
   return {
     contractVersion: SCHEDULE_CONTRACT_VERSION,
     persistence: true,
-    timerRuntime: false,
+    timerRuntime,
     cronSyntax: "posix-five-field",
     timezoneDatabase: "runtime-iana",
     optimisticConcurrency: "expected-revision",

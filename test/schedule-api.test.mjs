@@ -16,7 +16,7 @@ import { SessionApiClient, SessionApiClientError } from "../dist/session-client.
 const TOKEN = "schedule-api-fixture-token-0123456789";
 class EmptyFactory { async open() { throw new Error("not used"); } }
 
-async function harness(t) {
+async function harness(t, options = {}) {
   const root = await mkdtemp(join(tmpdir(), "pi-daemon-schedule-api-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   const catalog = new FileSessionCatalog({ stateDir: root });
@@ -25,7 +25,7 @@ async function harness(t) {
   const multiplexer = new Multiplexer({ factory: new EmptyFactory(), catalog, hostInstanceId: "host-schedules" });
   await multiplexer.recover();
   const store = new FileScheduleStore({ stateDir: root });
-  const server = new ApiServer({ multiplexer, schedules: store, authenticator: new ServiceBearerAuthenticator(TOKEN), host: "::1", port: 0 });
+  const server = new ApiServer({ multiplexer, schedules: store, ...(options.scheduler === undefined ? {} : { scheduler: options.scheduler }), authenticator: new ServiceBearerAuthenticator(TOKEN), host: "::1", port: 0 });
   const address = await server.start();
   t.after(async () => { await server.stop(); await multiplexer.dispose(100); });
   return { root, store, multiplexer, address, client: new SessionApiClient({ baseUrl: `http://[${address.host}]:${address.port}`, bearerToken: TOKEN }) };
@@ -68,6 +68,26 @@ test("schedule API authenticates before existence and enforces idempotency plus 
   await assert.rejects(h.client.createSchedule("oversized", { ...definition, prompt: "x".repeat(65_537) }, "oversized-key"), (error) => error instanceof SessionApiClientError && error.status === 413);
   await h.client.deleteSchedule("weekday", winner.headers.etag, "delete-key");
   assert.deepEqual((await h.client.deleteSchedule("weekday", winner.headers.etag, "delete-key")).data, { deleted: true });
+});
+
+test("native timer capability and mutation recompute are authoritative", async (t) => {
+  let recomputes = 0;
+  const scheduler = {
+    async recompute() { recomputes += 1; },
+    status() { return { running: true, draining: false, activeAdmissions: 0, queuedOverlaps: 0, nextWakeAt: "2026-07-21T09:00:00.000Z" }; },
+  };
+  const h = await harness(t, { scheduler });
+  const capabilities = await h.client.scheduleCapabilities();
+  assert.equal(capabilities.data.timerRuntime, true);
+  await h.client.createSchedule("native", definition, "native-create");
+  assert.equal(recomputes, 1);
+  assert.deepEqual((await h.client.scheduleStatus()).data, {
+    timerRuntime: true,
+    externalTimersSupported: true,
+    scheduleCount: 1,
+    enabledCount: 1,
+    nextWakeAt: "2026-07-21T09:00:00.000Z",
+  });
 });
 
 test("schedule config imports owner-private prompt references without exposing content", async (t) => {

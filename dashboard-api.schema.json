@@ -4338,7 +4338,7 @@
           "const": true
         },
         "timerRuntime": {
-          "const": false
+          "type": "boolean"
         },
         "cronSyntax": {
           "const": "posix-five-field"

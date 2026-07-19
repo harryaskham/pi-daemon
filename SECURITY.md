@@ -43,6 +43,15 @@ overwritten or rotated. Seed and bearer bytes never enter argv, logs, status,
 Nix evaluation, manifests, or responses; symlinked, foreign-owned, permissive,
 invalid, oversized, or conflicting inputs fail closed.
 
+Native schedule prompts are sensitive persisted content under owner-only
+`STATE_DIR/schedules/v1`; they are not encrypted and must not contain reusable
+credentials. Prompt text, model output, provider errors, environment values,
+and ticket payloads are excluded from capabilities, status, Dash resources,
+terminal summaries, and default logs. Malformed, symlinked, foreign-owned,
+permissive, oversized, or aggregate-over-limit schedule files fail closed or
+are quarantined. A crash after a trigger may have been accepted advances to an
+indeterminate/content-free durable truth and is never blindly replayed.
+
 Pi Daemon Dash has a separate browser authentication boundary. Its absent
 default web credential is generated atomically at the owner-only
 `STATE_DIR/web-token` and reused; configured credential files receive the same

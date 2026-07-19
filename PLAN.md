@@ -668,6 +668,8 @@ implementation order. This list is a human-readable crosswalk.
     authenticated cookie-BFF routes without exposing the service bearer.
   - [x] `bd-edbc79` — capability-gated Dash schedule editor, countdowns,
     terminal history, validation, and dormant/unread visual semantics.
+  - [x] `bd-aa4260` — native lifecycle integration plus all-IANA timezone/DST,
+    wall-clock, restart, overlap, security, compatibility, and soak acceptance.
 
 All standalone delivery and acceptance blockers are landed. Cutting the first
 release tag is an explicit operator action under `docs/release.md`; the remaining

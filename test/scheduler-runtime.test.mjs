@@ -166,6 +166,36 @@ test("cron search handles DST gaps and repeated civil minutes", () => {
   assert.equal(new Date(second).toISOString(), "2026-10-25T01:30:00.000Z");
 });
 
+test("every runtime IANA timezone selects bounded ordered instants across DST seasons", () => {
+  const zones = Intl.supportedValuesOf("timeZone");
+  assert.ok(zones.length >= 300);
+  for (const timezone of zones) {
+    const spring = nextCronOccurrence("17 2 * * *", timezone, Date.parse("2026-03-28T00:00:00.000Z"));
+    const springNext = nextCronOccurrence("17 2 * * *", timezone, spring);
+    const autumn = nextCronOccurrence("17 1 * * *", timezone, Date.parse("2026-10-24T00:00:00.000Z"));
+    const autumnNext = nextCronOccurrence("17 1 * * *", timezone, autumn);
+    assert.ok(spring > Date.parse("2026-03-28T00:00:00.000Z") && springNext > spring, timezone);
+    assert.ok(autumn > Date.parse("2026-10-24T00:00:00.000Z") && autumnNext > autumn, timezone);
+  }
+});
+
+test("backward wall-clock correction and restart do not repeat a decided instant", async (t) => {
+  const { clock, store } = await fixture(t, "2026-07-20T09:00:00.000Z");
+  await store.create(definition({ nextTriggerAt: "2026-07-20T09:00:00.000Z" }));
+  const admission = gateway({ initialState: "succeeded" });
+  const first = new SchedulerRuntime({ store, gateway: admission, clock });
+  await first.start();
+  assert.equal(admission.admissions.length, 1);
+  first.stop();
+
+  clock.now = Date.parse("2026-07-20T08:00:00.000Z");
+  const restarted = new SchedulerRuntime({ store, gateway: admission, clock });
+  await restarted.start();
+  assert.equal(admission.admissions.length, 1);
+  assert.equal((await store.get("schedule-01")).nextTriggerAt, "2026-07-21T09:00:00.000Z");
+  restarted.stop();
+});
+
 test("long fake-clock soak keeps timers, overlap state and retained memory bounded", async (t) => {
   const { clock, store } = await fixture(t, "2026-07-20T00:00:30.000Z");
   await store.create(definition({ cron: "* * * * *", jitterMs: 0 }));

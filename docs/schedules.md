@@ -3,10 +3,11 @@
 Pi Daemon defines a transport-neutral, per-session schedule resource and a
 bounded durable timer runtime. The published TypeScript contract is
 `@harryaskham/pi-daemon/schedule-contract`; the language-neutral contract is
-[`schedule.schema.json`](../schedule.schema.json). The current Session API
-continues to report `timerRuntime: false`: storing a resource alone does **not**
-arrange a wake. Hosts can explicitly construct the exported transport-neutral
-`SchedulerRuntime`; service wiring remains a separate integration concern.
+[`schedule.schema.json`](../schedule.schema.json). The normal `pi-daemon serve` lifecycle owns the exported transport-neutral
+`SchedulerRuntime` and reports `timerRuntime: true`; storing or changing a
+resource recomputes its authoritative timer. Library consumers may still use
+`FileScheduleStore` alone, in which case capabilities truthfully report
+`timerRuntime: false` and storing a resource does **not** arrange a wake.
 
 ## Resource and updates
 
@@ -97,13 +98,21 @@ replayed after a crash.
 the contract resource. Recovery is bounded by record/count/aggregate byte
 limits, validates every field, rejects insecure permissions and symlinks, and
 quarantines malformed or unsupported files with a `.corrupt-...` suffix.
-Store recovery by itself does not submit, catch up, or start timers. Explicit
-`SchedulerRuntime.start()` recomputes future instants and applies bounded
+Store recovery by itself does not submit, catch up, or start timers. The daemon
+starts `SchedulerRuntime` after catalog and schedule-import recovery, before
+publishing its API; explicit library `SchedulerRuntime.start()` does the same
+future-instant recomputation and applies bounded
 missed-wake policy to stale instants. Before calling durable prompt admission it
 atomically records a conservative trigger decision and advances the next
 instant. A crash can therefore omit work that was not durably accepted, but can
 never blindly replay work that may have been accepted. Accepted prompt tickets
 retain queued/running/terminal or indeterminate truth in the wake journal.
+
+A due schedule hydrates a dormant durable session through its retained policy
+before admission. Deleted sessions and sessions that cannot be safely
+reprovisioned fail the occurrence closed without stopping the timer loop. A
+backward clock correction uses the last durably decided trigger as a lower
+bound, so restart cannot repeat an already decided civil instant.
 
 The runtime exposes transport-neutral `start`, `stop`, `reload`, `status`, and
 content-free schedule status/history methods. It uses monotonic timers only as
@@ -146,8 +155,12 @@ Mutations require `Idempotency-Key`. Existing-resource mutations also require
 the exact opaque `ETag` returned by GET; a stale value receives 412. Session
 references resolve through the retained catalog to one immutable session ID,
 and missing/ambiguous references fail rather than creating an orphan. The timer
-runtime capability remains explicit, so external systemd/launchd timers may
-coexist without the daemon claiming ownership of their triggers.
+runtime capability remains explicit, so store-only hosts and older daemons
+remain distinguishable and external systemd/launchd timers may coexist without
+confusing their triggers with native schedule history.
+
+Measured timezone, restart, overlap, soak, API/Dash, and secrecy evidence is in
+[Scheduler acceptance and accuracy](scheduler-acceptance.md).
 
 The high-level commands are `pi-daemon schedule
 list|status|show|create|update|delete|enable|disable`. Create/update consume an

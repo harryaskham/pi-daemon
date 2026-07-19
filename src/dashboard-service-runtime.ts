@@ -9,6 +9,7 @@ import { DashboardNeutralApiController } from "./dashboard-neutral-api.js";
 import { Multiplexer } from "./multiplexer.js";
 import type { RpcAttachmentManager } from "./rpc-attachments.js";
 import type { SessionCatalogStore } from "./session-catalog.js";
+import type { SchedulerRuntime } from "./scheduler-runtime.js";
 import type { FileScheduleStore } from "./schedule-store.js";
 import {
   resolveSessionInventoryConfig,
@@ -29,6 +30,7 @@ export interface EmbeddedDashboardServiceRuntimeOptions {
   catalog: Pick<SessionCatalogStore, "recover">;
   multiplexer: Multiplexer;
   schedules?: FileScheduleStore;
+  scheduler?: Pick<SchedulerRuntime, "recompute" | "status">;
   rpcAttachments?: Pick<RpcAttachmentManager, "hasController">;
   tuiChannels?: InProcessDashboardTuiChannels;
 }
@@ -129,6 +131,7 @@ export class EmbeddedDashboardServiceRuntime {
       ownership,
       multiplexer: options.multiplexer,
       ...(options.schedules === undefined ? {} : { schedules: options.schedules }),
+      ...(options.scheduler === undefined ? {} : { scheduler: options.scheduler }),
       ...(options.tuiChannels === undefined ? {} : { tuiChannels: options.tuiChannels }),
     });
     const neutralApi = new DashboardNeutralApiController({

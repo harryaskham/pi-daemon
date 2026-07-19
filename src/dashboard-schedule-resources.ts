@@ -35,13 +35,17 @@ export function scheduleDefinition(
   };
 }
 
-export function scheduleStatus(resources: readonly ScheduleResource[]): DashboardScheduleStatus {
-  const nextWakeAt = resources
+export function scheduleStatus(
+  resources: readonly ScheduleResource[],
+  timerRuntime = false,
+  authoritativeNextWakeAt?: string,
+): DashboardScheduleStatus {
+  const nextWakeAt = authoritativeNextWakeAt ?? resources
     .filter((resource) => resource.enabled && resource.nextTriggerAt !== undefined)
     .map((resource) => resource.nextTriggerAt!)
     .sort()[0];
   return {
-    timerRuntime: false,
+    timerRuntime,
     externalTimersSupported: true,
     scheduleCount: resources.length,
     enabledCount: resources.filter((resource) => resource.enabled).length,

@@ -15,6 +15,15 @@ npm test
 
 ## Serve
 
+Native schedules start with `serve` after catalog/import recovery and before
+the authenticated API is published. Schedule CRUD recomputes the single
+bounded timer owner immediately. During shutdown, new timer admission stops
+before accepted turns drain. Operators can inspect content-free state with
+`pi-daemon schedule status`; prompt definitions remain in owner-only files and
+should be supplied through `--file`/`--prompt-file`, never argv. See
+[Schedules](schedules.md) and the [accuracy receipt](scheduler-acceptance.md).
+External timers remain valid API clients and should use unique idempotency keys.
+
 Choose non-overlapping daemon state, Pi agent, and allowed workload roots.
 Repeat `--allow-root PATH` for each canonical root. Workload roots must already
 exist because they are explicit authority grants. The daemon creates absent

@@ -48,6 +48,7 @@ Initial standalone implementation:
 - neutral service-bearer Dash API for bounded inventory/info/transcript resources, activation/export/lease tickets, typed client methods, and capability-gated `pi-daemon-tui.v1` negotiation
 - policy-preserving `InProcessDashboardBackend` with direct inventory/projection/ownership/catalog delegation, no-prompt durable hydration, renewable eviction leases, coalesced rich channels, controller arbitration, bounded replay/gaps, extension UI, and delegated TUI channels
 - service-bearer `RemoteDashboardBackend` with exact neutral-resource parity, coalesced framed Rich/TUI attachments, explicit prompt-free durable hydration, renewable attachment leases, bounded cursor reconnect/gaps, controller arbitration, and no blind replay of accepted commands or semantic TUI actions
+- native bounded per-session cron scheduler with all-IANA timezone/DST semantics, restart-stable jitter, wall-clock jump protection, missed/overlap policies, durable prompt-ticket admission, authenticated API/CLI/config, and prompt-redacted Dash editor/countdown/history
 - hermetic Linux/Nix installed-bin checks that resolve npm links through the pinned Node runtime
 - credential-free full-host acceptance across installed artifacts, configured CRUD, RPC/ACP/stdio, restart/replay, security, and zero per-session child processes
 - optional live-provider two-session zero-child-process acceptance harness

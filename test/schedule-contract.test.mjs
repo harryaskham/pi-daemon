@@ -18,10 +18,13 @@ test("published schedule fixtures satisfy schema and TypeScript validation", asy
   const validate = ajv.compile(schema);
   const resource = await json("../fixtures/schedules/schedule.resource.json");
   const capabilities = await json("../fixtures/schedules/capabilities.json");
+  const nativeCapabilities = await json("../fixtures/schedules/capabilities-native.json");
   assert.equal(validate(resource), true, JSON.stringify(validate.errors));
   assert.equal(validate(capabilities), true, JSON.stringify(validate.errors));
+  assert.equal(validate(nativeCapabilities), true, JSON.stringify(validate.errors));
   assert.deepEqual(validateScheduleResource(resource), resource);
   assert.deepEqual(scheduleCapabilities(), capabilities);
+  assert.deepEqual(scheduleCapabilities({}, true), nativeCapabilities);
 });
 
 test("cron and timezone validation is strict and bounded", () => {

@@ -61,6 +61,7 @@ import {
   scheduleStatus,
 } from "./dashboard-schedule-resources.js";
 import { scheduleCapabilities, type ScheduleCapabilities } from "./schedule-contract.js";
+import type { SchedulerRuntime } from "./scheduler-runtime.js";
 import { ScheduleStoreError, type FileScheduleStore } from "./schedule-store.js";
 import type { SessionOwnershipService } from "./session-ownership.js";
 import type { TranscriptProjector } from "./transcript-projector.js";
@@ -126,6 +127,7 @@ export interface InProcessDashboardBackendOptions {
   >;
   multiplexer: Multiplexer;
   schedules?: Pick<FileScheduleStore, "list" | "get" | "create" | "update" | "delete" | "limits">;
+  scheduler?: Pick<SchedulerRuntime, "recompute" | "status">;
   tuiChannels?: InProcessDashboardTuiChannels;
   capabilities?: DashboardCapabilities;
   limits?: Partial<InProcessDashboardBackendLimits>;
@@ -154,6 +156,7 @@ export class InProcessDashboardBackend implements DashboardBackend {
   readonly #ownership: InProcessDashboardBackendOptions["ownership"];
   readonly #multiplexer: Multiplexer;
   readonly #schedules: InProcessDashboardBackendOptions["schedules"];
+  readonly #scheduler: InProcessDashboardBackendOptions["scheduler"];
   readonly #tuiChannels: InProcessDashboardTuiChannels | undefined;
   readonly #capabilities: DashboardCapabilities;
   readonly #limits: InProcessDashboardBackendLimits;
@@ -168,6 +171,7 @@ export class InProcessDashboardBackend implements DashboardBackend {
     this.#ownership = options.ownership;
     this.#multiplexer = options.multiplexer;
     this.#schedules = options.schedules;
+    this.#scheduler = options.scheduler;
     this.#tuiChannels = options.tuiChannels;
     this.#limits = resolveLimits(options.limits);
     this.#capabilities = options.capabilities ?? defaultCapabilities(
@@ -294,7 +298,7 @@ export class InProcessDashboardBackend implements DashboardBackend {
 
   async scheduleCapabilities(): Promise<ScheduleCapabilities> {
     this.#assertOpen();
-    return scheduleCapabilities(this.#scheduleStore().limits);
+    return scheduleCapabilities(this.#scheduleStore().limits, this.#scheduler !== undefined);
   }
 
   async listSchedules(sessionRef?: string): Promise<DashboardScheduleResource[]> {
@@ -326,9 +330,11 @@ export class InProcessDashboardBackend implements DashboardBackend {
       }
       const session = await this.#retainedScheduleSession(request.schedule.sessionRef);
       const write = { ...request.schedule, sessionRef: session.sessionId };
-      return browserScheduleResource(await this.#scheduleStore().create(
+      const created = await this.#scheduleStore().create(
         scheduleDefinition(write, request.schedule.prompt),
-      ));
+      );
+      await this.#scheduler?.recompute();
+      return browserScheduleResource((await this.#scheduleStore().get(created.scheduleId)) ?? created);
     }) as Promise<DashboardScheduleResource>;
   }
 
@@ -348,11 +354,13 @@ export class InProcessDashboardBackend implements DashboardBackend {
         throw new InProcessDashboardBackendError("schedule_identity_conflict", "schedule session is immutable");
       }
       const write = { ...request.schedule, sessionRef: session.sessionId };
-      return browserScheduleResource(await this.#scheduleStore().update(
+      const updated = await this.#scheduleStore().update(
         scheduleId,
         current.revision,
         scheduleDefinition(write, request.schedule.prompt ?? current.prompt),
-      ));
+      );
+      await this.#scheduler?.recompute();
+      return browserScheduleResource((await this.#scheduleStore().get(scheduleId)) ?? updated);
     }) as Promise<DashboardScheduleResource>;
   }
 
@@ -365,12 +373,17 @@ export class InProcessDashboardBackend implements DashboardBackend {
         throw new InProcessDashboardBackendError("schedule_precondition_failed", "schedule revision precondition failed");
       }
       await this.#scheduleStore().delete(scheduleId, current.revision);
+      await this.#scheduler?.recompute();
     }) as Promise<void>;
   }
 
   async scheduleStatus(): Promise<DashboardScheduleStatus> {
     this.#assertOpen();
-    return scheduleStatus(await this.#scheduleStore().list());
+    return scheduleStatus(
+      await this.#scheduleStore().list(),
+      this.#scheduler !== undefined,
+      this.#scheduler?.status().nextWakeAt,
+    );
   }
 
   async getManagedSession(sessionRef: string): Promise<SessionResource> {

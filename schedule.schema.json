@@ -85,7 +85,7 @@
       "properties": {
         "contractVersion": { "const": "1.0" },
         "persistence": { "const": true },
-        "timerRuntime": { "const": false },
+        "timerRuntime": { "type": "boolean" },
         "cronSyntax": { "const": "posix-five-field" },
         "timezoneDatabase": { "const": "runtime-iana" },
         "optimisticConcurrency": { "const": "expected-revision" },

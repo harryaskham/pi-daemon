@@ -28,7 +28,8 @@ or Cacophony credentials.
 > Daemon Dash foundation are implemented. Dash now includes a packaged
 > content-hashed SPA, preview-only transcript projection, secure browser BFF,
 > signed revocable cookie exchange, revisioned workspace/UI-settings stores,
-> persisted 10k-session inventory, rich transcript rendering, durable direct/fork
+> a native durable IANA-timezone scheduler with restart-safe prompt tickets and
+> Dash countdown/editor/history, persisted 10k-session inventory, rich transcript rendering, durable direct/fork
 > ownership and export, the neutral service-bearer Dash API, coalesced embedded
 > and dedicated Rich/TUI backends with bounded reconnect, and a bounded
 > in-process shadow-terminal host, authenticated browser stream routing, and a
@@ -200,7 +201,8 @@ supervisord on nix-on-droid; see [Operations](docs/operations.md#home-manager-se
 - [`docs/dashboard-acceptance.md`](docs/dashboard-acceptance.md) — live dual-mode browser, security, bundle/performance, and soak receipts
 - [`docs/shadow-tui.md`](docs/shadow-tui.md) — in-process virtual terminal, control policy, performance proof, and Pi view seam
 - [`docs/session-cli.md`](docs/session-cli.md) — high-level session CRUD, tickets, prompt/control, and endpoint discovery
-- [`docs/schedules.md`](docs/schedules.md) — authenticated schedule CRUD/status, ETags, safe file-backed CLI/config imports, and external-timer coexistence
+- [`docs/schedules.md`](docs/schedules.md) — native durable timers, authenticated schedule CRUD/status, ETags, safe file-backed CLI/config imports, and external-timer coexistence
+- [`docs/scheduler-acceptance.md`](docs/scheduler-acceptance.md) — measured all-IANA DST, clock-jump, restart, overlap, secrecy, and soak release receipt
 - [`session-api.schema.json`](session-api.schema.json) / [`session-api.openapi.json`](session-api.openapi.json) — machine-readable session API
 - [`SECURITY.md`](SECURITY.md) — trust boundary and vulnerability reporting
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — development workflow

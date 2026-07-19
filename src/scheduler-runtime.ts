@@ -5,6 +5,7 @@ import { type ScheduleExecutionOverride, type ScheduleLastTrigger, type Schedule
 import { PROTOCOL_VERSION } from "./protocol.js";
 import { FileScheduleStore, ScheduleStoreError } from "./schedule-store.js";
 import type { TicketResource } from "./session-api.js";
+import { ensureSessionResident } from "./session-residency.js";
 
 const MAX_CRON_SEARCH_MINUTES = 5 * 366 * 24 * 60;
 const CLOCK_RECHECK_MS = 60_000;
@@ -189,8 +190,17 @@ export class SchedulerRuntime {
       // Retain stale instants for missed-wake policy, but recompute all future
       // instants so wall-clock and timezone database changes take effect.
       if (persisted === undefined || persisted > now) {
-        const next = nextCronOccurrence(schedule.cron, schedule.timezone, now);
-        await this.#persist(schedule, next, schedule.lastTrigger);
+        // A backward wall-clock correction must not select an instant already
+        // decided before the jump. The durable trigger instant is the lower
+        // bound across restart as well as within this process.
+        const last = schedule.lastTrigger === undefined
+          ? undefined
+          : Date.parse(schedule.lastTrigger.scheduledFor);
+        const boundary = last === undefined ? now : Math.max(now, last);
+        const next = nextCronOccurrence(schedule.cron, schedule.timezone, boundary);
+        if (schedule.nextTriggerAt !== new Date(next).toISOString()) {
+          await this.#persist(schedule, next, schedule.lastTrigger);
+        }
       }
     }
   }
@@ -374,13 +384,13 @@ export function createMultiplexerSchedulerGateway(multiplexer: Multiplexer): Sch
   return {
     isDraining: () => multiplexer.status().draining,
     resolveSession: async (sessionRef) => {
-      const retained = await multiplexer.retainedSession(sessionRef);
-      if (retained === undefined) return undefined;
-      if (retained.residency === "dormant") return { sessionId: retained.sessionId, generation: retained.generation, state: "dormant" };
       try {
+        const retained = await ensureSessionResident(multiplexer, sessionRef);
         const live = multiplexer.status(retained.sessionId);
         return { sessionId: live.sessionId, generation: live.generation, state: live.state };
       } catch {
+        // Deleted sessions and sessions that cannot be safely reprovisioned
+        // fail this occurrence closed without stopping the timer loop.
         return undefined;
       }
     },

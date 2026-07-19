@@ -654,11 +654,9 @@ workspaces therefore have independent unread state.
 
 ### 12.1 Scheduled wakes
 
-Pi Daemon does not currently have a neutral wake scheduler, so no timer can be
-truthfully inferred today. Timer display is capability-gated.
-
-A separate **Pi Daemon Session Scheduler epic** will add neutral per-session
-wakes without naming Cacophony. Its persisted schedule resource includes:
+Pi Daemon now has a neutral native wake scheduler. Timer display remains
+capability-gated so older or store-only hosts do not fabricate state. The
+persisted schedule resource includes:
 
 - schedule ID, enabled state, IANA timezone, and validated cron expression;
 - bounded prompt and optional model/thinking override;
@@ -676,8 +674,9 @@ blindly replayed. Existing external timers remain supported clients; native
 schedules are additive. Dash exposes CRUD in the session information/settings
 UI and receives authoritative `nextWakeAt` for the magenta countdown.
 
-Until that epic lands, scheduled indicators are absent rather than fabricated.
-Cacophony-specific heartbeat state remains out of this repository.
+Hosts that omit the capability retain absent scheduled indicators rather than
+fabricating them. Cacophony-specific heartbeat state remains out of this
+repository.
 
 ## 13. SPA information architecture
 
@@ -1353,7 +1352,7 @@ These lanes intentionally begin in parallel:
 - [x] `bd-72aac0` — schedule HTTP/CLI/config; depends on contract and config.
 - [x] `bd-edbc79` — beautiful Dash schedule editor/countdown/history; depends on
   schedule contract and live Dash.
-- [ ] `bd-aa4260` — timezone/DST/restart/overlap/security/soak acceptance; depends
+- [x] `bd-aa4260` — timezone/DST/restart/overlap/security/soak acceptance; depends
   on runtime, API, and Dash schedule UX.
 - [ ] `bd-4e10da` — scheduler parent epic; depends on `bd-aa4260`.
 

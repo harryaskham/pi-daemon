@@ -24,6 +24,7 @@ import { parseSupportedProtocolCommand } from "./protocol-v2.js";
 import { RpcAttachmentManager } from "./rpc-attachments.js";
 import { loadClientBearer } from "./rpc-stdio-cli.js";
 import { importConfiguredSchedules } from "./schedule-config.js";
+import { createMultiplexerSchedulerGateway, SchedulerRuntime } from "./scheduler-runtime.js";
 import { FileScheduleStore } from "./schedule-store.js";
 import { ProtocolServer } from "./server.js";
 import {
@@ -512,6 +513,11 @@ async function runServe(
     store: scheduleStore,
     resolveSession: async (sessionRef) => (await multiplexer.retainedSession(sessionRef))?.sessionId,
   });
+  const scheduler = new SchedulerRuntime({
+    store: scheduleStore,
+    gateway: createMultiplexerSchedulerGateway(multiplexer),
+  });
+  await scheduler.start();
   const rpcAttachments = apiEnabled ? new RpcAttachmentManager(multiplexer) : undefined;
   let dashboardRuntime: EmbeddedDashboardServiceRuntime | undefined;
   let dashboardServer: DashboardServer | undefined;
@@ -578,6 +584,7 @@ async function runServe(
         catalog,
         multiplexer,
         schedules: scheduleStore,
+        scheduler,
         ...(rpcAttachments === undefined ? {} : { rpcAttachments }),
       });
       if (embeddedWebEnabled) {
@@ -600,6 +607,7 @@ async function runServe(
         authenticator: loaded.authenticator,
         tickets,
         schedules: scheduleStore,
+        scheduler,
         ...(rpcAttachments === undefined ? {} : { rpcAttachments }),
         ...(dashboardRuntime === undefined ? {} : { dashboardApi: dashboardRuntime.neutralApi }),
         host: options.get("api-bind") ?? config.api?.bind ?? "127.0.0.1",
@@ -616,6 +624,7 @@ async function runServe(
     dashboardAddress = await dashboardServer?.start();
   } catch (error) {
     signalLatch?.dispose();
+    scheduler.beginDrain();
     await dashboardServer?.stop().catch(() => {});
     await apiServer?.stop().catch(() => {});
     rpcAttachments?.dispose();
@@ -711,6 +720,7 @@ async function runServe(
     shutdownPromise = (async () => {
       const deadline = Date.now() + timeoutMs;
       multiplexer.beginDrain();
+      scheduler.beginDrain();
       const transportBudget = Math.max(0, deadline - Date.now());
       const transportsStopped = await completesWithin(
         Promise.allSettled([
@@ -718,6 +728,7 @@ async function runServe(
           apiServer?.stop(),
           server.stop(),
           dashboardRuntime?.stop(),
+          scheduler.drain(Math.max(0, deadline - Date.now())),
         ]),
         transportBudget,
       );

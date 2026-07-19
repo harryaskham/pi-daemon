@@ -60,6 +60,7 @@ import {
   ScheduleValidationError,
   type ScheduleResource,
 } from "./schedule-contract.js";
+import type { SchedulerRuntime } from "./scheduler-runtime.js";
 import {
   FileScheduleStore,
   ScheduleStoreError,
@@ -110,8 +111,9 @@ export interface ApiServerOptions {
   acpAdapters?: AcpAdapterManager;
   dashboardApi?: DashboardNeutralApi;
   dashboardTuiAttachments?: DashboardTuiAttachmentManager;
-  /** Durable neutral schedules. Timer execution remains an external/additive concern. */
+  /** Durable neutral schedules and, when configured, their native timer owner. */
   schedules?: FileScheduleStore;
+  scheduler?: Pick<SchedulerRuntime, "recompute" | "status">;
 }
 
 export interface ApiServerAddress {
@@ -162,6 +164,7 @@ export class ApiServer {
   readonly #dashboardApi: DashboardNeutralApi | undefined;
   readonly #dashboardTuiAttachments: DashboardTuiAttachmentManager | undefined;
   readonly #schedules: FileScheduleStore | undefined;
+  readonly #scheduler: ApiServerOptions["scheduler"];
   readonly #scheduleMutations = new Map<string, { fingerprint: string; status: number; data?: ScheduleResource }>();
   readonly #server: Server;
   readonly #upgradeSockets = new Set<Duplex>();
@@ -187,6 +190,7 @@ export class ApiServer {
     this.#dashboardApi = options.dashboardApi;
     this.#dashboardTuiAttachments = options.dashboardTuiAttachments;
     this.#schedules = options.schedules;
+    this.#scheduler = options.scheduler;
     this.limits = {
       maxConnections: positiveInteger(
         options.limits?.maxConnections ?? DEFAULT_API_SERVER_LIMITS.maxConnections,
@@ -321,7 +325,9 @@ export class ApiServer {
             acp: this.#acpAdapters.capabilities,
             isolationModes: ["unisolated"],
             authentication: "service-bearer",
-            schedules: this.#schedules === undefined ? { available: false } : scheduleCapabilities(this.#schedules.limits),
+            schedules: this.#schedules === undefined
+              ? { available: false }
+              : scheduleCapabilities(this.#schedules.limits, this.#scheduler !== undefined),
             ...(this.#dashboardApi === undefined
               ? {}
               : { dashboard: await this.#dashboardApi.capabilities() }),
@@ -556,11 +562,11 @@ export class ApiServer {
     if (store === undefined) throw new ApiRequestError(501, "schedules_unavailable", "schedule persistence is not configured");
     if (request.method === "GET" && url.pathname === "/v1/schedule/status") {
       const schedules = await store.list();
-      const nextWakeAt = schedules
+      const nextWakeAt = this.#scheduler?.status().nextWakeAt ?? schedules
         .filter((value) => value.enabled && value.nextTriggerAt !== undefined)
         .map((value) => value.nextTriggerAt!)
         .sort()[0];
-      sendJson(response, 200, { apiVersion: SESSION_API_VERSION, requestId, hostInstanceId: this.#multiplexer.hostInstanceId, ok: true, data: { timerRuntime: false, externalTimersSupported: true, scheduleCount: schedules.length, enabledCount: schedules.filter((value) => value.enabled).length, ...(nextWakeAt === undefined ? {} : { nextWakeAt }) } });
+      sendJson(response, 200, { apiVersion: SESSION_API_VERSION, requestId, hostInstanceId: this.#multiplexer.hostInstanceId, ok: true, data: { timerRuntime: this.#scheduler !== undefined, externalTimersSupported: true, scheduleCount: schedules.length, enabledCount: schedules.filter((value) => value.enabled).length, ...(nextWakeAt === undefined ? {} : { nextWakeAt }) } });
       return;
     }
     if (request.method === "GET" && url.pathname === "/v1/schedule") {
@@ -608,6 +614,10 @@ export class ApiServer {
           : { ...scheduleDefinitionFromResource(current), enabled: parsed.action === "enable" };
         result = await store.update(current.scheduleId, current.revision, definition);
       }
+    }
+    await this.#scheduler?.recompute();
+    if (result !== undefined && this.#scheduler !== undefined) {
+      result = (await store.get(result.scheduleId)) ?? result;
     }
     if (this.#scheduleMutations.size >= 1024) this.#scheduleMutations.delete(this.#scheduleMutations.keys().next().value!);
     this.#scheduleMutations.set(idempotencyId, { fingerprint, status, ...(result === undefined ? {} : { data: result }) });
