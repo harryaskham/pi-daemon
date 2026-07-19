@@ -52,7 +52,7 @@ test("expandable filters and hover/focus information stay accessible", async ({ 
   await page.goto("./?fixture=1&state=ready");
   await page.locator("[data-session-row]").first().waitFor();
   await page.getByText("Browse by state and source").click();
-  await expect(page.getByRole("button", { name: /Scheduled/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Scheduled/ })).toHaveCount(0);
   await page.getByRole("button", { name: /Running/ }).first().click();
   await expect(page.getByRole("img", { name: "Running" }).first()).toBeVisible();
 
@@ -62,6 +62,24 @@ test("expandable filters and hover/focus information stay accessible", async ({ 
   await expect(page.getByRole("tooltip")).toContainText("Open the information view");
   await info.click();
   await expect(page.getByText("Session information").first()).toBeVisible();
+});
+
+test("capability-gated schedule editor renders validation, history, disabled and unseen states", async ({ page }) => {
+  await page.goto("./?fixture=1&state=ready&schedules=1");
+  await expect(page.getByRole("heading", { name: "Schedules" })).toBeVisible();
+  await expect(page.getByText("Weekdays at 09:00")).toBeVisible();
+  await expect(page.getByText("completed", { exact: true })).toBeVisible();
+  const prompt = page.getByLabel("Prompt");
+  await expect(prompt).toHaveValue("");
+  await expect(prompt).toHaveAttribute("placeholder", /Prompt configured/);
+  await page.getByRole("button", { name: "Disable" }).click();
+  await expect(page.locator(".schedule-summary-card")).toHaveAttribute("data-state", "disabled");
+  await page.getByLabel("Cron expression").fill("99 25 * * *");
+  await expect(page.getByText(/outside its allowed range/)).toBeVisible();
+  await page.getByTestId("session-search").fill("session-00153");
+  const unseenScheduled = page.locator(".presence-dot--scheduled.presence-dot--unread");
+  await expect(unseenScheduled).toBeVisible();
+  await expect(page.locator(".session-row__countdown")).toBeVisible();
 });
 
 test("sidebar loading, error recovery, and mobile drawer states are explicit", async ({ page }) => {

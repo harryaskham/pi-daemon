@@ -10,12 +10,14 @@ import {
   Sparkles,
 } from "../icons";
 import type { SessionInfoResource } from "@harryaskham/pi-daemon/dashboard-contract";
+import type { ReactNode } from "react";
 import type { SessionFixture } from "../model";
 import { preciseRelativeTime } from "../time";
 
 interface InfoPaneProps {
   session: SessionFixture;
   info?: SessionInfoResource;
+  scheduleEditor?: ReactNode;
 }
 
 function Metric({ label, value, detail }: { label: string; value: string; detail: string }) {
@@ -28,7 +30,7 @@ function Metric({ label, value, detail }: { label: string; value: string; detail
   );
 }
 
-export function InfoPane({ session, info }: InfoPaneProps) {
+export function InfoPane({ session, info, scheduleEditor }: InfoPaneProps) {
   return (
     <article className="info-pane" aria-label={`Information for ${session.title}`}>
       <header className="info-hero">
@@ -36,7 +38,7 @@ export function InfoPane({ session, info }: InfoPaneProps) {
         <p className="eyebrow">Session information</p>
         <h2>{session.title}</h2>
         <div className="info-hero__status">
-          <span className={`presence-dot presence-dot--${session.presence.runtime}`} />
+          <span className={`presence-dot presence-dot--${session.presence.runtime}${scheduleEditor && session.presence.runtime !== "running" && session.presence.scheduled ? " presence-dot--scheduled" : ""}${session.presence.unread ? " presence-dot--unread" : ""}`} />
           {session.presence.runtime.replace("-", " ")}
           <i />
           modified {preciseRelativeTime(session.modifiedAt)}
@@ -67,6 +69,8 @@ export function InfoPane({ session, info }: InfoPaneProps) {
           {info?.runtime ? <div><dt><Activity size={14} /> Readers / warm leases</dt><dd>{info.runtime.readerCount} / {info.runtime.warmLeaseCount}</dd></div> : null}
         </dl>
       </section>
+
+      {scheduleEditor}
 
       <section className="info-section" aria-labelledby="info-policy">
         <h3 id="info-policy">Policy</h3>

@@ -664,6 +664,10 @@ implementation order. This list is a human-readable crosswalk.
     ETag/idempotency CLI, and owner-private YAML/import prompt references.
   - [x] `bd-cb3036` — bounded durable timer loop, stable jitter, missed-wake and
     overlap policy, and idempotent durable prompt-ticket admission.
+  - [x] `bd-c39242` — prompt-redacted deployment-neutral schedule resources and
+    authenticated cookie-BFF routes without exposing the service bearer.
+  - [x] `bd-edbc79` — capability-gated Dash schedule editor, countdowns,
+    terminal history, validation, and dormant/unread visual semantics.
 
 All standalone delivery and acceptance blockers are landed. Cutting the first
 release tag is an explicit operator action under `docs/release.md`; the remaining

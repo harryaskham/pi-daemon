@@ -22,6 +22,7 @@ import type {
   DashboardScheduleMutationRequest,
   DashboardScheduleResource,
   DashboardScheduleStatus,
+  DashboardScheduleWrite,
   DashboardSessionIdentity,
   DashboardTuiChannel,
   NormalizedTranscriptRecord,
@@ -52,6 +53,7 @@ export class LiveFixtureDashboardBackend extends LocalFixtureBackend implements 
   readonly #activations = new Map<string, ActivationTicket>();
   readonly #exports = new Map<string, SessionExportTicket>();
   readonly #hubs = new Map<string, FixtureRichHub>();
+  readonly #schedules = new Map<string, DashboardScheduleResource>();
 
   override get transcript(): NormalizedTranscriptRecord[] {
     return this.#liveTranscript ??= [
@@ -147,13 +149,39 @@ export class LiveFixtureDashboardBackend extends LocalFixtureBackend implements 
     return structuredClone(ticket);
   }
 
-  async scheduleCapabilities(): Promise<ScheduleCapabilities> { throw new Error("fixture schedules unavailable"); }
-  async listSchedules(_sessionRef?: string): Promise<DashboardScheduleResource[]> { return []; }
-  async getSchedule(_scheduleId: string): Promise<DashboardScheduleResource> { throw new Error("fixture schedules unavailable"); }
-  async createSchedule(_request: DashboardScheduleMutationRequest): Promise<DashboardScheduleResource> { throw new Error("fixture schedules unavailable"); }
-  async updateSchedule(_scheduleId: string, _request: DashboardScheduleMutationRequest): Promise<DashboardScheduleResource> { throw new Error("fixture schedules unavailable"); }
-  async deleteSchedule(_scheduleId: string, _request: DashboardScheduleDeleteRequest): Promise<void> { throw new Error("fixture schedules unavailable"); }
-  async scheduleStatus(): Promise<DashboardScheduleStatus> { return { timerRuntime: false, externalTimersSupported: false, scheduleCount: 0, enabledCount: 0 }; }
+  async scheduleCapabilities(): Promise<ScheduleCapabilities> { return fixtureScheduleCapabilities(); }
+  async listSchedules(sessionRef?: string): Promise<DashboardScheduleResource[]> {
+    if (this.#schedules.size === 0 && sessionRef !== undefined) this.#schedules.set("weekday-review", fixtureSchedule(sessionRef));
+    return [...this.#schedules.values()].filter((item) => sessionRef === undefined || item.sessionRef === sessionRef).map((item) => structuredClone(item));
+  }
+  async getSchedule(scheduleId: string): Promise<DashboardScheduleResource> {
+    const resource = this.#schedules.get(scheduleId);
+    if (resource === undefined) throw new Error("fixture schedule not found");
+    return structuredClone(resource);
+  }
+  async createSchedule(request: DashboardScheduleMutationRequest): Promise<DashboardScheduleResource> {
+    if (this.#schedules.has(request.schedule.scheduleId)) throw new Error("schedule already exists");
+    const resource = fixtureResourceFromWrite(request.schedule, 0);
+    this.#schedules.set(resource.scheduleId, resource);
+    return structuredClone(resource);
+  }
+  async updateSchedule(scheduleId: string, request: DashboardScheduleMutationRequest): Promise<DashboardScheduleResource> {
+    const current = this.#schedules.get(scheduleId);
+    if (current === undefined) throw new Error("fixture schedule not found");
+    if (request.expectedRevision !== current.revision) throw new Error("schedule revision conflict");
+    const updated = { ...fixtureResourceFromWrite(request.schedule, current.revision + 1), createdAt: current.createdAt, ...(current.lastTrigger === undefined ? {} : { lastTrigger: current.lastTrigger }) };
+    this.#schedules.set(scheduleId, updated);
+    return structuredClone(updated);
+  }
+  async deleteSchedule(scheduleId: string, request: DashboardScheduleDeleteRequest): Promise<void> {
+    const current = this.#schedules.get(scheduleId);
+    if (current === undefined || current.revision !== request.expectedRevision) throw new Error("schedule revision conflict");
+    this.#schedules.delete(scheduleId);
+  }
+  async scheduleStatus(): Promise<DashboardScheduleStatus> {
+    const schedules = [...this.#schedules.values()];
+    return { timerRuntime: false, externalTimersSupported: true, scheduleCount: schedules.length, enabledCount: schedules.filter((item) => item.enabled).length, ...(schedules[0]?.nextTriggerAt === undefined ? {} : { nextWakeAt: schedules[0].nextTriggerAt }) };
+  }
 
   async getManagedSession(sessionRef: string): Promise<SessionResource> {
     const session = this.sessions.find((candidate) => candidate.sessionId === sessionRef);
@@ -348,6 +376,40 @@ class FixtureRichHub {
     if (!channel) throw new Error("Channel closed");
     return channel;
   }
+}
+
+function fixtureScheduleCapabilities(): ScheduleCapabilities {
+  return {
+    contractVersion: "1.0", persistence: true, timerRuntime: false,
+    cronSyntax: "posix-five-field", timezoneDatabase: "runtime-iana",
+    optimisticConcurrency: "expected-revision", overlapPolicies: ["skip", "queue-one", "reject"],
+    missedWakePolicies: ["skip", "run-once", "bounded-catch-up"],
+    promptHandling: "owner-private-sensitive-content", terminalTicketSummary: "content-free",
+    clock: "wall-clock-utc-instants",
+    limits: { maxSchedules: 1_024, maxSchedulesPerSession: 32, maxPromptBytes: 65_536, maxRecordBytes: 131_072, maxRecoveryBytes: 134_217_728, maxCatchUpRuns: 24, maxJitterMs: 86_400_000, maxAdmissionDelayMs: 86_400_000 },
+  };
+}
+
+function fixtureResourceFromWrite(write: DashboardScheduleWrite, revision: number): DashboardScheduleResource {
+  const now = new Date().toISOString();
+  const { prompt: _prompt, ...safeWrite } = write;
+  return {
+    contractVersion: "1.0",
+    ...safeWrite,
+    promptConfigured: true,
+    revision,
+    nextTriggerAt: new Date(Date.now() + 10 * 60_000).toISOString(),
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
+function fixtureSchedule(sessionRef: string): DashboardScheduleResource {
+  const resource = fixtureResourceFromWrite({ scheduleId: "weekday-review", sessionRef, enabled: true, cron: "0 9 * * 1-5", timezone: "Europe/London", overlapPolicy: "queue-one", missedWakePolicy: { mode: "run-once" }, jitterMs: 30_000, maxAdmissionDelayMs: 300_000, execution: { model: { provider: "anthropic", id: "claude-sonnet" }, thinkingLevel: "medium" } }, 3);
+  return {
+    ...resource,
+    lastTrigger: { scheduledFor: new Date(Date.now() - 86_400_000).toISOString(), observedAt: new Date(Date.now() - 86_399_000).toISOString(), disposition: "admitted", terminalTicket: { ticketId: "ticket-fixture-complete", state: "completed", updatedAt: new Date(Date.now() - 86_300_000).toISOString() } },
+  };
 }
 
 class FixtureRichChannel implements DashboardChannel {

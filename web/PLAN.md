@@ -1351,7 +1351,7 @@ These lanes intentionally begin in parallel:
   transport-neutral parallel slice.
 - [x] `bd-cb3036` — durable timer runtime; depends on `bd-6d96bb`.
 - [x] `bd-72aac0` — schedule HTTP/CLI/config; depends on contract and config.
-- [ ] `bd-edbc79` — beautiful Dash schedule editor/countdown/history; depends on
+- [x] `bd-edbc79` — beautiful Dash schedule editor/countdown/history; depends on
   schedule contract and live Dash.
 - [ ] `bd-aa4260` — timezone/DST/restart/overlap/security/soak acceptance; depends
   on runtime, API, and Dash schedule UX.

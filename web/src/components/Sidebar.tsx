@@ -1,9 +1,10 @@
 import { createPortal } from "react-dom";
-import { useDeferredValue, useMemo, useRef, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { AlertCircle, ChevronDown, Info, PanelLeftClose, Search, Settings2, Sparkles } from "../icons";
 import type { InventoryId, SessionFixture } from "../model";
 import { recordSearch } from "../performance";
+import { scheduleCountdown } from "../schedule";
 import { preciseRelativeTime, relativeTime } from "../time";
 
 export type SidebarStatus = "ready" | "loading" | "empty" | "error";
@@ -18,6 +19,7 @@ interface SidebarProps {
   fixtureMode?: boolean;
   connectionLabel?: string;
   summaryLabel?: string;
+  schedulesAvailable?: boolean;
   onQueryChange(query: string): void;
   onOpenChat(session: SessionFixture): void;
   onOpenInfo(session: SessionFixture): void;
@@ -32,10 +34,10 @@ interface InfoTooltipState {
   left: number;
 }
 
-function presenceLabel(session: SessionFixture): string {
+function presenceLabel(session: SessionFixture, schedulesAvailable = true): string {
   if (session.presence.runtime === "failed") return "Failed";
   if (session.presence.runtime === "running") return "Running";
-  if (session.presence.scheduled) return `Scheduled ${preciseRelativeTime(session.presence.scheduled.nextWakeAt)}`;
+  if (schedulesAvailable && session.presence.scheduled) return `Scheduled ${preciseRelativeTime(session.presence.scheduled.nextWakeAt)}`;
   if (session.presence.activation !== "untouched") return "Activated";
   return session.presence.runtime === "resident-idle" ? "Resident and idle" : "Dormant";
 }
@@ -51,7 +53,7 @@ function matchesFilter(session: SessionFixture, filter: SessionFilter): boolean 
   }
 }
 
-function SessionInfoTooltip({ state }: { state: InfoTooltipState }) {
+function SessionInfoTooltip({ state, schedulesAvailable }: { state: InfoTooltipState; schedulesAvailable: boolean }) {
   const { session } = state;
   return createPortal(
     <div
@@ -63,7 +65,7 @@ function SessionInfoTooltip({ state }: { state: InfoTooltipState }) {
     >
       <header>
         <span className={`presence-dot presence-dot--${session.presence.runtime}`} />
-        <div><strong>{session.title}</strong><span>{presenceLabel(session)}</span></div>
+        <div><strong>{session.title}</strong><span>{presenceLabel(session, schedulesAvailable)}</span></div>
       </header>
       <dl>
         <div><dt>Source</dt><dd>{session.sourceKind}</dd></div>
@@ -94,6 +96,7 @@ export function Sidebar({
   fixtureMode = false,
   connectionLabel = "Same-origin authenticated stream",
   summaryLabel = "indexed sessions",
+  schedulesAvailable = false,
   onQueryChange,
   onOpenChat,
   onOpenInfo,
@@ -104,6 +107,12 @@ export function Sidebar({
   const scrollerRef = useRef<HTMLDivElement>(null);
   const [filter, setFilter] = useState<SessionFilter>("all");
   const [infoTooltip, setInfoTooltip] = useState<InfoTooltipState>();
+  const [countdownNow, setCountdownNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!schedulesAvailable || !sessions.some((session) => session.presence.runtime !== "running" && session.presence.scheduled !== undefined)) return;
+    const interval = window.setInterval(() => setCountdownNow(Date.now()), 15_000);
+    return () => window.clearInterval(interval);
+  }, [schedulesAvailable, sessions]);
   const deferredQuery = useDeferredValue(query);
   const counts = useMemo(() => ({
     running: sessions.filter((session) => session.presence.runtime === "running").length,
@@ -194,7 +203,7 @@ export function Sidebar({
         <details className="sidebar-groups">
           <summary><span>Browse by state and source</span><ChevronDown size={13} /></summary>
           <div>
-            <button type="button" aria-pressed={filter === "scheduled"} onClick={() => selectFilter("scheduled")}><span>Scheduled</span><strong>{counts.scheduled.toLocaleString()}</strong></button>
+            {schedulesAvailable ? <button type="button" aria-pressed={filter === "scheduled"} onClick={() => selectFilter("scheduled")}><span>Scheduled</span><strong>{counts.scheduled.toLocaleString()}</strong></button> : null}
             <button type="button" aria-pressed={filter === "managed"} onClick={() => selectFilter("managed")}><span>Managed</span><strong>{counts.managed.toLocaleString()}</strong></button>
             <button type="button" aria-pressed={filter === "external"} onClick={() => selectFilter("external")}><span>External & imported</span><strong>{counts.external.toLocaleString()}</strong></button>
           </div>
@@ -230,7 +239,7 @@ export function Sidebar({
               const session = filtered[row.index];
               if (!session) return null;
               const selected = session.inventoryId === selectedInventoryId;
-              const sessionStatus = presenceLabel(session);
+              const sessionStatus = presenceLabel(session, schedulesAvailable);
               return (
                 <div
                   key={session.inventoryId}
@@ -249,7 +258,7 @@ export function Sidebar({
                     onClick={() => onOpenChat(session)}
                   >
                     <span
-                      className={`presence-dot presence-dot--${session.presence.runtime}${session.presence.scheduled ? " presence-dot--scheduled" : ""}${session.presence.unread ? " presence-dot--unread" : ""}`}
+                      className={`presence-dot presence-dot--${session.presence.runtime}${schedulesAvailable && session.presence.runtime !== "running" && session.presence.scheduled ? " presence-dot--scheduled" : ""}${session.presence.unread ? " presence-dot--unread" : ""}`}
                       role="img"
                       aria-label={sessionStatus}
                     />
@@ -257,10 +266,10 @@ export function Sidebar({
                       <strong>{session.title}</strong>
                       <span>{session.projectLabel ?? session.project}<i>·</i>{session.cwdBasename ?? session.cwd.split("/").at(-1)}</span>
                     </span>
-                    <time
+                    {schedulesAvailable && session.presence.runtime !== "running" && session.presence.scheduled ? <time className="session-row__countdown" dateTime={session.presence.scheduled.nextWakeAt} title={`Next wake ${preciseRelativeTime(session.presence.scheduled.nextWakeAt, countdownNow)}`}>{scheduleCountdown(session.presence.scheduled.nextWakeAt, countdownNow)}</time> : <time
                       dateTime={session.modifiedAt}
                       title={preciseRelativeTime(session.modifiedAt)}
-                    >{relativeTime(session.modifiedAt)}</time>
+                    >{relativeTime(session.modifiedAt)}</time>}
                   </button>
                   <button
                     type="button"
@@ -288,7 +297,7 @@ export function Sidebar({
         </button>
         <div className="connection-state" role="status"><i /> {connectionLabel}</div>
       </footer>
-      {infoTooltip ? <SessionInfoTooltip state={infoTooltip} /> : null}
+      {infoTooltip ? <SessionInfoTooltip state={infoTooltip} schedulesAvailable={schedulesAvailable} /> : null}
     </aside>
   );
 }

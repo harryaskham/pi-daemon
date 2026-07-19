@@ -34,6 +34,7 @@ import { createSessionFixtures, createTranscriptFixtures, createTranscriptShowca
 import { createTuiInputRuns, createTuiSnapshot, TUI_FIXTURE_OVERLAYS, TUI_FIXTURE_SELECTION } from "./tui-fixtures";
 import { closePane, collectPaneIds, INITIAL_LAYOUT, splitPane, toDashboardLayout, updatePaneTarget } from "./layout";
 import type { DemoState, InventoryId, LayoutNode, SessionFixture } from "./model";
+import { hasScheduleBackend } from "./schedule";
 import type { DashboardPreferencesBackend } from "./preferences-backend";
 import { markFirstRows, recordFrameWork, setFixtureCount } from "./performance";
 import { createTuiFrameStore, TuiFrameCache, tuiFrameStoreReducer, type TuiFrameStoreState } from "./tui-frame-store";
@@ -388,7 +389,7 @@ function DashWorkspace({
     if (node.target.type === "empty") return <EmptyPane />;
     const session = sessionById.get(node.target.inventoryId);
     if (!session) return <EmptyPane />;
-    if (node.target.type === "info") return <ConnectedInfoPane backend={backend} session={session} fixtureMode={fixtureMode} />;
+    if (node.target.type === "info") return <ConnectedInfoPane backend={backend} session={session} fixtureMode={fixtureMode} {...(capabilities.resources.schedules && hasScheduleBackend(backend) ? { scheduleBackend: backend } : {})} />;
     const presentation = node.target.presentation;
     const canonicalTui = fixtureMode ? getTuiState(session) : undefined;
     const tuiState: TuiFrameStoreState | undefined = canonicalTui === undefined ? undefined : {
@@ -475,6 +476,7 @@ function DashWorkspace({
         fixtureMode={fixtureMode}
         connectionLabel={fixtureMode ? "Local fixture · 4 ms" : "Same-origin authenticated stream"}
         summaryLabel={fixtureMode ? "indexed sessions" : "loaded sessions"}
+        schedulesAvailable={capabilities.resources.schedules}
         onQueryChange={setQuery}
         onOpenChat={(session) => openTarget(session, "chat")}
         onOpenInfo={(session) => openTarget(session, "info")}
@@ -679,12 +681,13 @@ function ProductionApp() {
 }
 
 function liveFixtureCapabilities(): DashboardCapabilities {
+  const scheduleStory = new URLSearchParams(window.location.search).get("schedules") === "1";
   return {
     apiVersion: DASH_API_VERSION,
     streamSubprotocol: DASH_STREAM_SUBPROTOCOL,
     sameBrowserProtocolAcrossDeployments: true,
     authentication: { browserSession: "http-only-cookie", csrf: "same-origin-header", daemonBearerExposed: false },
-    resources: { inventory: true, transcriptPreview: true, activation: true, export: true, workspaces: true, settings: true, schedules: false },
+    resources: { inventory: true, transcriptPreview: true, activation: true, export: true, workspaces: true, settings: true, schedules: scheduleStory },
     presentations: {
       rich: { available: true, replay: true, controller: true, commands: [] },
       tui: { available: true, replay: true, controller: true, commands: [] },

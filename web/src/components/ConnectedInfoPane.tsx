@@ -1,15 +1,18 @@
 import { useEffect, useState } from "react";
 import type { DashboardBackend, SessionInfoResource } from "@harryaskham/pi-daemon/dashboard-contract";
 import type { SessionFixture } from "../model";
+import type { ScheduleBackend } from "../schedule";
 import { InfoPane } from "./InfoPane";
+import { ScheduleEditor } from "./ScheduleEditor";
 
 interface ConnectedInfoPaneProps {
   backend: DashboardBackend;
   session: SessionFixture;
   fixtureMode: boolean;
+  scheduleBackend?: ScheduleBackend;
 }
 
-export function ConnectedInfoPane({ backend, session, fixtureMode }: ConnectedInfoPaneProps) {
+export function ConnectedInfoPane({ backend, session, fixtureMode, scheduleBackend }: ConnectedInfoPaneProps) {
   const [info, setInfo] = useState<SessionInfoResource>();
   const [error, setError] = useState<string>();
 
@@ -33,7 +36,7 @@ export function ConnectedInfoPane({ backend, session, fixtureMode }: ConnectedIn
     return <div className="transcript-skeleton" aria-label="Loading session information"><i /><i /><i /><i /></div>;
   }
   const resolved = info === undefined ? session : mergeInfo(session, info);
-  return <InfoPane session={resolved} {...(info === undefined ? {} : { info })} />;
+  return <InfoPane session={resolved} {...(info === undefined ? {} : { info })} {...(scheduleBackend === undefined ? {} : { scheduleEditor: <ScheduleEditor backend={scheduleBackend} sessionRef={resolved.sessionId} /> })} />;
 }
 
 function mergeInfo(session: SessionFixture, info: SessionInfoResource): SessionFixture {
