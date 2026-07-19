@@ -186,6 +186,8 @@
           pkgs.nodejs_24
           pkgs.git
           pkgs.jq
+          pkgs.just
+          pkgs.tmux
         ];
         shellHook = ''
           echo "pi-daemon dev shell: Node $(node --version), npm $(npm --version)"

@@ -6,20 +6,26 @@ set -euo pipefail
 # values for another operator/node without editing this script.
 INSTANCE="${PI_DAEMON_TEST_INSTANCE:-test}"
 SOURCE="${PI_DAEMON_TEST_SOURCE:-$HOME/.local/share/pi-daemon-test/source}"
-STATE="${PI_DAEMON_TEST_STATE:-$HOME/.local/state/pi-daemon/test}"
-CONFIG="${PI_DAEMON_TEST_CONFIG:-$HOME/.config/pi/daemon/test/config.yaml}"
+STATE="${PI_DAEMON_TEST_STATE:-$HOME/.local/state/pi-daemon/$INSTANCE}"
+CONFIG="${PI_DAEMON_TEST_CONFIG:-$HOME/.config/pi/daemon/$INSTANCE/config.yaml}"
+AGENT_DIR="${PI_DAEMON_TEST_AGENT_DIR:-$HOME/.pi/daemon-$INSTANCE}"
+ALLOWED_ROOT="${PI_DAEMON_TEST_ALLOWED_ROOT:-$HOME/work}"
+NORMAL_SESSIONS_ROOT="${PI_DAEMON_TEST_NORMAL_SESSIONS_ROOT:-$HOME/.pi/agent/sessions}"
+API_PORT="${PI_DAEMON_TEST_API_PORT:-7473}"
+WEB_PORT="${PI_DAEMON_TEST_WEB_PORT:-7474}"
 REMOTE="${PI_DAEMON_TEST_REMOTE:-ssh://git@github.com/harryaskham/pi-daemon.git}"
 BRANCH="${PI_DAEMON_TEST_BRANCH:-main}"
-TMUX_SESSION="${PI_DAEMON_TEST_TMUX:-pi-daemon-test}"
+TMUX_SESSION="${PI_DAEMON_TEST_TMUX:-pi-daemon-$INSTANCE}"
 CURRENT="$STATE/current"
 LOG="$STATE/service.log"
 LOCK="$STATE/update.lock"
 
 usage() {
   cat <<'EOF'
-usage: pi-daemon-test-instance.sh <install|update|start|stop|restart|status|logs|attach|paths>
+usage: pi-daemon-test-instance.sh <init-config|install|update|start|stop|restart|status|logs|attach|paths>
 
-  install   clone/build exact upstream main, then start the isolated instance
+  init-config  create a safe owner-private config if absent (never overwrite)
+  install   initialize config, clone/build exact upstream main, then start
   update    fast-forward source, Nix-build/test it, atomically switch, restart if running
   start     start current immutable Nix result in a detached tmux session
   stop      bounded SIGINT stop; kill only the named tmux session if needed
@@ -28,6 +34,9 @@ usage: pi-daemon-test-instance.sh <install|update|start|stop|restart|status|logs
   logs      tail the isolated service log
   attach    attach interactively to the non-launchd tmux supervisor
   paths     print resolved source/config/state/session values
+
+New-node one-liner (with just installed): `just test-daemon`.
+Override PI_DAEMON_TEST_ALLOWED_ROOT/API_PORT/WEB_PORT before first install.
 EOF
 }
 
@@ -49,6 +58,87 @@ acquire_update_lock() {
     exit 75
   fi
   trap 'rmdir "$LOCK" 2>/dev/null || true' EXIT INT TERM
+}
+
+yaml_quote() {
+  local value="$1"
+  [[ "$value" != *$'\n'* && "$value" != *$'\r'* ]] || {
+    printf 'config path contains a newline\n' >&2
+    exit 65
+  }
+  value="${value//\'/\'\'}"
+  printf "'%s'" "$value"
+}
+
+init_config() {
+  if [[ -f "$CONFIG" ]]; then
+    printf 'test instance config already exists: %s\n' "$CONFIG"
+    return 0
+  fi
+  [[ "$API_PORT" =~ ^[0-9]+$ && "$API_PORT" -ge 1 && "$API_PORT" -le 65535 ]] || {
+    printf 'invalid PI_DAEMON_TEST_API_PORT: %s\n' "$API_PORT" >&2
+    exit 65
+  }
+  [[ "$WEB_PORT" =~ ^[0-9]+$ && "$WEB_PORT" -ge 1 && "$WEB_PORT" -le 65535 && "$WEB_PORT" != "$API_PORT" ]] || {
+    printf 'invalid or colliding PI_DAEMON_TEST_WEB_PORT: %s\n' "$WEB_PORT" >&2
+    exit 65
+  }
+  install -d -m 700 "$(dirname "$CONFIG")" "$STATE" "$STATE/run" "$AGENT_DIR" \
+    "$AGENT_DIR/sessions" "$NORMAL_SESSIONS_ROOT" "$ALLOWED_ROOT"
+  local temporary="$CONFIG.tmp.$$"
+  umask 077
+  cat >"$temporary" <<EOF
+instance: $(yaml_quote "$INSTANCE")
+stateDir: $(yaml_quote "$STATE")
+socketPath: $(yaml_quote "$STATE/run/pi-daemon.sock")
+agentDir: $(yaml_quote "$AGENT_DIR")
+allowedRoots:
+  - $(yaml_quote "$ALLOWED_ROOT")
+sessionStorage:
+  mode: daemon-owned
+limits:
+  maxSessions: 32
+  maxConcurrentTurns: 4
+  maxSessionQueueDepth: 16
+  idleSessionTtlMs: 1800000
+  maxConnections: 32
+  maxInFlightRequestsPerConnection: 16
+api:
+  enabled: true
+  bind: 127.0.0.1
+  port: $API_PORT
+  allowInsecureHttp: false
+web:
+  enabled: true
+  mode: embedded
+  bind: 127.0.0.1
+  port: $WEB_PORT
+  auth:
+    sessionTtlMs: 43200000
+  inventory:
+    roots:
+      - $(yaml_quote "$NORMAL_SESSIONS_ROOT")
+      - $(yaml_quote "$AGENT_DIR/sessions")
+    reconcileIntervalMs: 30000
+    maxSessions: 10000
+  residency:
+    warmTtlMs: 1800000
+    maxPinnedPerWorkspace: 8
+  tui:
+    enabled: true
+    defaultPresentation: rich
+    maxRows: 200
+    maxColumns: 320
+  ui:
+    theme:
+      name: nord-midnight
+      density: comfortable
+    editor:
+      mode: multiline
+EOF
+  chmod 600 "$temporary"
+  mv "$temporary" "$CONFIG"
+  printf 'created test instance config: %s\n' "$CONFIG"
 }
 
 ensure_source() {
@@ -145,8 +235,8 @@ stop_instance() {
 }
 
 status_instance() {
-  printf 'instance=%s\nsource=%s\nconfig=%s\nstate=%s\ntmux=%s\n' \
-    "$INSTANCE" "$SOURCE" "$CONFIG" "$STATE" "$TMUX_SESSION"
+  printf 'instance=%s\nsource=%s\nconfig=%s\nstate=%s\nagent_dir=%s\nallowed_root=%s\napi_url=http://127.0.0.1:%s\ndash_url=http://127.0.0.1:%s/dash/\ntmux=%s\n' \
+    "$INSTANCE" "$SOURCE" "$CONFIG" "$STATE" "$AGENT_DIR" "$ALLOWED_ROOT" "$API_PORT" "$WEB_PORT" "$TMUX_SESSION"
   if [[ -d "$SOURCE/.git" ]]; then
     printf 'source_commit=%s\n' "$(git -C "$SOURCE" rev-parse HEAD)"
   else
@@ -166,7 +256,11 @@ status_instance() {
 }
 
 case "${1:-}" in
+  init-config)
+    init_config
+    ;;
   install)
+    init_config
     update_instance
     start_instance
     ;;
@@ -197,8 +291,8 @@ case "${1:-}" in
     exec tmux attach-session -t "$TMUX_SESSION"
     ;;
   paths)
-    printf 'instance=%s\nsource=%s\nconfig=%s\nstate=%s\ntmux=%s\n' \
-      "$INSTANCE" "$SOURCE" "$CONFIG" "$STATE" "$TMUX_SESSION"
+    printf 'instance=%s\nsource=%s\nconfig=%s\nstate=%s\nagent_dir=%s\nallowed_root=%s\napi_url=http://127.0.0.1:%s\ndash_url=http://127.0.0.1:%s/dash/\ntmux=%s\n' \
+      "$INSTANCE" "$SOURCE" "$CONFIG" "$STATE" "$AGENT_DIR" "$ALLOWED_ROOT" "$API_PORT" "$WEB_PORT" "$TMUX_SESSION"
     ;;
   *)
     usage >&2

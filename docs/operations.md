@@ -256,14 +256,35 @@ gate, atomically switches to the immutable result, and restarts only its named
 tmux session after a successful build. A failed build leaves the running result
 unchanged.
 
+From a fresh checkout on any Nix-capable developer node, the complete first-run
+recipe is:
+
 ```console
-install -m 0755 scripts/pi-daemon-test-instance.sh ~/.local/bin/pi-daemon-test
-pi-daemon-test install       # first exact build + start
-pi-daemon-test update        # build latest main; restart if already running
-pi-daemon-test status
-pi-daemon-test logs
-pi-daemon-test stop
+nix develop -c just test-daemon
 ```
+
+It creates an owner-private node-local config only when absent, creates the
+explicit development workload/session roots, clones or fast-forwards exact
+`origin/main`, runs the full Nix package/test gate, atomically switches the GC
+root, and starts only the isolated tmux service. It never installs a native
+service or touches another daemon instance. The equivalent lower-level commands
+are:
+
+```console
+scripts/pi-daemon-test-instance.sh init-config
+scripts/pi-daemon-test-instance.sh install
+scripts/pi-daemon-test-instance.sh update
+scripts/pi-daemon-test-instance.sh status
+scripts/pi-daemon-test-instance.sh logs
+scripts/pi-daemon-test-instance.sh stop
+```
+
+Set `PI_DAEMON_TEST_ALLOWED_ROOT`, `PI_DAEMON_TEST_API_PORT`, and
+`PI_DAEMON_TEST_WEB_PORT` before the first command when node defaults would
+collide. `PI_DAEMON_TEST_INSTANCE` gives every runner separate state/config,
+agent, socket and tmux names. `PI_DAEMON_TEST_REMOTE` can select an HTTPS or
+other authenticated Git remote when SSH is unavailable. Existing configs are
+never overwritten.
 
 Default paths are `~/.local/share/pi-daemon-test/source`,
 `~/.local/state/pi-daemon/test`, and

@@ -44,6 +44,11 @@ or Cacophony credentials.
 Home Manager instances, use the authenticated session API, and attach RPC or
 ACP clients without putting the service bearer in process arguments.
 
+**Fresh-node test runner:** from a checkout, run `nix develop -c just
+test-daemon`. It creates a safe node-local config if absent, Nix-builds/tests
+exact main, and starts an isolated non-service tmux instance. See
+[Rolling non-launchd test instance](docs/operations.md#rolling-non-launchd-test-instance).
+
 ## Why
 
 Starting one `pi --mode rpc` process for every logical agent or every cold wake
