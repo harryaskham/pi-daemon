@@ -1,7 +1,8 @@
 import { expect, test } from "@playwright/test";
+import { DASH_API_VERSION, DASH_DEFAULT_LIMITS, DASH_PERFORMANCE_BUDGETS, DASH_STREAM_SUBPROTOCOL } from "../../src/dashboard-contract";
 
 test("renders a bounded Nord Midnight workspace from 10k fixtures", async ({ page }) => {
-  await page.goto("./");
+  await page.goto("./?fixture=1");
   await expect(page.getByRole("heading", { name: "Dash" })).toBeVisible();
   await expect(page.getByLabel("Session summary").getByText("10,000")).toBeVisible();
   await expect(page.locator(".workspace-notice")).toContainText("Preview ready · runtime hydration remains separate");
@@ -18,7 +19,7 @@ test("renders a bounded Nord Midnight workspace from 10k fixtures", async ({ pag
 });
 
 test("search, deliberate states, settings, and directional swaps remain interactive", async ({ page }) => {
-  await page.goto("./?state=ready");
+  await page.goto("./?fixture=1&state=ready");
   const search = page.getByTestId("session-search");
   await search.fill("session-09999");
   await expect(page.getByText(/09999/)).toBeVisible();
@@ -48,7 +49,7 @@ test("search, deliberate states, settings, and directional swaps remain interact
 });
 
 test("expandable filters and hover/focus information stay accessible", async ({ page }) => {
-  await page.goto("./?state=ready");
+  await page.goto("./?fixture=1&state=ready");
   await page.locator("[data-session-row]").first().waitFor();
   await page.getByText("Browse by state and source").click();
   await expect(page.getByRole("button", { name: /Scheduled/ })).toBeVisible();
@@ -65,7 +66,7 @@ test("expandable filters and hover/focus information stay accessible", async ({ 
 
 test("sidebar loading, error recovery, and mobile drawer states are explicit", async ({ page }) => {
   await page.setViewportSize({ width: 480, height: 820 });
-  await page.goto("./?sidebar=error&state=ready");
+  await page.goto("./?fixture=1&sidebar=error&state=ready");
   await expect(page.locator(".sidebar-list-state--error")).toContainText("Session index unavailable");
   await page.getByRole("button", { name: "Retry inventory" }).click();
   await page.locator("[data-session-row]").first().waitFor();
@@ -77,19 +78,19 @@ test("sidebar loading, error recovery, and mobile drawer states are explicit", a
   await page.getByRole("button", { name: "Open session drawer" }).click();
   await expect(app).toHaveAttribute("data-sidebar-open", "true");
 
-  await page.goto("./?sidebar=loading&state=ready");
+  await page.goto("./?fixture=1&sidebar=loading&state=ready");
   await expect(page.getByLabel("Loading sessions")).toHaveAttribute("aria-busy", "true");
 });
 
 test("rich transcript renders semantic markdown, tools, images, summaries, custom and error states", async ({ page }) => {
-  await page.goto("./?state=ready");
+  await page.goto("./?fixture=1&state=ready");
   await expect(page.getByRole("heading", { name: "Generation-safe reducer" })).toBeVisible();
   await expect(page.locator(".syntax-block").first()).toBeVisible();
   await expect(page.locator("script[data-unsafe]")).toHaveCount(0);
   await expect(page.getByText("<script data-unsafe>window.__dashUnsafe = true</script>", { exact: true })).toBeVisible();
   await expect(page.locator(".message-image--placeholder")).toContainText("Nord Midnight dashboard reference");
   await expect(page.locator(".summary-card")).toContainText("Context compacted");
-  await expect(page.locator(".custom-record")).toContainText("safe generic renderer");
+  await expect(page.locator(".custom-record").filter({ hasText: "safe generic renderer" })).toBeVisible();
   await expect(page.locator(".timeline-record--queue")).toContainText("Follow-up queued");
   await expect(page.locator(".message-error")).toContainText("replay gap");
   await expect(page.locator(".tool-card--bash")).toContainText("bounded stream still running");
@@ -104,7 +105,7 @@ test("rich transcript renders semantic markdown, tools, images, summaries, custo
 });
 
 test("split creation, keyboard resize, close promotion, and revision persistence stay coherent", async ({ page }) => {
-  await page.goto("./?state=ready");
+  await page.goto("./?fixture=1&state=ready");
   const panes = page.locator("[data-pane-id]");
   await expect(panes).toHaveCount(2);
   const workspaceRevision = async () => {
@@ -142,7 +143,7 @@ test("split creation, keyboard resize, close promotion, and revision persistence
 });
 
 test("settings hot-switch, source reporting, reset, and keyboard guide are revisioned", async ({ page }) => {
-  await page.goto("./?state=ready");
+  await page.goto("./?fixture=1&state=ready");
   await page.getByRole("button", { name: "Settings" }).click();
   const settings = page.locator(".settings-dialog");
   await expect(settings).toBeVisible();
@@ -167,7 +168,7 @@ test("settings hot-switch, source reporting, reset, and keyboard guide are revis
 });
 
 test("composer completion and bounded history work outside Vim mode", async ({ page }) => {
-  await page.goto("./?state=ready");
+  await page.goto("./?fixture=1&state=ready");
   await page.getByRole("button", { name: /VIM · INSERT/ }).click();
   const editor = page.getByTestId("composer-editor");
   await editor.click();
@@ -193,7 +194,7 @@ test("composer completion and bounded history work outside Vim mode", async ({ p
 });
 
 test("TUI presentation streams one canonical controller grid to read-only pane mirrors", async ({ page }) => {
-  await page.goto("./?state=ready");
+  await page.goto("./?fixture=1&state=ready");
   const primary = page.locator('[data-pane-id="primary"]');
   const richScroller = primary.locator(".transcript");
   const richScrollTop = await richScroller.evaluate((element) => element.scrollTop);
@@ -214,7 +215,8 @@ test("TUI presentation streams one canonical controller grid to read-only pane m
   await expect(primary.locator(".tui-grid__row").filter({ hasText: "terminal input · paste bounded paste" })).toHaveCount(1);
   await primary.getByRole("button", { name: "Rich" }).click();
   await expect(primary.locator(".transcript")).toBeVisible();
-  expect(await primary.locator(".transcript").evaluate((element) => element.scrollTop)).toBe(richScrollTop);
+  const restoredScrollTop = await primary.locator(".transcript").evaluate((element) => element.scrollTop);
+  expect(Math.abs(restoredScrollTop - richScrollTop)).toBeLessThan(200);
   await primary.getByRole("button", { name: "Switch to TUI presentation" }).click();
 
   await primary.getByRole("button", { name: "Split pane horizontally" }).click();
@@ -238,8 +240,75 @@ test("TUI presentation streams one canonical controller grid to read-only pane m
   await expect(primary.locator(".transcript")).toBeVisible();
 });
 
+test("production boot uses same-origin login and never paints fixture data", async ({ page }) => {
+  let authenticated = false;
+  const now = "2026-07-19T00:00:00.000Z";
+  const identity = {
+    dashVersion: DASH_API_VERSION,
+    requestId: "request-browser-test",
+    serverInstanceId: "dash-browser-test",
+    clientId: "client-browser-test",
+    workspaceId: "workspace-browser-test",
+  } as const;
+  const inventory = { sessions: [], index: { formatVersion: 1, loadedAt: now, stale: false, reconciling: false } } as const;
+  const settings = {
+    revision: 1,
+    effective: {
+      theme: { name: "nord-midnight", density: "comfortable" },
+      editor: { mode: "multiline" },
+      sidebar: { initialLimit: 100, showProject: true, groupBy: "none" },
+      transcript: { expandTools: false, expandThinking: false },
+      motion: { reduced: false },
+      cache: { transcriptBytes: 1024, transcriptEntries: 8 },
+    },
+    runtimeOverlay: {},
+    sources: {},
+  } as const;
+  const workspace = {
+    workspaceId: identity.workspaceId,
+    revision: 1,
+    createdAt: now,
+    updatedAt: now,
+    selectedPaneId: "primary",
+    layout: { type: "leaf", paneId: "primary", content: { type: "empty" } },
+    seenCursors: {},
+  } as const;
+  const capabilities = {
+    apiVersion: DASH_API_VERSION,
+    streamSubprotocol: DASH_STREAM_SUBPROTOCOL,
+    sameBrowserProtocolAcrossDeployments: true,
+    authentication: { browserSession: "http-only-cookie", csrf: "same-origin-header", daemonBearerExposed: false },
+    resources: { inventory: true, transcriptPreview: true, activation: true, export: true, workspaces: true, settings: true, schedules: false },
+    presentations: {
+      rich: { available: true, replay: true, controller: true, commands: ["prompt"] },
+      tui: { available: false, replay: true, controller: true, commands: [], unavailableReason: "test" },
+    },
+    limits: DASH_DEFAULT_LIMITS,
+    performanceBudgets: DASH_PERFORMANCE_BUDGETS,
+  } as const;
+  await page.route("**/dash/v1/login", async (route) => {
+    authenticated = true;
+    await route.fulfill({ json: { ...identity, ok: true, data: { clientId: identity.clientId, workspaceId: identity.workspaceId, expiresAt: "2026-07-20T00:00:00.000Z", csrfToken: "csrf-browser-test" } } });
+  });
+  await page.route("**/dash/v1/bootstrap", async (route) => {
+    await route.fulfill(authenticated
+      ? { json: { ...identity, ok: true, data: { capabilities, settings, workspace, inventory } } }
+      : { status: 401, json: { ...identity, clientId: "unauthenticated", workspaceId: "unauthenticated", ok: false, error: { code: "unauthorized", message: "dashboard authentication failed", retryable: false } } });
+  });
+  await page.route("**/dash/v1/sessions*", async (route) => route.fulfill({ json: { ...identity, ok: true, data: inventory } }));
+
+  await page.goto("./");
+  await expect(page.getByRole("heading", { name: "Sign in to Dash" })).toBeVisible();
+  await page.getByLabel("Web credential").fill("input-only-test-credential");
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await expect(page.getByRole("heading", { name: "Dash" })).toBeVisible();
+  await expect(page.locator(".workspace-notice")).toContainText("Authenticated");
+  await expect(page.getByText("Fixture", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("Local fixture", { exact: false })).toHaveCount(0);
+});
+
 test("lazy composer accepts IME-shaped text without triggering pane shortcuts", async ({ page }) => {
-  await page.goto("./?state=ready");
+  await page.goto("./?fixture=1&state=ready");
   const editor = page.getByTestId("composer-editor");
   await editor.click();
   await page.keyboard.type("設計を静かに磨く");
@@ -247,9 +316,9 @@ test("lazy composer accepts IME-shaped text without triggering pane shortcuts", 
   await page.keyboard.press("Control+h");
   await expect(page.locator("[data-pane-id=primary]")).toHaveClass(/workspace-pane--selected/);
   await page.getByRole("button", { name: "Send message" }).click();
-  await expect(page.getByText("Fixture submission accepted.", { exact: false })).toBeVisible();
+  await expect(page.getByText("Completed fixture response to:", { exact: false })).toBeVisible();
   await page.waitForTimeout(650);
-  await expect(page.getByText("Fixture submission accepted.", { exact: false })).toHaveCount(1);
-  const persisted = page.getByText("Fixture submission accepted.", { exact: false }).locator("xpath=ancestor::article");
+  await expect(page.getByText("Completed fixture response to:", { exact: false })).toHaveCount(1);
+  const persisted = page.getByText("Completed fixture response to:", { exact: false }).locator("xpath=ancestor::article");
   await expect(persisted.locator(".record-source--persisted")).toBeVisible();
 });

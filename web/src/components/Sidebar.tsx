@@ -15,6 +15,8 @@ interface SidebarProps {
   selectedInventoryId?: InventoryId;
   status?: SidebarStatus;
   reconciling?: boolean;
+  fixtureMode?: boolean;
+  connectionLabel?: string;
   onQueryChange(query: string): void;
   onOpenChat(session: SessionFixture): void;
   onOpenInfo(session: SessionFixture): void;
@@ -88,6 +90,8 @@ export function Sidebar({
   selectedInventoryId,
   status = "ready",
   reconciling = false,
+  fixtureMode = false,
+  connectionLabel = "Same-origin authenticated stream",
   onQueryChange,
   onOpenChat,
   onOpenInfo,
@@ -150,7 +154,7 @@ export function Sidebar({
           <p className="eyebrow">Pi Daemon</p>
           <h1>Dash</h1>
         </div>
-        <span className={`fixture-badge${reconciling ? " fixture-badge--active" : ""}`}>{reconciling ? "Reconciling" : "Fixture"}</span>
+        {fixtureMode || reconciling ? <span className={`fixture-badge${reconciling ? " fixture-badge--active" : ""}`}>{reconciling ? "Reconciling" : "Fixture"}</span> : null}
         <button type="button" className="sidebar-close-button" onClick={onRequestClose} aria-label="Close session drawer"><PanelLeftClose size={17} /></button>
       </header>
 
@@ -280,7 +284,7 @@ export function Sidebar({
           <span>Settings</span>
           <kbd>⌘,</kbd>
         </button>
-        <div className="connection-state" role="status"><i /> Local fixture · 4 ms</div>
+        <div className="connection-state" role="status"><i /> {connectionLabel}</div>
       </footer>
       {infoTooltip ? <SessionInfoTooltip state={infoTooltip} /> : null}
     </aside>

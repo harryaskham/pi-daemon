@@ -44,7 +44,8 @@ describe("local dashboard fixture backend", () => {
   it("searches all 10k bounded records without returning private transcript content", async () => {
     const result = await backend.listSessions({ search: "session-09999" });
     expect(result.sessions).toHaveLength(1);
-    expect(result.sessions[0]?.managed?.sessionId).toBe("session-09999");
+    expect(result.sessions[0]?.piSessionId).toBe("pi-session-09999");
+    expect(result.sessions[0]?.sourceKind).toBe("external");
     expect(JSON.stringify(result)).not.toContain("provider credential");
   });
 });

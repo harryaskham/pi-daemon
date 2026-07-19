@@ -7,9 +7,9 @@ title: Dash browser and backend contracts
 
 Status: **Versioned contract, inventory, transcript projection, ownership,
 production SPA/workspace, secure browser server, authenticated stream router,
-embedded and dedicated backends, neutral remote APIs, and the shadow-TUI
-transport are implemented. Full live browser integration and dedicated
-lifecycle packaging continue in dependency-linked slices.**
+embedded and dedicated backends, neutral remote APIs, shadow-TUI transport,
+dedicated lifecycle, and full same-origin live browser integration are
+implemented. Final dual-mode visual/security/performance acceptance remains.**
 
 Pi Daemon Dash has one browser protocol and one transport-neutral backend seam.
 The same compiled SPA talks to `/dash/v1` whether `DashboardServer` is embedded
@@ -36,6 +36,9 @@ The machine-readable and TypeScript contracts are:
 - `src/dashboard-stream-router.ts` / package export `./dashboard-stream-router`
   — explicit backend-to-browser channel routing factory; the server remains
   fail-closed unless its lifecycle injects this handler after cookie auth;
+- `web/src/browser-dashboard-client.ts` — browser-only same-origin REST and
+  multiplexed `pi-daemon-dash.v1` client, including input-only login, CSRF,
+  controller channels, replay/reconnect, and indeterminate lost responses;
 - [`dashboard-api.schema.json`](dashboard-api.schema.json) — JSON Schema for
   HTTP resources and multiplexed WebSocket frames;
 - [`dashboard-api.openapi.json`](dashboard-api.openapi.json) — same-origin HTTP
@@ -122,7 +125,10 @@ until native TLS support lands.
 SPA with a deny-by-default CSP, no-sniff/frame/referrer/permissions policy,
 non-symlink regular-file checks, immutable caching only for hash-named assets,
 and no SPA-injected credential or configuration. Traversal, unhashed asset
-names, oversized files, and writable/untrusted files fail closed.
+names, oversized files, and writable/untrusted files fail closed. The explicit
+`?fixture=1` story is reserved for deterministic tests and visual artifacts: it
+is visibly labelled, contains only generated data, opens no production channel,
+and grants no authority.
 
 ## HTTP resources and envelopes
 

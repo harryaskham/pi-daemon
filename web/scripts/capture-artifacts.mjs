@@ -54,7 +54,7 @@ const appFirstRowsSamples = [];
 const navigationFirstRowsSamples = [];
 for (let index = 0; index < 20; index += 1) {
   const startedAt = performance.now();
-  await page.goto(url, { waitUntil: "networkidle" });
+  await page.goto(`${url}?fixture=1`, { waitUntil: "networkidle" });
   await page.locator("[data-session-row]").first().waitFor();
   harnessNavigationSamples.push(performance.now() - startedAt);
   const metrics = await page.evaluate(() => window.__DASH_METRICS__);

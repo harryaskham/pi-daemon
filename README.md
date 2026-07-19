@@ -32,8 +32,10 @@ or Cacophony credentials.
 > ownership and export, the neutral service-bearer Dash API, coalesced embedded
 > and dedicated Rich/TUI backends with bounded reconnect, and a bounded
 > in-process shadow-terminal host, authenticated browser stream routing, and a
-> standalone dedicated `pi-daemon web` lifecycle over the remote backend;
-> production browser live-state integration continues in its final staged slice.
+> standalone dedicated `pi-daemon web` lifecycle over the remote backend, and
+> the production same-origin browser client for input-only login, persisted
+> inventory/workspace/settings, preview-first hydration, multiplexed Rich/TUI
+> streams, correlated commands, replay recovery, liveness, and extension UI.
 > Full credential-free install/CRUD/RPC/ACP/restart/security acceptance is green;
 > the repository is a release candidate, but no release tag is cut yet.
 
@@ -88,8 +90,11 @@ pi-daemon-rpc --url http://127.0.0.1:7463 --session exact-id-or-name \
 
 With an enabled embedded `web` block, the same `serve` process starts the
 packaged browser BFF after its owner socket/API are ready. Open `/dash/` on the
-configured loopback web port (for example `http://127.0.0.1:7464/dash/`). A
-`web.mode: dedicated` configuration is instead served by `pi-daemon web`, which
+configured loopback web port (for example `http://127.0.0.1:7464/dash/`). Enter
+the owner-private `STATE_DIR/web-token` (or configured `web.auth.tokenFile`)
+credential in the login form; the SPA exchanges it once for an HttpOnly browser
+session and never stores it. A `web.mode: dedicated` configuration is instead
+served by `pi-daemon web`, which
 uses the service API on 7463 and defaults its independent browser listener to
 7465. Never put either service or web credentials in the URL.
 

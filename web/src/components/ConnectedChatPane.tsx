@@ -1,0 +1,107 @@
+import { useCallback, useEffect } from "react";
+import type { DashboardBackend, DashboardCommandOperation, DashboardCursor } from "@harryaskham/pi-daemon/dashboard-contract";
+import type { JsonObject } from "@harryaskham/pi-daemon/session-api";
+import type { DashboardLiveSessionState } from "../dashboard-live-session";
+import type { DemoState, SessionFixture, TranscriptRecord } from "../model";
+import { useDashboardLiveSession } from "../use-dashboard-live-session";
+import { ChatPane } from "./ChatPane";
+
+interface ConnectedChatPaneProps {
+  backend: DashboardBackend;
+  session: SessionFixture;
+  fallbackRecords: TranscriptRecord[];
+  active: boolean;
+  fixtureMode: boolean;
+  tuiAvailable: boolean;
+  demoState: DemoState;
+  streamText: string;
+  vimEnabled: boolean;
+  composerHistory: string[];
+  onStateChange?(state: DashboardLiveSessionState): void;
+  onSeen?(inventoryId: string, cursor: DashboardCursor): void;
+  onPresentationChange(presentation: "rich" | "tui"): void;
+  onDemoStateChange(state: DemoState): void;
+  onToggleVim(): void;
+  onSubmitted(value: string): void;
+}
+
+export function ConnectedChatPane({
+  backend,
+  session,
+  fallbackRecords,
+  active,
+  fixtureMode,
+  tuiAvailable,
+  demoState,
+  streamText,
+  vimEnabled,
+  composerHistory,
+  onStateChange,
+  onSeen,
+  onPresentationChange,
+  onDemoStateChange,
+  onToggleVim,
+  onSubmitted,
+}: ConnectedChatPaneProps) {
+  const markSeen = useCallback((cursor: DashboardCursor) => onSeen?.(session.inventoryId, cursor), [onSeen, session.inventoryId]);
+  const live = useDashboardLiveSession(backend, session.inventoryId, "controller", markSeen);
+  useEffect(() => onStateChange?.(live.state), [live.state, onStateChange]);
+  useEffect(() => {
+    if (active && live.state.unread && document.visibilityState === "visible") live.controller.markSeen();
+  }, [active, live.controller, live.state.unread]);
+  return (
+    <ChatPane
+      session={session}
+      records={live.state.transcript?.records ?? fallbackRecords}
+      fixtureMode={fixtureMode}
+      tuiAvailable={tuiAvailable}
+      demoState={demoState}
+      streamText={streamText}
+      vimEnabled={vimEnabled}
+      composerHistory={composerHistory}
+      needsReconcile={live.state.transcript?.needsReconcile ?? false}
+      droppedRecords={live.state.transcript?.droppedRecords ?? 0}
+      liveState={live.state}
+      liveController={live.controller}
+      onPresentationChange={onPresentationChange}
+      onDemoStateChange={onDemoStateChange}
+      onToggleVim={onToggleVim}
+      onSubmit={(value) => {
+        onSubmitted(value);
+        const parsed = parseComposerCommand(value);
+        void live.controller.command(
+          parsed.operation,
+          parsed.payload,
+          `${parsed.operation}-${session.sessionId}-${Date.now().toString(36)}`,
+        );
+      }}
+    />
+  );
+}
+
+export function parseComposerCommand(value: string): { operation: DashboardCommandOperation; payload: JsonObject } {
+  const [head = "", ...rest] = value.trim().split(/\s+/u);
+  const argument = rest.join(" ");
+  switch (head.toLocaleLowerCase()) {
+    case "/model": return { operation: "set_model", payload: { modelId: argument } };
+    case "/thinking": return { operation: "set_thinking_level", payload: { level: argument || "medium" } };
+    case "/compact": return { operation: "compact", payload: {} };
+    case "/auto-compaction": return { operation: "set_auto_compaction", payload: { enabled: parseToggle(argument) } };
+    case "/auto-retry": return { operation: "set_auto_retry", payload: { enabled: parseToggle(argument) } };
+    case "/abort-retry": return { operation: "abort_retry", payload: {} };
+    case "/steering-mode": return { operation: "set_steering_mode", payload: { mode: argument } };
+    case "/follow-up-mode": return { operation: "set_follow_up_mode", payload: { mode: argument } };
+    case "/name": return { operation: "set_session_name", payload: { name: argument } };
+    case "/abort": return { operation: "abort", payload: {} };
+    case "/steer": return { operation: "steer", payload: { message: argument } };
+    case "/follow-up": return { operation: "follow_up", payload: { message: argument } };
+    case "/tree": return { operation: "get_tree", payload: {} };
+    case "/fork": return { operation: "fork", payload: argument ? { entryId: argument } : {} };
+    case "/clone": return { operation: "clone", payload: argument ? { entryId: argument } : {} };
+    default: return { operation: "prompt", payload: { message: value } };
+  }
+}
+
+function parseToggle(value: string): boolean {
+  return !["off", "false", "0", "no"].includes(value.toLocaleLowerCase());
+}

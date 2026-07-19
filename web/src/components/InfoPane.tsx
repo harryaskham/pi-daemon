@@ -9,11 +9,13 @@ import {
   ShieldCheck,
   Sparkles,
 } from "../icons";
+import type { SessionInfoResource } from "@harryaskham/pi-daemon/dashboard-contract";
 import type { SessionFixture } from "../model";
 import { preciseRelativeTime } from "../time";
 
 interface InfoPaneProps {
   session: SessionFixture;
+  info?: SessionInfoResource;
 }
 
 function Metric({ label, value, detail }: { label: string; value: string; detail: string }) {
@@ -26,7 +28,7 @@ function Metric({ label, value, detail }: { label: string; value: string; detail
   );
 }
 
-export function InfoPane({ session }: InfoPaneProps) {
+export function InfoPane({ session, info }: InfoPaneProps) {
   return (
     <article className="info-pane" aria-label={`Information for ${session.title}`}>
       <header className="info-hero">
@@ -61,6 +63,8 @@ export function InfoPane({ session }: InfoPaneProps) {
           <div><dt><GitBranch size={14} /> Pi session</dt><dd>{session.sessionId}</dd></div>
           <div><dt><Cpu size={14} /> Inventory ID</dt><dd>{session.inventoryId}</dd></div>
           <div><dt><Clock3 size={14} /> Modified</dt><dd>{new Date(session.modifiedAt).toLocaleString()}</dd></div>
+          {info?.source.canonicalPath ? <div><dt><FileCode2 size={14} /> Canonical path</dt><dd>{info.source.canonicalPath}</dd></div> : null}
+          {info?.runtime ? <div><dt><Activity size={14} /> Readers / warm leases</dt><dd>{info.runtime.readerCount} / {info.runtime.warmLeaseCount}</dd></div> : null}
         </dl>
       </section>
 
@@ -69,8 +73,8 @@ export function InfoPane({ session }: InfoPaneProps) {
         <div className="policy-card">
           <ShieldCheck size={18} />
           <div>
-            <strong>Trusted · unisolated</strong>
-            <p>Preview uses persisted records only. Hydration and controller authority are negotiated separately.</p>
+            <strong>{info?.ownership.mode ?? "Trusted"} · {info?.runtime?.isolation ?? "runtime policy pending"}</strong>
+            <p>{info?.diagnostics[0]?.message ?? "Preview uses persisted records only. Hydration and controller authority are negotiated separately."}</p>
           </div>
         </div>
       </section>

@@ -1,6 +1,6 @@
 # Pi Daemon Dash — product and implementation plan
 
-Status: **design draft for review; no implementation is authorized by this document yet**  
+Status: **implemented through live browser integration; final v1 acceptance remains**
 Product name: **Pi Daemon Dash**  
 CLI surface: `pi-daemon web`  
 Configuration namespace: `web:`  
@@ -1326,13 +1326,15 @@ These lanes intentionally begin in parallel:
   on TUI spike, contract, embedded backend, and neutral API.
 - [x] `bd-0b804d` — responsive interactive browser TUI grid and Rich/TUI toggle;
   depends on TUI/frontend spikes, contract, and SPA shell.
-- [ ] `bd-ea2019` — live preview/hydration/RPC/liveness/extension UI integration;
+- [x] `bd-ea2019` — same-origin login/REST/WS client, server-backed inventory,
+  preview-first hydration, correlated RPC/command flows, reconnect/replay,
+  persisted seen cursors, liveness, export, and extension dialogs/widgets/status;
   depends on SPA shell, rich transcript, browser server, and both backends.
 - [x] `bd-b9d8e6` — operator-directed embedded `serve` browser lifecycle slice;
   starts the packaged SPA/BFF now without waiting for the dedicated backend.
 - [x] `bd-3a61f7` — authenticated bounded browser stream router from the BFF to
   Rich/TUI `DashboardBackend` channels with exact replay/control semantics.
-- [ ] `bd-31ee8f` — dedicated lifecycle, final dual-mode packaging, CLI, npm/Nix
+- [x] `bd-31ee8f` — dedicated lifecycle, final dual-mode packaging, CLI, npm/Nix
   and Home Manager closure; depends on config/server/backends/SPA and the
   embedded lifecycle slice.
 
