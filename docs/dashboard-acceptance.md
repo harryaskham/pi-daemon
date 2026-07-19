@@ -91,6 +91,43 @@ adapter, browser grid and component fixtures pass their frame, replay,
 controller, accessibility and performance gates and become available only when
 that public seam is injected.
 
+## Lazy new-session integration acceptance
+
+Parent `bd-e9fce1` is complete on main through three independently landed and
+then jointly validated slices:
+
+- `32c3d4b` (`bd-6a4170`) — browser-safe contract, owner-private atomic
+  draft/first-send store, authenticated neutral and BFF CRUD, deterministic
+  target identity, schemas, fixtures, and no-runtime composition;
+- `eb9253a` (`bd-96c3e1`) — embedded/dedicated exact-once materializer with
+  monotonic materializing/ready-to-prompt/prompt-submitting checkpoints,
+  controller acquisition, cancellation cleanup, and indeterminate crash truth;
+- `2c0eb74` (`bd-72d6fd`) — production New Session sidebar/form/empty-pane UX,
+  fixed-bottom composer, durable draft restore/cancel, inline policy/error state,
+  and transition to the managed live pane using the shared preview-composer
+  flow.
+
+The combined focused matrix passed 71/71 Node tests and 61/61 web tests. It
+proves draft create/get/cancel cause zero factory opens, RPC calls, SDK/model/tool
+work, controller acquisition, or subprocess creation; concurrent duplicate
+first sends create one deterministic session and admit one prompt; embedded and
+remote backends share the same durable ticket/reconciliation semantics; restart
+resumes only pre-prompt checkpoints; prompt-submitting crashes and cancellation
+races become non-replayable indeterminate outcomes; and browser refresh restores
+the draft without duplicating its optimistic first message.
+
+Live rolling acceptance on exact `2c0eb74` authenticated the packaged production
+New Session flow and opened the polished lazy draft. The daemon session-list
+response was byte-identical before and after draft creation, proving that the
+browser performed no eager logical-session/runtime/SDK/model/tool work. The Nix
+rolling update passed, and the cookie-reuse soak absorbed an intentional restart
+with zero failures.
+
+Final parent validation on current main passed `npm test` 356/356 and the full
+`nix flake check`, including clean npm pack/import, Pages, Home Manager module,
+installed binaries, and production web build. No acceptance condition was
+waived and no eager Session API create path was reused behind the browser.
+
 ## Wall-clock soak
 
 The initial acceptance harness deliberately performed a fresh credential

@@ -649,7 +649,7 @@ implementation order. This list is a human-readable crosswalk.
   - [x] `bd-ea2019` — production same-origin login/REST/WS SPA integration,
     preview-first hydration, live commands/replay/liveness, seen cursors, and
     serializable extension interactions.
-  - [ ] `bd-e9fce1` — lazy browser creation of a brand-new logical session with
+  - [x] `bd-e9fce1` — lazy browser creation of a brand-new logical session with
     zero runtime/model/tool work before the first explicit message.
     - [x] `bd-6a4170` — browser-safe contract, owner-private atomic draft/send
       ticket store, authenticated neutral/BFF CRUD, schemas, fixtures, and docs.

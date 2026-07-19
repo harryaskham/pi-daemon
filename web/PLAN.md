@@ -1358,7 +1358,7 @@ These lanes intentionally begin in parallel:
 
 ### Lazy new-session follow-on
 
-- [ ] `bd-e9fce1` — parent browser new-session flow: no runtime/model/tool work
+- [x] `bd-e9fce1` — parent browser new-session flow: no runtime/model/tool work
   before the first explicit message and exactly one materialized first turn.
 - [x] `bd-6a4170` — browser-safe draft contract, owner-private atomic draft/send
   ticket store, authenticated service/BFF CRUD, schema, fixtures, and docs.
