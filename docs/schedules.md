@@ -1,10 +1,12 @@
 # Schedule resource contract v1
 
-Pi Daemon defines a transport-neutral, per-session schedule resource before it
-implements timer execution. The published TypeScript contract is
+Pi Daemon defines a transport-neutral, per-session schedule resource and a
+bounded durable timer runtime. The published TypeScript contract is
 `@harryaskham/pi-daemon/schedule-contract`; the language-neutral contract is
-[`schedule.schema.json`](../schedule.schema.json). `timerRuntime: false` is
-normative in this slice: storing a resource does **not** arrange a wake.
+[`schedule.schema.json`](../schedule.schema.json). The current Session API
+continues to report `timerRuntime: false`: storing a resource alone does **not**
+arrange a wake. Hosts can explicitly construct the exported transport-neutral
+`SchedulerRuntime`; service wiring remains a separate integration concern.
 
 ## Resource and updates
 
@@ -48,9 +50,8 @@ matters. Fixed numeric offsets are not timezone names.
 Jitter is a non-negative delay selected in `[0, jitterMs]`; it never advances a
 wake. `maxAdmissionDelayMs` is measured from the scheduled UTC instant. Once
 that deadline has elapsed, the occurrence follows missed-wake policy rather
-than being silently submitted late. The timer implementation must define a
-stable randomization source so restart does not repeatedly redraw jitter. No
-such implementation exists in this contract slice.
+than being silently submitted late. The runtime derives jitter from a stable
+hash of schedule ID and selected UTC instant, so restart does not redraw it.
 
 ## Clock and daylight-saving semantics
 
@@ -96,8 +97,21 @@ replayed after a crash.
 the contract resource. Recovery is bounded by record/count/aggregate byte
 limits, validates every field, rejects insecure permissions and symlinks, and
 quarantines malformed or unsupported files with a `.corrupt-...` suffix.
-Recovery does not submit, catch up, or start timers. Exceeding global or
-per-session capacity fails closed rather than partially scheduling resources.
+Store recovery by itself does not submit, catch up, or start timers. Explicit
+`SchedulerRuntime.start()` recomputes future instants and applies bounded
+missed-wake policy to stale instants. Before calling durable prompt admission it
+atomically records a conservative trigger decision and advances the next
+instant. A crash can therefore omit work that was not durably accepted, but can
+never blindly replay work that may have been accepted. Accepted prompt tickets
+retain queued/running/terminal or indeterminate truth in the wake journal.
+
+The runtime exposes transport-neutral `start`, `stop`, `reload`, `status`, and
+content-free schedule status/history methods. It uses monotonic timers only as
+bounded wakeup hints and re-reads wall time for cron selection. Stable jitter,
+one coalesced overlap per schedule, catch-up limits, schedule count limits, and
+a bounded cron search horizon prevent timer and memory backlog growth.
+Exceeding global or per-session capacity fails closed rather than partially
+scheduling resources.
 
 ## Authenticated HTTP and CLI
 

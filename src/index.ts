@@ -27,6 +27,7 @@ export * from "./rpc-bridge.js";
 export * from "./schedule-contract.js";
 export * from "./schedule-config.js";
 export * from "./schedule-store.js";
+export * from "./scheduler-runtime.js";
 export * from "./server.js";
 export * from "./source-fingerprint.js";
 export * from "./session-api.js";

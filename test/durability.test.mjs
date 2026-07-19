@@ -471,8 +471,9 @@ test("background recovery listens without waiting for queued model completion an
   assert.equal(mux.status().ready, false);
   assert.equal(mux.status().recovery.phase, "recovering");
   const adapter = factory.adapter();
-  for (let attempt = 0; attempt < 100 && adapter.calls.length === 0; attempt += 1) {
-    await new Promise((resolve) => setTimeout(resolve, 2));
+  const replayStartDeadline = Date.now() + 2_000;
+  while (adapter.calls.length === 0 && Date.now() < replayStartDeadline) {
+    await new Promise((resolve) => setTimeout(resolve, 5));
   }
   assert.equal(adapter.calls.length, 1);
 

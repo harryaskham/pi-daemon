@@ -31,6 +31,11 @@ export interface ScheduleRecovery {
   scannedBytes: number;
 }
 
+export interface ScheduleRuntimeState {
+  nextTriggerAt?: string;
+  lastTrigger?: ScheduleResource["lastTrigger"];
+}
+
 export interface FileScheduleStoreOptions {
   stateDir: string;
   limits?: Partial<ScheduleLimits>;
@@ -107,6 +112,35 @@ export class FileScheduleStore {
       if (current.revision !== expectedRevision) throw new ScheduleStoreError("revision_conflict", "schedule revision precondition failed");
       if (definition.scheduleId !== scheduleId || definition.sessionRef !== current.sessionRef) throw new ScheduleStoreError("revision_conflict", "scheduleId and sessionRef are immutable");
       const resource = validateScheduleResource({ ...structuredClone(definition), contractVersion: SCHEDULE_CONTRACT_VERSION, revision: current.revision + 1, createdAt: current.createdAt, updatedAt: this.#timestamp() }, this.limits);
+      await this.#write(resource);
+      this.#records.set(scheduleId, resource);
+      return structuredClone(resource);
+    });
+  }
+
+  /**
+   * Atomically advances timer-owned state without allowing the runtime to
+   * overwrite a concurrent CRUD replacement. The revision is incremented so
+   * callers observing a schedule can detect every durable trigger decision.
+   */
+  async updateRuntimeState(
+    scheduleId: string,
+    expectedRevision: number,
+    state: ScheduleRuntimeState,
+  ): Promise<ScheduleResource> {
+    await this.recover();
+    return this.#serialize(async () => {
+      const current = this.#records.get(scheduleId);
+      if (current === undefined) throw new ScheduleStoreError("not_found", "schedule does not exist");
+      if (current.revision !== expectedRevision) throw new ScheduleStoreError("revision_conflict", "schedule revision precondition failed");
+      const next = structuredClone(current);
+      next.revision += 1;
+      next.updatedAt = this.#timestamp();
+      if (state.nextTriggerAt === undefined) delete next.nextTriggerAt;
+      else next.nextTriggerAt = state.nextTriggerAt;
+      if (state.lastTrigger === undefined) delete next.lastTrigger;
+      else next.lastTrigger = structuredClone(state.lastTrigger);
+      const resource = validateScheduleResource(next, this.limits);
       await this.#write(resource);
       this.#records.set(scheduleId, resource);
       return structuredClone(resource);

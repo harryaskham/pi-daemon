@@ -61,6 +61,10 @@
       "types": "./dist/schedule-store.d.ts",
       "import": "./dist/schedule-store.js"
     },
+    "./scheduler-runtime": {
+      "types": "./dist/scheduler-runtime.d.ts",
+      "import": "./dist/scheduler-runtime.js"
+    },
     "./dashboard-backend": {
       "types": "./dist/dashboard-backend.d.ts",
       "import": "./dist/dashboard-backend.js"

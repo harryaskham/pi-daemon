@@ -31,7 +31,7 @@ remain neutral service surfaces—not Cacophony components.
 - [Dash session ownership](dashboard-ownership) — explicit direct/fork leases, conflict guards, atomic export/append-back, and indeterminate recovery
 - [Neutral Dash service API](dashboard-service-api) — service-bearer inventory, preview, activation/export/lease routes and TUI negotiation for remote backends
 - [Session configuration](session-configuration) — Pi CLI mapping, environment handling, resources, tools, and honest isolation limits
-- [Schedule contract](schedules) — versioned cron/timezone/prompt resources, persistence recovery, clock and DST semantics (timers deferred)
+- [Schedule contract](schedules) — versioned cron/timezone/prompt resources, durable bounded timers, recovery, clock and DST semantics
 - [Operations](operations) — install, serve, probe, status, drain, and recovery
 - [Session management CLI](session-cli) — JSON CRUD, tickets, prompts/controls, and endpoint discovery
 - [Security](security) — shared-process trust boundary and root policy

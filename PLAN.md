@@ -650,10 +650,11 @@ implementation order. This list is a human-readable crosswalk.
 - [ ] `bd-4e10da` — future neutral persisted per-session cron/prompt scheduler
   and durable wakes; detailed alongside Dash in `web/PLAN.md`.
   - [x] `bd-6d96bb` — v1 schedule resource/schema/fixtures, bounded owner-private
-    persistence recovery, optimistic revisions, clock/DST and secrecy contract;
-    timer admission and execution remain deferred.
+    persistence recovery, optimistic revisions, clock/DST and secrecy contract.
   - [x] `bd-72aac0` — bearer-authenticated schedule CRUD/status/capabilities,
     ETag/idempotency CLI, and owner-private YAML/import prompt references.
+  - [x] `bd-cb3036` — bounded durable timer loop, stable jitter, missed-wake and
+    overlap policy, and idempotent durable prompt-ticket admission.
 
 All standalone delivery and acceptance blockers are landed. Cutting the first
 release tag is an explicit operator action under `docs/release.md`; the remaining
