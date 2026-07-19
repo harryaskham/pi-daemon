@@ -86,8 +86,9 @@ preferences are a separate allowlisted overlay under `STATE_DIR/web`; they
 cannot change bind/auth/root/credential/resource authority. `sessionStorage` is
 used by the ownership service. A present, enabled `web` block in `embedded` mode
 starts the packaged browser BFF with the in-process backend; omitting the block
-preserves the socket/API-only service lifecycle. Dedicated mode remains a
-separate `pi-daemon web` lifecycle.
+preserves the socket/API-only service lifecycle. Dedicated mode runs as a
+separate `pi-daemon web` process over the authenticated neutral API and uses an
+independent browser state directory and credential.
 
 To enable the additive authenticated JSON listener, either set `api.enabled`
 in YAML or pass `--api-port` (optionally make enablement explicit with
@@ -272,8 +273,24 @@ browser BFF after the owner socket and authenticated API are ready. Open
 credential is exchanged only through the same-origin login and becomes an
 opaque `HttpOnly`, `SameSite=Strict` cookie; the daemon service bearer never
 reaches JavaScript. Startup is atomic across all listeners and shutdown shares
-the daemon's existing whole deadline. Dedicated `pi-daemon web` remains in the
-final dual-mode lifecycle slice.
+the daemon's existing whole deadline.
+
+For a dedicated deployment, set `web.mode: dedicated`, keep the service API
+enabled, and run:
+
+```console
+pi-daemon web --config ~/.config/pi/daemon/work/config.yaml --instance work
+```
+
+The command defaults to API `127.0.0.1:7463` and browser port 7465, reads the
+service bearer from the configured API token file (or an inherited descriptor/
+environment source), keeps it server-side inside `RemoteDashboardBackend`, and
+stores browser credentials/workspaces under `STATE_DIR/dedicated-web`. CLI
+`--api-url`, `--api-token-file`/`--api-token-fd`, `--web-state-dir`,
+`--web-bind`, `--web-port`, and `--public-origin` provide bounded supervisor
+overrides. Home Manager `instances.<name>.dedicatedWeb` emits a second ordered
+systemd/launchd/supervisord service, validates API/Dash port and state/log
+collisions, and passes only token paths—not bytes—through argv.
 
 ## Nix-on-Droid cache bootstrap
 

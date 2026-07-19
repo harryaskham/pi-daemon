@@ -11,6 +11,7 @@ import { ApiServer } from "./api-server.js";
 import { bootstrapServicePaths } from "./bootstrap.js";
 import { PiDaemonClient, ProtocolResponseError } from "./client.js";
 import { loadPiDaemonConfig, PiDaemonConfigError } from "./config.js";
+import { RemoteDashboardBackend } from "./dashboard-remote-backend.js";
 import { createDashboardServerFromConfig, type DashboardServer } from "./dashboard-server.js";
 import { createDashboardStreamHandler } from "./dashboard-stream-router.js";
 import { EmbeddedDashboardServiceRuntime } from "./dashboard-service-runtime.js";
@@ -21,6 +22,7 @@ import { PiSessionFactory } from "./pi-adapter.js";
 import { installProcessStdioErrorHandlers } from "./process-stdio.js";
 import { parseSupportedProtocolCommand } from "./protocol-v2.js";
 import { RpcAttachmentManager } from "./rpc-attachments.js";
+import { loadClientBearer } from "./rpc-stdio-cli.js";
 import { importConfiguredSchedules } from "./schedule-config.js";
 import { FileScheduleStore } from "./schedule-store.js";
 import { ProtocolServer } from "./server.js";
@@ -29,7 +31,7 @@ import {
   runHighLevelCli,
   type SessionCliDependencies,
 } from "./session-cli.js";
-import { SessionApiClientError } from "./session-client.js";
+import { SessionApiClient, SessionApiClientError } from "./session-client.js";
 import { FileSessionCatalog } from "./session-catalog.js";
 import { FileMutationTicketStore, MutationTicketController } from "./tickets.js";
 import { PI_DAEMON_VERSION } from "./version.js";
@@ -74,6 +76,8 @@ export async function runCli(
         return await runRequest(args, io);
       case "serve":
         return await runServe(args, io, dependencies);
+      case "web":
+        return await runWeb(args, io, dependencies);
       case "session":
       case "ticket":
       case "schedule":
@@ -180,6 +184,138 @@ async function runRequest(args: string[], io: CliIo): Promise<number> {
   } finally {
     client.close();
   }
+}
+
+async function runWeb(
+  args: string[],
+  io: CliIo,
+  dependencies: CliDependencies,
+): Promise<number> {
+  const options = parseOptions(
+    args,
+    new Set([
+      "config",
+      "instance",
+      "api-url",
+      "api-token-file",
+      "api-token-fd",
+      "api-allow-insecure-http",
+      "web-state-dir",
+      "web-bind",
+      "web-port",
+      "public-origin",
+    ]),
+  );
+  const cliConfigPath = options.get("config");
+  const cliInstance = options.get("instance");
+  const loadedConfig = await loadPiDaemonConfig({
+    ...(cliConfigPath === undefined ? {} : { cliConfigPath }),
+    ...(cliInstance === undefined ? {} : { cliInstance }),
+  });
+  const config = loadedConfig.config;
+  if (config.web?.enabled === false) throw new CliUsageError("dashboard web server is disabled");
+  if (config.web?.mode !== undefined && config.web.mode !== "dedicated") {
+    throw new CliUsageError("pi-daemon web requires web.mode=dedicated");
+  }
+
+  const daemonStateDir =
+    config.stateDir === undefined
+      ? resolve(`${homedir()}/.local/state/pi-daemon`)
+      : loadedConfig.resolvePath(config.stateDir);
+  const stateDir = options.has("web-state-dir")
+    ? resolve(requiredOption(options, "web-state-dir"))
+    : join(daemonStateDir, "dedicated-web");
+  const configuredTokenFile = options.get("api-token-file") ?? config.api?.tokenFile;
+  const tokenFile =
+    configuredTokenFile === undefined && process.env[SERVICE_BEARER_ENV] === undefined && !options.has("api-token-fd")
+      ? join(daemonStateDir, "api-token")
+      : configuredTokenFile === undefined
+        ? undefined
+        : options.has("api-token-file")
+          ? resolve(configuredTokenFile)
+          : loadedConfig.resolvePath(configuredTokenFile);
+  const tokenFd = integerSetting(options, "api-token-fd", undefined, 3);
+  const bearerToken = loadClientBearer({
+    environment: process.env,
+    ...(tokenFile === undefined ? {} : { tokenFile }),
+    ...(tokenFd === undefined ? {} : { tokenFd }),
+  });
+  const apiUrl = options.get("api-url") ?? configuredApiUrl(config.api?.bind, config.api?.port);
+  const allowInsecureRemote =
+    booleanSetting(options, "api-allow-insecure-http", config.api?.allowInsecureHttp) ?? false;
+  const client = new SessionApiClient({
+    baseUrl: apiUrl,
+    bearerToken,
+    allowInsecureRemote,
+  });
+  const backend = new RemoteDashboardBackend({ client });
+  const webBind = options.get("web-bind") ?? config.web?.bind ?? "127.0.0.1";
+  const webPort = integerSetting(options, "web-port", config.web?.port, 0) ?? 7465;
+  const publicOrigin = options.get("public-origin");
+  const logger = new JsonLineLogger(io.stderr, { component: "pi-daemon-web" });
+  const signalLatch = dependencies.waitForShutdown === undefined ? latchShutdownSignal() : undefined;
+  let server: DashboardServer | undefined;
+  try {
+    const capabilities = await backend.capabilities();
+    server = await createDashboardServerFromConfig({
+      loadedConfig,
+      stateDir,
+      backend,
+      serverInstanceId: `dedicated-${loadedConfig.instance}`,
+      streamHandlerFactory: createDashboardStreamHandler,
+      webOverrides: {
+        enabled: true,
+        mode: "dedicated",
+        bind: webBind,
+        port: webPort,
+      },
+      ...(publicOrigin === undefined ? {} : { publicOrigin }),
+    });
+    const address = await server.start();
+    logger.write("info", "pi_daemon_web_ready", {
+      instance: loadedConfig.instance,
+      host: address.host,
+      port: address.port,
+      origin: address.origin,
+      remoteApiOrigin: new URL(apiUrl).origin,
+      dashVersion: capabilities.apiVersion,
+    });
+  } catch (error) {
+    signalLatch?.dispose();
+    await server?.stop().catch(() => undefined);
+    backend.dispose();
+    throw error;
+  }
+
+  let shutdownPromise: Promise<void> | undefined;
+  const shutdown = (timeoutMs = 30_000): Promise<void> => {
+    if (shutdownPromise !== undefined) return shutdownPromise;
+    shutdownPromise = (async () => {
+      const stopped = await completesWithin(server!.stop(), timeoutMs);
+      backend.dispose();
+      if (!stopped) logger.write("warn", "dashboard_shutdown_timeout", { timeoutMs });
+    })();
+    return shutdownPromise;
+  };
+  try {
+    if (dependencies.waitForShutdown !== undefined) {
+      await dependencies.waitForShutdown(shutdown);
+    } else {
+      const signal = await signalLatch!.signal;
+      const timeoutMs = signal === "SIGTERM" ? 30_000 : 5_000;
+      const hardExit = setTimeout(() => process.exit(1), timeoutMs + 250);
+      hardExit.unref();
+      try {
+        await shutdown(timeoutMs);
+      } finally {
+        clearTimeout(hardExit);
+      }
+    }
+  } finally {
+    signalLatch?.dispose();
+    await shutdown();
+  }
+  return 0;
 }
 
 async function runServe(
@@ -798,6 +934,17 @@ function latchShutdownSignal(): {
   return { signal, dispose };
 }
 
+function configuredApiUrl(bind: string | undefined, port: number | undefined): string {
+  const configuredHost = bind ?? "127.0.0.1";
+  const host =
+    configuredHost === "0.0.0.0"
+      ? "127.0.0.1"
+      : configuredHost === "::"
+        ? "::1"
+        : configuredHost;
+  return `http://${host.includes(":") ? `[${host}]` : host}:${port ?? 7463}`;
+}
+
 function helpText(): string {
   return `Pi Daemon ${PI_DAEMON_VERSION}
 
@@ -809,6 +956,10 @@ Usage:
                   [--api-enabled true|false] [--api-port PORT] [--api-bind HOST]
                   [--api-token-file PATH | --api-token-fd FD]
                   [--api-allow-insecure-http true|false]
+  pi-daemon web [--config PATH] [--instance NAME]
+                [--api-url URL] [--api-token-file PATH | --api-token-fd FD]
+                [--web-state-dir PATH] [--web-bind HOST] [--web-port PORT]
+                [--public-origin URL] [--api-allow-insecure-http true|false]
   pi-daemon probe --socket PATH [--timeout-ms N]
   pi-daemon request --socket PATH --json REQUEST [--timeout-ms N]
   pi-daemon session list|show|create|update|delete [options]
@@ -822,7 +973,8 @@ Usage:
   pi-daemon version
 
 Commands:
-  serve    Start the owner-local Unix-socket service.
+  serve    Start the owner-local Unix-socket service and optional embedded Dash.
+  web      Start a dedicated Dash over the authenticated remote backend.
   probe    Perform a version/capability handshake.
   request  Send one low-level protocol command and print its response.
   session  Manage retained sessions with high-level JSON commands.
@@ -859,6 +1011,7 @@ Service configuration:
   PI_DAEMON_INSTANCE          Instance fallback; CLI --instance takes precedence
   Individual CLI values override YAML; existing flag-only invocation remains supported.
   An enabled web.mode=embedded block serves the packaged Dash at /dash/ on web.port.
+  The web command uses web.mode=dedicated and defaults to API 7463 / Dash 7465.
   Secrets are file/fd/environment references, never literal YAML values.
 
 Recovery limits:

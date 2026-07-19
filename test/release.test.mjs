@@ -152,7 +152,9 @@ test("flake publishes the collision-safe multi-instance Home Manager service mod
   assert.match(module, /supervisord\.programs/);
   assert.match(module, /Label = "com\.pi-daemon\.\$\{name\}"/);
   assert.match(module, /api\.port is required/);
-  assert.match(module, /enabled Pi Daemon APIs must use unique ports/);
+  assert.match(module, /enabled Pi Daemon API and dedicated Dash services must use unique ports/);
+  assert.match(module, /pi-daemon-web-/);
+  assert.match(module, /dedicatedWeb\.port is required/);
   assert.match(module, /stateDir\/api-token on first launch/);
   assert.match(module, /--auth-seed-file/);
   assert.doesNotMatch(module, /PI_DAEMON_BEARER_TOKEN\s*=/);

@@ -1328,8 +1328,10 @@ These lanes intentionally begin in parallel:
   depends on TUI/frontend spikes, contract, and SPA shell.
 - [ ] `bd-ea2019` — live preview/hydration/RPC/liveness/extension UI integration;
   depends on SPA shell, rich transcript, browser server, and both backends.
-- [ ] `bd-b9d8e6` — operator-directed embedded `serve` browser lifecycle slice;
+- [x] `bd-b9d8e6` — operator-directed embedded `serve` browser lifecycle slice;
   starts the packaged SPA/BFF now without waiting for the dedicated backend.
+- [x] `bd-3a61f7` — authenticated bounded browser stream router from the BFF to
+  Rich/TUI `DashboardBackend` channels with exact replay/control semantics.
 - [ ] `bd-31ee8f` — dedicated lifecycle, final dual-mode packaging, CLI, npm/Nix
   and Home Manager closure; depends on config/server/backends/SPA and the
   embedded lifecycle slice.

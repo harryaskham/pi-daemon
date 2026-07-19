@@ -179,6 +179,7 @@ test("CLI help advertises high-level session, ticket, RPC, and ACP commands", as
     "ticket get|wait|reconcile",
     "rpc attach",
     "acp discover",
+    "pi-daemon web",
     "--allow-root PATH ...",
   ]) {
     assert.match(help, new RegExp(command.replace(/[|.]/g, "\\$&")));

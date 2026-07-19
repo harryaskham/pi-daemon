@@ -103,6 +103,46 @@
           description = "Explicitly permit a non-loopback plaintext API bind. Prefer loopback or TLS termination.";
         };
       };
+      dedicatedWeb = {
+        enable = lib.mkEnableOption "dedicated Pi Daemon Dash process";
+        stateDir = lib.mkOption {
+          type = lib.types.str;
+          default = "${homeDirectory}/.local/state/pi-daemon-web/${name}";
+          description = "Owner-private dedicated browser state, sessions, workspaces, and web credential directory.";
+        };
+        bind = lib.mkOption {
+          type = lib.types.str;
+          default = "127.0.0.1";
+          description = "Dedicated Dash loopback bind address.";
+        };
+        port = lib.mkOption {
+          type = lib.types.nullOr lib.types.port;
+          default = null;
+          example = 7465;
+          description = "Dedicated Dash TCP port; required when enabled and unique across API/Dash services.";
+        };
+        publicOrigin = lib.mkOption {
+          type = lib.types.nullOr lib.types.str;
+          default = null;
+          example = "https://dash.example.test";
+          description = "Optional exact HTTPS public origin when a loopback reverse proxy terminates TLS.";
+        };
+        allowInsecureHttp = lib.mkOption {
+          type = lib.types.bool;
+          default = false;
+          description = "Permit the dedicated backend client to send its bearer to a non-loopback plaintext API.";
+        };
+        stdoutLog = lib.mkOption {
+          type = lib.types.str;
+          default = "${config.stateDir}/pi-daemon-web.log";
+          description = "Dedicated Dash launchd/supervisord stdout log path.";
+        };
+        stderrLog = lib.mkOption {
+          type = lib.types.str;
+          default = "${config.stateDir}/pi-daemon-web.err.log";
+          description = "Dedicated Dash launchd/supervisord stderr log path.";
+        };
+      };
     };
   };
 
@@ -159,6 +199,48 @@
   command = name: instance:
     lib.concatStringsSep " " (map lib.escapeShellArg (instanceArgs name instance));
 
+  apiClientHost = instance:
+    if instance.api.bind == "0.0.0.0"
+    then "127.0.0.1"
+    else if instance.api.bind == "::"
+    then "::1"
+    else instance.api.bind;
+  apiClientUrl = instance: let
+    host = apiClientHost instance;
+    renderedHost = if lib.hasInfix ":" host then "[${host}]" else host;
+  in "http://${renderedHost}:${toString instance.api.port}";
+  dedicatedWebArgs = name: instance:
+    [
+      "${cfg.package}/bin/pi-daemon"
+      "web"
+      "--instance"
+      name
+    ]
+    ++ lib.optionals (instance.configFile != null) [
+      "--config"
+      instance.configFile
+    ]
+    ++ [
+      "--api-url"
+      (apiClientUrl instance)
+      "--api-token-file"
+      (effectiveApiTokenFile instance)
+      "--web-state-dir"
+      instance.dedicatedWeb.stateDir
+      "--web-bind"
+      instance.dedicatedWeb.bind
+      "--web-port"
+      (toString instance.dedicatedWeb.port)
+      "--api-allow-insecure-http"
+      (if instance.dedicatedWeb.allowInsecureHttp then "true" else "false")
+    ]
+    ++ lib.optionals (instance.dedicatedWeb.publicOrigin != null) [
+      "--public-origin"
+      instance.dedicatedWeb.publicOrigin
+    ];
+  dedicatedWebCommand = name: instance:
+    lib.concatStringsSep " " (map lib.escapeShellArg (dedicatedWebArgs name instance));
+
   serviceEnv = name: instance:
     {
       HOME = config.home.homeDirectory;
@@ -182,8 +264,16 @@
     // instance.environment;
 
   serviceName = name: "pi-daemon-${name}";
+  webServiceName = name: "pi-daemon-web-${name}";
+  dedicatedWebEnv = name: instance:
+    (serviceEnv name instance)
+    // {
+      PI_DAEMON_WEB_STATE_DIR = instance.dedicatedWeb.stateDir;
+    };
+  enabledDedicatedWebInstances = lib.filterAttrs (_: instance: instance.dedicatedWeb.enable) enabledInstances;
   enabledList = lib.attrValues enabledInstances;
   enabledApiInstances = lib.filter (instance: instance.api.enable) enabledList;
+  enabledDedicatedWebList = lib.attrValues enabledDedicatedWebInstances;
   enabledConfigInstances = lib.filter (instance: instance.configFile != null) enabledList;
   effectiveApiTokenFile = instance:
     if instance.api.tokenFile == null
@@ -251,6 +341,16 @@ in {
           })
           enabledInstances)
         ++ (lib.mapAttrsToList (name: instance: {
+            assertion = !instance.dedicatedWeb.enable || instance.api.enable;
+            message = "services.pi-daemon.instances.${name}: api.enable is required for dedicatedWeb";
+          })
+          enabledInstances)
+        ++ (lib.mapAttrsToList (name: instance: {
+            assertion = !instance.dedicatedWeb.enable || instance.dedicatedWeb.port != null;
+            message = "services.pi-daemon.instances.${name}: dedicatedWeb.port is required when dedicatedWeb.enable is true";
+          })
+          enabledInstances)
+        ++ (lib.mapAttrsToList (name: instance: {
             assertion = lib.all (arg: !(lib.elem arg protectedExtraArgs)) instance.extraArgs;
             message = "services.pi-daemon.instances.${name}.extraArgs must not override module-managed identity/path/root/API arguments";
           })
@@ -261,101 +361,188 @@ in {
             message = "enabled Pi Daemon instances must use unique explicit configFile values";
           }
           {
-            assertion = unique (map (instance: instance.stateDir) enabledList);
-            message = "enabled Pi Daemon instances must use unique stateDir values";
+            assertion = unique (
+              (map (instance: instance.stateDir) enabledList)
+              ++ (map (instance: instance.dedicatedWeb.stateDir) enabledDedicatedWebList)
+            );
+            message = "enabled Pi Daemon and dedicated Dash services must use unique stateDir values";
           }
           {
             assertion = unique (map (instance: instance.socketPath) enabledList);
             message = "enabled Pi Daemon instances must use unique socketPath values";
           }
           {
-            assertion = unique (map (instance: instance.stdoutLog) enabledList);
-            message = "enabled Pi Daemon instances must use unique stdoutLog values";
+            assertion = unique (
+              (map (instance: instance.stdoutLog) enabledList)
+              ++ (map (instance: instance.dedicatedWeb.stdoutLog) enabledDedicatedWebList)
+            );
+            message = "enabled Pi Daemon and dedicated Dash services must use unique stdoutLog values";
           }
           {
-            assertion = unique (map (instance: instance.stderrLog) enabledList);
-            message = "enabled Pi Daemon instances must use unique stderrLog values";
+            assertion = unique (
+              (map (instance: instance.stderrLog) enabledList)
+              ++ (map (instance: instance.dedicatedWeb.stderrLog) enabledDedicatedWebList)
+            );
+            message = "enabled Pi Daemon and dedicated Dash services must use unique stderrLog values";
           }
           {
-            assertion = unique (map (instance: instance.api.port) enabledApiInstances);
-            message = "enabled Pi Daemon APIs must use unique ports";
+            assertion = unique (
+              (map (instance: instance.api.port) enabledApiInstances)
+              ++ (map (instance: instance.dedicatedWeb.port) enabledDedicatedWebList)
+            );
+            message = "enabled Pi Daemon API and dedicated Dash services must use unique ports";
           }
           {
             assertion = unique (map effectiveApiTokenFile enabledApiInstances);
             message = "enabled Pi Daemon APIs must use unique effective token files";
           }
+          {
+            assertion = unique (map (instance: instance.dedicatedWeb.stateDir) enabledDedicatedWebList);
+            message = "enabled dedicated Dash services must use unique stateDir values";
+          }
+          {
+            assertion = unique (map (instance: instance.dedicatedWeb.stdoutLog) enabledDedicatedWebList);
+            message = "enabled dedicated Dash services must use unique stdoutLog values";
+          }
+          {
+            assertion = unique (map (instance: instance.dedicatedWeb.stderrLog) enabledDedicatedWebList);
+            message = "enabled dedicated Dash services must use unique stderrLog values";
+          }
         ];
 
       home.packages = [cfg.package];
-      home.activation = lib.mapAttrs' (name: instance:
-        lib.nameValuePair "piDaemon-${name}-directories" (
-          lib.hm.dag.entryAfter ["writeBoundary"] ''
-            run install -d -m 700 ${lib.escapeShellArg instance.stateDir}
-            run install -d -m 700 ${lib.escapeShellArg instance.agentDir}
-            run install -d -m 700 ${lib.escapeShellArg (builtins.dirOf instance.socketPath)}
-            run install -d -m 700 ${lib.escapeShellArg (builtins.dirOf instance.stdoutLog)}
-            run install -d -m 700 ${lib.escapeShellArg (builtins.dirOf instance.stderrLog)}
-          ''
-        ))
-      enabledInstances;
+      home.activation =
+        (lib.mapAttrs' (name: instance:
+          lib.nameValuePair "piDaemon-${name}-directories" (
+            lib.hm.dag.entryAfter ["writeBoundary"] ''
+              run install -d -m 700 ${lib.escapeShellArg instance.stateDir}
+              run install -d -m 700 ${lib.escapeShellArg instance.agentDir}
+              run install -d -m 700 ${lib.escapeShellArg (builtins.dirOf instance.socketPath)}
+              run install -d -m 700 ${lib.escapeShellArg (builtins.dirOf instance.stdoutLog)}
+              run install -d -m 700 ${lib.escapeShellArg (builtins.dirOf instance.stderrLog)}
+            ''
+          ))
+        enabledInstances)
+        // (lib.mapAttrs' (name: instance:
+          lib.nameValuePair "piDaemonWeb-${name}-directories" (
+            lib.hm.dag.entryAfter ["writeBoundary"] ''
+              run install -d -m 700 ${lib.escapeShellArg instance.dedicatedWeb.stateDir}
+              run install -d -m 700 ${lib.escapeShellArg (builtins.dirOf instance.dedicatedWeb.stdoutLog)}
+              run install -d -m 700 ${lib.escapeShellArg (builtins.dirOf instance.dedicatedWeb.stderrLog)}
+            ''
+          ))
+        enabledDedicatedWebInstances);
     }
 
     (lib.mkIf (isLinux && !hasSupervisord) {
-      systemd.user.services = lib.mapAttrs' (name: instance:
-        lib.nameValuePair (serviceName name) {
-          Unit = {
-            Description = "Pi Daemon instance ${name}";
-            Documentation = "https://github.com/harryaskham/pi-daemon";
-            After = ["default.target"];
-          };
-          Service = {
-            Type = "simple";
-            Environment = lib.mapAttrsToList (key: value: "${key}=${value}") (serviceEnv name instance);
-            ExecStart = command name instance;
-            Restart = "always";
-            RestartSec = instance.restartSec;
-            UMask = "0077";
-            StandardOutput = "journal";
-            StandardError = "journal";
-            SyslogIdentifier = serviceName name;
-          };
-          Install.WantedBy = ["default.target"];
-        })
-      enabledInstances;
+      systemd.user.services =
+        (lib.mapAttrs' (name: instance:
+          lib.nameValuePair (serviceName name) {
+            Unit = {
+              Description = "Pi Daemon instance ${name}";
+              Documentation = "https://github.com/harryaskham/pi-daemon";
+              After = ["default.target"];
+            };
+            Service = {
+              Type = "simple";
+              Environment = lib.mapAttrsToList (key: value: "${key}=${value}") (serviceEnv name instance);
+              ExecStart = command name instance;
+              Restart = "always";
+              RestartSec = instance.restartSec;
+              UMask = "0077";
+              StandardOutput = "journal";
+              StandardError = "journal";
+              SyslogIdentifier = serviceName name;
+            };
+            Install.WantedBy = ["default.target"];
+          })
+        enabledInstances)
+        // (lib.mapAttrs' (name: instance:
+          lib.nameValuePair (webServiceName name) {
+            Unit = {
+              Description = "Pi Daemon dedicated Dash ${name}";
+              Documentation = "https://github.com/harryaskham/pi-daemon";
+              After = ["${serviceName name}.service"];
+              Requires = ["${serviceName name}.service"];
+            };
+            Service = {
+              Type = "simple";
+              Environment = lib.mapAttrsToList (key: value: "${key}=${value}") (dedicatedWebEnv name instance);
+              ExecStart = dedicatedWebCommand name instance;
+              Restart = "always";
+              RestartSec = instance.restartSec;
+              UMask = "0077";
+              StandardOutput = "journal";
+              StandardError = "journal";
+              SyslogIdentifier = webServiceName name;
+            };
+            Install.WantedBy = ["default.target"];
+          })
+        enabledDedicatedWebInstances);
     })
 
     (lib.mkIf isDarwin {
-      launchd.agents = lib.mapAttrs' (name: instance:
-        lib.nameValuePair (serviceName name) {
-          enable = true;
-          config = {
-            Label = "com.pi-daemon.${name}";
-            ProgramArguments = instanceArgs name instance;
-            EnvironmentVariables = serviceEnv name instance;
-            RunAtLoad = true;
-            KeepAlive = true;
-            ThrottleInterval = instance.restartSec;
-            ProcessType = "Background";
-            StandardOutPath = instance.stdoutLog;
-            StandardErrorPath = instance.stderrLog;
-          };
-        })
-      enabledInstances;
+      launchd.agents =
+        (lib.mapAttrs' (name: instance:
+          lib.nameValuePair (serviceName name) {
+            enable = true;
+            config = {
+              Label = "com.pi-daemon.${name}";
+              ProgramArguments = instanceArgs name instance;
+              EnvironmentVariables = serviceEnv name instance;
+              RunAtLoad = true;
+              KeepAlive = true;
+              ThrottleInterval = instance.restartSec;
+              ProcessType = "Background";
+              StandardOutPath = instance.stdoutLog;
+              StandardErrorPath = instance.stderrLog;
+            };
+          })
+        enabledInstances)
+        // (lib.mapAttrs' (name: instance:
+          lib.nameValuePair (webServiceName name) {
+            enable = true;
+            config = {
+              Label = "com.pi-daemon.web.${name}";
+              ProgramArguments = dedicatedWebArgs name instance;
+              EnvironmentVariables = dedicatedWebEnv name instance;
+              RunAtLoad = true;
+              KeepAlive = true;
+              ThrottleInterval = instance.restartSec;
+              ProcessType = "Background";
+              StandardOutPath = instance.dedicatedWeb.stdoutLog;
+              StandardErrorPath = instance.dedicatedWeb.stderrLog;
+            };
+          })
+        enabledDedicatedWebInstances);
     })
 
     (lib.mkIf isLinux (lib.optionalAttrs hasSupervisord {
-      supervisord.programs = lib.mapAttrs' (name: instance:
-        lib.nameValuePair (serviceName name) {
-          command = command name instance;
-          environment = lib.concatStringsSep "," (
-            lib.mapAttrsToList (key: value: "${key}=\"${value}\"") (serviceEnv name instance)
-          );
-          autorestart = "true";
-          startsecs = 0;
-          stdout_logfile = instance.stdoutLog;
-          stderr_logfile = instance.stderrLog;
-        })
-      enabledInstances;
+      supervisord.programs =
+        (lib.mapAttrs' (name: instance:
+          lib.nameValuePair (serviceName name) {
+            command = command name instance;
+            environment = lib.concatStringsSep "," (
+              lib.mapAttrsToList (key: value: "${key}=\"${value}\"") (serviceEnv name instance)
+            );
+            autorestart = "true";
+            startsecs = 0;
+            stdout_logfile = instance.stdoutLog;
+            stderr_logfile = instance.stderrLog;
+          })
+        enabledInstances)
+        // (lib.mapAttrs' (name: instance:
+          lib.nameValuePair (webServiceName name) {
+            command = dedicatedWebCommand name instance;
+            environment = lib.concatStringsSep "," (
+              lib.mapAttrsToList (key: value: "${key}=\"${value}\"") (dedicatedWebEnv name instance)
+            );
+            autorestart = "true";
+            startsecs = 0;
+            stdout_logfile = instance.dedicatedWeb.stdoutLog;
+            stderr_logfile = instance.dedicatedWeb.stderrLog;
+          })
+        enabledDedicatedWebInstances);
     }))
   ]);
 }

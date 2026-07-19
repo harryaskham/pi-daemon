@@ -31,8 +31,9 @@ or Cacophony credentials.
 > persisted 10k-session inventory, rich transcript rendering, durable direct/fork
 > ownership and export, the neutral service-bearer Dash API, coalesced embedded
 > and dedicated Rich/TUI backends with bounded reconnect, and a bounded
-> in-process shadow-terminal host; production browser live-state integration and
-> dedicated process packaging continue in staged slices.
+> in-process shadow-terminal host, authenticated browser stream routing, and a
+> standalone dedicated `pi-daemon web` lifecycle over the remote backend;
+> production browser live-state integration continues in its final staged slice.
 > Full credential-free install/CRUD/RPC/ACP/restart/security acceptance is green;
 > the repository is a release candidate, but no release tag is cut yet.
 
@@ -71,6 +72,10 @@ pi-daemon serve --socket /run/user/1000/pi-daemon.sock \
 # ~/.config/pi/daemon/INSTANCE/config.yaml; individual CLI flags override YAML.
 pi-daemon serve --config ~/.config/pi/daemon/work/config.yaml --instance work
 
+# Dedicated Dash over the authenticated service API (defaults: API 7463,
+# dedicated Dash 7465; the token is read from its owner-only file).
+pi-daemon web --config ~/.config/pi/daemon/work/config.yaml --instance work
+
 pi-daemon probe --socket /run/user/1000/pi-daemon.sock
 pi-daemon request --socket /run/user/1000/pi-daemon.sock --json '{...}'
 pi-daemon version
@@ -83,8 +88,10 @@ pi-daemon-rpc --url http://127.0.0.1:7463 --session exact-id-or-name \
 
 With an enabled embedded `web` block, the same `serve` process starts the
 packaged browser BFF after its owner socket/API are ready. Open `/dash/` on the
-configured loopback web port (for example `http://127.0.0.1:7464/dash/`); never
-put either service or web credentials in the URL.
+configured loopback web port (for example `http://127.0.0.1:7464/dash/`). A
+`web.mode: dedicated` configuration is instead served by `pi-daemon web`, which
+uses the service API on 7463 and defaults its independent browser listener to
+7465. Never put either service or web credentials in the URL.
 
 Both executables treat an `EPIPE` from stdout or stderr as a normal early-closing
 Unix pipeline consumer and exit quietly with status 0. Other stream errors remain

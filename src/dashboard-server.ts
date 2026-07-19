@@ -132,6 +132,7 @@ export interface DashboardServerFromConfigOptions {
     serverInstanceId: string;
     limits: DashboardLimits;
   }) => DashboardStreamHandler;
+  webOverrides?: Partial<PiDaemonWebConfig>;
 }
 
 export class DashboardServerError extends Error {
@@ -744,7 +745,10 @@ export class DashboardWebSocketPeer {
 export async function createDashboardServerFromConfig(
   options: DashboardServerFromConfigOptions,
 ): Promise<DashboardServer> {
-  const web = mergeWebConfig(options.loadedConfig.config.web);
+  const web = mergeWebConfig({
+    ...options.loadedConfig.config.web,
+    ...options.webOverrides,
+  });
   if (web.enabled === false) throw new Error("dashboard web server is disabled");
   const tokenPath =
     web.auth.tokenFile === undefined

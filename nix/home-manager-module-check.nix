@@ -61,6 +61,13 @@
           port = 17463;
           tokenFile = "/run/secrets/pi-alpha-token";
         };
+        dedicatedWeb = {
+          enable = true;
+          stateDir = "/home/tester/.state/pi-alpha-web";
+          port = 17465;
+          stdoutLog = "/home/tester/.state/pi-alpha-web/stdout.log";
+          stderrLog = "/home/tester/.state/pi-alpha-web/stderr.log";
+        };
         extraArgs = ["--max-sessions" "16"];
       };
       beta = {
@@ -152,6 +159,21 @@
       }
     ];
   };
+  evalWebPortCollision = lib.evalModules {
+    specialArgs = {inherit pkgs;};
+    modules = [
+      baseStubs
+      self.homeManagerModules.pi-daemon
+      {
+        services.pi-daemon.package = testPackage;
+        services.pi-daemon.instances.one = {
+          allowedRoots = ["/srv/one"];
+          api = { enable = true; port = 17463; };
+          dedicatedWeb = { enable = true; port = 17463; };
+        };
+      }
+    ];
+  };
   evalTokenCollision = lib.evalModules {
     specialArgs = {inherit pkgs;};
     modules = [
@@ -194,11 +216,13 @@
   configCollisionDetected = !(builtins.all (entry: entry.assertion) evalConfigCollision.config.assertions);
   portCollisionDetected = !(builtins.all (entry: entry.assertion) evalPortCollision.config.assertions);
   tokenCollisionDetected = !(builtins.all (entry: entry.assertion) evalTokenCollision.config.assertions);
+  webPortCollisionDetected = !(builtins.all (entry: entry.assertion) evalWebPortCollision.config.assertions);
   normalServices =
     if pkgs.stdenv.isDarwin
     then eval.config.launchd.agents
     else eval.config.systemd.user.services;
   normalAlpha = normalServices."pi-daemon-alpha";
+  normalAlphaWeb = normalServices."pi-daemon-web-alpha";
   normalBeta = normalServices."pi-daemon-beta";
   normalAlphaCommand =
     if pkgs.stdenv.isDarwin
@@ -208,6 +232,10 @@
     if pkgs.stdenv.isDarwin
     then normalAlpha.config.Label
     else "pi-daemon-alpha";
+  normalAlphaWebCommand =
+    if pkgs.stdenv.isDarwin
+    then builtins.concatStringsSep " " normalAlphaWeb.config.ProgramArguments
+    else normalAlphaWeb.Service.ExecStart;
   normalBetaCommand =
     if pkgs.stdenv.isDarwin
     then builtins.concatStringsSep " " normalBeta.config.ProgramArguments
@@ -227,12 +255,17 @@
     if pkgs.stdenv.isLinux
     then evalSupervisord.config.supervisord.programs."pi-daemon-alpha"
     else null;
+  supervisorAlphaWeb =
+    if pkgs.stdenv.isLinux
+    then evalSupervisord.config.supervisord.programs."pi-daemon-web-alpha"
+    else null;
 in
   assert assertionsOk;
   assert collisionDetected;
   assert configCollisionDetected;
   assert portCollisionDetected;
   assert tokenCollisionDetected;
+  assert webPortCollisionDetected;
     pkgs.runCommand "pi-daemon-home-manager-module-check" {} ''
       test ${lib.escapeShellArg (toString (builtins.length eval.config.home.packages))} = 1
       test ${lib.escapeShellArg normalAlphaIdentity} = ${lib.escapeShellArg (
@@ -256,6 +289,14 @@ in
       printf '%s\n' ${lib.escapeShellArg normalAlphaCommand} | grep -F -- '--api-port'
       printf '%s\n' ${lib.escapeShellArg normalAlphaCommand} | grep -F -- '17463'
       printf '%s\n' ${lib.escapeShellArg normalBetaCommand} | grep -F -- '17464'
+      printf '%s\n' ${lib.escapeShellArg normalAlphaWebCommand} | grep -F -- 'web'
+      printf '%s\n' ${lib.escapeShellArg normalAlphaWebCommand} | grep -F -- '--api-url'
+      printf '%s\n' ${lib.escapeShellArg normalAlphaWebCommand} | grep -F -- 'http://127.0.0.1:17463'
+      printf '%s\n' ${lib.escapeShellArg normalAlphaWebCommand} | grep -F -- '--api-token-file'
+      printf '%s\n' ${lib.escapeShellArg normalAlphaWebCommand} | grep -F -- '/run/secrets/pi-alpha-token'
+      printf '%s\n' ${lib.escapeShellArg normalAlphaWebCommand} | grep -F -- '--web-port'
+      printf '%s\n' ${lib.escapeShellArg normalAlphaWebCommand} | grep -F -- '17465'
+      printf '%s\n' ${lib.escapeShellArg normalAlphaWebCommand} | grep -F -- '/home/tester/.state/pi-alpha-web'
       if printf '%s\n' ${lib.escapeShellArg normalBetaCommand} | grep -F -- '--api-token-file'; then
         echo 'default managed bearer must not enter argv' >&2
         exit 1
@@ -263,6 +304,8 @@ in
       ${lib.optionalString pkgs.stdenv.isLinux ''
         printf '%s\n' ${lib.escapeShellArg supervisorAlpha.command} | grep -F -- '/home/tester/.run/pi-alpha.sock'
         test ${lib.escapeShellArg supervisorAlpha.autorestart} = true
+        printf '%s\n' ${lib.escapeShellArg supervisorAlphaWeb.command} | grep -F -- '17465'
+        test ${lib.escapeShellArg supervisorAlphaWeb.autorestart} = true
       ''}
       touch "$out"
     ''
