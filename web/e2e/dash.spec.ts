@@ -185,6 +185,45 @@ test("settings hot-switch, source reporting, reset, and keyboard guide are revis
   await help.getByRole("button", { name: "Done" }).click();
 });
 
+test("dormant preview stays scrollable and wakes on first composer send", async ({ page }) => {
+  await page.goto("./?fixture=1&state=ready");
+  await page.getByTestId("session-search").fill("session-00001");
+  await page.locator("[data-session-row]").first().click();
+  const pane = page.locator(".workspace-pane--selected");
+  const transcript = pane.locator(".transcript");
+  const footer = pane.locator(".chat-pane__footer");
+  await expect(pane.locator(".live-state-card")).toHaveCount(0);
+  await expect(transcript).toBeVisible();
+  await expect(footer).toBeVisible();
+  await expect(pane.locator(".composer-status")).toContainText(
+    "First send will reuse managed session, hydrate, and wake this session",
+  );
+  const scrollable = await transcript.evaluate((element) => {
+    element.scrollTop = Math.max(1, element.scrollHeight - element.clientHeight);
+    return element.scrollHeight > element.clientHeight && element.scrollTop > 0;
+  });
+  expect(scrollable).toBe(true);
+  const [paneBox, transcriptBox, footerBox] = await Promise.all([
+    pane.boundingBox(),
+    transcript.boundingBox(),
+    footer.boundingBox(),
+  ]);
+  expect(paneBox).not.toBeNull();
+  expect(transcriptBox).not.toBeNull();
+  expect(footerBox).not.toBeNull();
+  if (paneBox && transcriptBox && footerBox) {
+    expect(footerBox.y + footerBox.height).toBeLessThanOrEqual(paneBox.y + paneBox.height + 1);
+    expect(transcriptBox.y + transcriptBox.height).toBeLessThanOrEqual(footerBox.y + 1);
+  }
+
+  const editor = pane.getByTestId("composer-editor");
+  await editor.click();
+  await page.keyboard.type("wake from preview");
+  await pane.getByRole("button", { name: "Activate & send" }).click();
+  await expect(pane.getByRole("button", { name: "Send message" })).toBeVisible();
+  await expect(pane.locator(".live-session-strip")).toContainText(/live|streaming/);
+});
+
 test("composer completion and bounded history work outside Vim mode", async ({ page }) => {
   await page.goto("./?fixture=1&state=ready");
   await page.getByRole("button", { name: /VIM · INSERT/ }).click();

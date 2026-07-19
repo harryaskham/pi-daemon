@@ -14,7 +14,9 @@ export interface ComposerProps {
   commands?: string[];
   externalValue?: string;
   disabled?: boolean;
-  onSubmit(value: string): void;
+  submitLabel?: string;
+  hint?: string;
+  onSubmit(value: string): void | boolean | Promise<void | boolean>;
   onToggleVim(): void;
 }
 
@@ -24,6 +26,8 @@ export default function Composer({
   commands = [],
   externalValue,
   disabled = false,
+  submitLabel = "Send",
+  hint = "⌘↵ send · Shift↵ newline",
   onSubmit,
   onToggleVim,
 }: ComposerProps) {
@@ -35,16 +39,19 @@ export default function Composer({
   const commandsRef = useRef<string[]>([]);
   const submitRef = useRef(onSubmit);
   const disabledRef = useRef(disabled);
+  const propDisabledRef = useRef(disabled);
   const editableCompartmentRef = useRef(new Compartment());
   const [draft, setDraft] = useState("");
   const [hasValue, setHasValue] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const commandKey = commands.join("\u0000");
   const availableCommands = useMemo(() => [...new Set([...BUILTIN_COMMANDS, ...commands])].slice(0, 256), [commandKey]);
   const suggestions = draft.startsWith("/") ? availableCommands.filter((command) => command.startsWith(draft.split(/\s/, 1)[0] ?? "")) : [];
   historyRef.current = history;
   commandsRef.current = availableCommands;
   submitRef.current = onSubmit;
-  disabledRef.current = disabled;
+  propDisabledRef.current = disabled;
+  disabledRef.current = disabled || submitting;
 
   useEffect(() => {
     const host = hostRef.current;
@@ -100,9 +107,7 @@ export default function Composer({
             run: (view) => {
               const value = view.state.doc.toString().trim();
               if (!value || disabledRef.current) return true;
-              submitRef.current(value);
-              historyIndexRef.current = -1;
-              view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: "" } });
+              void submitValue(view, value);
               return true;
             },
           },
@@ -139,8 +144,12 @@ export default function Composer({
   useEffect(() => {
     const view = viewRef.current;
     if (view === null) return;
-    view.dispatch({ effects: editableCompartmentRef.current.reconfigure(EditorView.editable.of(!disabled)) });
-  }, [disabled]);
+    view.dispatch({
+      effects: editableCompartmentRef.current.reconfigure(
+        EditorView.editable.of(!disabled && !submitting),
+      ),
+    });
+  }, [disabled, submitting]);
 
   useEffect(() => {
     const view = viewRef.current;
@@ -152,18 +161,32 @@ export default function Composer({
     });
   }, [externalValue]);
 
-  function submit(): void {
-    const view = viewRef.current;
-    if (!view || disabled) return;
-    const value = view.state.doc.toString().trim();
-    if (!value) return;
-    onSubmit(value);
-    historyIndexRef.current = -1;
-    view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: "" } });
+  async function submitValue(view: EditorView, value: string): Promise<void> {
+    if (disabledRef.current) return;
+    disabledRef.current = true;
+    setSubmitting(true);
+    try {
+      const accepted = await submitRef.current(value);
+      if (accepted === false) return;
+      historyIndexRef.current = -1;
+      view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: "" } });
+    } finally {
+      disabledRef.current = propDisabledRef.current;
+      setSubmitting(false);
+    }
   }
 
+  function submit(): void {
+    const view = viewRef.current;
+    if (!view || disabledRef.current) return;
+    const value = view.state.doc.toString().trim();
+    if (!value) return;
+    void submitValue(view, value);
+  }
+
+  const blocked = disabled || submitting;
   return (
-    <div className={`composer${disabled ? " composer--disabled" : ""}`} data-editor-root>
+    <div className={`composer${blocked ? " composer--disabled" : ""}`} data-editor-root>
       <div ref={hostRef} className="composer__editor" />
       {suggestions.length > 0 ? (
         <div className="composer-completions" role="listbox" aria-label="Command completions">
@@ -194,14 +217,14 @@ export default function Composer({
         >
           <Keyboard size={14} /> {vimEnabled ? "VIM · INSERT" : "PLAIN"}
         </button>
-        <span className="composer-hint">⌘↵ send · Shift↵ newline</span>
+        <span className="composer-hint">{submitting ? "Activating and sending…" : hint}</span>
         <button
           type="button"
           className="send-button"
           onClick={submit}
-          disabled={!hasValue || disabled}
-          aria-label="Send message"
-        ><Send size={15} /> Send</button>
+          disabled={!hasValue || blocked}
+          aria-label={submitLabel === "Send" ? "Send message" : submitLabel}
+        ><Send size={15} /> {submitting ? "Starting…" : submitLabel}</button>
       </div>
     </div>
   );

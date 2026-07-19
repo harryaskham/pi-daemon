@@ -32,11 +32,114 @@ interface ChatPaneProps {
   onPresentationChange(presentation: "rich" | "tui"): void;
   onDemoStateChange(state: DemoState): void;
   onToggleVim(): void;
-  onSubmit(value: string): void;
+  onSubmit(value: string): void | boolean | Promise<void | boolean>;
 }
 
 function SkeletonTranscript() {
   return <div className="transcript-skeleton" aria-label="Loading transcript"><i /><i /><i /><i /><i /></div>;
+}
+
+export interface LiveComposerPresentation {
+  disabled: boolean;
+  submitLabel: string;
+  hint: string;
+  status?: string;
+  tone: "normal" | "waiting" | "warning" | "error";
+}
+
+export function liveComposerPresentation(
+  state: DashboardLiveSessionState,
+  fixtureError = false,
+): LiveComposerPresentation {
+  if (fixtureError) {
+    return {
+      disabled: true,
+      submitLabel: "Send",
+      hint: "Reconcile the fixture channel before sending",
+      status: "Replay gap · reconciliation required",
+      tone: "error",
+    };
+  }
+  if (state.phase === "live" || state.phase === "streaming") {
+    const controller = state.role === "controller";
+    return {
+      disabled: !controller,
+      submitLabel: "Send",
+      hint: controller ? "⌘↵ send · Shift↵ newline" : "Request control to send",
+      ...(controller ? {} : { status: "Observer mode · request control to send" }),
+      tone: controller ? "normal" : "warning",
+    };
+  }
+  if (state.phase === "preview" || state.phase === "activation-choice") {
+    const mode = state.selectedActivationMode;
+    if (
+      state.info?.activation.eligible &&
+      (state.info.managed !== undefined || mode !== undefined)
+    ) {
+      const action = mode === "direct"
+        ? "direct co-opt"
+        : mode === "fork"
+          ? "safe fork"
+          : "reuse managed session";
+      const status = `First send will ${action}, hydrate, and wake this session`;
+      return {
+        disabled: false,
+        submitLabel: "Activate & send",
+        hint: status,
+        status,
+        tone: "normal",
+      };
+    }
+    return {
+      disabled: true,
+      submitLabel: "Send",
+      hint: "Loading activation policy…",
+      status: "Preview is readable; activation policy is still loading",
+      tone: "waiting",
+    };
+  }
+  if (["preview-loading", "activating", "hydrating", "reconnecting"].includes(state.phase)) {
+    return {
+      disabled: true,
+      submitLabel: state.phase === "preview-loading" ? "Loading…" : "Starting…",
+      hint: `${state.phase.replaceAll("-", " ")}…`,
+      status: state.phase === "preview-loading"
+        ? "Loading the persisted preview without starting Pi"
+        : "Activating and hydrating; the prompt has not been replayed",
+      tone: "waiting",
+    };
+  }
+  if (state.phase === "indeterminate") {
+    const exportIndeterminate = state.exportTicket?.state === "indeterminate";
+    const status = exportIndeterminate
+      ? `Export outcome is indeterminate; inspect ticket ${state.exportTicket?.ticketId ?? "unknown"}`
+      : "Activation outcome is indeterminate; reconcile before sending";
+    return {
+      disabled: true,
+      submitLabel: "Reconcile first",
+      hint: exportIndeterminate
+        ? "Never repeat an indeterminate export blindly"
+        : "Never replay an indeterminate activation blindly",
+      status: state.error?.message ?? status,
+      tone: "warning",
+    };
+  }
+  if (state.phase === "error") {
+    return {
+      disabled: true,
+      submitLabel: "Unavailable",
+      hint: state.error?.message ?? "Session activation failed",
+      status: state.error?.message ?? "Session activation failed",
+      tone: "error",
+    };
+  }
+  return {
+    disabled: true,
+    submitLabel: "Preview only",
+    hint: state.info?.activation.reasonCode ?? "This session cannot be activated",
+    status: state.error?.message ?? "This session is preview-only under the current policy",
+    tone: "warning",
+  };
 }
 
 function commandNames(value: DashboardLiveSessionState["availableCommands"]): string[] {
@@ -66,6 +169,15 @@ export function ChatPane({
   onSubmit,
 }: ChatPaneProps) {
   const scrollerRef = useRef<HTMLDivElement>(null);
+  const composer = liveComposerPresentation(
+    liveState,
+    fixtureMode && demoState === "error",
+  );
+  const activationModes = liveState.activationModes.filter(
+    (mode) =>
+      mode !== "preview-only" &&
+      (liveState.info?.managed === undefined || mode === "reuse"),
+  );
   const shownRecords = useMemo(() => fixtureMode && demoState === "empty" ? [] : records, [demoState, fixtureMode, records]);
   const virtualizer = useVirtualizer({
     count: shownRecords.length,
@@ -154,8 +266,41 @@ export function ChatPane({
         {Object.values(liveState.extensionWidgets).filter((widget) => widget.placement === "aboveEditor").map((widget) => (
           <section className="extension-widget" key={widget.key} aria-label={`Extension widget ${widget.key}`}>{widget.lines.map((line, index) => <p key={`${widget.key}-${index}`}>{line}</p>)}</section>
         ))}
+        {composer.status ? (
+          <div
+            className={`composer-status composer-status--${composer.tone}`}
+            role={composer.tone === "error" ? "alert" : "status"}
+          >
+            <span>{composer.status}</span>
+            {(liveState.phase === "preview" || liveState.phase === "activation-choice") && activationModes.length > 1 ? (
+              <div className="composer-activation-modes" role="group" aria-label="Activation mode">
+                {activationModes.map((mode) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    aria-pressed={liveState.selectedActivationMode === mode}
+                    onClick={() => liveController.selectActivationMode(mode)}
+                  >{mode === "direct" ? "Direct co-opt" : mode === "fork" ? "Safe fork" : "Reuse"}</button>
+                ))}
+              </div>
+            ) : null}
+            {liveState.phase === "error" && liveState.error?.retryable ? (
+              <button type="button" onClick={() => void liveController.reconnect()}>Reconnect safely</button>
+            ) : null}
+          </div>
+        ) : null}
         <Suspense fallback={<div className="composer composer--loading"><i /><span>Loading the editor chunk…</span></div>}>
-          <Composer vimEnabled={vimEnabled} history={composerHistory} commands={commandNames(liveState.availableCommands)} {...(liveState.extensionEditorText === undefined ? {} : { externalValue: liveState.extensionEditorText })} disabled={(fixtureMode && demoState === "error") || liveState.role !== "controller" || !["live", "streaming"].includes(liveState.phase)} onToggleVim={onToggleVim} onSubmit={onSubmit} />
+          <Composer
+            vimEnabled={vimEnabled}
+            history={composerHistory}
+            commands={commandNames(liveState.availableCommands)}
+            {...(liveState.extensionEditorText === undefined ? {} : { externalValue: liveState.extensionEditorText })}
+            disabled={composer.disabled}
+            submitLabel={composer.submitLabel}
+            hint={composer.hint}
+            onToggleVim={onToggleVim}
+            onSubmit={onSubmit}
+          />
         </Suspense>
         {Object.values(liveState.extensionWidgets).filter((widget) => widget.placement === "belowEditor").map((widget) => (
           <section className="extension-widget" key={widget.key} aria-label={`Extension widget ${widget.key}`}>{widget.lines.map((line, index) => <p key={`${widget.key}-${index}`}>{line}</p>)}</section>

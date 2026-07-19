@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { DashboardLiveSessionController } from "../dashboard-live-session";
+import { liveComposerPresentation } from "../components/ChatPane";
 import { LiveFixtureDashboardBackend } from "../live-fixture-backend";
 
 async function waitFor(
@@ -119,6 +120,142 @@ describe("Dashboard live session controller", () => {
     expect(second.state.role).toBe("controller");
     await first.stop();
     await second.stop();
+  });
+
+  it("keeps dormant managed preview cold until first send hydrates and wakes it", async () => {
+    const backend = new LiveFixtureDashboardBackend();
+    const session = backend.sessions[1]!;
+    expect(session.managed?.residency).toBe("dormant");
+    const baseOpen = backend.openSessionChannel.bind(backend);
+    let opens = 0;
+    backend.openSessionChannel = async (options) => {
+      opens += 1;
+      return baseOpen(options);
+    };
+    const controller = new DashboardLiveSessionController(backend, session.inventoryId, {
+      ticketPollMs: 1,
+      maxTicketPolls: 4,
+    });
+    await controller.start();
+    expect(controller.state.phase).toBe("preview");
+    expect(controller.state.selectedActivationMode).toBe("reuse");
+    expect(opens).toBe(0);
+    expect(liveComposerPresentation(controller.state)).toMatchObject({
+      disabled: false,
+      submitLabel: "Activate & send",
+    });
+
+    const result = await controller.submit(
+      "prompt",
+      { message: "wake the dormant fixture" },
+      "wake-dormant-once",
+    );
+    expect(result.state).toBe("streaming");
+    expect(opens).toBe(1);
+    expect(controller.state.managedSession?.sessionId).toBe(session.sessionId);
+    await controller.stop();
+  });
+
+  it("activates an external preview with safe fork and submits the first prompt once", async () => {
+    const backend = new LiveFixtureDashboardBackend();
+    const session = backend.sessions[11]!;
+    const baseActivate = backend.activateSession.bind(backend);
+    const baseOpen = backend.openSessionChannel.bind(backend);
+    const activationModes: string[] = [];
+    let opens = 0;
+    backend.activateSession = async (inventoryId, request) => {
+      activationModes.push(request.mode);
+      return baseActivate(inventoryId, request);
+    };
+    backend.openSessionChannel = async (options) => {
+      opens += 1;
+      return baseOpen(options);
+    };
+    const controller = new DashboardLiveSessionController(backend, session.inventoryId, {
+      ticketPollMs: 1,
+      maxTicketPolls: 4,
+    });
+    await controller.start();
+    expect(controller.state.phase).toBe("activation-choice");
+    expect(controller.state.selectedActivationMode).toBe("fork");
+    expect(activationModes).toEqual([]);
+    expect(opens).toBe(0);
+
+    const result = await controller.submit(
+      "prompt",
+      { message: "activate and wake once" },
+      "external-first-send",
+    );
+    expect(result.state).toBe("streaming");
+    expect(activationModes).toEqual(["fork"]);
+    expect(opens).toBe(1);
+    await controller.stop();
+  });
+
+  it("keeps failed and indeterminate first-send activation inline without prompt replay", async () => {
+    for (const terminal of ["failed", "indeterminate"] as const) {
+      const backend = new LiveFixtureDashboardBackend();
+      const session = backend.sessions[11]!;
+      let opens = 0;
+      backend.openSessionChannel = async () => {
+        opens += 1;
+        throw new Error("must not hydrate after terminal activation");
+      };
+      backend.activateSession = async (inventoryId, request) => ({
+        ticketId: `${terminal}-activation`,
+        requestId: request.requestId,
+        idempotencyKey: request.idempotencyKey,
+        inventoryId,
+        mode: request.mode,
+        state: terminal,
+        submittedAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        ...(terminal === "failed"
+          ? { error: { code: "fixture_activation_failed", message: "Fixture activation failed", retryable: true } }
+          : {}),
+      });
+      const controller = new DashboardLiveSessionController(backend, session.inventoryId, {
+        ticketPollMs: 1,
+        maxTicketPolls: 2,
+      });
+      await controller.start();
+      const result = await controller.submit(
+        "prompt",
+        { message: "must not replay" },
+        `${terminal}-first-send`,
+      );
+      expect(result.state).toBe(terminal === "failed" ? "rejected" : "indeterminate");
+      expect(controller.state.phase).toBe(terminal === "failed" ? "error" : "indeterminate");
+      expect(liveComposerPresentation(controller.state)).toMatchObject({ disabled: true });
+      expect(opens).toBe(0);
+      await controller.stop();
+    }
+  });
+
+  it("keeps non-activatable policy states readable and disables only the composer", async () => {
+    const backend = new LiveFixtureDashboardBackend();
+    const session = backend.sessions[11]!;
+    const baseGetInfo = backend.getSessionInfo.bind(backend);
+    let activations = 0;
+    backend.getSessionInfo = async (inventoryId) => ({
+      ...(await baseGetInfo(inventoryId)),
+      activation: { eligible: false, modes: ["preview-only"], reasonCode: "policy_denied" },
+    });
+    backend.activateSession = async () => {
+      activations += 1;
+      throw new Error("must not activate");
+    };
+    const controller = new DashboardLiveSessionController(backend, session.inventoryId);
+    await controller.start();
+    expect(controller.state.phase).toBe("preview-only");
+    expect(controller.state.transcript?.records.length).toBeGreaterThan(0);
+    expect(liveComposerPresentation(controller.state)).toMatchObject({
+      disabled: true,
+      submitLabel: "Preview only",
+    });
+    expect((await controller.submit("prompt", { message: "denied" })).state).toBe("rejected");
+    expect(activations).toBe(0);
+    await controller.stop();
   });
 
   it("offers direct/fork activation choices and preserves indeterminate export", async () => {

@@ -66,14 +66,16 @@ export function ConnectedChatPane({
       onPresentationChange={onPresentationChange}
       onDemoStateChange={onDemoStateChange}
       onToggleVim={onToggleVim}
-      onSubmit={(value) => {
-        onSubmitted(value);
+      onSubmit={async (value) => {
         const parsed = parseComposerCommand(value);
-        void live.controller.command(
+        const result = await live.controller.submit(
           parsed.operation,
           parsed.payload,
-          `${parsed.operation}-${session.sessionId}-${Date.now().toString(36)}`,
+          `${parsed.operation}-${session.sessionId}-${crypto.randomUUID()}`,
         );
+        const accepted = result.state === "completed" || result.state === "streaming";
+        if (accepted) onSubmitted(value);
+        return accepted;
       }}
     />
   );

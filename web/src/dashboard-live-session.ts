@@ -72,6 +72,7 @@ export interface DashboardLiveSessionState {
   availableCommands?: JsonValue;
   availableModels?: JsonValue;
   activationModes: ActivationMode[];
+  selectedActivationMode?: ActivationMode;
   activationTicket?: ActivationTicket;
   exportTicket?: SessionExportTicket;
   extensionRequests: LiveExtensionRequest[];
@@ -92,8 +93,12 @@ export interface DashboardLiveSessionOptions {
 }
 
 type Listener = (state: DashboardLiveSessionState) => void;
-type StatePatch = Omit<Partial<DashboardLiveSessionState>, "error"> & {
+type StatePatch = Omit<
+  Partial<DashboardLiveSessionState>,
+  "error" | "selectedActivationMode"
+> & {
   error?: DashboardLiveSessionState["error"] | undefined;
+  selectedActivationMode?: ActivationMode | undefined;
 };
 
 export class DashboardLiveSessionController {
@@ -151,7 +156,11 @@ export class DashboardLiveSessionController {
   async start(): Promise<void> {
     const generation = ++this.#generation;
     this.#stopped = false;
-    this.#patch({ phase: "preview-loading", error: undefined });
+    this.#patch({
+      phase: "preview-loading",
+      selectedActivationMode: undefined,
+      error: undefined,
+    });
     const previewPromise = this.backend.getTranscript(this.inventoryId, { limit: 200 });
     const infoPromise = this.backend.getSessionInfo(this.inventoryId);
     try {
@@ -160,21 +169,23 @@ export class DashboardLiveSessionController {
       this.#acceptPreview(preview);
       const info = await infoPromise;
       if (!this.#current(generation)) return;
+      const selectedActivationMode = preferredActivationMode(info);
       this.#patch({
         info,
         phase: "preview",
         activationModes: [...info.activation.modes],
+        ...(selectedActivationMode === undefined ? {} : { selectedActivationMode }),
         unread: info.presence.unread,
       });
-      if (info.managed !== undefined) {
+      if (info.managed?.residency === "resident") {
         await this.#connect(info.managed.sessionId, info.managed.generation, generation);
         return;
       }
-      if (info.activation.eligible && info.activation.modes.includes("reuse")) {
-        await this.activate("reuse");
-        return;
-      }
-      if (!info.activation.eligible || info.activation.modes.every((mode) => mode === "preview-only")) {
+      if (info.managed !== undefined) return;
+      if (
+        !info.activation.eligible ||
+        info.activation.modes.every((mode) => mode === "preview-only")
+      ) {
         this.#patch({ phase: "preview-only" });
         return;
       }
@@ -184,10 +195,19 @@ export class DashboardLiveSessionController {
     }
   }
 
+  selectActivationMode(mode: ActivationMode): void {
+    if (mode === "preview-only" || !this.#state.activationModes.includes(mode)) return;
+    this.#patch({ selectedActivationMode: mode, error: undefined });
+  }
+
   async activate(mode: ActivationMode): Promise<void> {
     if (this.#stopped) return;
     const generation = this.#generation;
-    this.#patch({ phase: "activating", error: undefined });
+    this.#patch({
+      phase: "activating",
+      selectedActivationMode: mode,
+      error: undefined,
+    });
     try {
       let ticket = await this.backend.activateSession(this.inventoryId, {
         requestId: `dash-activation-${crypto.randomUUID()}`,
@@ -246,6 +266,99 @@ export class DashboardLiveSessionController {
     } catch (error) {
       this.#fail(error, "export_failed");
     }
+  }
+
+  async submit(
+    operation: DashboardCommandOperation,
+    payload: JsonObject = {},
+    idempotencyKey?: string,
+  ): Promise<DashboardCommandResult> {
+    if (this.#channel !== undefined) {
+      return this.command(operation, payload, idempotencyKey);
+    }
+    const correlationId = `command-${++this.#commandSequence}`;
+    if (operation !== "prompt") {
+      const result = rejected(
+        correlationId,
+        "activation_required",
+        "Send a normal message to activate this preview before using session commands",
+        false,
+      );
+      this.#patch({ error: result.error });
+      return result;
+    }
+    if (["activating", "hydrating", "preview-loading", "reconnecting"].includes(this.#state.phase)) {
+      return rejected(
+        correlationId,
+        "activation_in_progress",
+        "Session activation is already in progress",
+        true,
+      );
+    }
+    if (this.#state.phase === "indeterminate") {
+      return {
+        correlationId,
+        state: "indeterminate",
+        error: {
+          code: "activation_indeterminate",
+          message: "Activation outcome is indeterminate; reconcile before sending again",
+          retryable: false,
+        },
+      };
+    }
+    if (this.#state.phase === "preview-only" || !this.#state.info?.activation.eligible) {
+      const result = rejected(
+        correlationId,
+        this.#state.info?.activation.reasonCode ?? "preview_only",
+        "This preview cannot be activated under the current session policy",
+        false,
+      );
+      this.#patch({ error: result.error });
+      return result;
+    }
+    const generation = this.#generation;
+    const managed = this.#state.info.managed;
+    if (managed !== undefined) {
+      try {
+        await this.#connect(managed.sessionId, managed.generation, generation);
+      } catch (error) {
+        if (this.#current(generation)) this.#fail(error, "hydration_failed", true);
+      }
+    } else {
+      const mode = this.#state.selectedActivationMode ?? preferredActivationMode(this.#state.info);
+      if (mode === undefined) {
+        const result = rejected(
+          correlationId,
+          "activation_mode_required",
+          "Choose a safe activation mode before sending",
+          false,
+        );
+        this.#patch({ error: result.error });
+        return result;
+      }
+      await this.activate(mode);
+    }
+    const settledPhase = this.#state.phase as LiveSessionPhase;
+    if (this.#channel === undefined || !["live", "streaming"].includes(settledPhase)) {
+      if (settledPhase === "indeterminate") {
+        return {
+          correlationId,
+          state: "indeterminate",
+          error: {
+            code: "activation_indeterminate",
+            message: "Activation outcome is indeterminate; the prompt was not submitted",
+            retryable: false,
+          },
+        };
+      }
+      return rejected(
+        correlationId,
+        this.#state.error?.code ?? "activation_failed",
+        this.#state.error?.message ?? "Session activation did not reach a live channel",
+        this.#state.error?.retryable ?? true,
+      );
+    }
+    return this.command(operation, payload, idempotencyKey);
   }
 
   async command(
@@ -596,6 +709,12 @@ export class DashboardLiveSessionController {
       error?: DashboardLiveSessionState["error"] | undefined;
     };
     if (patch.error === undefined && "error" in patch) delete next.error;
+    if (
+      patch.selectedActivationMode === undefined &&
+      "selectedActivationMode" in patch
+    ) {
+      delete next.selectedActivationMode;
+    }
     this.#state = next as DashboardLiveSessionState;
     for (const listener of this.#listeners) listener(this.#state);
   }
@@ -848,6 +967,16 @@ function timelineLabel(type: string, event: Record<string, unknown>): string {
   if (type === "thinking_level_changed") return `Thinking · ${String(event.level ?? "changed")}`;
   if (type === "session_info_changed") return `Session name · ${String(event.name ?? "cleared")}`;
   return `Extension error · ${String(event.error ?? "unknown")}`;
+}
+
+function preferredActivationMode(
+  info: Pick<SessionInfoResource, "managed" | "activation">,
+): ActivationMode | undefined {
+  const modes = info.activation.modes.filter((mode) => mode !== "preview-only");
+  if (info.managed !== undefined && modes.includes("reuse")) return "reuse";
+  if (modes.includes("reuse")) return "reuse";
+  if (modes.includes("fork")) return "fork";
+  return modes.includes("direct") ? "direct" : undefined;
 }
 
 function isPending(state: DashboardTicketState): boolean {
