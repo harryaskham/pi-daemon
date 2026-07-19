@@ -17,6 +17,7 @@ interface SidebarProps {
   reconciling?: boolean;
   fixtureMode?: boolean;
   connectionLabel?: string;
+  summaryLabel?: string;
   onQueryChange(query: string): void;
   onOpenChat(session: SessionFixture): void;
   onOpenInfo(session: SessionFixture): void;
@@ -92,6 +93,7 @@ export function Sidebar({
   reconciling = false,
   fixtureMode = false,
   connectionLabel = "Same-origin authenticated stream",
+  summaryLabel = "indexed sessions",
   onQueryChange,
   onOpenChat,
   onOpenInfo,
@@ -160,7 +162,7 @@ export function Sidebar({
 
       <div className="sidebar__summary" aria-label="Session summary">
         <strong>{sessions.length.toLocaleString()}</strong>
-        <span>indexed sessions</span>
+        <span>{summaryLabel}</span>
         <span className="summary-pulse"><i />{counts.running} live</span>
       </div>
 

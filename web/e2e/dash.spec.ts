@@ -303,6 +303,7 @@ test("production boot uses same-origin login and never paints fixture data", asy
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page.getByRole("heading", { name: "Dash" })).toBeVisible();
   await expect(page.locator(".workspace-notice")).toContainText("Authenticated");
+  await expect(page.getByText("loaded sessions", { exact: true })).toBeVisible();
   await expect(page.getByText("Fixture", { exact: true })).toHaveCount(0);
   await expect(page.getByText("Local fixture", { exact: false })).toHaveCount(0);
 });

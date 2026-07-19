@@ -474,6 +474,7 @@ function DashWorkspace({
         reconciling={fixtureMode ? sessions.length < FIXTURE_SESSION_COUNT : inventoryReconciling}
         fixtureMode={fixtureMode}
         connectionLabel={fixtureMode ? "Local fixture · 4 ms" : "Same-origin authenticated stream"}
+        summaryLabel={fixtureMode ? "indexed sessions" : "loaded sessions"}
         onQueryChange={setQuery}
         onOpenChat={(session) => openTarget(session, "chat")}
         onOpenInfo={(session) => openTarget(session, "info")}

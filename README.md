@@ -197,6 +197,7 @@ supervisord on nix-on-droid; see [Operations](docs/operations.md#home-manager-se
 - [`docs/transcript-projection.md`](docs/transcript-projection.md) — preview-only Pi JSONL active-branch projection, cache, paging, and bounds
 - [`docs/dashboard-ownership.md`](docs/dashboard-ownership.md) — direct/fork ownership, leases, conflict guards, export, and release
 - [`docs/dashboard-service-api.md`](docs/dashboard-service-api.md) — neutral service-bearer Dash API and TUI negotiation for remote backends
+- [`docs/dashboard-acceptance.md`](docs/dashboard-acceptance.md) — live dual-mode browser, security, bundle/performance, and soak receipts
 - [`docs/shadow-tui.md`](docs/shadow-tui.md) — in-process virtual terminal, control policy, performance proof, and Pi view seam
 - [`docs/session-cli.md`](docs/session-cli.md) — high-level session CRUD, tickets, prompt/control, and endpoint discovery
 - [`docs/schedules.md`](docs/schedules.md) — authenticated schedule CRUD/status, ETags, safe file-backed CLI/config imports, and external-timer coexistence

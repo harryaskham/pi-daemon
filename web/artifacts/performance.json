@@ -1,21 +1,21 @@
 {
-  "measuredAt": "2026-07-19T01:44:35.354Z",
+  "measuredAt": "2026-07-19T02:21:32.687Z",
   "source": "vite production output",
   "budget": {
     "initialGzipBytes": 1572864
   },
   "totals": {
-    "allBytes": 1170911,
-    "allGzipBytes": 370652,
-    "scriptGzipBytes": 359444,
-    "initialGzipBytes": 123706,
-    "lazyGzipBytes": 246946
+    "allBytes": 1171309,
+    "allGzipBytes": 370748,
+    "scriptGzipBytes": 359536,
+    "initialGzipBytes": 123722,
+    "lazyGzipBytes": 247026
   },
   "files": [
     {
-      "file": "assets/Composer-CZVOuI7t.js",
-      "bytes": 729329,
-      "gzipBytes": 242232
+      "file": "assets/Composer-602sT8we.js",
+      "bytes": 729655,
+      "gzipBytes": 242309
     },
     {
       "file": "assets/react-D1XEZSKN.js",
@@ -23,9 +23,9 @@
       "gzipBytes": 56701
     },
     {
-      "file": "assets/index-D8eQRMaN.js",
-      "bytes": 144651,
-      "gzipBytes": 42243
+      "file": "assets/index-o5QlaNSM.js",
+      "bytes": 144723,
+      "gzipBytes": 42258
     },
     {
       "file": "assets/index-Dv6ECi3u.css",
@@ -43,7 +43,7 @@
       "gzipBytes": 6497
     },
     {
-      "file": "assets/RichTranscriptRecord-DeUKxTYk.js",
+      "file": "assets/RichTranscriptRecord-BYsoOVdr.js",
       "bytes": 9242,
       "gzipBytes": 3250
     },
@@ -55,12 +55,12 @@
     {
       "file": ".vite/manifest.json",
       "bytes": 2174,
-      "gzipBytes": 443
+      "gzipBytes": 446
     },
     {
       "file": "index.html",
       "bytes": 844,
-      "gzipBytes": 383
+      "gzipBytes": 384
     },
     {
       "file": "assets/rolldown-runtime-Bh1tDfsg.js",

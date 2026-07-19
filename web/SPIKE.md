@@ -1,6 +1,6 @@
 # Dash frontend stack decision — bd-493121
 
-Status: selected and promoted through production shell, rich transcript, revisioned workspace, and responsive TUI-pane milestones (`bd-cc87cb`, `bd-c0df45`, `bd-5f9ca1`, `bd-0b804d`)
+Status: selected and promoted through the production shell, rich transcript, revisioned workspace, responsive TUI pane, and same-origin live browser milestones (`bd-cc87cb`, `bd-c0df45`, `bd-5f9ca1`, `bd-0b804d`, `bd-ea2019`)
 
 Reference captures:
 
@@ -23,7 +23,7 @@ The spike is production structure, not a disposable mock:
 - A tiny progressive bootstrap paints bounded session rows first. The 10,000-record fixture index and interactive workspace are expanded in a transition after first paint.
 - Only viewport rows are mounted. A normal 1440×960 capture held 17 of 10,000 session rows and 18 rich transcript rows in the DOM.
 - The editor is a dynamic chunk. First rows do not wait for CodeMirror/Vim parsing.
-- Embedded and dedicated deployments are absent from SPA logic. Replacing `LocalFixtureBackend` with either real adapter does not change components or reducers.
+- Production boot uses the same-origin cookie/CSRF REST and multiplexed WebSocket client; deterministic fixture mode is available only through explicit `?fixture=1` and is visibly labelled. Embedded and dedicated deployment topology remains absent from component logic.
 
 ## Exact dependency selection
 
@@ -53,8 +53,8 @@ The checked-in receipt was produced from a Vite production build and Playwright 
 | Streaming/workspace/TUI resize commit work, max observed | 1.9 ms | <16 ms | pass |
 | Mounted session rows | 17 / 10,000 | not O(total) | pass |
 | Mounted transcript rows | 18 / 1,200 | not O(total) | pass |
-| Initial production gzip | 105,893 bytes | <1.5 MiB | pass |
-| Complete production asset gzip, including lazy editor and rich renderer | 352,707 bytes | <1.5 MiB | pass |
+| Initial production gzip | 123,722 bytes | <1.5 MiB | pass |
+| Complete production asset gzip, including live client, lazy editor and rich renderer | 370,748 bytes | <1.5 MiB | pass |
 
 `animationFrameCadenceP95Ms` in the receipt is display cadence (about 16.7 ms at 60 Hz), not JavaScript work. `streamFrameWorkMaxMs` is the measured React commit path compared with the 16 ms frame-work budget.
 
@@ -74,6 +74,7 @@ Focused browser acceptance proves:
 - persistent Rich/TUI presentation switching with retained Rich scroll state;
 - one canonical styled TUI frame store mirrored across panes, controller transfer on spatial focus, read-only observers, measured bounded resize, keyboard/paste input, safe placeholders, and accessible full-text mirror;
 - snapshot/delta sequence and generation fencing, replay-gap/conflict states, virtual row DOM bounds, and a <16 ms reducer/browser commit gate;
+- input-only same-origin login, HttpOnly cookie bootstrap, CSRF-bound preferences, real inventory/preview hydration, multiplexed Rich/TUI channels, reconnect/gap recovery, indeterminate command handling, serialized extension dialogs, and explicit fixture isolation;
 - CodeMirror/Vim lazy loading, command completion, 50-entry history, multiline paste, and IME-shaped Unicode input without pane-focus leakage;
 - discoverable keyboard help and screen-reader-labelled dialogs/controls; and
 - narrow responsive structure in CSS with reduced-motion and increased-contrast policies.
@@ -93,10 +94,10 @@ Follow-on shell, transcript, workspace, and live-integration beads should preser
 9. Persist layout and UI settings only through public revisioned workspace/settings resources. Coalesce drag updates, use expected revisions and idempotency keys, and reconcile conflicts from server truth.
 10. Reuse one transcript and one canonical TUI frame store for duplicate pane targets; a visual split must never create a second runtime or channel. Only the focused controller may size or send input; observers consume the same frame revision.
 11. Apply TUI snapshots/deltas only after identity, generation, sequence, row/run/text, style, cursor, count, and byte checks. A gap or conflict requests a fresh snapshot rather than guessing or replaying input.
-12. Until `bd-31ee8f` packages compiled assets, Nix deliberately removes npm's private-workspace source symlink during server-only installation; that later bead must copy the Vite manifest/assets into the final artifact rather than preserving a source-tree link.
+12. The npm/Nix artifact contains the compiled Vite manifest/assets and removes npm's private-workspace source symlink; runtime serving never depends on Vite, npm, a CDN, or the source tree.
 
 ## Security receipt
 
 The SPA adds no service bearer handling and does not persist credentials. Fixture records are content-safe and contain no prompts or provider output from real sessions. The capture server is a bounded loopback-only build script with canonical path containment and no child process.
 
-`npm audit` remains nonzero only for the repository's pre-existing direct test dependency `ajv@8.17.1` under GHSA-2g4f-4pwh-qvx6. The frontend dependency graph adds no second Ajv copy (`npm ls ajv --all` shows the single root copy). The unrelated upgrade is tracked separately as `bd-a4347b` rather than hidden inside this slice.
+The exact lock now pins the audited Ajv 8.20.0 fix for GHSA-2g4f-4pwh-qvx6. `npm audit` reports zero known vulnerabilities, and the frontend dependency graph adds no second Ajv copy. Production browser code never receives the daemon service bearer; the owner-private web credential is input-only and exchanged for an opaque HttpOnly cookie.

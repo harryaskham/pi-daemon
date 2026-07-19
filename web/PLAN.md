@@ -1347,9 +1347,10 @@ These lanes intentionally begin in parallel:
 
 ### Follow-on scheduler epic
 
-- [ ] `bd-6d96bb` — schedule resource/schema contract; blocked on Dash v1.
-- [ ] `bd-cb3036` — durable timer runtime; depends on `bd-6d96bb`.
-- [ ] `bd-72aac0` — schedule HTTP/CLI/config; depends on contract and config.
+- [x] `bd-6d96bb` — schedule resource/schema contract; unblocked as a
+  transport-neutral parallel slice.
+- [x] `bd-cb3036` — durable timer runtime; depends on `bd-6d96bb`.
+- [x] `bd-72aac0` — schedule HTTP/CLI/config; depends on contract and config.
 - [ ] `bd-edbc79` — beautiful Dash schedule editor/countdown/history; depends on
   schedule contract and live Dash.
 - [ ] `bd-aa4260` — timezone/DST/restart/overlap/security/soak acceptance; depends
