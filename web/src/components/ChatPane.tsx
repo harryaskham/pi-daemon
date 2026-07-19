@@ -9,7 +9,9 @@ import {
   TerminalSquare,
   Zap,
 } from "../icons";
+import type { DashboardLiveSessionController, DashboardLiveSessionState } from "../dashboard-live-session";
 import type { DemoState, SessionFixture, TranscriptRecord } from "../model";
+import { LiveSessionControls } from "./LiveSessionControls";
 
 const Composer = lazy(() => import("./Composer"));
 const RichTranscriptRecord = lazy(() => import("./RichTranscriptRecord").then((module) => ({ default: module.RichTranscriptRecord })));
@@ -23,6 +25,8 @@ interface ChatPaneProps {
   composerHistory: string[];
   needsReconcile: boolean;
   droppedRecords: number;
+  liveState: DashboardLiveSessionState;
+  liveController: DashboardLiveSessionController;
   onPresentationChange(presentation: "rich" | "tui"): void;
   onDemoStateChange(state: DemoState): void;
   onToggleVim(): void;
@@ -42,6 +46,8 @@ export function ChatPane({
   composerHistory,
   needsReconcile,
   droppedRecords,
+  liveState,
+  liveController,
   onPresentationChange,
   onDemoStateChange,
   onToggleVim,
@@ -70,6 +76,8 @@ export function ChatPane({
           <div><p className="eyebrow">{session.project} · Rich</p><h2>{session.title}</h2></div>
         </div>
         <div className="pane-actions">
+          <button type="button" className="tui-presentation-button" aria-label="Compact session" onClick={() => void liveController.command("compact")} disabled={liveState.role !== "controller"}>Compact</button>
+          <button type="button" className="tui-presentation-button" aria-label="Abort active turn" onClick={() => void liveController.command("abort")} disabled={liveState.role !== "controller"}>Abort</button>
           <button type="button" className="tui-presentation-button" aria-label="Switch to TUI presentation" onClick={() => onPresentationChange("tui")}><TerminalSquare size={13} /> TUI</button>
           <div className="demo-states" role="group" aria-label="Preview state">
             {(["ready", "streaming", "skeleton", "empty", "error"] as const).map((state) => (
@@ -81,11 +89,13 @@ export function ChatPane({
       </header>
 
       <div className="session-ribbon" role="status">
-        <span><Zap size={13} /> Controller</span>
-        <span><Clock3 size={13} /> {needsReconcile ? "Replay gap · reconciliation required" : "Preview ready · hydration not requested"}</span>
+        <span><Zap size={13} /> {liveState.role}</span>
+        <span><Clock3 size={13} /> {needsReconcile ? "Replay gap · reconciliation required" : `${liveState.phase.replaceAll("-", " ")} · preview painted first`}</span>
         {droppedRecords > 0 ? <span>{droppedRecords} bounded records omitted</span> : null}
         <span className="session-ribbon__cursor">gen {session.generation} · cursor 000013af</span>
       </div>
+
+      <LiveSessionControls state={liveState} controller={liveController} />
 
       {demoState === "error" ? (
         <div className="state-panel state-panel--error" role="alert">
@@ -130,10 +140,10 @@ export function ChatPane({
 
       <footer className="chat-pane__footer">
         <Suspense fallback={<div className="composer composer--loading"><i /><span>Loading the editor chunk…</span></div>}>
-          <Composer vimEnabled={vimEnabled} history={composerHistory} disabled={demoState === "error"} onToggleVim={onToggleVim} onSubmit={onSubmit} />
+          <Composer vimEnabled={vimEnabled} history={composerHistory} disabled={demoState === "error" || liveState.role !== "controller" || !["live", "streaming"].includes(liveState.phase)} onToggleVim={onToggleVim} onSubmit={onSubmit} />
         </Suspense>
         <div className="context-chips" aria-label="Session context">
-          <span>{session.cwd}</span><span>{session.contextPercent}% context</span><span>{session.model}</span><span>{session.thinking} thinking</span><span>tools: trusted</span>
+          <span>{session.cwd}</span><span>{String((liveState.sessionStats as Record<string, unknown> | undefined)?.contextPercent ?? session.contextPercent)}% context</span><span>{String(liveState.rpcState.model ?? session.model)}</span><span>{String(liveState.rpcState.thinkingLevel ?? session.thinking)} thinking</span><span>{liveState.availableCommands ? "commands ready" : "commands loading"}</span>
         </div>
       </footer>
     </div>

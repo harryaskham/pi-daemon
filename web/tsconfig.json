@@ -16,7 +16,8 @@
     "baseUrl": ".",
     "paths": {
       "@harryaskham/pi-daemon/dashboard-contract": ["../src/dashboard-contract.ts"],
-      "@harryaskham/pi-daemon/dashboard-fixtures": ["../src/dashboard-fixtures.ts"]
+      "@harryaskham/pi-daemon/dashboard-fixtures": ["../src/dashboard-fixtures.ts"],
+      "@harryaskham/pi-daemon/session-api": ["../src/session-api.ts"]
     },
     "resolveJsonModule": true,
     "isolatedModules": true,

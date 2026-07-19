@@ -1,4 +1,4 @@
-import { startTransition, useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from "react";
+import { startTransition, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { asDashboardCursor } from "@harryaskham/pi-daemon/dashboard-contract";
 import type {
   DashboardSessionIdentity,
@@ -7,7 +7,7 @@ import type {
   DashboardWorkspaceResource,
   TuiDimensions,
 } from "@harryaskham/pi-daemon/dashboard-contract";
-import { ChatPane } from "./components/ChatPane";
+import { ConnectedChatPane } from "./components/ConnectedChatPane";
 import { EmptyPane } from "./components/EmptyPane";
 import { InfoPane } from "./components/InfoPane";
 import { KeyboardHelp } from "./components/KeyboardHelp";
@@ -15,14 +15,14 @@ import { SettingsModal } from "./components/SettingsModal";
 import { Sidebar, type SidebarStatus } from "./components/Sidebar";
 import { TuiPane } from "./components/TuiPane";
 import { Workspace } from "./components/Workspace";
-import { fixtureBackend } from "./fixture-backend";
+import type { DashboardLiveSessionState } from "./dashboard-live-session";
+import { liveFixtureBackend } from "./live-fixture-backend";
 import { CircleHelp, Menu } from "./icons";
 import { createSessionFixtures, createTranscriptFixtures, createTranscriptShowcaseFixtures } from "./fixtures";
 import { createTuiInputRuns, createTuiSnapshot, TUI_FIXTURE_OVERLAYS, TUI_FIXTURE_SELECTION } from "./tui-fixtures";
 import { closePane, collectPaneIds, INITIAL_LAYOUT, splitPane, toDashboardLayout, updatePaneTarget } from "./layout";
-import type { DemoState, InventoryId, LayoutNode, SessionFixture, TranscriptRecord } from "./model";
+import type { DemoState, InventoryId, LayoutNode, SessionFixture } from "./model";
 import { markFirstRows, recordFrameWork, setFixtureCount } from "./performance";
-import { createTranscriptStore, transcriptStoreReducer } from "./transcript-store";
 import { createTuiFrameStore, TuiFrameCache, tuiFrameStoreReducer, type TuiFrameStoreState } from "./tui-frame-store";
 import { createLocalPreferencesBackend, useDashboardSettings, useDashboardWorkspace } from "./use-dashboard-preferences";
 
@@ -123,6 +123,7 @@ function DashWorkspace() {
   const paneSequence = useRef(2);
   const [query, setQuery] = useState("");
   const [composerHistory, setComposerHistory] = useState<string[]>([]);
+  const [liveStates, setLiveStates] = useState<ReadonlyMap<InventoryId, DashboardLiveSessionState>>(() => new Map());
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [sidebarStatus, setSidebarStatus] = useState<SidebarStatus>(initialSidebarStatus);
   const [demoState, setDemoState] = useState<DemoState>(initialDemoState);
@@ -132,17 +133,6 @@ function DashWorkspace() {
   const workspaceWorkStartedAt = useRef<number | undefined>(undefined);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [keyboardHelpOpen, setKeyboardHelpOpen] = useState(false);
-  const [transcriptState, dispatchTranscript] = useReducer(
-    transcriptStoreReducer,
-    undefined,
-    () => createTranscriptStore(
-      transcriptIdentity(firstSession),
-      INITIAL_TRANSCRIPT_RECORDS,
-      undefined,
-      asDashboardCursor("fixture:transcript:0"),
-    ),
-  );
-  const records: TranscriptRecord[] = transcriptState.records;
   const [tuiStores] = useState(() => {
     const cache = new TuiFrameCache<InventoryId>();
     cache.set(firstSession.inventoryId, createTuiFrameStore(tuiSnapshotFor(firstSession), "controller"));
@@ -156,7 +146,7 @@ function DashWorkspace() {
     let expandTimer = 0;
     const frame = requestAnimationFrame(() => {
       expandTimer = window.setTimeout(() => {
-        startTransition(() => setSessions(fixtureBackend.sessions));
+        startTransition(() => setSessions(liveFixtureBackend.sessions));
       }, 0);
     });
     return () => {
@@ -210,24 +200,22 @@ function DashWorkspace() {
   }, []);
 
   const streamText = STREAM_WORDS.slice(0, streamIndex).join("");
-  const sessionById = useMemo(() => new Map(sessions.map((session) => [session.inventoryId, session])), [sessions]);
-
-  useEffect(() => {
-    const session = sessionById.get(selectedInventoryId);
-    if (!session) return;
-    const nextIdentity = transcriptIdentity(session);
-    if (
-      transcriptState.identity.hostInstanceId === nextIdentity.hostInstanceId
-      && transcriptState.identity.sessionId === nextIdentity.sessionId
-      && transcriptState.identity.generation === nextIdentity.generation
-    ) return;
-    dispatchTranscript({
-      type: "snapshot",
-      identity: nextIdentity,
-      records: INITIAL_TRANSCRIPT_RECORDS,
-      cursor: asDashboardCursor(`fixture:transcript:${session.generation}:0`),
-    });
-  }, [selectedInventoryId, sessionById, transcriptState.identity]);
+  const displaySessions = useMemo(() => sessions.map((session) => {
+    const liveState = liveStates.get(session.inventoryId);
+    if (!liveState) return session;
+    const running = liveState.phase === "streaming" || liveState.phase === "activating" || liveState.phase === "hydrating";
+    return {
+      ...session,
+      presence: {
+        ...session.presence,
+        runtime: liveState.phase === "error" ? "failed" : running ? "running" : "resident-idle",
+        activation: liveState.phase === "preview-loading" || liveState.phase === "preview" ? "selected" : "user-turn",
+        focusedPaneCount: 1,
+        unread: liveState.unread,
+      },
+    } satisfies SessionFixture;
+  }), [liveStates, sessions]);
+  const sessionById = useMemo(() => new Map(displaySessions.map((session) => [session.inventoryId, session])), [displaySessions]);
 
   const commitLayout = useCallback((next: LayoutNode) => {
     workspaceWorkStartedAt.current = performance.now();
@@ -313,82 +301,35 @@ function DashWorkspace() {
     return (
       <div className="pane-presentations" data-presentation={presentation}>
         <div className="pane-presentation-layer" hidden={presentation !== "rich"}>
-      <ChatPane
+      <ConnectedChatPane
+        backend={liveFixtureBackend}
         session={session}
-        records={records}
+        fallbackRecords={INITIAL_TRANSCRIPT_RECORDS}
         demoState={demoState}
         streamText={streamText}
         vimEnabled={vimEnabled}
         composerHistory={composerHistory}
-        onPresentationChange={(next) => setPanePresentation(node, next)}
-        needsReconcile={transcriptState.needsReconcile}
-        droppedRecords={transcriptState.droppedRecords}
-        onDemoStateChange={(state) => {
-          setDemoState(state);
-          if (state === "error") {
-            dispatchTranscript({
-              type: "replay_gap",
-              identity: transcriptState.identity,
-              reason: "cursor-expired",
-              highWaterCursor: asDashboardCursor(`fixture:gap:${session.generation}`),
-            });
-          } else if (transcriptState.needsReconcile) {
-            dispatchTranscript({
-              type: "reconcile",
-              identity: transcriptState.identity,
-              records: INITIAL_TRANSCRIPT_RECORDS,
-              cursor: asDashboardCursor(`fixture:reconciled:${session.generation}`),
-            });
-          }
-        }}
-        onToggleVim={() => settings.patch({ editor: { mode: vimEnabled ? "multiline" : "vim" } })}
-        onSubmit={(value) => {
-          setComposerHistory((current) => [...current.slice(-49), value]);
-          const timestamp = new Date().toISOString();
-          const suffix = Date.now().toString(36);
-          const userRecord = {
-            recordId: `optimistic:user:${suffix}`,
-            key: { entryId: `optimistic_user_${suffix}`, messageId: `optimistic_message_user_${suffix}` },
-            kind: "message",
-            role: "user",
-            state: "complete",
-            source: "optimistic",
-            timestamp,
-            content: [{ type: "text", text: value }],
-          } satisfies TranscriptRecord;
-          const assistantRecord = {
-            recordId: `optimistic:assistant:${suffix}`,
-            key: { entryId: `optimistic_assistant_${suffix}`, messageId: `optimistic_message_assistant_${suffix}` },
-            kind: "message",
-            role: "assistant",
-            state: "streaming",
-            source: "optimistic",
-            timestamp,
-            content: [{ type: "markdown", text: "Fixture submission accepted. The production channel will correlate this optimistic entry with its durable Pi entry ID." }],
-          } satisfies TranscriptRecord;
-          const submissionIdentity = transcriptState.identity;
-          dispatchTranscript({
-            type: "upsert",
-            identity: submissionIdentity,
-            records: [userRecord, assistantRecord],
+        onStateChange={(state) => {
+          setLiveStates((current) => {
+            const prior = current.get(session.inventoryId);
+            if (
+              prior?.phase === state.phase &&
+              prior.role === state.role &&
+              prior.unread === state.unread
+            ) return current;
+            const next = new Map(current);
+            next.set(session.inventoryId, state);
+            return next;
           });
-          window.setTimeout(() => {
-            dispatchTranscript({
-              type: "entry_appended",
-              identity: submissionIdentity,
-              record: userRecord,
-              cursor: asDashboardCursor(`fixture:entry-appended:user:${suffix}`),
-            });
-            dispatchTranscript({
-              type: "entry_appended",
-              identity: submissionIdentity,
-              record: { ...assistantRecord, state: "complete" },
-              cursor: asDashboardCursor(`fixture:entry-appended:assistant:${suffix}`),
-            });
-          }, 480);
+        }}
+        onPresentationChange={(next) => setPanePresentation(node, next)}
+        onDemoStateChange={setDemoState}
+        onToggleVim={() => settings.patch({ editor: { mode: vimEnabled ? "multiline" : "vim" } })}
+        onSubmitted={(value) => {
+          setComposerHistory((current) => [...current.slice(-49), value]);
           setDemoState("streaming");
           setStreamIndex(0);
-          setNotice("Fixture command accepted · no provider request was sent");
+          setNotice("Live command accepted · durable entry will reconcile by Pi identity");
         }}
       />
         </div>
@@ -409,13 +350,13 @@ function DashWorkspace() {
         </div> : null}
       </div>
     );
-  }, [composerHistory, demoState, getTuiState, mountedTuiPanes, records, replaceTuiState, resizeTui, selectedPaneId, sendTuiInput, sessionById, setPanePresentation, settings, streamText, transcriptState.droppedRecords, transcriptState.identity, transcriptState.needsReconcile, tuiStoreRevision, vimEnabled]);
+  }, [composerHistory, demoState, getTuiState, mountedTuiPanes, replaceTuiState, resizeTui, selectedPaneId, sendTuiInput, sessionById, setPanePresentation, settings, streamText, tuiStoreRevision, vimEnabled]);
 
   return (
     <div className="dash-app" data-theme={settings.resource.effective.theme.name} data-density={density} data-reduced-motion={reducedMotion ? "true" : "false"} data-sidebar-open={sidebarOpen ? "true" : "false"}>
       <a className="skip-link" href="#dash-workspace">Skip to workspace</a>
       <Sidebar
-        sessions={sessions}
+        sessions={displaySessions}
         query={query}
         selectedInventoryId={selectedInventoryId}
         status={sidebarStatus}

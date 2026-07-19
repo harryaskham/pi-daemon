@@ -36,9 +36,17 @@ export function createSessionFixtures(count = 10_000): SessionFixture[] {
     const sessionId = `session-${index.toString().padStart(5, "0")}`;
     const generation = 1 + (index % 4);
     const modifiedAt = new Date(now - index * 73_000).toISOString();
+    const sourceKind = index !== 0 && index % 11 === 0
+      ? "external"
+      : index !== 0 && index % 13 === 0
+        ? "imported"
+        : index % 19 === 0
+          ? "memory"
+          : "managed";
+    const managed = sourceKind === "managed" || sourceKind === "memory";
     return {
       inventoryId: inventoryId(index),
-      sourceKind: index % 11 === 0 ? "external" : index % 13 === 0 ? "imported" : index % 19 === 0 ? "memory" : "managed",
+      sourceKind,
       title: `${at(TITLES, index)} · ${index.toString().padStart(5, "0")}`,
       cwdBasename: index % 23 === 0 ? "dashboard" : "src",
       projectLabel: project,
@@ -49,14 +57,20 @@ export function createSessionFixtures(count = 10_000): SessionFixture[] {
       entryCount: 20 + (index % 1_100),
       toolCallCount: 3 + (index % 180),
       currentLeafId: `entry-leaf-${index}`,
-      managed: {
-        sessionId,
-        generation,
-        revision: 1 + (index % 8),
-        residency: runtime === "dormant" ? "dormant" : "resident",
-        state: runtime === "running" ? "running" : runtime === "failed" ? "failed" : "idle",
-      },
-      activation: { eligible: true, modes: ["reuse", "fork"] },
+      ...(managed
+        ? {
+            managed: {
+              sessionId,
+              generation,
+              revision: 1 + (index % 8),
+              residency: runtime === "dormant" ? "dormant" as const : "resident" as const,
+              state: runtime === "running" ? "running" as const : runtime === "failed" ? "failed" as const : "idle" as const,
+            },
+          }
+        : {}),
+      activation: managed
+        ? { eligible: true, modes: ["reuse", "fork"] }
+        : { eligible: true, modes: ["direct", "fork", "preview-only"] },
       presence: {
         runtime,
         activation: runtime === "running" ? "user-turn" : index % 7 === 0 ? "selected" : "untouched",
