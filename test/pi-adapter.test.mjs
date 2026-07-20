@@ -640,6 +640,24 @@ test("factory refuses cwd authority overlap, out-of-root cwd, and external sessi
     (error) => error instanceof PiAdapterError && error.code === "cwd_not_allowed",
   );
 
+  const explicitlyOverlapping = new PiSessionFactory({
+    stateDir,
+    agentDir,
+    allowedRoots: [allowedRoot],
+    allowAuthorityRootOverlap: true,
+    authStorage,
+    modelRegistry,
+  });
+  const overlappingAdapter = await explicitlyOverlapping.open(
+    openRequest(allowedRoot, model, "explicit-overlap-session"),
+  );
+  await overlappingAdapter.dispose();
+  const persistedOverlapRequest = openRequest(allowedRoot, model, "persisted-overlap-source");
+  persistedOverlapRequest.session = { mode: "new" };
+  const persistedOverlap = await explicitlyOverlapping.open(persistedOverlapRequest);
+  assert.equal(typeof persistedOverlap.identity().sessionFile, "string");
+  await persistedOverlap.dispose();
+
   const safeState = await temporaryDirectory();
   const factory = new PiSessionFactory({
     stateDir: safeState,

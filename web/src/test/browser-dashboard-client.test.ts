@@ -267,6 +267,30 @@ describe("same-origin browser dashboard client", () => {
     expect(JSON.stringify(calls.map((call) => call.init?.headers))).not.toMatch(/authorization|bearer/i);
   });
 
+  it("resumes mutation authority from an authenticated bootstrap after reload", async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      calls.push({ url, ...(init === undefined ? {} : { init }) });
+      if (url.endsWith("/bootstrap")) {
+        return new Response(JSON.stringify(envelope(bootstrap)), {
+          headers: { "x-pi-daemon-csrf": "r".repeat(43) },
+        });
+      }
+      return new Response(JSON.stringify(envelope(bootstrap.settings)));
+    });
+    const client = new BrowserDashboardClient({ fetch: fetch as typeof globalThis.fetch });
+    await client.bootstrap();
+    expect(client.authenticatedForMutations).toBe(true);
+    await client.patchSettings({
+      requestId: "settings-after-reload",
+      idempotencyKey: "settings-after-reload-key",
+      expectedRevision: bootstrap.settings.revision,
+      patch: { motion: { reduced: true } },
+    });
+    expect(calls[1]?.init?.headers).toMatchObject({ "x-pi-daemon-csrf": "r".repeat(43) });
+  });
+
   it("negotiates one multiplexed stream and exposes rich events and commands", async () => {
     let socket: FakeWebSocket | undefined;
     const fetch = vi.fn(async () => new Response(JSON.stringify(envelope(bootstrap))));

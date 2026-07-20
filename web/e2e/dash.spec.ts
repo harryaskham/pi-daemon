@@ -463,7 +463,7 @@ test("production boot uses same-origin login and never paints fixture data", asy
   });
   await page.route("**/dash/v1/bootstrap", async (route) => {
     await route.fulfill(authenticated
-      ? { json: { ...identity, ok: true, data: { capabilities, settings, workspace, inventory } } }
+      ? { headers: { "x-pi-daemon-csrf": "r".repeat(43) }, json: { ...identity, ok: true, data: { capabilities, settings, workspace, inventory } } }
       : { status: 401, json: { ...identity, clientId: "unauthenticated", workspaceId: "unauthenticated", ok: false, error: { code: "unauthorized", message: "dashboard authentication failed", retryable: false } } });
   });
   await page.route("**/dash/v1/sessions*", async (route) => route.fulfill({ json: { ...identity, ok: true, data: inventory } }));
@@ -477,6 +477,9 @@ test("production boot uses same-origin login and never paints fixture data", asy
   await expect(page.getByText("loaded sessions", { exact: true })).toBeVisible();
   await expect(page.getByText("Fixture", { exact: true })).toHaveCount(0);
   await expect(page.getByText("Local fixture", { exact: false })).toHaveCount(0);
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "Dash" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Sign in to Dash" })).toHaveCount(0);
 });
 
 test("lazy composer accepts IME-shaped text without triggering pane shortcuts", async ({ page }) => {

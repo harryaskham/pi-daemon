@@ -56,6 +56,7 @@
         agentDir = "/home/tester/.pi-alpha";
         authSeedFile = "/home/tester/.pi/agent/auth.json";
         allowedRoots = ["/srv/alpha" "/srv/shared"];
+        allowAuthorityRootOverlap = true;
         api = {
           enable = true;
           bind = "127.0.0.1";
@@ -292,6 +293,7 @@ in
       printf '%s\n' ${lib.escapeShellArg normalAlphaCommand} | grep -F -- '--auth-seed-file'
       printf '%s\n' ${lib.escapeShellArg normalAlphaCommand} | grep -F -- '/home/tester/.pi/agent/auth.json'
       printf '%s\n' ${lib.escapeShellArg normalAlphaCommand} | grep -F -- '--allow-root'
+      printf '%s\n' ${lib.escapeShellArg normalAlphaCommand} | grep -F -- '--allow-authority-root-overlap true'
       printf '%s\n' ${lib.escapeShellArg normalAlphaCommand} | grep -F -- '/srv/shared'
       printf '%s\n' ${lib.escapeShellArg normalAlphaCommand} | grep -F -- '--api-enabled true'
       printf '%s\n' ${lib.escapeShellArg normalAlphaCommand} | grep -F -- '--api-port'

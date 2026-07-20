@@ -115,6 +115,13 @@ atomically creates and reuses an owner-only credential at `STATE_DIR/web-token`;
 a configured path is held to the same owner/symlink/size checks. The browser
 cookie contains a random lookup key plus an HMAC;
 all client/workspace/expiry state stays server-side and is bounded and revocable.
+On a cookie-authenticated `GET /dash/v1/bootstrap`, the server reproduces the
+session-bound, domain-separated HMAC CSRF token and returns it in the no-store
+`x-pi-daemon-csrf` response header. This restores mutation authority after an
+ordinary page reload without exposing or storing the owner credential or cookie
+in JavaScript, local storage, session storage, or IndexedDB. Multiple tabs
+receive the same bounded token; logout, expiry, and daemon restart still revoke
+the session.
 It is `HttpOnly`, `SameSite=Strict`, scoped to `/dash/`, and uses the `__Host-`
 form with `Secure` behind an HTTPS public origin. Restart intentionally revokes
 all ephemeral browser sessions. The initial direct HTTP listener is

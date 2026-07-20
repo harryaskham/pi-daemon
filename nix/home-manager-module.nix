@@ -63,6 +63,11 @@
         example = ["/srv/agents/project-a"];
         description = "Explicit canonical workload roots granted to this instance. At least one is required.";
       };
+      allowAuthorityRootOverlap = lib.mkOption {
+        type = lib.types.bool;
+        default = false;
+        description = "High-trust opt-in allowing a logical cwd to contain daemon state, session storage, or Pi credential roots. This permits home-directory Pi sessions but lets any enabled session tools reach those paths.";
+      };
       environment = lib.mkOption {
         type = lib.types.attrsOf lib.types.str;
         default = {};
@@ -182,6 +187,8 @@
     ]
     ++ lib.concatMap (root: ["--allow-root" root]) instance.allowedRoots
     ++ [
+      "--allow-authority-root-overlap"
+      (if instance.allowAuthorityRootOverlap then "true" else "false")
       "--api-enabled"
       (
         if instance.api.enable
@@ -300,6 +307,7 @@
     "--agent-dir"
     "--auth-seed-file"
     "--allow-root"
+    "--allow-authority-root-overlap"
     "--api-enabled"
     "--api-bind"
     "--api-port"

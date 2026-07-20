@@ -69,6 +69,8 @@ agentDir: ~/agent
 allowedRoots: [./repo, ~/shared]
 sessionStorage:
   mode: pi-session-root
+security:
+  allowAuthorityRootOverlap: true
 limits:
   maxSessions: 32
   idleSessionTtlMs: 0
@@ -109,6 +111,7 @@ web:
   });
   assert.equal(loaded.present, true);
   assert.equal(loaded.config.limits.maxSessions, 32);
+  assert.equal(loaded.config.security.allowAuthorityRootOverlap, true);
   assert.equal(loaded.config.web.tui.defaultPresentation, "rich");
   assert.equal(loaded.resolvePath(loaded.config.stateDir), join(root, "state"));
   assert.equal(loaded.resolvePath(loaded.config.agentDir), join(root, "agent"));

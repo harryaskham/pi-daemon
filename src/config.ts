@@ -30,6 +30,10 @@ export interface PiDaemonLimitConfig {
   maxOutboundBytesPerConnection?: number;
 }
 
+export interface PiDaemonSecurityConfig {
+  allowAuthorityRootOverlap?: boolean;
+}
+
 export interface PiDaemonScheduleConfig {
   /** Non-secret defaults merged into each imported schedule definition. */
   defaults?: { [key: string]: ConfigJson };
@@ -115,6 +119,7 @@ export interface PiDaemonConfig {
   authSeedFile?: string;
   allowedRoots?: string[];
   sessionStorage?: { mode?: SessionStorageMode };
+  security?: PiDaemonSecurityConfig;
   limits?: PiDaemonLimitConfig;
   api?: PiDaemonApiConfig;
   schedules?: PiDaemonScheduleConfig;
@@ -266,6 +271,7 @@ function parseConfig(value: unknown): PiDaemonConfig {
     "authSeedFile",
     "allowedRoots",
     "sessionStorage",
+    "security",
     "limits",
     "api",
     "schedules",
@@ -286,6 +292,12 @@ function parseConfig(value: unknown): PiDaemonConfig {
     assertKnownKeys(storage, ["mode"]);
     const mode = optionalEnum(storage, "mode", ["pi-session-root", "daemon-owned"] as const);
     result.sessionStorage = mode === undefined ? {} : { mode };
+  }
+  if (root.security !== undefined) {
+    const security = objectValue(root.security, "security");
+    assertKnownKeys(security, ["allowAuthorityRootOverlap"]);
+    const allowAuthorityRootOverlap = optionalBoolean(security, "allowAuthorityRootOverlap");
+    result.security = allowAuthorityRootOverlap === undefined ? {} : { allowAuthorityRootOverlap };
   }
   if (root.limits !== undefined) result.limits = parseLimits(root.limits);
   if (root.api !== undefined) result.api = parseApi(root.api);

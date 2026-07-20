@@ -30,7 +30,7 @@ project code or tools.
 - owner-only state directories, manifests, and journals
 - symlink and traversal refusal for durable state/session paths
 - required canonical `--allow-root` for every logical cwd
-- cwd must not overlap daemon state or Pi credential roots
+- cwd must not overlap daemon state or Pi credential roots unless the operator explicitly enables the high-trust `security.allowAuthorityRootOverlap` policy; with it enabled, session tools can reach protected paths beneath the cwd
 - opened Pi session files remain inside that logical session's state directory
 - persistent Pi managers are materialized as owner-only JSONL before durable acceptance
 - restart/eviction replay requires the exact recorded Pi session ID and canonical file
@@ -53,6 +53,7 @@ project code or tools.
 - remote WebSocket use requires TLS or an operator-owned authenticated loopback proxy
 - Dash uses a separate owner-only web credential; the daemon service bearer is server-to-server and never enters browser state
 - Dash browser sessions are bounded, revocable, server-side records addressed by an HMAC-signed opaque `HttpOnly`, `SameSite=Strict` cookie
+- a cookie-authenticated same-origin bootstrap reproduces the session-bound HMAC CSRF token in a no-store response header, so an ordinary browser reload restores mutation authority without putting the owner credential, cookie, or CSRF token in browser storage
 - Dash private routes authenticate before route matching; mutations require exact Host, Origin, and per-session CSRF validation
 - the initial Dash HTTP listener is loopback-only; an HTTPS public origin sets a `Secure` `__Host-` cookie through a loopback TLS proxy
 - packaged Dash assets are hash-named and regular/non-writable, with traversal/symlink rejection and a deny-by-default CSP

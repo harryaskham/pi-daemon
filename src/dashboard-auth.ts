@@ -128,7 +128,7 @@ export class DashboardBrowserAuth {
     }
 
     const sessionKey = token(this.#randomBytes(32));
-    const csrfToken = token(this.#randomBytes(32));
+    const csrfToken = this.#csrfToken(sessionKey);
     const workspaceId = request.workspaceId ?? `workspace-${token(this.#randomBytes(18))}`;
     validateOpaqueId(workspaceId, "workspaceId");
     const expiresAtMs = now + this.sessionTtlMs;
@@ -175,6 +175,21 @@ export class DashboardBrowserAuth {
     };
   }
 
+  browserSession(session: DashboardAuthenticatedSession): DashboardBrowserSessionResource {
+    const record = this.#sessions.get(session.sessionKey);
+    const now = this.#now().getTime();
+    if (record === undefined || record.expiresAtMs <= now) {
+      if (record !== undefined) this.#sessions.delete(session.sessionKey);
+      throw new DashboardAuthError("unauthorized", "dashboard browser session is invalid");
+    }
+    return {
+      clientId: record.clientId,
+      workspaceId: record.workspaceId,
+      expiresAt: new Date(record.expiresAtMs).toISOString(),
+      csrfToken: this.#csrfToken(record.sessionKey),
+    };
+  }
+
   authorizeCsrf(session: DashboardAuthenticatedSession, value: string | string[] | undefined): void {
     if (typeof value !== "string" || Buffer.byteLength(value, "utf8") > 256) {
       throw new DashboardAuthError("csrf_failed", "dashboard CSRF validation failed", 403);
@@ -201,6 +216,13 @@ export class DashboardBrowserAuth {
 
   get cookieName(): string {
     return this.secureCookies ? DASH_BROWSER_SECURE_COOKIE : DASH_BROWSER_COOKIE;
+  }
+
+  #csrfToken(sessionKey: string): string {
+    return createHmac("sha256", this.#signingKey)
+      .update("csrf-v1\0", "utf8")
+      .update(sessionKey, "utf8")
+      .digest("base64url");
   }
 
   #signedCookie(sessionKey: string): string {

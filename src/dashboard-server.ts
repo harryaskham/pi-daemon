@@ -421,11 +421,13 @@ export class DashboardServer {
           this.workspaceStore.getOrCreate(session.workspaceId),
           this.backend.listSessions({ limit: settings.effective.sidebar.initialLimit }),
         ]);
+        const resumed = this.auth.browserSession(session);
         sendJson(
           response,
           200,
           successEnvelopeFrom(context, { capabilities, settings, workspace, inventory }),
           this.limits.dashboard.maxOutboundBytesPerConnection,
+          { [DASH_CSRF_HEADER]: resumed.csrfToken },
         );
         return;
       }

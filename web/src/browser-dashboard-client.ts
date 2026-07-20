@@ -777,6 +777,13 @@ export class BrowserDashboardClient implements DashboardBackend, DashboardPrefer
           : { code: "http_error", message: `Dashboard request failed (${response.status})`, retryable: response.status >= 500 };
         throw new DashboardBrowserClientError(error.code, error.message, error.retryable, response.status);
       }
+      const resumedCsrf = response.headers.get(CSRF_HEADER);
+      if (resumedCsrf !== null) {
+        if (!/^[A-Za-z0-9_-]{43}$/.test(resumedCsrf)) {
+          throw new DashboardBrowserClientError("invalid_response", "Dashboard returned an invalid CSRF refresh", false, response.status);
+        }
+        this.#csrfToken = resumedCsrf;
+      }
       this.#adoptEnvelope(envelope);
       return { data: envelope.data, envelope };
     } catch (error) {

@@ -378,6 +378,7 @@ async function runServe(
       "agent-dir",
       "auth-seed-file",
       "allow-root",
+      "allow-authority-root-overlap",
       "max-sessions",
       "max-concurrent-turns",
       "max-session-queue-depth",
@@ -499,6 +500,12 @@ async function runServe(
         stateDir,
         agentDir,
         allowedRoots,
+        allowAuthorityRootOverlap:
+          booleanSetting(
+            options,
+            "allow-authority-root-overlap",
+            config.security?.allowAuthorityRootOverlap,
+          ) ?? false,
       }),
     durability,
     catalog,
@@ -1007,7 +1014,7 @@ Usage:
   pi-daemon serve [--config PATH] [--instance NAME]
                   --socket PATH --allow-root PATH [--allow-root PATH ...]
                   [--state-dir PATH] [--agent-dir PATH] [limit options]
-                  [--auth-seed-file PATH]
+                  [--auth-seed-file PATH] [--allow-authority-root-overlap true|false]
                   [--api-enabled true|false] [--api-port PORT] [--api-bind HOST]
                   [--api-token-file PATH | --api-token-fd FD]
                   [--api-allow-insecure-http true|false]
@@ -1075,6 +1082,7 @@ Service configuration:
   PI_DAEMON_CONFIG            Config path fallback; CLI --config takes precedence
   PI_DAEMON_INSTANCE          Instance fallback; CLI --instance takes precedence
   Individual CLI values override YAML; existing flag-only invocation remains supported.
+  security.allowAuthorityRootOverlap is a high-trust opt-in for workloads rooted above daemon state/credentials.
   An enabled web.mode=embedded block serves the packaged Dash at /dash/ on web.port.
   The web command uses web.mode=dedicated and defaults to API 7463 / Dash 7465.
   Secrets are file/fd/environment references, never literal YAML values.

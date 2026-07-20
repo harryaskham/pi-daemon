@@ -57,6 +57,7 @@ export interface PiSessionFactoryOptions {
   stateDir: string;
   agentDir?: string;
   allowedRoots: string[];
+  allowAuthorityRootOverlap?: boolean;
   authStorage?: AuthStorage;
   modelRegistry?: ModelRegistry;
   createSession?: (options: CreateAgentSessionOptions) => Promise<CreateAgentSessionResult>;
@@ -89,6 +90,7 @@ export class PiSessionFactory implements SessionFactory {
   readonly modelRegistry: ModelRegistry;
   readonly #stateDir: string;
   readonly #allowedRoots: string[];
+  readonly #allowAuthorityRootOverlap: boolean;
   readonly #createSession: (
     options: CreateAgentSessionOptions,
   ) => Promise<CreateAgentSessionResult>;
@@ -104,6 +106,7 @@ export class PiSessionFactory implements SessionFactory {
     }
     this.#allowedRoots = options.allowedRoots.map((root) => resolve(root));
     this.agentDir = resolve(options.agentDir ?? getAgentDir());
+    this.#allowAuthorityRootOverlap = options.allowAuthorityRootOverlap ?? false;
     const authPath = join(this.agentDir, "auth.json");
     if (options.authStorage === undefined) validatePrivateAuthFile(authPath);
     this.authStorage = options.authStorage ?? AuthStorage.create(authPath);
@@ -168,6 +171,7 @@ export class PiSessionFactory implements SessionFactory {
         stateRoot!,
         [defaultAgentRoot!, selectedAgentRoot!],
         allowedRoots,
+        this.#allowAuthorityRootOverlap,
       );
     const cwd = await validateCwd(configuredSpec?.cwd ?? request.cwd);
     const hostRequest = request as HostToolSessionOpenRequest;
@@ -194,7 +198,12 @@ export class PiSessionFactory implements SessionFactory {
     await ensurePrivateDirectory(logicalSessionRoot, "logical session directory");
     await ensurePrivateDirectory(sessionDir, "Pi session directory");
     const canonicalSessionDir = await realpath(sessionDir);
-    validateSessionRoot(canonicalSessionDir, cwd, selectedAgentRoot!);
+    validateSessionRoot(
+      canonicalSessionDir,
+      cwd,
+      selectedAgentRoot!,
+      this.#allowAuthorityRootOverlap,
+    );
     const sessionManager = await createSessionManager(request, cwd, canonicalSessionDir);
 
     const baseAuthStorage =
@@ -897,7 +906,13 @@ function configuredBashEnabled(spec: PreparedSessionRuntimeOptions["persistedSpe
   }
 }
 
-function validateSessionRoot(sessionRoot: string, cwd: string, agentRoot: string): void {
+function validateSessionRoot(
+  sessionRoot: string,
+  cwd: string,
+  agentRoot: string,
+  allowAuthorityRootOverlap: boolean,
+): void {
+  if (allowAuthorityRootOverlap) return;
   const agentSessionsRoot = join(agentRoot, "sessions");
   const isNarrowAgentSessionRoot = isWithin(agentSessionsRoot, sessionRoot);
   if (
@@ -1019,6 +1034,7 @@ async function validateRuntimeCwd(
   stateRoot: string,
   agentRoots: string[],
   allowedRoots: string[],
+  allowAuthorityRootOverlap: boolean,
 ): Promise<string> {
   const cwd = await realpath(candidate);
   if (!(await stat(cwd)).isDirectory()) {
@@ -1028,9 +1044,10 @@ async function validateRuntimeCwd(
     throw new PiAdapterError("cwd_not_allowed", "logical session cwd is outside allowed roots");
   }
   if (
-    isWithin(cwd, stateRoot) ||
+    !allowAuthorityRootOverlap &&
+    (isWithin(cwd, stateRoot) ||
     isWithin(stateRoot, cwd) ||
-    agentRoots.some((agentRoot) => isWithin(cwd, agentRoot) || isWithin(agentRoot, cwd))
+      agentRoots.some((agentRoot) => isWithin(cwd, agentRoot) || isWithin(agentRoot, cwd)))
   ) {
     throw new PiAdapterError(
       "authority_root_overlap",

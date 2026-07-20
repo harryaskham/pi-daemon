@@ -27,8 +27,12 @@ The initial release:
 - does not automatically replay an accepted request whose crash outcome is
   indeterminate.
 
-`serve` requires an explicit canonical `--allow-root`; a logical cwd must be
-under that root and must not overlap the daemon state or Pi credential roots.
+`serve` requires an explicit canonical `--allow-root`; by default a logical cwd
+must be under that root and must not overlap the daemon state or Pi credential
+roots. An operator may explicitly set `security.allowAuthorityRootOverlap` (or
+the matching CLI/Home Manager option) for high-trust home-directory sessions;
+that grants session tools visibility of any daemon state or credential paths
+beneath the cwd and is never enabled implicitly.
 The socket directory, socket, state and agent directories, manifests, and
 journals are owner-only real paths; absent daemon-owned directories are created
 with mode `0700`, while permissive directories and symlinked state files are
@@ -60,7 +64,9 @@ JavaScript, a URL, cookie, workspace, browser
 cache, response, or static asset. A dedicated owner-only web credential is
 exchanged over an exact same-origin login for a bounded server-side session;
 the browser receives only an HMAC-signed opaque `HttpOnly`, `SameSite=Strict`
-cookie and a per-session CSRF token. Private routes authenticate before route
+cookie and a per-session CSRF token. A cookie-authenticated no-store bootstrap
+reproduces that domain-separated HMAC token after reload; no owner credential,
+cookie, or token is written to browser storage. Private routes authenticate before route
 matching, mutations require exact Host/Origin/CSRF checks, and restart revokes
 all browser sessions. The initial browser listener is loopback-only; remote use
 must terminate TLS at a loopback reverse proxy. Packaged hash-named assets use a

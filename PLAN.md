@@ -634,6 +634,10 @@ implementation order. This list is a human-readable crosswalk.
 
 ### Post-completion operator surfaces
 
+- [ ] `bd-4e7a92` — restore cookie-authenticated Dash mutation authority after
+  ordinary browser reload without storing the owner credential in JavaScript.
+- [ ] `bd-3aae18` — explicit default-off high-trust authority-root overlap for
+  operators who run Pi sessions from their home directory.
 - [x] `bd-762c22` — checksum-verified user-local GitHub release updates,
   atomic rollback, and an opt-in Home Manager mutable-runtime shim with
   immutable Nix fallback.

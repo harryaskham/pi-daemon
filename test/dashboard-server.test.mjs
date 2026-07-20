@@ -8,7 +8,7 @@ import test from "node:test";
 
 import WebSocket from "ws";
 
-import { DashboardBrowserAuth } from "../dist/dashboard-auth.js";
+import { DASH_CSRF_HEADER, DashboardBrowserAuth } from "../dist/dashboard-auth.js";
 import { DASH_STREAM_SUBPROTOCOL } from "../dist/dashboard-contract.js";
 import { createDashboardContractFixtures } from "../dist/dashboard-fixtures.js";
 import { loadPiDaemonConfig } from "../dist/config.js";
@@ -250,6 +250,7 @@ test("bootstrap stays preview-only and backend resources use bounded typed query
     headers: privateHeaders(origin, session),
   }));
   assert.equal(bootstrap.response.status, 200);
+  assert.equal(bootstrap.response.headers.get(DASH_CSRF_HEADER), session.json.data.csrfToken);
   assert.equal(bootstrap.json.data.capabilities.apiVersion, "1.0");
   assert.equal(bootstrap.json.data.capabilities.limits.browserSessionTtlMs, 60_000);
   assert.equal(bootstrap.json.data.workspace.workspaceId, "workspace-fixture");

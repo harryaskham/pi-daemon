@@ -147,6 +147,21 @@ preserves the socket/API-only service lifecycle. Dedicated mode runs as a
 separate `pi-daemon web` process over the authenticated neutral API and uses an
 independent browser state directory and credential.
 
+Sessions whose cwd is the whole home directory contain the usual daemon state
+and Pi credential locations. They are rejected by default. A high-trust
+operator who accepts that any enabled session tools can reach those nested
+paths may opt in explicitly:
+
+```yaml
+security:
+  allowAuthorityRootOverlap: true
+```
+
+The equivalent CLI flag is `--allow-authority-root-overlap true`; Home Manager
+instances use `allowAuthorityRootOverlap = true`. This changes only the overlap
+fence—cwd must still be inside an explicit canonical `allowedRoots` entry, and
+all owner/mode/symlink checks remain enforced.
+
 To enable the additive authenticated JSON listener, either set `api.enabled`
 in YAML or pass `--api-port` (optionally make enablement explicit with
 `--api-enabled true`), then let the daemon create its stable default bearer file

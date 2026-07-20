@@ -47,7 +47,9 @@ test("web credential exchange issues revocable HttpOnly Strict sessions without 
 
   const session = auth.authenticate(cookiePair(login.setCookie));
   assert.equal(session.workspaceId, "workspace-fixture");
-  auth.authorizeCsrf(session, login.session.csrfToken);
+  const resumed = auth.browserSession(session);
+  assert.deepEqual(resumed, login.session);
+  auth.authorizeCsrf(session, resumed.csrfToken);
   assert.throws(
     () => auth.authorizeCsrf(session, "wrong-csrf"),
     (error) => error instanceof DashboardAuthError && error.code === "csrf_failed",
