@@ -4,9 +4,10 @@ title: Pi Daemon Dash v1 acceptance
 
 # Pi Daemon Dash v1 acceptance
 
-This is the release receipt for `bd-7de9ec`. It records measured production
-artifacts and live embedded/dedicated behavior rather than fixture-only claims.
-The final wall-clock soak is intentionally tracked separately at the end.
+This is the release receipt for `bd-7de9ec`. Its successful closure completes
+the parent Dash v1 epic `bd-ba3623`. It records measured production artifacts
+and live embedded/dedicated behavior rather than fixture-only claims. The final
+wall-clock soak is tracked at the end.
 
 ## Exact candidate
 
