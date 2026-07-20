@@ -3,6 +3,10 @@
 All notable changes to Pi Daemon are documented here. The project follows
 semantic versioning once a release tag is cut.
 
+## 0.1.3 — 2026-07-20
+
+- derive the standalone RPC stdio version test from the canonical release version
+
 ## 0.1.2 — 2026-07-20
 
 - derive package, RPC CLI, server, and self-update version expectations from the canonical release version so the exact release gate remains valid across patch bumps

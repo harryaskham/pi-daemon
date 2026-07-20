@@ -6,6 +6,7 @@ import { PassThrough } from "node:stream";
 import test from "node:test";
 
 import { runRpcStdioCli } from "../dist/rpc-stdio-cli.js";
+import { PI_DAEMON_VERSION } from "../dist/version.js";
 
 const TOKEN = "rpc-cli-fixture-token-0123456789";
 
@@ -92,6 +93,6 @@ test("RPC stdio CLI help and version never require credentials", async () => {
 
   const version = io();
   assert.equal(await runRpcStdioCli(["--version"], version.value), 0);
-  assert.match(version.stdout(), /^0\.1\.0\n$/);
+  assert.equal(version.stdout(), `${PI_DAEMON_VERSION}\n`);
   assert.equal(version.stderr(), "");
 });
