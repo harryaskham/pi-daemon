@@ -73,7 +73,10 @@ import { scheduleCapabilities, type ScheduleCapabilities } from "./schedule-cont
 import type { SchedulerRuntime } from "./scheduler-runtime.js";
 import { ScheduleStoreError, type FileScheduleStore } from "./schedule-store.js";
 import type { SessionOwnershipService } from "./session-ownership.js";
-import type { TranscriptProjector } from "./transcript-projector.js";
+import {
+  TranscriptProjectionError,
+  type TranscriptProjector,
+} from "./transcript-projector.js";
 
 const READ_ONLY_COMMANDS = new Set<DashboardCommandOperation>([
   "get_state",
@@ -282,14 +285,34 @@ export class InProcessDashboardBackend implements DashboardBackend {
         hydration: "not-requested",
       };
     }
-    return this.#projector.project({
+    const projectionRequest = {
       inventoryId,
       path: info.source.canonicalPath,
       query,
       ...(info.source.fingerprint === undefined
         ? {}
         : { expectedFingerprint: info.source.fingerprint.value }),
-    });
+    };
+    try {
+      return await this.#projector.project(projectionRequest);
+    } catch (error) {
+      if (
+        !(error instanceof TranscriptProjectionError) ||
+        error.code !== "source_fingerprint_changed" ||
+        projectionRequest.expectedFingerprint === undefined
+      ) {
+        throw error;
+      }
+      // Inventory is deliberately reconciled off the request path. A live Pi
+      // writer can therefore advance a safe read-only preview between scans.
+      // Rebuild once from the projector's own stable before/after file check;
+      // activation still requires this returned current fingerprint.
+      return this.#projector.project({
+        inventoryId,
+        path: info.source.canonicalPath,
+        query,
+      });
+    }
   }
 
   async activateSession(inventoryId: string, request: ActivationRequest): Promise<ActivationTicket> {

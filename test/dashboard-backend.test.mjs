@@ -9,6 +9,7 @@ import {
   InProcessDashboardBackendError,
 } from "../dist/dashboard-backend.js";
 import { asDashboardCursor } from "../dist/dashboard-contract.js";
+import { TranscriptProjectionError } from "../dist/transcript-projector.js";
 import { createDashboardContractFixtures } from "../dist/dashboard-fixtures.js";
 import { createDashboardStreamHandler } from "../dist/dashboard-stream-router.js";
 import { Multiplexer } from "../dist/multiplexer.js";
@@ -174,7 +175,7 @@ async function harness(t, options = {}) {
       return inventoryId === fixtures.sessionInfo.inventoryId ? fixtures.sessionInfo : undefined;
     },
   };
-  const projector = {
+  const projector = options.projector ?? {
     async project(request) {
       calls.project.push(request);
       return fixtures.transcript;
@@ -227,6 +228,34 @@ test("embedded backend delegates inventory, preview, ownership and catalog witho
     backend.openTuiChannel({ sessionRef: fixtures.sessionInfo.managed.sessionId, role: "observer", dimensions: { rows: 24, columns: 80 } }),
     (error) => error instanceof InProcessDashboardBackendError && error.code === "tui_unavailable",
   );
+});
+
+test("preview retries once from a stable current file when periodic inventory fingerprint is stale", async (t) => {
+  const requests = [];
+  let currentTranscript;
+  const projector = {
+    async project(request) {
+      requests.push(request);
+      if (request.expectedFingerprint !== undefined) {
+        throw new TranscriptProjectionError(
+          "source_fingerprint_changed",
+          "session source changed since inventory",
+          true,
+        );
+      }
+      return currentTranscript;
+    },
+  };
+  const h = await harness(t, { projector });
+  currentTranscript = {
+    ...h.fixtures.transcript,
+    sourceFingerprint: "sha256:current-preview-fingerprint",
+  };
+  const result = await h.backend.getTranscript(h.fixtures.sessionInfo.inventoryId, { limit: 20 });
+  assert.equal(result.sourceFingerprint, "sha256:current-preview-fingerprint");
+  assert.equal(requests.length, 2);
+  assert.equal(requests[0].expectedFingerprint, h.fixtures.sessionInfo.source.fingerprint.value);
+  assert.equal(requests[1].expectedFingerprint, undefined);
 });
 
 test("shared schedule conformance passes for the embedded backend with prompt-redacted output", async (t) => {

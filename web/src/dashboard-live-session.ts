@@ -1,6 +1,7 @@
 import type {
   ActivationMode,
   ActivationTicket,
+  DashboardFingerprint,
   DashboardBackend,
   DashboardChannel,
   DashboardChannelEvent,
@@ -19,6 +20,7 @@ import type {
   TranscriptTimelineRecord,
   TranscriptToolRecord,
 } from "@harryaskham/pi-daemon/dashboard-contract";
+import { DASH_DIRECT_COOPT_POLICY_REF } from "@harryaskham/pi-daemon/dashboard-contract";
 import type { JsonObject, JsonValue, SessionResource } from "@harryaskham/pi-daemon/session-api";
 import {
   createTranscriptStore,
@@ -73,6 +75,7 @@ export interface DashboardLiveSessionState {
   availableModels?: JsonValue;
   activationModes: ActivationMode[];
   selectedActivationMode?: ActivationMode;
+  previewFingerprint?: DashboardFingerprint;
   activationTicket?: ActivationTicket;
   exportTicket?: SessionExportTicket;
   extensionRequests: LiveExtensionRequest[];
@@ -242,6 +245,12 @@ export class DashboardLiveSessionController {
         requestId: `dash-activation-${crypto.randomUUID()}`,
         idempotencyKey: `dash-activation-${this.inventoryId}-${mode}`,
         mode,
+        ...(
+          mode === "reuse" || this.#state.previewFingerprint === undefined
+            ? {}
+            : { expectedFingerprint: this.#state.previewFingerprint }
+        ),
+        ...(mode === "direct" ? { policyRef: DASH_DIRECT_COOPT_POLICY_REF } : {}),
       });
       this.#patch({ activationTicket: ticket });
       ticket = await this.#waitActivation(ticket, generation);
@@ -516,6 +525,7 @@ export class DashboardLiveSessionController {
       : { hostInstanceId: "preview", sessionId: preview.piSessionId ?? this.inventoryId, generation: 0 };
     this.#patch({
       phase: "preview",
+      ...(preview.sourceFingerprint === undefined ? {} : { previewFingerprint: preview.sourceFingerprint }),
       transcript: createTranscriptStore(identity, preview.records, undefined, preview.newerCursor ?? preview.olderCursor),
     });
   }

@@ -583,6 +583,7 @@ export interface TranscriptPage {
 }
 
 export type ActivationMode = "reuse" | "direct" | "fork" | "preview-only";
+export const DASH_DIRECT_COOPT_POLICY_REF = "direct-co-opt-confirmed-v1" as const;
 export type DashboardTicketState =
   | "queued"
   | "running"

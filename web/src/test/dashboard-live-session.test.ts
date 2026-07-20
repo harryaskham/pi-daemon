@@ -162,9 +162,11 @@ describe("Dashboard live session controller", () => {
     const baseActivate = backend.activateSession.bind(backend);
     const baseOpen = backend.openSessionChannel.bind(backend);
     const activationModes: string[] = [];
+    const activationRequests: Parameters<typeof backend.activateSession>[1][] = [];
     let opens = 0;
     backend.activateSession = async (inventoryId, request) => {
       activationModes.push(request.mode);
+      activationRequests.push(request);
       return baseActivate(inventoryId, request);
     };
     backend.openSessionChannel = async (options) => {
@@ -188,7 +190,33 @@ describe("Dashboard live session controller", () => {
     );
     expect(result.state).toBe("streaming");
     expect(activationModes).toEqual(["fork"]);
+    expect(activationRequests[0]?.expectedFingerprint).toBe(controller.state.previewFingerprint);
+    expect(activationRequests[0]?.policyRef).toBeUndefined();
     expect(opens).toBe(1);
+    await controller.stop();
+  });
+
+  it("binds an explicit direct co-opt choice to the current preview and confirmation policy", async () => {
+    const backend = new LiveFixtureDashboardBackend();
+    const session = backend.sessions[11]!;
+    const baseActivate = backend.activateSession.bind(backend);
+    let activationRequest: Parameters<typeof backend.activateSession>[1] | undefined;
+    backend.activateSession = async (inventoryId, request) => {
+      activationRequest = request;
+      return baseActivate(inventoryId, request);
+    };
+    const controller = new DashboardLiveSessionController(backend, session.inventoryId, {
+      ticketPollMs: 1,
+      maxTicketPolls: 4,
+    });
+    await controller.start();
+    expect(controller.state.phase).toBe("activation-choice");
+    expect(controller.state.selectedActivationMode).toBe("fork");
+    controller.selectActivationMode("direct");
+    await controller.submit("prompt", { message: "direct once" }, "direct-first-send");
+    expect(activationRequest?.mode).toBe("direct");
+    expect(activationRequest?.expectedFingerprint).toBe(controller.state.previewFingerprint);
+    expect(activationRequest?.policyRef).toBe("direct-co-opt-confirmed-v1");
     await controller.stop();
   });
 

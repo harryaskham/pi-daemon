@@ -11,14 +11,15 @@ import {
   type SessionEntry,
 } from "@earendil-works/pi-coding-agent";
 
-import type {
-  ActivationRequest,
-  ActivationTicket,
-  DashboardFingerprint,
-  SessionExportRequest,
-  SessionExportTicket,
-  SessionInfoResource,
-  SessionInventoryActivation,
+import {
+  DASH_DIRECT_COOPT_POLICY_REF,
+  type ActivationRequest,
+  type ActivationTicket,
+  type DashboardFingerprint,
+  type SessionExportRequest,
+  type SessionExportTicket,
+  type SessionInfoResource,
+  type SessionInventoryActivation,
 } from "./dashboard-contract.js";
 import type { SessionStorageMode } from "./config.js";
 import {
@@ -57,7 +58,7 @@ import {
 } from "./session-ownership-store.js";
 import { formatSessionSourceFingerprint } from "./source-fingerprint.js";
 
-export const DIRECT_COOPT_POLICY_REF = "direct-co-opt-confirmed-v1" as const;
+export const DIRECT_COOPT_POLICY_REF = DASH_DIRECT_COOPT_POLICY_REF;
 export const DEFAULT_OWNERSHIP_MAX_SOURCE_BYTES = 256 * 1024 * 1024;
 export const DEFAULT_OWNERSHIP_MAX_LINE_BYTES = 1024 * 1024;
 export const DEFAULT_OWNERSHIP_MAX_ENTRIES = 100_000;
