@@ -641,7 +641,7 @@ implementation order. This list is a human-readable crosswalk.
   - [x] `bd-ff2f8f` — bounded runtime registry/client and fixed filesystem-tool
     injection; final server persistence/wiring and cross-session acceptance stay
     with the parent.
-- [ ] `bd-ba3623` — Pi Daemon Dash: exceptionally fast, polished browser
+- [x] `bd-ba3623` — Pi Daemon Dash: exceptionally fast, polished browser
   session workspace with embedded/dedicated backends and Rich/TUI panes;
   detailed architecture and dependency board in `web/PLAN.md`.
   - [x] `bd-3a61f7` — authenticated, bounded browser stream router over the
@@ -649,7 +649,9 @@ implementation order. This list is a human-readable crosswalk.
   - [x] `bd-ea2019` — production same-origin login/REST/WS SPA integration,
     preview-first hydration, live commands/replay/liveness, seen cursors, and
     serializable extension interactions.
-  - [ ] `bd-1dc765` — P1 production interactivity hotfix: bounded single-pane
+  - [x] `bd-7de9ec` — final visual/performance/security/dual-mode acceptance,
+    exact package gates, and uninterrupted 24-hour rolling soak (1,440/1,440).
+  - [x] `bd-1dc765` — P1 production interactivity hotfix: bounded single-pane
     transcript scrolling/composer containment, width-aware split repaint, and
     functional revisioned Settings category tabs.
   - [x] `bd-e9fce1` — lazy browser creation of a brand-new logical session with

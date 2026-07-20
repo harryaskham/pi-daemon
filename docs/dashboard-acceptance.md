@@ -10,11 +10,13 @@ The final wall-clock soak is intentionally tracked separately at the end.
 
 ## Exact candidate
 
-- Main candidate: `7f5280b` (`bd-ea2019` live browser integration).
+- Final main candidate: `65cef84` (`bd-1dc765` live-preview/direct-activation
+  follow-up after the pane-interactivity repair at `3a41e06`).
 - Rolling embedded instance: `http://127.0.0.1:7474/dash/`.
 - API: `http://127.0.0.1:7473`, with the bearer read only from the owner-private
   test token file.
-- Nix result: `/nix/store/nap958namyrcmgm8v45nsxxkhawjklmz-pi-daemon-0.1.0`.
+- Exact final Nix result:
+  `/nix/store/f3w7vvyqdysm1lg83krcn0n63x6kfh5m-pi-daemon-0.1.0`.
 - Primary launchd API on 7463 remained untouched throughout acceptance.
 
 ## Browser and backend evidence
@@ -59,10 +61,13 @@ a 64-entry/32 MiB LRU with a 512 KiB per-frame contract.
 
 ## Automated gates
 
-- Web unit: 42/42.
-- Playwright: 11/11, including production login with no fixture paint.
-- Combined Node suite before the final browser slice: 325/325 on macOS and Nix.
-- Final browser slice: `TMPDIR=/tmp npm test` 325/325 and `nix flake check` green.
+- Web unit: 62/62.
+- Playwright: 16/16, including production login with no fixture paint,
+  full-width transcript scrolling with a pinned interactive composer,
+  width-aware left/right split repaint, TUI/Rich scroll preservation, and all
+  four accessible Settings tabs.
+- Final ambient Node gate: `TMPDIR=/private/tmp npm test` 357/357.
+- Final exact Nix package gate: 357/357, with `nix flake check` green.
 - `npm audit`: zero known vulnerabilities.
 - Clean npm pack/import, Pages, release invariants, Home Manager module,
   installed binaries, embedded lifecycle, dedicated lifecycle and browser
@@ -146,14 +151,26 @@ not an availability result. The helper now uses its own named tmux socket so an
 unrelated default `tmux kill-server` cannot remove the test service.
 
 The final uninterrupted 24-hour owner-private rolling soak started at
-`2026-07-19T14:28:50Z` against the exact embedded test BFF on dedicated tmux
-sockets. It reuses one cookie like the production SPA, re-authenticates once
-after an intentional daemon restart/401, and every minute requests the packaged
-SPA plus bootstrap, real inventory and settings. It records only timestamps,
-bounded status, latency and row counts—never credentials or session content—
-under `~/.local/state/pi-daemon/test/soak/`.
+`2026-07-19T14:28:50.562Z` against the embedded test BFF on dedicated tmux
+sockets and completed at `2026-07-20T14:28:50.569Z`. It reused one cookie like
+the production SPA, re-authenticated only after intentional atomic exact-main
+daemon upgrades, and every minute requested the packaged SPA plus bootstrap,
+real inventory and settings. It recorded only timestamps, bounded status,
+latency and row counts—never credentials or session content—under
+`~/.local/state/pi-daemon/test/soak/`.
 
-`bd-7de9ec` remains open until the summary is written after
-`2026-07-20T14:28:50Z` with zero unexplained failures. Deterministic replay,
-restart, cache, scheduler and fake-clock long-soak tests are already green; the
-wall-clock receipt is the final unwaived gate.
+The final summary is **pass**: 86,400,007 ms uninterrupted wall time, 1,440
+checks, zero failures, zero consecutive failures, and 698.95 ms maximum
+end-to-end check latency including controlled restart/reconcile windows. The
+last sampled request at `2026-07-20T14:28:23.722Z` was healthy; the harness
+remained alive through the exact deadline and wrote its summary seven
+milliseconds after 24 hours.
+
+After the soak, the unchanged final `65cef84` candidate passed ambient npm
+357/357, web unit 62/62, Playwright 16/16, `npm audit` with zero findings, and
+cached exact `nix flake check` package/Pages/Home Manager gates. A fresh live
+dedicated `pi-daemon web` on port 7475 authenticated against the exact embedded
+API, rendered real non-fixture inventory, painted a scrollable transcript with
+its footer visible, and exposed both Direct co-opt and Safe fork before shutting
+down without a listener leak. No gate was waived. Release tagging remains an
+explicit operator action.
