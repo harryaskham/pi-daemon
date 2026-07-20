@@ -194,6 +194,10 @@ Cacophony node can therefore consume the reproducible package without copying
 service source into Cacophony. The Home Manager module creates independently
 named user services through systemd on Linux, launchd on Darwin, or conditional
 supervisord on nix-on-droid; see [Operations](docs/operations.md#home-manager-service-instances).
+An opt-in stable service shim can prefer verified atomic releases from
+`~/.local/bin/pi-daemon` while retaining the immutable Nix package as fallback,
+so subsequent `pi-daemon update` runs do not require a full system rebuild; see
+[User-local release updates](docs/operations.md#user-local-release-updates).
 
 ## Documentation
 

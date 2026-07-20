@@ -41,6 +41,10 @@
       "types": "./dist/session-api.d.ts",
       "import": "./dist/session-api.js"
     },
+    "./self-update": {
+      "types": "./dist/self-update.d.ts",
+      "import": "./dist/self-update.js"
+    },
     "./session-config": {
       "types": "./dist/session-config.d.ts",
       "import": "./dist/session-config.js"
@@ -158,6 +162,7 @@
   },
   "files": [
     "dist",
+    "npm-shrinkwrap.json",
     "scripts/check-release.mjs",
     "scripts/live-sdk-smoke.mjs",
     "CHANGELOG.md",

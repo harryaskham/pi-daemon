@@ -21,11 +21,13 @@ jobs:
       - name: Verify release metadata
         run: npm run release:check -- --tag "$GITHUB_REF_NAME"
       - run: npm test
-      - name: Build npm tarball and checksum
+      - name: Build exact self-update npm tarball and checksum
         id: pack
         shell: bash
         run: |
           set -euo pipefail
+          trap 'rm -f npm-shrinkwrap.json' EXIT
+          cp package-lock.json npm-shrinkwrap.json
           pack_json=$(npm pack --json)
           tarball=$(node -e '
             let input = "";
@@ -33,6 +35,7 @@ jobs:
             process.stdin.on("data", chunk => input += chunk);
             process.stdin.on("end", () => process.stdout.write(JSON.parse(input)[0].filename));
           ' <<< "$pack_json")
+          tar -tzf "$tarball" | grep -Fx 'package/npm-shrinkwrap.json'
           node - "$tarball" <<'NODE'
           const { createHash } = require("node:crypto");
           const { readFileSync, writeFileSync } = require("node:fs");
@@ -67,3 +70,4 @@ jobs:
           "${{ steps.pack.outputs.tarball }}.sha256"
           --generate-notes
           --verify-tag
+          --latest

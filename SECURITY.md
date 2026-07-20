@@ -99,6 +99,18 @@ not a bearer/PKI/environment channel. V1 remains no-tools.
 A client needing arbitrary code execution, shell/process/network authority, or
 unreviewed extensions must use a separate process/security domain.
 
+User-local self-update is an explicit operator command, never a service startup
+side effect. It trusts only the repository's public GitHub latest-release
+metadata, requires the named npm artifact plus its exact SHA-256 sidecar,
+bounds every response before allocation, disables npm lifecycle scripts, and
+requires the installed artifact's version-matched `npm-shrinkwrap.json`.
+Version roots and state are owner-private; the conventional local bin directory
+must be current-user-owned and not group/world writable. An existing unrelated
+file or symlink is never replaced. Version and launcher links switch atomically,
+one rollback target is retained, and service restart remains explicit. The
+Home Manager mutable-runtime shim is opt-in and always keeps its immutable Nix
+package fallback.
+
 ## Dependency audit baseline
 
 The exact npm lock pins Ajv 8.20.0, outside `GHSA-2g4f-4pwh-qvx6`. Ajv is a

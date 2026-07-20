@@ -6,6 +6,7 @@ result-*
 .DS_Store
 *.log
 *.tgz
+npm-shrinkwrap.json
 coverage/
 playwright-report/
 test-results/

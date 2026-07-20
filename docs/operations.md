@@ -13,6 +13,48 @@ npm ci --ignore-scripts
 npm test
 ```
 
+## User-local release updates
+
+A release-managed install can advance independently of a full nix-darwin or
+Home Manager rebuild:
+
+```console
+pi-daemon self-update status
+pi-daemon self-update check
+pi-daemon update
+```
+
+`update` is shorthand for `self-update run`. It reads GitHub's latest release,
+downloads the published npm artifact and SHA-256 sidecar, verifies both the
+release checksum and the artifact's exact `npm-shrinkwrap.json` integrity, and
+runs npm with lifecycle scripts disabled. Versions live under the owner-private
+`~/.local/share/pi-daemon/versions/`; `current` and
+`~/.local/bin/pi-daemon` are switched atomically. Existing non-managed files or
+symlinks at that bin path fail closed. The command never restarts services or
+moves daemon state, credentials, sockets, or workspaces.
+
+For Home Manager services, opt into the stable mutable-runtime shim once:
+
+```nix
+services.pi-daemon.mutableRuntime.enable = true;
+```
+
+That one declarative activation installs a Nix-store launcher which chooses the
+executable owner-local `~/.local/bin/pi-daemon` when present and always retains
+the configured immutable package as fallback. Subsequent release updates need
+no system rebuild; explicitly restart the selected service after reviewing the
+new version, for example:
+
+```console
+launchctl kickstart -k "gui/$UID/com.pi-daemon.work"   # macOS
+systemctl --user restart pi-daemon-work                 # Linux
+```
+
+Use `pi-daemon self-update rollback` and restart to atomically select the one
+retained previous release. `status` is offline; `check` and `run` require public
+GitHub plus `npm` on `PATH`. Custom test/install roots are available through
+`--install-root` and `--bin-dir`; production services should use the defaults.
+
 ## Serve
 
 Native schedules start with `serve` after catalog/import recovery and before

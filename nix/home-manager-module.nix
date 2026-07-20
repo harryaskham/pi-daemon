@@ -11,6 +11,17 @@
   hasSupervisord = (options ? supervisord) && (options.supervisord ? programs);
   homeDirectory = config.home.homeDirectory;
   enabledInstances = lib.filterAttrs (_: instance: instance.enable) cfg.instances;
+  runtimeExecutable =
+    if cfg.mutableRuntime.enable
+    then
+      pkgs.writeShellScript "pi-daemon-runtime" ''
+        candidate=${lib.escapeShellArg cfg.mutableRuntime.binaryPath}
+        if [[ -x "$candidate" ]] && [[ ! "$candidate" -ef "$0" ]]; then
+          exec "$candidate" "$@"
+        fi
+        exec ${lib.escapeShellArg "${cfg.package}/bin/pi-daemon"} "$@"
+      ''
+    else "${cfg.package}/bin/pi-daemon";
 
   instanceModule = {
     name,
@@ -148,7 +159,7 @@
 
   instanceArgs = name: instance:
     [
-      "${cfg.package}/bin/pi-daemon"
+      runtimeExecutable
       "serve"
       "--instance"
       name
@@ -211,7 +222,7 @@
   in "http://${renderedHost}:${toString instance.api.port}";
   dedicatedWebArgs = name: instance:
     [
-      "${cfg.package}/bin/pi-daemon"
+      runtimeExecutable
       "web"
       "--instance"
       name
@@ -248,6 +259,7 @@
       LOGNAME = config.home.username;
       PATH = lib.concatStringsSep ":" [
         "${cfg.package}/bin"
+        "${pkgs.nodejs}/bin"
         "${config.home.homeDirectory}/.local/bin"
         "${config.home.homeDirectory}/.nix-profile/bin"
         "/run/current-system/sw/bin"
@@ -302,6 +314,14 @@ in {
       default = self.packages.${pkgs.stdenv.hostPlatform.system}.pi-daemon;
       defaultText = lib.literalExpression "inputs.pi-daemon.packages.\${pkgs.system}.pi-daemon";
       description = "Pi Daemon package installed and executed by every managed instance.";
+    };
+    mutableRuntime = {
+      enable = lib.mkEnableOption "owner-local atomic Pi Daemon updates with immutable package fallback";
+      binaryPath = lib.mkOption {
+        type = lib.types.str;
+        default = "${homeDirectory}/.local/bin/pi-daemon";
+        description = "Exact owner-controlled executable preferred by the stable service launcher when mutableRuntime is enabled. The Nix package remains the fallback.";
+      };
     };
     instances = lib.mkOption {
       type = lib.types.attrsOf (lib.types.submodule instanceModule);

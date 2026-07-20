@@ -120,6 +120,7 @@ test("clean package builds include the content-hashed Dash SPA and secure server
     readdir(join(repositoryRoot, "dist/dashboard/assets")),
   ]);
   for (const name of [
+    "self-update",
     "dashboard-auth",
     "dashboard-backend",
     "dashboard-remote-backend",
@@ -131,6 +132,7 @@ test("clean package builds include the content-hashed Dash SPA and secure server
     assert.equal(manifest.exports[`./${name}`].import, `./dist/${name}.js`);
   }
   assert.match(manifest.scripts.build, /npm run web:build/);
+  assert.equal(manifest.files.includes("npm-shrinkwrap.json"), true);
   assert.match(index, /\/dash\/assets\/[A-Za-z0-9_.-]+-[A-Za-z0-9_-]{8,}\.js/);
   assert.equal(
     assets.some((name) => /-[A-Za-z0-9_-]{8,}\.js$/.test(name)),
@@ -157,6 +159,9 @@ test("flake publishes the collision-safe multi-instance Home Manager service mod
   assert.match(module, /dedicatedWeb\.port is required/);
   assert.match(module, /stateDir\/api-token on first launch/);
   assert.match(module, /--auth-seed-file/);
+  assert.match(module, /mutableRuntime\.enable/);
+  assert.match(module, /\.local\/bin\/pi-daemon/);
+  assert.match(module, /pi-daemon-runtime/);
   assert.doesNotMatch(module, /PI_DAEMON_BEARER_TOKEN\s*=/);
 });
 
@@ -194,6 +199,10 @@ test("self-hosted workflows bound every job and long-running Nix step", async ()
   assert.match(pages, /build:\n\s+runs-on: \[self-hosted, nix, x86_64-linux\]\n\s+timeout-minutes: 20/);
   assert.match(pages, /deploy:\n\s+timeout-minutes: 10/);
   assert.match(release, /release:\n\s+runs-on: \[self-hosted, nix, x86_64-linux\]\n\s+timeout-minutes: 45/);
+  assert.match(release, /cp package-lock\.json npm-shrinkwrap\.json/);
+  assert.match(release, /package\/npm-shrinkwrap\.json/);
+  assert.match(release, /steps\.pack\.outputs\.tarball \}\}\.sha256/);
+  assert.match(release, /--latest/);
 });
 
 test("release invariants reject metadata, tag, changelog, and artifact drift", async (t) => {
@@ -203,7 +212,7 @@ test("release invariants reject metadata, tag, changelog, and artifact drift", a
 
   const development = await checkRelease({ root });
   assert.equal(development.version, packageVersion);
-  assert.equal(development.changelogLabel, "unreleased");
+  assert.equal(development.changelogLabel, "2026-07-20");
 
   const sourcePath = join(root, "src/version.ts");
   const source = await readFile(sourcePath, "utf8");
@@ -240,16 +249,19 @@ test("release invariants reject metadata, tag, changelog, and artifact drift", a
     checkRelease({ root, tag: "v9.9.9" }),
     (error) => error instanceof Error && error.message.includes(`does not match v${packageVersion}`),
   );
-  await assert.rejects(
-    checkRelease({ root, tag: `v${packageVersion}` }),
-    /must use an ISO release date/,
-  );
-
   const changelogPath = join(root, "CHANGELOG.md");
   const changelog = await readFile(changelogPath, "utf8");
   await writeFile(
     changelogPath,
-    changelog.replace(`${packageVersion} — unreleased`, `${packageVersion} — 2026-07-14`),
+    changelog.replace(`${packageVersion} — 2026-07-20`, `${packageVersion} — unreleased`),
+  );
+  await assert.rejects(
+    checkRelease({ root, tag: `v${packageVersion}` }),
+    /must use an ISO release date/,
+  );
+  await writeFile(
+    changelogPath,
+    changelog.replace(`${packageVersion} — 2026-07-20`, `${packageVersion} — 2026-07-14`),
   );
   const release = await checkRelease({
     root,

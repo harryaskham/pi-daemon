@@ -634,6 +634,9 @@ implementation order. This list is a human-readable crosswalk.
 
 ### Post-completion operator surfaces
 
+- [ ] `bd-762c22` — checksum-verified user-local GitHub release updates,
+  atomic rollback, and an opt-in Home Manager mutable-runtime shim with
+  immutable Nix fallback.
 - [x] `bd-fc8275` — protocol-v2 host-scoped neutral tool adapters without
   arbitrary extensions or shell.
   - [x] `bd-5c06cd` — descriptor/types, validation, public schemas, fixtures,

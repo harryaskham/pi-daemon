@@ -47,6 +47,7 @@
   '';
   instanceConfig = {
     services.pi-daemon.package = testPackage;
+    services.pi-daemon.mutableRuntime.enable = true;
     services.pi-daemon.instances = {
       alpha = {
         configFile = "/home/tester/.config/pi/daemon/alpha/config.yaml";
@@ -232,6 +233,10 @@
     if pkgs.stdenv.isDarwin
     then normalAlpha.config.Label
     else "pi-daemon-alpha";
+  normalAlphaExecutable =
+    if pkgs.stdenv.isDarwin
+    then builtins.head normalAlpha.config.ProgramArguments
+    else builtins.head (lib.splitString " " normalAlpha.Service.ExecStart);
   normalAlphaWebCommand =
     if pkgs.stdenv.isDarwin
     then builtins.concatStringsSep " " normalAlphaWeb.config.ProgramArguments
@@ -275,6 +280,9 @@ in
       )}
       test ${lib.escapeShellArg normalBetaEnvironment.PI_DAEMON_INSTANCE} = beta
       test ${lib.escapeShellArg normalBetaEnvironment.PI_DAEMON_SOCKET} = /home/tester/.run/pi-beta.sock
+      printf '%s\n' ${lib.escapeShellArg normalBetaEnvironment.PATH} | grep -F -- ${lib.escapeShellArg "${pkgs.nodejs}/bin"}
+      grep -F -- '/home/tester/.local/bin/pi-daemon' ${lib.escapeShellArg normalAlphaExecutable}
+      grep -F -- ${lib.escapeShellArg "${testPackage}/bin/pi-daemon"} ${lib.escapeShellArg normalAlphaExecutable}
       printf '%s\n' ${lib.escapeShellArg normalAlphaCommand} | grep -F -- '--instance'
       printf '%s\n' ${lib.escapeShellArg normalAlphaCommand} | grep -F -- 'alpha'
       printf '%s\n' ${lib.escapeShellArg normalAlphaCommand} | grep -F -- '--config'

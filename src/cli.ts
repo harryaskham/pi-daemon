@@ -33,6 +33,7 @@ import {
   type SessionCliDependencies,
 } from "./session-cli.js";
 import { SessionApiClient, SessionApiClientError } from "./session-client.js";
+import { PiDaemonSelfUpdater, SelfUpdateError } from "./self-update.js";
 import { FileSessionCatalog } from "./session-catalog.js";
 import { FileMutationTicketStore, MutationTicketController } from "./tickets.js";
 import { PI_DAEMON_VERSION } from "./version.js";
@@ -44,6 +45,7 @@ export interface CliIo {
 
 export interface CliDependencies extends SessionCliDependencies {
   factory?: SessionFactory;
+  selfUpdater?: PiDaemonSelfUpdater;
   waitForShutdown?: (shutdown: () => Promise<void>) => Promise<void>;
 }
 
@@ -79,6 +81,10 @@ export async function runCli(
         return await runServe(args, io, dependencies);
       case "web":
         return await runWeb(args, io, dependencies);
+      case "update":
+        return await runSelfUpdate(["run", ...args], io, dependencies);
+      case "self-update":
+        return await runSelfUpdate(args, io, dependencies);
       case "session":
       case "ticket":
       case "schedule":
@@ -112,6 +118,14 @@ export async function runCli(
       );
       return error.retryable ? 75 : 1;
     }
+    if (error instanceof SelfUpdateError) {
+      io.stderr(
+        `${JSON.stringify({
+          error: { code: error.code, message: error.message, retryable: error.retryable },
+        })}\n`,
+      );
+      return error.retryable ? 75 : 1;
+    }
     if (error instanceof PiDaemonConfigError) {
       io.stderr(
         `${JSON.stringify({
@@ -137,6 +151,35 @@ export async function runCli(
     );
     return 1;
   }
+}
+
+async function runSelfUpdate(
+  args: string[],
+  io: CliIo,
+  dependencies: CliDependencies,
+): Promise<number> {
+  const [rawAction, ...optionArgs] = args;
+  const action = rawAction ?? "status";
+  if (!["status", "check", "run", "rollback"].includes(action)) {
+    throw new CliUsageError("self-update action must be status, check, run, or rollback");
+  }
+  const options = parseOptions(
+    optionArgs,
+    new Set(["install-root", "bin-dir"]),
+  );
+  const updater = dependencies.selfUpdater ?? new PiDaemonSelfUpdater({
+    ...(options.has("install-root") ? { installRoot: requiredOption(options, "install-root") } : {}),
+    ...(options.has("bin-dir") ? { binDir: requiredOption(options, "bin-dir") } : {}),
+  });
+  const result = action === "status"
+    ? await updater.status()
+    : action === "check"
+      ? await updater.check()
+      : action === "rollback"
+        ? await updater.rollback()
+        : await updater.run();
+  io.stdout(`${JSON.stringify(result, null, 2)}\n`);
+  return 0;
 }
 
 async function runProbe(args: string[], io: CliIo): Promise<number> {
@@ -982,6 +1025,8 @@ Usage:
   pi-daemon rpc attach --session REF [pi-daemon-rpc options]
   pi-daemon rpc discover --session REF [API target options]
   pi-daemon acp discover --session REF [API target options]
+  pi-daemon update [--install-root PATH] [--bin-dir PATH]
+  pi-daemon self-update status|check|run|rollback [update options]
   pi-daemon version
 
 Commands:
@@ -996,6 +1041,8 @@ Commands:
   control  Steer, follow up, or abort one resident session.
   rpc      Run the stock-RPC bridge or discover its WebSocket endpoint.
   acp      Discover the route-scoped ACP WebSocket endpoint.
+  update   Verify and atomically install the latest GitHub release under ~/.local.
+  self-update  Inspect, install, or roll back the owner-local release.
   version  Print the package version.
 
 High-level target options:
@@ -1005,6 +1052,12 @@ High-level target options:
   --token-fd FD               Inherited bearer descriptor, or PI_DAEMON_BEARER_TOKEN
   --allow-insecure-http true  Explicitly permit non-loopback plaintext
   --timeout-ms N              Bound connect/request/poll/turn waits
+
+Self-update options:
+  --install-root PATH          Owner-private versions (default ~/.local/share/pi-daemon)
+  --bin-dir PATH               Managed launcher directory (default ~/.local/bin)
+  Updates verify the GitHub release checksum and exact npm shrinkwrap integrity.
+  Service restart remains explicit; no credential or daemon state is moved.
 
 Schedule configuration:
   --file PATH                 Owner-only JSON/YAML schedule definition

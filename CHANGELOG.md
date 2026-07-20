@@ -3,7 +3,7 @@
 All notable changes to Pi Daemon are documented here. The project follows
 semantic versioning once a release tag is cut.
 
-## 0.1.0 — unreleased
+## 0.1.0 — 2026-07-20
 
 Initial standalone implementation:
 
@@ -28,6 +28,7 @@ Initial standalone implementation:
 - canonical cwd allowlist and state/auth path isolation
 - bounded background recovery, truthful nondestructive readiness/probe status, whole-shutdown deadlines, safe idle sweep, metrics, and path-redacted lifecycle logs
 - reproducible Nix package/app/dev shell, multi-instance Home Manager service module, and npm package
+- checksum-verified user-local GitHub release updates with exact npm shrinkwrap installation, atomic current/rollback links, collision-safe `~/.local/bin` ownership, and an opt-in Home Manager mutable-runtime launcher retaining the immutable Nix fallback
 - strict bounded per-instance YAML configuration at `~/.config/pi/daemon/<instance>/config.yaml`, with CLI/environment selection, CLI-over-file precedence, secret-path-only policy, and Home Manager support
 - preview-only Dash transcript projection for bounded Pi v1/v2/v3 JSONL active branches, semantic messages/tools/custom records, opaque paging, exact fingerprints, and owner-private cache
 - packaged content-hashed Dash SPA plus a loopback-only browser server wired into enabled embedded `serve` lifecycles and standalone dedicated `pi-daemon web` over `RemoteDashboardBackend`, with atomic startup/drain, separate browser state, strict CSP/static admission, digest-only web credential exchange, HMAC-signed revocable HttpOnly sessions, exact Host/Origin/CSRF policy, bounded WebSocket handoff, and atomic revisioned workspace/UI-settings persistence

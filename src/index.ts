@@ -33,6 +33,7 @@ export * from "./scheduler-runtime.js";
 export * from "./server.js";
 export * from "./source-fingerprint.js";
 export * from "./session-api.js";
+export * from "./self-update.js";
 export * from "./session-client.js";
 export * from "./session-cli.js";
 export * from "./session-config.js";
