@@ -37,7 +37,13 @@ For Home Manager services, opt into the stable mutable-runtime shim once:
 
 ```nix
 services.pi-daemon.mutableRuntime.enable = true;
+home.sessionPath = [ "$HOME/.local/bin" ]; # makes the same managed CLI win interactively
 ```
+
+After activating, `type -a pi-daemon` should list
+`~/.local/bin/pi-daemon`; a pre-existing shell may need `rehash` (zsh) or
+`hash -r` (bash). The service launcher itself uses the exact configured path and
+does not depend on interactive PATH ordering.
 
 That one declarative activation installs a Nix-store launcher which chooses the
 executable owner-local `~/.local/bin/pi-daemon` when present and always retains
