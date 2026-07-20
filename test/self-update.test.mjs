@@ -10,6 +10,13 @@ import {
   SelfUpdateError,
   compareVersions,
 } from "../dist/self-update.js";
+import { PI_DAEMON_VERSION } from "../dist/version.js";
+
+const nextPatch = (version, increment = 1) => {
+  const [major, minor, patch] = version.split(".").map(Number);
+  return `${major}.${minor}.${patch + increment}`;
+};
+const NEXT_VERSION = nextPatch(PI_DAEMON_VERSION);
 
 async function harness(t) {
   const root = await mkdtemp(join(tmpdir(), "pi-daemon-self-update-"));
@@ -17,7 +24,7 @@ async function harness(t) {
   const installRoot = join(root, "share", "pi-daemon");
   const binDir = join(root, "bin");
   const packageBytes = Buffer.from("verified package bytes");
-  let version = "0.1.1";
+  let version = NEXT_VERSION;
   let checksum = createHash("sha256").update(packageBytes).digest("hex");
   const requests = [];
   const fetch = async (url) => {
@@ -82,13 +89,13 @@ test("version comparison is strict semantic ordering", () => {
 test("status is offline and check discovers bounded exact release assets", async (t) => {
   const h = await harness(t);
   const status = await h.updater.status();
-  assert.equal(status.currentVersion, "0.1.0");
+  assert.equal(status.currentVersion, PI_DAEMON_VERSION);
   assert.equal(status.localInstallRequired, true);
   assert.equal(status.managedLink, false);
   assert.equal(h.requests.length, 0);
 
   const checked = await h.updater.check();
-  assert.equal(checked.latest.version, "0.1.1");
+  assert.equal(checked.latest.version, NEXT_VERSION);
   assert.equal(checked.updateAvailable, true);
   assert.equal(h.requests.length, 1);
 });
@@ -96,15 +103,18 @@ test("status is offline and check discovers bounded exact release assets", async
 test("run verifies checksum, installs exact package and atomically owns the local link", async (t) => {
   const h = await harness(t);
   const result = await h.updater.run();
-  assert.equal(result.activeVersion, "0.1.1");
+  assert.equal(result.activeVersion, NEXT_VERSION);
   assert.equal(result.managedLink, true);
   assert.equal(result.updateAvailable, false);
   assert.equal(h.installs.length, 1);
   const binPath = join(h.binDir, "pi-daemon");
   assert.equal((await lstat(binPath)).isSymbolicLink(), true);
-  assert.match(await realpath(binPath), /versions\/0\.1\.1\/node_modules\/@harryaskham\/pi-daemon\/dist\/cli\.js$/);
+  assert.equal(
+    (await realpath(binPath)).endsWith(join("versions", NEXT_VERSION, "node_modules", "@harryaskham", "pi-daemon", "dist", "cli.js")),
+    true,
+  );
   const state = JSON.parse(await readFile(join(h.installRoot, "state.json"), "utf8"));
-  assert.equal(state.activeVersion, "0.1.1");
+  assert.equal(state.activeVersion, NEXT_VERSION);
   assert.equal(state.packageSha256, createHash("sha256").update(h.packageBytes).digest("hex"));
 
   await h.updater.run();
@@ -133,19 +143,21 @@ test("checksum mismatch and local-bin collision fail without publishing an execu
 test("verified releases retain only the active and one rollback target", async (t) => {
   const h = await harness(t);
   await h.updater.run();
-  h.setVersion("0.1.2");
+  const second = nextPatch(PI_DAEMON_VERSION, 2);
+  const third = nextPatch(PI_DAEMON_VERSION, 3);
+  h.setVersion(second);
   await h.updater.run();
-  h.setVersion("0.1.3");
+  h.setVersion(third);
   await h.updater.run();
   let status = await h.updater.status();
-  assert.equal(status.activeVersion, "0.1.3");
-  assert.equal(status.previousVersion, "0.1.2");
-  await assert.rejects(lstat(join(h.installRoot, "versions", "0.1.1")), /ENOENT/);
+  assert.equal(status.activeVersion, third);
+  assert.equal(status.previousVersion, second);
+  await assert.rejects(lstat(join(h.installRoot, "versions", NEXT_VERSION)), /ENOENT/);
 
   status = await h.updater.rollback();
-  assert.equal(status.activeVersion, "0.1.2");
-  assert.equal(status.previousVersion, "0.1.3");
-  assert.match(await realpath(join(h.binDir, "pi-daemon")), /versions\/0\.1\.2\//);
+  assert.equal(status.activeVersion, second);
+  assert.equal(status.previousVersion, third);
+  assert.equal((await realpath(join(h.binDir, "pi-daemon"))).includes(join("versions", second)), true);
 });
 
 test("the owner-private update lock rejects concurrent installers", async (t) => {

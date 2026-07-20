@@ -10,6 +10,7 @@ import { runCli } from "../dist/cli.js";
 import { FileDurabilityStore } from "../dist/durability.js";
 import { Multiplexer } from "../dist/multiplexer.js";
 import { ProtocolServer } from "../dist/server.js";
+import { PI_DAEMON_VERSION } from "../dist/version.js";
 
 const openCommand = (sessionId) => ({
   protocolVersion: "1.0",
@@ -626,7 +627,7 @@ test("CLI version, probe and low-level request use the same protocol client", as
   const io = { stdout: (text) => output.push(text), stderr: (text) => errors.push(text) };
 
   assert.equal(await runCli(["version"], io), 0);
-  assert.equal(output.pop(), "0.1.0\n");
+  assert.equal(output.pop(), `${PI_DAEMON_VERSION}\n`);
   assert.equal(await runCli(["probe", "--socket", harness.socketPath], io), 0);
   assert.match(output.pop(), /"protocolVersion": "1.0"/);
   assert.equal(

@@ -5,13 +5,14 @@ import type { Readable, Writable } from "node:stream";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { installProcessStdioErrorHandlers } from "./process-stdio.js";
+import { PI_DAEMON_VERSION } from "./version.js";
 import {
   DEFAULT_RPC_STDIO_BRIDGE_LIMITS,
   RpcStdioBridge,
   type RpcStdioBridgeOptions,
 } from "./rpc-bridge.js";
 
-const VERSION = "0.1.0";
+const VERSION = PI_DAEMON_VERSION;
 const TOKEN_ENV = "PI_DAEMON_BEARER_TOKEN";
 const MIN_TOKEN_BYTES = 16;
 const MAX_TOKEN_BYTES = 4096;
