@@ -1,6 +1,6 @@
 {
   "name": "@harryaskham/pi-daemon",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "General-purpose daemon that multiplexes on-demand Pi SDK agent sessions in one Node process",
   "type": "module",
   "license": "MIT",
