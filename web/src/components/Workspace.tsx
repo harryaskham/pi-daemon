@@ -119,7 +119,14 @@ export function Workspace({
       <div
         key={splitNode.splitId}
         className={`split split--${splitNode.direction}`}
-        style={{ gridTemplateColumns: isHorizontal ? `${splitNode.ratio}fr 6px ${1 - splitNode.ratio}fr` : undefined, gridTemplateRows: !isHorizontal ? `${splitNode.ratio}fr 6px ${1 - splitNode.ratio}fr` : undefined }}
+        style={{
+          gridTemplateColumns: isHorizontal
+            ? `minmax(0, ${splitNode.ratio}fr) 6px minmax(0, ${1 - splitNode.ratio}fr)`
+            : undefined,
+          gridTemplateRows: !isHorizontal
+            ? `minmax(0, ${splitNode.ratio}fr) 6px minmax(0, ${1 - splitNode.ratio}fr)`
+            : undefined,
+        }}
       >
         {renderNode(splitNode.first)}
         <div

@@ -737,6 +737,9 @@ function DashWorkspace({
         reducedMotion={reducedMotion}
         density={density}
         themeName={settings.resource.effective.theme.name}
+        sidebar={settings.resource.effective.sidebar}
+        transcript={settings.resource.effective.transcript}
+        cache={settings.resource.effective.cache}
         revision={settings.resource.revision}
         sources={settings.resource.sources}
         syncState={settings.syncState}
@@ -745,6 +748,9 @@ function DashWorkspace({
         onReducedMotionChange={(enabled) => settings.patch({ motion: { reduced: enabled } })}
         onDensityChange={(nextDensity) => settings.patch({ theme: { density: nextDensity } })}
         onThemeChange={(theme) => settings.patch({ theme: { name: theme } })}
+        onSidebarChange={(patch) => settings.patch({ sidebar: patch })}
+        onTranscriptChange={(patch) => settings.patch({ transcript: patch })}
+        onCacheChange={(patch) => settings.patch({ cache: patch })}
         onReset={settings.reset}
       />
     </div>

@@ -1339,6 +1339,10 @@ These lanes intentionally begin in parallel:
 
 ### V1 closure
 
+- [ ] `bd-1dc765` — P1 production interactivity hotfix: constrain the lone
+  workspace leaf so transcript scrolling and the composer remain interactive,
+  use zero-minimum split tracks with resize-driven virtualization measurement,
+  and replace decorative Settings navigation with revisioned accessible tabs.
 - [ ] `bd-7de9ec` — visual, performance, security, dual-mode, soak and release
   acceptance; depends on live UI, workspace, TUI core/grid, and lifecycle.
 - [ ] `bd-ba3623` — parent Dash epic; depends only on `bd-7de9ec` so it closes

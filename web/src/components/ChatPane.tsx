@@ -168,6 +168,7 @@ export function ChatPane({
   onToggleVim,
   onSubmit,
 }: ChatPaneProps) {
+  const paneRef = useRef<HTMLDivElement>(null);
   const scrollerRef = useRef<HTMLDivElement>(null);
   const composer = liveComposerPresentation(
     liveState,
@@ -192,8 +193,25 @@ export function ChatPane({
     requestAnimationFrame(() => virtualizer.scrollToIndex(shownRecords.length - 1, { align: "end" }));
   }, [session.inventoryId, shownRecords.length]);
 
+  useEffect(() => {
+    const pane = paneRef.current;
+    if (!pane || typeof ResizeObserver === "undefined") return;
+    let frame = 0;
+    const observer = new ResizeObserver(() => {
+      const bounds = pane.getBoundingClientRect();
+      if (bounds.width === 0 || bounds.height === 0 || pane.hidden) return;
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => virtualizer.measure());
+    });
+    observer.observe(pane);
+    return () => {
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+    };
+  }, [virtualizer]);
+
   return (
-    <div className="chat-pane" data-session-store={`${session.sessionId}:${session.generation}`}>
+    <div ref={paneRef} className="chat-pane" data-session-store={`${session.sessionId}:${session.generation}`}>
       <header className="pane-header">
         <div className="pane-title">
           <span className={`presence-dot presence-dot--${session.presence.runtime}`} />

@@ -170,9 +170,18 @@ test("settings hot-switch, source reporting, reset, and keyboard guide are revis
   await expect(settings.getByText("runtime", { exact: true }).first()).toBeVisible();
   await settings.getByRole("button", { name: "compact" }).click();
   await expect(page.locator(".dash-app")).toHaveAttribute("data-density", "compact");
-  await settings.getByRole("switch", { name: "Vim composer" }).click();
   await settings.getByRole("switch", { name: "Reduce motion" }).click();
   await expect(page.locator(".dash-app")).toHaveAttribute("data-reduced-motion", "true");
+
+  await settings.getByRole("tab", { name: "Editor & keys" }).click();
+  await expect(settings.getByRole("tabpanel")).toContainText("Keyboard behavior");
+  await settings.getByRole("switch", { name: "Vim composer" }).click();
+  await settings.getByRole("tab", { name: "Transcript" }).click();
+  await expect(settings.getByRole("tabpanel")).toContainText("Expand tool calls");
+  await settings.getByRole("switch", { name: "Expand tool calls" }).click();
+  await settings.getByRole("tab", { name: "Cache & limits" }).click();
+  await expect(settings.getByRole("spinbutton", { name: "Transcript cache entries" })).toHaveValue("64");
+
   await settings.getByRole("button", { name: "Revert to configured defaults" }).click();
   await expect(page.locator(".dash-app")).toHaveAttribute("data-theme", "nord-midnight");
   await expect(page.locator(".dash-app")).toHaveAttribute("data-density", "comfortable");
@@ -194,8 +203,8 @@ test("new session draft persists, cancels safely, and transitions one first send
   await pane.getByRole("button", { name: "Cancel new session draft" }).click();
   await expect(pane.getByRole("heading", { name: "Choose a session" })).toBeVisible();
 
-  await page.getByRole("button", { name: "Open session drawer" }).click();
   await page.getByRole("button", { name: "Create new session draft" }).click();
+  await pane.getByLabel("Working directory").fill("/tmp/pi-daemon-dash-test");
   await pane.getByLabel("Session name optional").fill("Fresh browser session");
   await pane.getByRole("button", { name: "Save draft" }).click();
   await expect(pane).toHaveAttribute("data-pane-content", /chat:draft:/);
@@ -246,6 +255,87 @@ test("dormant preview stays scrollable and wakes on first composer send", async 
   await pane.getByRole("button", { name: "Activate & send" }).click();
   await expect(pane.getByRole("button", { name: "Send message" })).toBeVisible();
   await expect(pane.locator(".live-session-strip")).toContainText(/live|streaming/);
+});
+
+test("single full-width chat keeps transcript scrollable and composer pinned", async ({ page }) => {
+  await page.goto("./?fixture=1&state=ready");
+  const inspector = page.locator('[data-pane-content^="info:"]');
+  await inspector.click({ position: { x: 12, y: 120 } });
+  await inspector.getByRole("button", { name: "Close pane" }).click({ force: true });
+
+  const pane = page.locator(".workspace-pane");
+  await expect(pane).toHaveCount(1);
+  const transcript = pane.locator(".transcript");
+  const footer = pane.locator(".chat-pane__footer");
+  await expect(transcript).toBeVisible();
+  await expect(footer).toBeVisible();
+  const geometry = await pane.evaluate((element) => {
+    const transcriptElement = element.querySelector<HTMLElement>(".transcript");
+    const footerElement = element.querySelector<HTMLElement>(".chat-pane__footer");
+    if (!transcriptElement || !footerElement) return undefined;
+    transcriptElement.scrollTop = transcriptElement.scrollHeight;
+    return {
+      paneBottom: element.getBoundingClientRect().bottom,
+      transcriptBottom: transcriptElement.getBoundingClientRect().bottom,
+      footerBottom: footerElement.getBoundingClientRect().bottom,
+      scrollHeight: transcriptElement.scrollHeight,
+      clientHeight: transcriptElement.clientHeight,
+      scrollTop: transcriptElement.scrollTop,
+    };
+  });
+  expect(geometry).toBeDefined();
+  expect(geometry!.scrollHeight).toBeGreaterThan(geometry!.clientHeight);
+  expect(geometry!.scrollTop).toBeGreaterThan(0);
+  expect(geometry!.footerBottom).toBeLessThanOrEqual(geometry!.paneBottom + 1);
+  expect(geometry!.transcriptBottom).toBeLessThanOrEqual(geometry!.footerBottom + 1);
+
+  const editor = pane.getByTestId("composer-editor");
+  await expect(editor).toBeVisible();
+  await editor.click();
+  await page.keyboard.insertText("full pane remains interactive");
+  await expect(editor).toContainText("full pane remains interactive");
+});
+
+test("left-right split and divider resize reflow each chat to its own width", async ({ page }) => {
+  await page.goto("./?fixture=1&state=ready");
+  const inspector = page.locator('[data-pane-content^="info:"]');
+  await inspector.click({ position: { x: 12, y: 120 } });
+  await inspector.getByRole("button", { name: "Close pane" }).click({ force: true });
+  const primary = page.locator('[data-pane-id="primary"]');
+  await primary.getByRole("button", { name: "Split pane horizontally" }).click({ force: true });
+  await page.locator(".session-row").first().click();
+  await expect(page.locator(".chat-pane")).toHaveCount(2);
+
+  async function assertPaneWidths(): Promise<number[]> {
+    return page.locator(".workspace-pane").evaluateAll((panes) => panes.map((pane) => {
+      const chat = pane.querySelector<HTMLElement>(".chat-pane");
+      const transcript = pane.querySelector<HTMLElement>(".transcript");
+      const sizer = pane.querySelector<HTMLElement>(".transcript__sizer");
+      if (!chat || !transcript || !sizer) throw new Error("chat geometry missing");
+      const paneWidth = pane.getBoundingClientRect().width;
+      const chatWidth = chat.getBoundingClientRect().width;
+      const transcriptWidth = transcript.getBoundingClientRect().width;
+      const sizerWidth = sizer.getBoundingClientRect().width;
+      if (Math.abs(chatWidth - paneWidth) > 2 || transcriptWidth > chatWidth + 1 || sizerWidth > transcriptWidth + 1) {
+        throw new Error(`clipped pane ${paneWidth}/${chatWidth}/${transcriptWidth}/${sizerWidth}`);
+      }
+      return paneWidth;
+    }));
+  }
+
+  const before = await assertPaneWidths();
+  const separator = page.getByRole("separator", { name: "Resize horizontal split" });
+  const box = await separator.boundingBox();
+  expect(box).not.toBeNull();
+  if (box) {
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x - 140, box.y + box.height / 2, { steps: 5 });
+    await page.mouse.up();
+  }
+  await expect.poll(async () => (await assertPaneWidths())[0]).not.toBe(before[0]);
+  const after = await assertPaneWidths();
+  expect(Math.abs(after[0]! - before[0]!)).toBeGreaterThan(80);
 });
 
 test("composer completion and bounded history work outside Vim mode", async ({ page }) => {
