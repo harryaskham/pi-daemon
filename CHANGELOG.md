@@ -3,6 +3,10 @@
 All notable changes to Pi Daemon are documented here. The project follows
 semantic versioning once a release tag is cut.
 
+## 0.1.1 — 2026-07-20
+
+- keep remote RPC/TUI operation and attachment deadlines referenced until their public promises settle, preventing Node 22 from exiting a release test or short-lived client with unresolved work
+
 ## 0.1.0 — 2026-07-20
 
 Initial standalone implementation:

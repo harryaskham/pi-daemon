@@ -813,7 +813,6 @@ class RemoteRichHub {
             ));
           }, this.#limits.operationTimeoutMs),
         };
-        pending.timer.unref?.();
         this.#anonymousResponses.push(pending);
         try {
           this.#send({
@@ -897,7 +896,6 @@ class RemoteRichHub {
           true,
         ));
       }, this.#limits.operationTimeoutMs);
-      timer.unref?.();
       const succeed = (): void => {
         if (settled) return;
         settled = true;
@@ -1167,7 +1165,9 @@ class RemoteRichHub {
           },
         });
       }, this.#limits.operationTimeoutMs);
-      timer.unref?.();
+      // A pending public operation must keep Node alive until it settles. An
+      // unref'ed deadline can strand its Promise when a transport is synthetic
+      // or is the final active handle (notably Node 22 release runners).
       this.#commands.set(id, {
         operation: command.operation,
         correlationId: command.correlationId,
@@ -1231,7 +1231,6 @@ class RemoteRichHub {
           true,
         ));
       }, this.#limits.operationTimeoutMs);
-      timer.unref?.();
       this.#controlWaiter = { resolve, reject, timer };
       try {
         this.#send({ kind: "control", action });
@@ -1683,7 +1682,6 @@ class RemoteTuiHub {
           true,
         ));
       }, this.#limits.operationTimeoutMs);
-      timer.unref?.();
       const succeed = (): void => {
         if (settled) return;
         settled = true;
@@ -1987,7 +1985,6 @@ class RemoteTuiHub {
           ));
         }
       }, this.#limits.operationTimeoutMs);
-      timer.unref?.();
       this.#actions.set(correlationId, { kind, resolve, reject, timer });
       try {
         this.#send(frame);
