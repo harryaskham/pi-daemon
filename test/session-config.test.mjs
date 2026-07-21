@@ -39,6 +39,20 @@ test("session configuration separates durable policy from a bounded memory-only 
     tools: ["read", "bash"],
     excludeTools: ["write"],
   });
+  const explicitResources = parseSessionConfiguration({
+    cwd: "/work",
+    target: { mode: "memory" },
+    resources: {
+      extensions: ["git:github.com/harryaskham/agent-utils", "./reviewed.mjs"],
+      skills: ["npm:reviewed-skills"],
+    },
+  }).persistedSpec.resources;
+  assert.deepEqual(explicitResources.extensions, [
+    "git:github.com/harryaskham/agent-utils",
+    "/work/reviewed.mjs",
+  ]);
+  assert.deepEqual(explicitResources.skills, ["npm:reviewed-skills"]);
+
   assert.deepEqual(
     toolConfiguration(
       parseSessionConfiguration({

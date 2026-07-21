@@ -421,7 +421,28 @@ export class DashboardLiveSessionController {
       if (result.state === "indeterminate") this.#patch({ phase: "indeterminate" });
       else if (result.state === "rejected" && result.error) this.#patch({ error: result.error });
       else if (operation === "prompt") this.#patch({ phase: "streaming" });
-      else if (result.state === "completed" && isJsonObject(result.data)) {
+      else if (
+        result.state === "completed" &&
+        operation === "set_model" &&
+        isJsonObject(result.data)
+      ) {
+        this.#patch({
+          rpcState: {
+            ...this.#state.rpcState,
+            ...(typeof result.data.model === "string" || isJsonObject(result.data.model)
+              ? { model: result.data.model }
+              : { model: result.data }),
+          },
+        });
+      } else if (
+        result.state === "completed" &&
+        operation === "set_thinking_level" &&
+        typeof payload.level === "string"
+      ) {
+        this.#patch({
+          rpcState: { ...this.#state.rpcState, thinkingLevel: payload.level },
+        });
+      } else if (result.state === "completed" && isJsonObject(result.data)) {
         this.#patch({ rpcState: { ...this.#state.rpcState, ...result.data } });
       }
       return result;

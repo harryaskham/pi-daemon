@@ -55,7 +55,7 @@ describe("Dashboard live session controller", () => {
     controller.markSeen();
     expect(controller.state.unread).toBe(false);
 
-    await controller.command("set_model", { modelId: "gpt-5-mini" });
+    await controller.command("set_model", { provider: "github-copilot", modelId: "gpt-5-mini" });
     expect(controller.state.rpcState.model).toBe("gpt-5-mini");
     await controller.stop();
   });

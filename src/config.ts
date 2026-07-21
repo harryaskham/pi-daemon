@@ -4,6 +4,17 @@ import { dirname, isAbsolute, join, resolve } from "node:path";
 
 import { parseDocument } from "yaml";
 
+import {
+  parseSessionConfiguration,
+  SessionConfigurationError,
+} from "./session-config.js";
+import type {
+  JsonObject,
+  SessionModelSpec,
+  SessionResourceSpec,
+  SessionToolSpec,
+} from "./session-api.js";
+
 export const PI_DAEMON_CONFIG_ENV = "PI_DAEMON_CONFIG" as const;
 export const PI_DAEMON_INSTANCE_ENV = "PI_DAEMON_INSTANCE" as const;
 export const DEFAULT_CONFIG_MAX_BYTES = 1024 * 1024;
@@ -80,6 +91,13 @@ export type ConfigJson =
   | ConfigJson[]
   | { [key: string]: ConfigJson };
 
+export interface PiDaemonWebRuntimePolicyConfig {
+  model?: SessionModelSpec;
+  tools?: SessionToolSpec;
+  resources?: SessionResourceSpec;
+  settings?: JsonObject;
+}
+
 export interface PiDaemonWebConfig {
   enabled?: boolean;
   mode?: DashboardDeploymentMode;
@@ -89,6 +107,11 @@ export interface PiDaemonWebConfig {
   inventory?: PiDaemonWebInventoryConfig;
   residency?: PiDaemonWebResidencyConfig;
   tui?: PiDaemonWebTuiConfig;
+  /**
+   * Owner-configured, bounded runtime authority for Dashboard activations.
+   * Nothing is inherited from ambient project or normal Pi settings.
+   */
+  runtimePolicy?: PiDaemonWebRuntimePolicyConfig;
   /** Forward-compatible, bounded UI defaults. Browser/runtime validation is stricter. */
   ui?: { [key: string]: ConfigJson };
 }
@@ -373,6 +396,7 @@ function parseWeb(value: unknown): PiDaemonWebConfig {
     "inventory",
     "residency",
     "tui",
+    "runtimePolicy",
     "ui",
   ]);
   const result: PiDaemonWebConfig = {};
@@ -386,12 +410,61 @@ function parseWeb(value: unknown): PiDaemonWebConfig {
   if (object.inventory !== undefined) result.inventory = parseWebInventory(object.inventory);
   if (object.residency !== undefined) result.residency = parseWebResidency(object.residency);
   if (object.tui !== undefined) result.tui = parseWebTui(object.tui);
+  if (object.runtimePolicy !== undefined) {
+    result.runtimePolicy = parseWebRuntimePolicy(object.runtimePolicy);
+  }
   if (object.ui !== undefined) {
     const ui = objectValue(object.ui, "web.ui");
     rejectSecretLikeKeys(ui, "web.ui");
     result.ui = structuredClone(ui) as { [key: string]: ConfigJson };
   }
   return result;
+}
+
+function parseWebRuntimePolicy(value: unknown): PiDaemonWebRuntimePolicyConfig {
+  const object = objectValue(value, "web.runtimePolicy");
+  assertKnownKeys(object, ["model", "tools", "resources", "settings"]);
+  rejectSecretLikeKeys(object, "web.runtimePolicy");
+  if (object.settings !== undefined) {
+    const settings = objectValue(object.settings, "web.runtimePolicy.settings");
+    if (Object.prototype.hasOwnProperty.call(settings, "packages")) {
+      throw new PiDaemonConfigError(
+        "config_invalid",
+        "web.runtimePolicy.settings.packages is not allowed; list reviewed package references explicitly in resources.extensions/skills/promptTemplates/themes",
+      );
+    }
+  }
+  if (object.resources !== undefined) {
+    const resources = objectValue(object.resources, "web.runtimePolicy.resources");
+    for (const field of ["extensions", "skills", "promptTemplates", "themes"] as const) {
+      if (resources[field] === undefined) continue;
+      const paths = optionalStringArray(resources, field, 128) ?? [];
+      if (paths.some((path) => !isAbsolute(path) && !/^(?:git|npm):/u.test(path))) {
+        throw new PiDaemonConfigError(
+          "config_invalid",
+          `web.runtimePolicy.resources.${field} paths must be absolute`,
+        );
+      }
+    }
+  }
+  try {
+    const spec = parseSessionConfiguration({
+      cwd: "/",
+      target: { mode: "memory" },
+      ...structuredClone(object),
+    }).persistedSpec;
+    return {
+      ...(spec.model === undefined ? {} : { model: spec.model }),
+      ...(spec.tools === undefined ? {} : { tools: spec.tools }),
+      ...(spec.resources === undefined ? {} : { resources: spec.resources }),
+      ...(spec.settings === undefined ? {} : { settings: spec.settings }),
+    };
+  } catch (error) {
+    if (error instanceof SessionConfigurationError) {
+      throw new PiDaemonConfigError("config_invalid", `web.runtimePolicy: ${error.message}`);
+    }
+    throw error;
+  }
 }
 
 function parseWebAuth(value: unknown): PiDaemonWebAuthConfig {

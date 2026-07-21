@@ -128,6 +128,23 @@ web:
     defaultPresentation: rich
     maxRows: 200
     maxColumns: 320
+  runtimePolicy:
+    # Used only when an activated source has no model/thinking selection.
+    model:
+      provider: github-copilot
+      id: gpt-5.6-sol
+      thinkingLevel: high
+    tools:
+      mode: allowlist
+      include: [self_set_model]
+    resources:
+      # Select the reviewed extension module, not the ambient/global package.
+      extensions:
+        - /opt/pi-extensions/agent-utils/m.js
+      projectTrust: approve
+      noContextFiles: true
+    settings:
+      agentUtils: { modelShortcut: true }
   ui:
     theme: { name: nord-midnight }
 ```
@@ -140,8 +157,22 @@ symlinks to immutable Nix-store targets are supported. Configuration contains
 only non-secret values and secret **paths**: literal tokens, passwords, bearers,
 and API keys are rejected from the forward-compatible `web.ui` map. Runtime web
 preferences are a separate allowlisted overlay under `STATE_DIR/web`; they
-cannot change bind/auth/root/credential/resource authority. `sessionStorage` is
-used by the ownership service. A present, enabled `web` block in `embedded` mode
+cannot change bind/auth/root/credential/resource authority. `web.runtimePolicy`
+is the only Dashboard activation resource authority: it is read from the
+owner-controlled service configuration, rejects literal secret-bearing fields,
+and accepts only the bounded session model/tool/resource/settings subset. It is
+not writable from the browser. Reviewed `git:`/`npm:` package references may appear in explicit resource
+lists, but they select every matching package resource; prefer absolute paths to
+individual reviewed modules when a package contains unrelated tools. Filesystem
+extension/skill/template/theme paths must be absolute. `settings.packages` is
+rejected on this shared-host surface so
+it cannot re-enable ambient package discovery. With no policy, activation
+remains no-tools and loads no
+ambient extensions, packages, context files, or project resources. A direct or
+fork activation first restores the latest model and thinking level on the
+source session's active branch; the configured model is a fallback for sources
+without those entries. `sessionStorage` is used by the ownership service. A
+present, enabled `web` block in `embedded` mode
 starts the packaged browser BFF with the in-process backend; omitting the block
 preserves the socket/API-only service lifecycle. Dedicated mode runs as a
 separate `pi-daemon web` process over the authenticated neutral API and uses an

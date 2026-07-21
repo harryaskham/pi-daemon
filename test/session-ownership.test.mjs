@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import {
   appendFile,
+  chmod,
   lstat,
   mkdir,
   mkdtemp,
@@ -142,12 +143,14 @@ async function createHarness(t, options = {}) {
     sourceRoots: [dirs.sourceRoot, dirs.piSessionsRoot],
     allowedCwdRoots: [dirs.cwdRoot],
     storageMode: options.storageMode ?? "pi-session-root",
-    runtimeSpec: ({ info }) => ({
-      cwd: info.cwd,
-      target: { mode: "memory" },
-      tools: { mode: "none" },
-      isolation: { mode: "unisolated" },
-    }),
+    runtimeSpec:
+      options.runtimeSpec ??
+      (({ info }) => ({
+        cwd: info.cwd,
+        target: { mode: "memory" },
+        tools: { mode: "none" },
+        isolation: { mode: "unisolated" },
+      })),
     writerProbe: () => writer,
     hasController: () => controller,
   });
@@ -238,6 +241,63 @@ test("direct co-opt requires confirmation, revalidates fingerprint and joins dup
   );
   assert.equal(Date.parse(renewed.lease.expiresAt) >= Date.parse(mapping.lease.expiresAt), true);
   await assert.rejects(harness.service.renewLease(mapping.managedSessionId, "stale-lease"));
+});
+
+test("activation inherits the active source model and thinking over configured fallback", async (t) => {
+  const harness = await createHarness(t, {
+    runtimeSpec: ({ info }) => ({
+      cwd: info.cwd,
+      target: { mode: "memory" },
+      model: {
+        provider: "configured-provider",
+        id: "configured-model",
+        thinkingLevel: "medium",
+        scopedModels: ["configured-provider/configured-model"],
+      },
+      tools: { mode: "none" },
+      isolation: { mode: "unisolated" },
+    }),
+  });
+  const source = await writeSession(
+    join(harness.sourceRoot, "source-model.jsonl"),
+    "pi-source-model",
+    harness.cwd,
+  );
+  const manager = SessionManager.open(source, dirname(source), harness.cwd);
+  manager.appendModelChange("github-copilot", "gpt-5.6-sol");
+  manager.appendThinkingLevelChange("high");
+  const record = await inventoryRecord(harness.inventory, "pi-source-model");
+  const info = await harness.inventory.getInfo(record.inventoryId);
+  const ticket = await harness.service.activateSession(
+    record.inventoryId,
+    activation("fork", info.source.fingerprint.value),
+  );
+  assert.equal(ticket.state, "succeeded", JSON.stringify(ticket.error));
+  assert.deepEqual(harness.runtime.opens[0].spec.model, {
+    provider: "github-copilot",
+    id: "gpt-5.6-sol",
+    thinkingLevel: "high",
+    scopedModels: ["configured-provider/configured-model"],
+  });
+});
+
+test("activation rejects a group/world-writable source file", async (t) => {
+  const harness = await createHarness(t);
+  const source = await writeSession(
+    join(harness.sourceRoot, "writable.jsonl"),
+    "pi-writable",
+    harness.cwd,
+  );
+  const record = await inventoryRecord(harness.inventory, "pi-writable");
+  const info = await harness.inventory.getInfo(record.inventoryId);
+  await chmod(source, 0o666);
+  const ticket = await harness.service.activateSession(
+    record.inventoryId,
+    activation("direct", info.source.fingerprint.value),
+  );
+  assert.equal(ticket.state, "failed");
+  assert.equal(ticket.error.code, "insecure_session_source");
+  assert.equal(harness.runtime.opens.length, 0);
 });
 
 test("fork/import leaves the source untouched and uses normal Pi project storage", async (t) => {

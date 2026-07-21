@@ -31,15 +31,16 @@ project code or tools.
 - symlink and traversal refusal for durable state/session paths
 - required canonical `--allow-root` for every logical cwd
 - cwd must not overlap daemon state or Pi credential roots unless the operator explicitly enables the high-trust `security.allowAuthorityRootOverlap` policy; with it enabled, session tools can reach protected paths beneath the cwd
-- opened Pi session files remain inside that logical session's state directory
-- persistent Pi managers are materialized as owner-only JSONL before durable acceptance
+- newly managed Pi session files remain inside that logical session's owner-private state directory
+- explicitly confirmed direct co-opt may retain an existing source under a configured inventory root when its directory/file are current-user-owned, real, and not group/world writable; conventional read/execute bits are preserved rather than silently chmodded
+- newly persistent Pi managers are materialized as owner-only JSONL before durable acceptance
 - restart/eviction replay requires the exact recorded Pi session ID and canonical file
 - memory-only sessions never write replayable wake journals or masquerade as durable
 - ACP is route/cwd/generation scoped, bounded per peer/hub, and never launches an adapter subprocess
 - default Pi auth file must be an owner-only regular file
 - an absent custom-agent `auth.json` may be seeded once from the bounded owner-only normal Pi auth file or an explicit required seed; it is never synchronized, overwritten, logged, or returned
 - empty built-in/custom tool allowlist
-- empty extensions, skills, templates, themes, context files, and append prompt
+- empty extensions, skills, templates, themes, context files, and append prompt unless an owner-private `web.runtimePolicy` names exact reviewed resources; explicit lists exclude ambient user/project discovery and failures abort activation
 - no Cacophony node token, CA key, daemon state, or orchestration authority
 - structured logs redact prompts, output/content, environment, and credentials
 - accepted wake requests are never blindly replayed after a crash

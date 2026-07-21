@@ -83,7 +83,16 @@ export function LiveSessionControls({ state, controller }: LiveSessionControlsPr
 export function commandPayload(operation: DashboardCommandOperation, value?: string): JsonObject {
   if (operation === "prompt" || operation === "steer" || operation === "follow_up") return { message: value ?? "" };
   if (operation === "set_session_name") return { name: value ?? "" };
-  if (operation === "set_model") return { modelId: value ?? "" };
+  if (operation === "set_model") {
+    const reference = (value ?? "").trim();
+    const separator = reference.indexOf("/");
+    return separator <= 0 || separator === reference.length - 1
+      ? { provider: "", modelId: reference }
+      : {
+          provider: reference.slice(0, separator),
+          modelId: reference.slice(separator + 1),
+        };
+  }
   if (operation === "set_thinking_level") return { level: value ?? "medium" };
   return {};
 }

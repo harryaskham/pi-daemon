@@ -475,6 +475,12 @@ process appears per wake.
 
 ## Provisional Beads work board
 
+- [x] `bd-486f8c` Accept ordinary owner-controlled, non-writable Pi session
+  directories for direct co-opt without weakening owner-private daemon state.
+- [x] `bd-8de7f4` Restore source-branch provider/model/thinking policy during
+  Dash activation and make canonical browser model switching effective.
+- [x] `bd-dfdd89` Apply an explicit owner-configured trusted Dash runtime policy
+  for extensions/resources while retaining no-tools/no-ambient defaults.
 - [x] `bd-c39242` Add capability-gated, prompt-redacted schedule resources to
   `DashboardBackend`, remote delegation, and authenticated same-origin
   `/dash/v1/schedules` browser BFF routes.

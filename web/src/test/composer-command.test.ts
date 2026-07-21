@@ -1,14 +1,38 @@
 import { describe, expect, it } from "vitest";
+import { commandNames, modelLabel } from "../components/ChatPane";
 import { parseComposerCommand } from "../components/ConnectedChatPane";
 
 describe("Dash composer command routing", () => {
   it("maps browser built-ins to typed dashboard operations instead of prompting", () => {
-    expect(parseComposerCommand("/model provider/model")).toEqual({ operation: "set_model", payload: { modelId: "provider/model" } });
+    expect(parseComposerCommand("/model github-copilot/gpt-5.6-sol")).toEqual({
+      operation: "set_model",
+      payload: { provider: "github-copilot", modelId: "gpt-5.6-sol" },
+    });
     expect(parseComposerCommand("/thinking high")).toEqual({ operation: "set_thinking_level", payload: { level: "high" } });
     expect(parseComposerCommand("/steer tighten the test")).toEqual({ operation: "steer", payload: { message: "tighten the test" } });
     expect(parseComposerCommand("/follow-up summarize")).toEqual({ operation: "follow_up", payload: { message: "summarize" } });
     expect(parseComposerCommand("/auto-retry off")).toEqual({ operation: "set_auto_retry", payload: { enabled: false } });
     expect(parseComposerCommand("/abort-retry")).toEqual({ operation: "abort_retry", payload: {} });
+  });
+
+  it("normalizes Pi RPC extension command descriptors for autocomplete", () => {
+    expect(commandNames({
+      commands: [
+        { name: "m", description: "Switch model", source: "extension" },
+        { name: "/compact", source: "extension" },
+        "/thinking",
+        { invalid: true },
+      ],
+    })).toEqual(["/m", "/compact", "/thinking"]);
+  });
+
+  it("renders effective model objects as canonical provider/model labels", () => {
+    expect(modelLabel({ provider: "github-copilot", id: "gpt-5.6-sol" })).toBe(
+      "github-copilot/gpt-5.6-sol",
+    );
+    expect(modelLabel("github-copilot/gpt-5.6-sol")).toBe(
+      "github-copilot/gpt-5.6-sol",
+    );
   });
 
   it("keeps ordinary text as a normal prompt", () => {

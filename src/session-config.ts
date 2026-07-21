@@ -333,6 +333,10 @@ function parseTarget(value: unknown, cwd: string): PersistedSessionConfiguration
   return result;
 }
 
+function resourceReference(cwd: string, value: string): string {
+  return /^(?:git|npm):/u.test(value) ? value : resolve(cwd, value);
+}
+
 function parseModel(value: unknown): NonNullable<PersistedSessionConfiguration["model"]> {
   const input = record(value, "spec.model");
   rejectUnknown(input, ["provider", "id", "thinkingLevel", "scopedModels"], "spec.model");
@@ -413,7 +417,7 @@ function parseResources(
         `spec.resources.${field}`,
         limits.maxResourcePathsPerKind,
         4096,
-      ).map((path) => resolve(cwd, path));
+      ).map((path) => resourceReference(cwd, path));
     }
   }
   for (const field of [

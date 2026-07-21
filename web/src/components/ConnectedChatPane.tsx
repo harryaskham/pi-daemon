@@ -93,7 +93,7 @@ export function parseComposerCommand(value: string): { operation: DashboardComma
   const [head = "", ...rest] = value.trim().split(/\s+/u);
   const argument = rest.join(" ");
   switch (head.toLocaleLowerCase()) {
-    case "/model": return { operation: "set_model", payload: { modelId: argument } };
+    case "/model": return { operation: "set_model", payload: modelReferencePayload(argument) };
     case "/thinking": return { operation: "set_thinking_level", payload: { level: argument || "medium" } };
     case "/compact": return { operation: "compact", payload: {} };
     case "/auto-compaction": return { operation: "set_auto_compaction", payload: { enabled: parseToggle(argument) } };
@@ -110,6 +110,18 @@ export function parseComposerCommand(value: string): { operation: DashboardComma
     case "/clone": return { operation: "clone", payload: argument ? { entryId: argument } : {} };
     default: return { operation: "prompt", payload: { message: value } };
   }
+}
+
+function modelReferencePayload(value: string): JsonObject {
+  const reference = value.trim();
+  const separator = reference.indexOf("/");
+  if (separator <= 0 || separator === reference.length - 1) {
+    return { provider: "", modelId: reference };
+  }
+  return {
+    provider: reference.slice(0, separator),
+    modelId: reference.slice(separator + 1),
+  };
 }
 
 function parseToggle(value: string): boolean {

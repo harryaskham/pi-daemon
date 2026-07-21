@@ -142,12 +142,36 @@ export function liveComposerPresentation(
   };
 }
 
-function commandNames(value: DashboardLiveSessionState["availableCommands"]): string[] {
+export function commandNames(value: DashboardLiveSessionState["availableCommands"]): string[] {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return [];
   const commands = (value as Record<string, unknown>).commands;
-  return Array.isArray(commands)
-    ? commands.filter((command): command is string => typeof command === "string" && command.startsWith("/")).slice(0, 128)
-    : [];
+  if (!Array.isArray(commands)) return [];
+  const names: string[] = [];
+  for (const command of commands) {
+    const raw =
+      typeof command === "string"
+        ? command
+        : typeof command === "object" &&
+            command !== null &&
+            !Array.isArray(command) &&
+            typeof (command as Record<string, unknown>).name === "string"
+          ? ((command as Record<string, unknown>).name as string)
+          : undefined;
+    if (raw === undefined || raw.length === 0) continue;
+    names.push(raw.startsWith("/") ? raw : `/${raw}`);
+    if (names.length >= 128) break;
+  }
+  return [...new Set(names)];
+}
+
+export function modelLabel(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return "unknown";
+  const model = value as Record<string, unknown>;
+  const provider = typeof model.provider === "string" ? model.provider : undefined;
+  const id = typeof model.id === "string" ? model.id : undefined;
+  if (provider !== undefined && id !== undefined) return `${provider}/${id}`;
+  return id ?? provider ?? "unknown";
 }
 
 export function ChatPane({
@@ -324,7 +348,7 @@ export function ChatPane({
           <section className="extension-widget" key={widget.key} aria-label={`Extension widget ${widget.key}`}>{widget.lines.map((line, index) => <p key={`${widget.key}-${index}`}>{line}</p>)}</section>
         ))}
         <div className="context-chips" aria-label="Session context">
-          <span>{session.cwd}</span><span>{String((liveState.sessionStats as Record<string, unknown> | undefined)?.contextPercent ?? session.contextPercent)}% context</span><span>{String(liveState.rpcState.model ?? session.model)}</span><span>{String(liveState.rpcState.thinkingLevel ?? session.thinking)} thinking</span><span>{liveState.availableCommands ? "commands ready" : "commands loading"}</span>
+          <span>{session.cwd}</span><span>{String((liveState.sessionStats as Record<string, unknown> | undefined)?.contextPercent ?? session.contextPercent)}% context</span><span>{modelLabel(liveState.rpcState.model ?? session.model)}</span><span>{String(liveState.rpcState.thinkingLevel ?? session.thinking)} thinking</span><span>{liveState.availableCommands ? "commands ready" : "commands loading"}</span>
         </div>
       </footer>
     </div>

@@ -98,6 +98,20 @@ web:
     defaultPresentation: rich
     maxRows: 200
     maxColumns: 320
+  runtimePolicy:
+    model:
+      provider: github-copilot
+      id: gpt-5.6-sol
+      thinkingLevel: high
+    tools:
+      mode: allowlist
+      include: [self_set_model]
+    resources:
+      extensions: ["/opt/pi-extensions/agent-utils/m.js"]
+      projectTrust: approve
+      noContextFiles: true
+    settings:
+      agentUtils: { modelShortcut: true }
   ui:
     editor: { mode: vim }
     theme: { name: nord-midnight }
@@ -113,6 +127,20 @@ web:
   assert.equal(loaded.config.limits.maxSessions, 32);
   assert.equal(loaded.config.security.allowAuthorityRootOverlap, true);
   assert.equal(loaded.config.web.tui.defaultPresentation, "rich");
+  assert.deepEqual(JSON.parse(JSON.stringify(loaded.config.web.runtimePolicy)), {
+    model: {
+      provider: "github-copilot",
+      id: "gpt-5.6-sol",
+      thinkingLevel: "high",
+    },
+    tools: { mode: "allowlist", include: ["self_set_model"] },
+    resources: {
+      extensions: ["/opt/pi-extensions/agent-utils/m.js"],
+      projectTrust: "approve",
+      noContextFiles: true,
+    },
+    settings: { agentUtils: { modelShortcut: true } },
+  });
   assert.equal(loaded.resolvePath(loaded.config.stateDir), join(root, "state"));
   assert.equal(loaded.resolvePath(loaded.config.agentDir), join(root, "agent"));
   assert.deepEqual(
@@ -153,6 +181,10 @@ test("rejects missing explicit, mismatched, duplicate, aliased, unknown, secret 
     ["unknown", "mystery: true\n", "config_unknown_field"],
     ["secret", "web:\n  ui:\n    password: do-not-store\n", "config_secret_value_forbidden"],
     ["bad-port", "api:\n  enabled: true\n  port: 70000\n", "config_invalid"],
+    ["runtime-unknown", "web:\n  runtimePolicy:\n    env: { OPENAI_API_KEY: forbidden }\n", "config_unknown_field"],
+    ["runtime-secret", "web:\n  runtimePolicy:\n    settings:\n      apiKey: forbidden\n", "config_secret_value_forbidden"],
+    ["runtime-relative-extension", "web:\n  runtimePolicy:\n    resources:\n      extensions: [./ambient.mjs]\n", "config_invalid"],
+    ["runtime-settings-packages", "web:\n  runtimePolicy:\n    resources: { projectTrust: approve }\n    settings:\n      packages: [npm:ambient]\n", "config_invalid"],
   ];
   for (const [name, text, code] of cases) {
     const directory = join(root, name);

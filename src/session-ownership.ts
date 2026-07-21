@@ -124,6 +124,7 @@ interface InspectedSessionFile {
   canonicalPath: string;
   header: FileEntry & { type: "session" };
   entries: SessionEntry[];
+  activeEntries: SessionEntry[];
   raw: Buffer;
   version: SessionOwnershipSourceVersion;
 }
@@ -490,7 +491,14 @@ export class SessionOwnershipService {
       managedSessionId,
       sessionDir,
     });
-    const spec = ownershipSpec(suppliedSpec, info, request, mode, sessionDir);
+    const spec = ownershipSpec(
+      suppliedSpec,
+      info,
+      request,
+      mode,
+      sessionDir,
+      source.activeEntries,
+    );
     const opened = await this.#runtime.open({
       sessionId: managedSessionId,
       generation: 1,
@@ -963,6 +971,12 @@ async function inspectSessionFile(
       "session source must be owned by current user",
     );
   }
+  if ((info.mode & 0o022) !== 0) {
+    throw new SessionOwnershipError(
+      "insecure_session_source",
+      "session source must not be group/world writable",
+    );
+  }
   if (info.size < 1 || info.size > limits.maxSourceBytes) {
     throw new SessionOwnershipError(
       "source_too_large",
@@ -976,9 +990,15 @@ async function inspectSessionFile(
     openedInfo = await handle.stat();
     if (
       !openedInfo.isFile() ||
-      openedInfo.size < 1 ||
-      openedInfo.size > limits.maxSourceBytes
+      (getuid !== undefined && openedInfo.uid !== getuid()) ||
+      (openedInfo.mode & 0o022) !== 0
     ) {
+      throw new SessionOwnershipError(
+        "insecure_session_source",
+        "session source authority changed while opening",
+      );
+    }
+    if (openedInfo.size < 1 || openedInfo.size > limits.maxSourceBytes) {
       throw new SessionOwnershipError(
         "source_too_large",
         "session source exceeds byte limit",
@@ -1036,6 +1056,7 @@ async function inspectSessionFile(
     canonicalPath,
     header: manager.getHeader()!,
     entries,
+    activeEntries: manager.getBranch(),
     raw,
     version: {
       canonicalPath,
@@ -1050,12 +1071,50 @@ async function inspectSessionFile(
   };
 }
 
+function sourceModelSpec(
+  activeEntries: readonly SessionEntry[],
+): SessionSpec["model"] | undefined {
+  let provider: string | undefined;
+  let id: string | undefined;
+  let thinkingLevel: NonNullable<SessionSpec["model"]>["thinkingLevel"];
+  for (const entry of activeEntries) {
+    if (entry.type === "model_change") {
+      provider = entry.provider;
+      id = entry.modelId;
+      continue;
+    }
+    if (
+      entry.type === "thinking_level_change" &&
+      isSessionThinkingLevel(entry.thinkingLevel)
+    ) {
+      thinkingLevel = entry.thinkingLevel;
+    }
+  }
+  if (provider === undefined && id === undefined && thinkingLevel === undefined) {
+    return undefined;
+  }
+  return {
+    ...(provider === undefined ? {} : { provider }),
+    ...(id === undefined ? {} : { id }),
+    ...(thinkingLevel === undefined ? {} : { thinkingLevel }),
+  };
+}
+
+function isSessionThinkingLevel(
+  value: string,
+): value is NonNullable<NonNullable<SessionSpec["model"]>["thinkingLevel"]> {
+  return ["off", "minimal", "low", "medium", "high", "xhigh", "max"].includes(
+    value,
+  );
+}
+
 function ownershipSpec(
   supplied: SessionSpec,
   info: SessionInfoResource,
   request: ActivationRequest,
   mode: "direct" | "fork",
   sessionDir: string,
+  activeSourceEntries: readonly SessionEntry[],
 ): SessionSpec {
   const target: SessionSpec["target"] =
     mode === "direct"
@@ -1065,9 +1124,15 @@ function ownershipSpec(
           sourceSession: info.inventoryId,
           sessionDir,
         };
+  const inheritedModel = sourceModelSpec(activeSourceEntries);
+  const effectiveModel =
+    inheritedModel === undefined
+      ? supplied.model
+      : { ...(supplied.model ?? {}), ...inheritedModel };
   return {
     ...structuredClone(supplied),
     cwd: info.cwd,
+    ...(effectiveModel === undefined ? {} : { model: effectiveModel }),
     ...(request.desiredSessionName === undefined
       ? supplied.name === undefined
         ? {}

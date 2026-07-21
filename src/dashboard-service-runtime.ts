@@ -1,6 +1,9 @@
 import { join } from "node:path";
 
-import type { LoadedPiDaemonConfig } from "./config.js";
+import type {
+  LoadedPiDaemonConfig,
+  PiDaemonWebRuntimePolicyConfig,
+} from "./config.js";
 import {
   InProcessDashboardBackend,
   type InProcessDashboardTuiChannels,
@@ -17,6 +20,7 @@ import {
 import { Multiplexer } from "./multiplexer.js";
 import type { RpcAttachmentManager } from "./rpc-attachments.js";
 import type { SessionCatalogStore } from "./session-catalog.js";
+import type { SessionSpec } from "./session-api.js";
 import type { SchedulerRuntime } from "./scheduler-runtime.js";
 import type { FileScheduleStore } from "./schedule-store.js";
 import {
@@ -41,6 +45,29 @@ export interface EmbeddedDashboardServiceRuntimeOptions {
   scheduler?: Pick<SchedulerRuntime, "recompute" | "status">;
   rpcAttachments?: Pick<RpcAttachmentManager, "hasController">;
   tuiChannels?: InProcessDashboardTuiChannels;
+}
+
+export function dashboardActivationRuntimeSpec(
+  cwd: string,
+  policy: PiDaemonWebRuntimePolicyConfig | undefined,
+): SessionSpec {
+  const configured = policy === undefined ? undefined : structuredClone(policy);
+  return {
+    cwd,
+    target: { mode: "memory" },
+    ...(configured?.model === undefined ? {} : { model: configured.model }),
+    tools: configured?.tools ?? { mode: "none" },
+    resources: {
+      extensions: [],
+      skills: [],
+      promptTemplates: [],
+      themes: [],
+      noContextFiles: true,
+      ...(configured?.resources ?? {}),
+    },
+    ...(configured?.settings === undefined ? {} : { settings: configured.settings }),
+    isolation: { mode: "unisolated" },
+  };
 }
 
 export interface EmbeddedDashboardServiceRecovery {
@@ -99,6 +126,7 @@ export class EmbeddedDashboardServiceRuntime {
     const inventoryConfig = resolveSessionInventoryConfig(options.loadedConfig, {
       defaultSessionRoot: piSessionsRoot,
     });
+    const runtimePolicy = options.loadedConfig.config.web?.runtimePolicy;
 
     let ownership: SessionOwnershipService;
     const inventory = new SessionInventory({
@@ -131,18 +159,8 @@ export class EmbeddedDashboardServiceRuntime {
       inventory,
       store: new FileSessionOwnershipStore({ stateDir: options.stateDir }),
       runtime: ownershipRuntime,
-      runtimeSpec: ({ info }) => ({
-        cwd: info.cwd,
-        target: { mode: "memory" },
-        tools: { mode: "none" },
-        resources: {
-          extensions: [],
-          skills: [],
-          promptTemplates: [],
-          themes: [],
-        },
-        isolation: { mode: "unisolated" },
-      }),
+      runtimeSpec: ({ info }) =>
+        dashboardActivationRuntimeSpec(info.cwd, runtimePolicy),
       piSessionsRoot,
       daemonSessionsRoot,
       sourceRoots: inventoryConfig.roots,

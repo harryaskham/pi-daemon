@@ -123,6 +123,11 @@ per logical session. Authenticated creation supports bounded typed Pi-equivalent
 model/tool/resource/settings policy and a memory-only environment overlay.
 Because arbitrary extensions share the process trust domain, they require an
 explicit trusted project/configuration policy; `unisolated` is not a sandbox.
+Dashboard activations use the owner-configured `web.runtimePolicy` for that
+bounded authority and otherwise remain no-tools/no-extensions. Direct and fork
+activation restore the source active branch's provider, model, and thinking
+level before the first turn; model selection never falls through to arbitrary
+registry order when the source records an authenticated model.
 
 The protocol is versioned UTF-8 NDJSON over an owner-only Unix socket. Host
 status and handshake responses include bounded counters, recovery/degraded

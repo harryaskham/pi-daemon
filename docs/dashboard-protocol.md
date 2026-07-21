@@ -206,6 +206,24 @@ Opening a chat pane has three independent stages:
 3. **Hydration/attach** resolves a managed session and opens a generation-bound
    rich or TUI channel. Only a granted controller may mutate it.
 
+Direct co-opt accepts ordinary Pi-created source directories that are owned by
+the daemon user and not group/world writable, even when they are conventionally
+`0755`. This narrow external-source predicate does not apply to daemon state,
+tickets, manifests, or newly managed session directories, which remain
+owner-only. The daemon never silently changes an existing external directory or
+session-file mode; symlinked, foreign-owned, or group/world-writable sources
+fail closed. Safe fork continues to publish into owner-only managed storage.
+
+Direct and fork activation restore the latest valid `model_change` and
+`thinking_level_change` entries on the source's active branch before a model
+turn can occur. A bounded owner-configured `web.runtimePolicy` supplies only the
+fallback model and explicit trusted tool/resource/settings authority; activation
+never discovers ambient packages or project extensions. Browser `/model`
+commands split the canonical `provider/model-id` reference and issue the typed
+`set_model` RPC operation. Pi RPC extension command descriptors are normalized
+for completion, while the extension command itself still executes inside Pi's
+registered-command path without becoming a model prompt.
+
 Export remains a fourth explicit durable operation. Frozen tickets cover a
 successful export-as-new and an indeterminate append-to-origin. A client never
 blindly retries an indeterminate activation, command, or export with a new

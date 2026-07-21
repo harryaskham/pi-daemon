@@ -500,6 +500,9 @@ async function runServe(
         stateDir,
         agentDir,
         allowedRoots,
+        externalSessionRoots: (config.web?.inventory?.roots ?? []).map((root) =>
+          loadedConfig.resolvePath(root),
+        ),
         allowAuthorityRootOverlap:
           booleanSetting(
             options,

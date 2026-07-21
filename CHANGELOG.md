@@ -3,6 +3,12 @@
 All notable changes to Pi Daemon are documented here. The project follows
 semantic versioning once a release tag is cut.
 
+## Unreleased
+
+- preserve direct co-opt compatibility with normal owner-controlled Pi session directories without weakening private daemon-state modes or silently chmodding source data
+- restore source-branch provider/model/thinking policy during Dash activation and send canonical provider/model IDs through browser model switching
+- add owner-configured, bounded `web.runtimePolicy` authority for reviewed Dashboard extensions/resources while retaining no-tools/no-ambient-discovery defaults
+
 ## 0.1.3 — 2026-07-20
 
 - derive the standalone RPC stdio version test from the canonical release version

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { chmod, copyFile, mkdir, mkdtemp, readFile, realpath, writeFile } from "node:fs/promises";
+import { chmod, copyFile, lstat, mkdir, mkdtemp, readFile, realpath, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import test from "node:test";
@@ -345,6 +345,10 @@ test("configured factory applies scoped model auth, settings, resources, and too
   const cwd = await temporaryDirectory();
   const extensionPath = join(cwd, "safe-extension.ts");
   await writeFile(extensionPath, "export default function () {}\n");
+  const autoExtensions = join(cwd, ".pi", "extensions");
+  await mkdir(autoExtensions, { recursive: true });
+  await writeFile(join(autoExtensions, "ambient.ts"), "export default function () {}\n");
+  await writeFile(join(cwd, "AGENTS.md"), "ambient context must not load\n");
 
   const seedRegistry = ModelRegistry.inMemory(AuthStorage.inMemory());
   const model = seedRegistry.getAll().find((candidate) => candidate.provider === "openai");
@@ -427,10 +431,6 @@ test("configured factory applies scoped model auth, settings, resources, and too
     assert.equal(process.env.OPENAI_API_KEY, undefined);
     assert.equal((await adapter.rpcController()).capabilities.policy.bash, true);
 
-    const autoExtensions = join(cwd, ".pi", "extensions");
-    await mkdir(autoExtensions, { recursive: true });
-    await writeFile(join(autoExtensions, "ambient.ts"), "export default function () {}\n");
-    await writeFile(join(cwd, "AGENTS.md"), "ambient context must not load\n");
     const denied = parseSessionConfiguration({
       cwd,
       agentDir: scopedAgentDir,
@@ -451,12 +451,37 @@ test("configured factory applies scoped model auth, settings, resources, and too
       const deniedOptions = captures[1];
       assert.deepEqual(deniedOptions.resourceLoader.getExtensions().extensions, []);
       assert.deepEqual(deniedOptions.resourceLoader.getAgentsFiles(), { agentsFiles: [] });
+      assert.equal(deniedOptions.resourceLoader.getSystemPrompt(), undefined);
+      assert.deepEqual(deniedOptions.resourceLoader.getAppendSystemPrompt(), []);
       assert.equal(deniedOptions.noTools, "all");
       assert.deepEqual(deniedOptions.customTools, []);
       assert.equal((await deniedAdapter.rpcController()).capabilities.policy.bash, false);
     } finally {
       await deniedAdapter.dispose();
     }
+
+    const missingResource = parseSessionConfiguration({
+      cwd,
+      agentDir: scopedAgentDir,
+      target: { mode: "memory" },
+      model: { provider: model.provider, id: model.id },
+      tools: { mode: "none" },
+      resources: {
+        extensions: [join(cwd, "missing-extension.mjs")],
+        noContextFiles: true,
+      },
+      env: { OPENAI_API_KEY: "session-key" },
+    });
+    await assert.rejects(
+      factory.open({
+        sessionId: "configured-missing-resource",
+        generation: 1,
+        ...missingResource.openRequest,
+      }),
+      (error) =>
+        error instanceof PiAdapterError && error.code === "resource_policy_unavailable",
+    );
+    assert.equal(captures.length, 2);
   } finally {
     await adapter.dispose();
     if (previous === undefined) delete process.env.OPENAI_API_KEY;
@@ -506,6 +531,83 @@ test("adapter maps Pi events, prompt result, queue controls, abort, and prefligh
   );
   assert.deepEqual(rejected.map((event) => event.event), ["preflightRejected"]);
   await adapter.dispose();
+});
+
+test("factory opens owner-controlled external Pi sessions without chmodding normal 0755 storage", async () => {
+  const stateDir = await temporaryDirectory();
+  const agentDir = await temporaryDirectory();
+  const cwd = await temporaryDirectory();
+  const externalRoot = join(agentDir, "sessions");
+  const sessionDir = join(externalRoot, "normal-pi-project");
+  await mkdir(sessionDir, { recursive: true, mode: 0o755 });
+  await chmod(externalRoot, 0o755);
+  await chmod(sessionDir, 0o755);
+  const source = join(sessionDir, "source.jsonl");
+  const timestamp = "2026-07-21T12:00:00.000Z";
+  await writeFile(
+    source,
+    `${JSON.stringify({ type: "session", version: 3, id: "external-source", timestamp, cwd })}\n${JSON.stringify({ type: "message", id: "source-message", parentId: null, timestamp, message: { role: "user", content: "fixture", timestamp: Date.parse(timestamp) } })}\n`,
+    { mode: 0o644 },
+  );
+  await chmod(source, 0o644);
+  const { authStorage, modelRegistry, model } = modelHarness();
+  const captures = [];
+  const factory = new PiSessionFactory({
+    stateDir,
+    agentDir,
+    allowedRoots: [cwd],
+    externalSessionRoots: [externalRoot],
+    authStorage,
+    modelRegistry,
+    async createSession(options) {
+      captures.push(options);
+      return {
+        session: new FakePiSession("external-source", options.model, options.sessionManager),
+        extensionsResult: options.resourceLoader.getExtensions(),
+      };
+    },
+  });
+  const prepared = parseSessionConfiguration({
+    cwd,
+    target: { mode: "open", path: source, sessionDir },
+    model: { provider: model.provider, id: model.id },
+    tools: { mode: "none" },
+  });
+  const adapter = await factory.open({
+    sessionId: "external-source",
+    generation: 1,
+    ...prepared.openRequest,
+  });
+  await adapter.dispose();
+  assert.equal(captures.length, 1);
+  assert.equal((await lstat(sessionDir)).mode & 0o777, 0o755);
+  assert.equal((await lstat(source)).mode & 0o777, 0o644);
+
+  await chmod(sessionDir, 0o777);
+  await assert.rejects(
+    factory.open({
+      sessionId: "external-writable-directory",
+      generation: 1,
+      ...prepared.openRequest,
+    }),
+    (error) =>
+      error instanceof PiAdapterError &&
+      error.code === "insecure_session_path" &&
+      /group\/world writable/.test(error.message),
+  );
+  await chmod(sessionDir, 0o755);
+  await chmod(source, 0o666);
+  await assert.rejects(
+    factory.open({
+      sessionId: "external-writable-file",
+      generation: 1,
+      ...prepared.openRequest,
+    }),
+    (error) =>
+      error instanceof PiAdapterError &&
+      error.code === "insecure_session_path" &&
+      /file must not be group\/world writable/.test(error.message),
+  );
 });
 
 test("factory permits only the canonical Pi sessions data subtree inside agentDir", async () => {
@@ -757,6 +859,62 @@ test("real Pi runtime new, switch, fork, and import preserve resolved conversati
     sessionFile: importedFile,
   });
   assert.deepEqual(changed.at(-1), adapter.identity());
+  await adapter.dispose();
+});
+
+test("real Pi SDK loads only an explicitly approved extension command/tool profile without a model turn", async () => {
+  const stateDir = await temporaryDirectory();
+  const agentDir = await temporaryDirectory();
+  const cwd = await temporaryDirectory();
+  const extension = join(cwd, "model-shortcut.mjs");
+  await writeFile(
+    extension,
+    `export default function (pi) {\n  pi.registerCommand("m", { description: "Switch model", handler: async () => {} });\n  pi.registerTool({ name: "self_set_model", label: "Self Set Model", description: "Switch model", parameters: { type: "object", properties: {} }, async execute() { return { content: [{ type: "text", text: "ok" }] }; } });\n}\n`,
+    { mode: 0o600 },
+  );
+  const { authStorage, modelRegistry, model } = modelHarness();
+  const sessions = [];
+  const factory = new PiSessionFactory({
+    stateDir,
+    agentDir,
+    allowedRoots: [cwd],
+    authStorage,
+    modelRegistry,
+    async createSession(options) {
+      const result = await createAgentSession(options);
+      sessions.push(result.session);
+      return result;
+    },
+  });
+  const prepared = parseSessionConfiguration({
+    cwd,
+    target: { mode: "memory" },
+    model: { provider: model.provider, id: model.id },
+    tools: { mode: "allowlist", include: ["self_set_model"] },
+    resources: {
+      extensions: [extension],
+      noSkills: true,
+      noPromptTemplates: true,
+      noThemes: true,
+      noContextFiles: true,
+      projectTrust: "approve",
+    },
+  });
+  const adapter = await factory.open({
+    sessionId: "approved-extension-command",
+    generation: 1,
+    ...prepared.openRequest,
+  });
+  const rpc = await adapter.rpcController();
+  const response = await rpc.handle({ type: "get_commands" });
+  assert.equal(response.success, true);
+  assert.equal(
+    response.data.commands.some(
+      (command) => command.source === "extension" && ["m", "/m"].includes(command.name),
+    ),
+    true,
+  );
+  assert.deepEqual(sessions[0].getActiveToolNames(), ["self_set_model"]);
   await adapter.dispose();
 });
 

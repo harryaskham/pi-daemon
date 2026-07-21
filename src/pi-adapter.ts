@@ -57,6 +57,13 @@ export interface PiSessionFactoryOptions {
   stateDir: string;
   agentDir?: string;
   allowedRoots: string[];
+  /**
+   * Canonical inventory roots whose existing Pi session directories are
+   * operator-owned external data rather than daemon state. Existing directories
+   * under these roots may be group/world readable, but never writable, and are
+   * never chmodded by the daemon.
+   */
+  externalSessionRoots?: string[];
   allowAuthorityRootOverlap?: boolean;
   authStorage?: AuthStorage;
   modelRegistry?: ModelRegistry;
@@ -90,6 +97,7 @@ export class PiSessionFactory implements SessionFactory {
   readonly modelRegistry: ModelRegistry;
   readonly #stateDir: string;
   readonly #allowedRoots: string[];
+  readonly #externalSessionRoots: string[];
   readonly #allowAuthorityRootOverlap: boolean;
   readonly #createSession: (
     options: CreateAgentSessionOptions,
@@ -105,6 +113,9 @@ export class PiSessionFactory implements SessionFactory {
       throw new Error("at least one allowedRoots entry is required");
     }
     this.#allowedRoots = options.allowedRoots.map((root) => resolve(root));
+    this.#externalSessionRoots = (options.externalSessionRoots ?? []).map((root) =>
+      resolve(root),
+    );
     this.agentDir = resolve(options.agentDir ?? getAgentDir());
     this.#allowAuthorityRootOverlap = options.allowAuthorityRootOverlap ?? false;
     const authPath = join(this.agentDir, "auth.json");
@@ -196,7 +207,15 @@ export class PiSessionFactory implements SessionFactory {
     await ensurePrivateDirectory(this.#stateDir, "state directory");
     await ensurePrivateDirectory(sessionsRoot, "sessions directory");
     await ensurePrivateDirectory(logicalSessionRoot, "logical session directory");
-    await ensurePrivateDirectory(sessionDir, "Pi session directory");
+    const externalSessionDirectory =
+      configuredSpec?.target.mode === "open" &&
+      (await isOwnerControlledExternalSessionDirectory(
+        sessionDir,
+        this.#externalSessionRoots,
+      ));
+    if (!externalSessionDirectory) {
+      await ensurePrivateDirectory(sessionDir, "Pi session directory");
+    }
     const canonicalSessionDir = await realpath(sessionDir);
     validateSessionRoot(
       canonicalSessionDir,
@@ -293,6 +312,9 @@ export class PiSessionFactory implements SessionFactory {
           "runtime replacement cannot override the configured session agentDir",
         );
       }
+      if (configuredSpec !== undefined) {
+        await validateExplicitResourceAuthority(configuredSpec);
+      }
       const settingsManager =
         configuredSpec === undefined
           ? SettingsManager.inMemory()
@@ -332,9 +354,13 @@ export class PiSessionFactory implements SessionFactory {
           message: diagnostic.message,
         })),
       );
+      if (configuredSpec !== undefined) {
+        assertExplicitResourcesLoaded(configuredSpec, services.resourceLoader);
+      }
       const materializedSessionManager = await materializeSessionManager(
         runtimeSessionManager,
         canonicalCwd,
+        { preserveExistingMode: externalSessionDirectory },
       );
       const customTools =
         hostToolAdapter !== undefined
@@ -382,16 +408,20 @@ export class PiSessionFactory implements SessionFactory {
           "Pi SDK enabled tools outside the host adapter allowlist",
         );
       }
-      if (
-        hostToolAdapter === undefined &&
-        runtimeOptions === undefined &&
-        activeToolNames.length !== 0
-      ) {
-        result.session.dispose();
-        throw new PiAdapterError(
-          "unsafe_tool_profile",
-          "Pi SDK enabled tools despite the no-tools resource policy",
-        );
+      if (hostToolAdapter === undefined) {
+        const configuredAllowlist = configuredSpec?.tools?.include ?? [];
+        const refusesAllTools =
+          runtimeOptions === undefined || configuredSpec?.tools?.mode === "none";
+        const outsideAllowlist =
+          configuredSpec?.tools?.mode === "allowlist" &&
+          activeToolNames.some((name) => !configuredAllowlist.includes(name));
+        if ((refusesAllTools && activeToolNames.length !== 0) || outsideAllowlist) {
+          result.session.dispose();
+          throw new PiAdapterError(
+            "unsafe_tool_profile",
+            "Pi SDK enabled tools outside the explicit session tool policy",
+          );
+        }
       }
       return { ...result, services, diagnostics: services.diagnostics };
     };
@@ -780,6 +810,69 @@ function legacyServices(
   };
 }
 
+async function validateExplicitResourceAuthority(
+  spec: PreparedSessionRuntimeOptions["persistedSpec"],
+): Promise<void> {
+  const resources = spec.resources;
+  const references = [
+    ...(resources?.extensions ?? []),
+    ...(resources?.skills ?? []),
+    ...(resources?.promptTemplates ?? []),
+    ...(resources?.themes ?? []),
+  ];
+  const getuid = process.getuid;
+  for (const reference of references) {
+    if (/^(?:git|npm):/u.test(reference)) continue;
+    let info;
+    try {
+      info = await lstat(reference);
+    } catch {
+      throw new PiAdapterError(
+        "resource_policy_unavailable",
+        "an explicitly configured session resource is unavailable",
+      );
+    }
+    if (
+      info.isSymbolicLink() ||
+      (!info.isFile() && !info.isDirectory()) ||
+      (getuid !== undefined && info.uid !== getuid() && info.uid !== 0) ||
+      (info.mode & 0o022) !== 0
+    ) {
+      throw new PiAdapterError(
+        "resource_policy_unavailable",
+        "an explicitly configured session resource is not owner-controlled",
+      );
+    }
+  }
+}
+
+function assertExplicitResourcesLoaded(
+  spec: PreparedSessionRuntimeOptions["persistedSpec"],
+  loader: ResourceLoader,
+): void {
+  const resources = spec.resources;
+  const extensionFailures =
+    (resources?.extensions?.length ?? 0) > 0 ? loader.getExtensions().errors.length : 0;
+  const skillFailures =
+    (resources?.skills?.length ?? 0) > 0
+      ? loader.getSkills().diagnostics.filter((entry) => entry.type === "error").length
+      : 0;
+  const promptFailures =
+    (resources?.promptTemplates?.length ?? 0) > 0
+      ? loader.getPrompts().diagnostics.filter((entry) => entry.type === "error").length
+      : 0;
+  const themeFailures =
+    (resources?.themes?.length ?? 0) > 0
+      ? loader.getThemes().diagnostics.filter((entry) => entry.type === "error").length
+      : 0;
+  if (extensionFailures + skillFailures + promptFailures + themeFailures > 0) {
+    throw new PiAdapterError(
+      "resource_policy_unavailable",
+      "one or more explicitly configured session resources failed to load",
+    );
+  }
+}
+
 function resourceLoaderOptions(
   spec: PreparedSessionRuntimeOptions["persistedSpec"],
   forceNoExtensions = false,
@@ -795,16 +888,32 @@ function resourceLoaderOptions(
     additionalSkillPaths: [...skills],
     additionalPromptTemplatePaths: [...prompts],
     additionalThemePaths: [...themes],
+    // Pi's no* switches retain explicit CLI/additional paths while excluding
+    // ambient user/project discovery. An explicitly present list therefore
+    // means "only these", including when it is empty.
     noExtensions:
-      forceNoExtensions || resources?.noExtensions === true || (!approved && extensions.length === 0),
-    noSkills: resources?.noSkills === true || (!approved && skills.length === 0),
+      forceNoExtensions ||
+      resources?.noExtensions === true ||
+      resources?.extensions !== undefined ||
+      (!approved && extensions.length === 0),
+    noSkills:
+      resources?.noSkills === true ||
+      resources?.skills !== undefined ||
+      (!approved && skills.length === 0),
     noPromptTemplates:
-      resources?.noPromptTemplates === true || (!approved && prompts.length === 0),
-    noThemes: resources?.noThemes === true || (!approved && themes.length === 0),
-    noContextFiles: resources?.noContextFiles === true || !approved,
-    ...(resources?.systemPrompt === undefined ? {} : { systemPrompt: resources.systemPrompt }),
+      resources?.noPromptTemplates === true ||
+      resources?.promptTemplates !== undefined ||
+      (!approved && prompts.length === 0),
+    noThemes:
+      resources?.noThemes === true ||
+      resources?.themes !== undefined ||
+      (!approved && themes.length === 0),
+    noContextFiles: resources?.noContextFiles !== false,
+    ...(resources?.systemPrompt === undefined
+      ? { systemPromptOverride: () => undefined }
+      : { systemPrompt: resources.systemPrompt }),
     ...(resources?.appendSystemPrompt === undefined
-      ? {}
+      ? { appendSystemPromptOverride: () => [] }
       : { appendSystemPrompt: [...resources.appendSystemPrompt] }),
   };
 }
@@ -906,6 +1015,38 @@ function configuredBashEnabled(spec: PreparedSessionRuntimeOptions["persistedSpe
   }
 }
 
+async function isOwnerControlledExternalSessionDirectory(
+  candidate: string,
+  configuredRoots: readonly string[],
+): Promise<boolean> {
+  if (configuredRoots.length === 0) return false;
+  const requested = await lstat(candidate);
+  if (requested.isSymbolicLink() || !requested.isDirectory()) {
+    throw new PiAdapterError(
+      "insecure_session_path",
+      "external Pi session directory must be a real directory",
+    );
+  }
+  const canonical = await realpath(candidate);
+  const roots = await Promise.all(configuredRoots.map((root) => realpath(root)));
+  if (!roots.some((root) => isWithin(root, canonical))) return false;
+  const info = await lstat(canonical);
+  const getuid = process.getuid;
+  if (getuid !== undefined && info.uid !== getuid()) {
+    throw new PiAdapterError(
+      "insecure_session_path",
+      "external Pi session directory must be owned by the current user",
+    );
+  }
+  if ((info.mode & 0o022) !== 0) {
+    throw new PiAdapterError(
+      "insecure_session_path",
+      "external Pi session directory must not be group/world writable",
+    );
+  }
+  return true;
+}
+
 function validateSessionRoot(
   sessionRoot: string,
   cwd: string,
@@ -931,6 +1072,7 @@ function validateSessionRoot(
 async function materializeSessionManager(
   sessionManager: SessionManager,
   cwd: string,
+  options: { preserveExistingMode: boolean },
 ): Promise<SessionManager> {
   if (!sessionManager.isPersisted()) return sessionManager;
   const sessionFile = sessionManager.getSessionFile();
@@ -958,6 +1100,12 @@ async function materializeSessionManager(
         "Pi session file must be owned by the current user",
       );
     }
+    if (options.preserveExistingMode && (info.mode & 0o022) !== 0) {
+      throw new PiAdapterError(
+        "insecure_session_path",
+        "external Pi session file must not be group/world writable",
+      );
+    }
     exists = true;
   } catch (error) {
     if (!isNodeError(error) || error.code !== "ENOENT") throw error;
@@ -972,7 +1120,7 @@ async function materializeSessionManager(
       await handle.close();
     }
   }
-  await chmod(sessionFile, 0o600);
+  if (!options.preserveExistingMode) await chmod(sessionFile, 0o600);
 
   const reopened = SessionManager.open(sessionFile, sessionManager.getSessionDir(), cwd);
   if (reopened.getSessionId() !== sessionManager.getSessionId()) {
