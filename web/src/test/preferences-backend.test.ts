@@ -2,6 +2,7 @@ import type { DashboardSettingsResource, DashboardWorkspaceResource } from "@har
 import { describe, expect, it } from "vitest";
 import { INITIAL_LAYOUT, toDashboardLayout } from "../layout";
 import { DashboardRevisionConflict, LocalDashboardPreferencesBackend } from "../preferences-backend";
+import { scopedPreferenceMutationId } from "../use-dashboard-preferences";
 
 function resources() {
   const workspace: DashboardWorkspaceResource = {
@@ -30,6 +31,16 @@ function resources() {
 }
 
 describe("revisioned dashboard preferences backend", () => {
+  it("scopes first mutation keys uniquely across browser reloads", () => {
+    expect(scopedPreferenceMutationId("settings-patch", "browser-a", 1)).toBe("settings-patch-browser-a-1");
+    expect(scopedPreferenceMutationId("settings-patch", "browser-a", 1)).not.toBe(
+      scopedPreferenceMutationId("settings-patch", "browser-b", 1),
+    );
+    expect(scopedPreferenceMutationId("workspace-save", "browser-a", 1)).not.toBe(
+      scopedPreferenceMutationId("settings-patch", "browser-a", 1),
+    );
+  });
+
   it("persists workspace revisions and joins exact idempotent retries", async () => {
     const { workspace, settings } = resources();
     const backend = new LocalDashboardPreferencesBackend(workspace, settings);

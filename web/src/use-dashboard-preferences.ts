@@ -15,6 +15,10 @@ import {
 
 export type PreferenceSyncState = "synced" | "dirty" | "saving" | "conflict" | "error";
 
+export function scopedPreferenceMutationId(prefix: string, scope: string, sequence: number): string {
+  return `${prefix}-${scope}-${sequence}`;
+}
+
 function workspaceKey(layout: LayoutNode, selectedPaneId: string, seenCursors: DashboardWorkspaceResource["seenCursors"]): string {
   return JSON.stringify({ layout: toDashboardLayout(layout), selectedPaneId, seenCursors });
 }
@@ -39,6 +43,7 @@ export function useDashboardWorkspace(
   const revisionRef = useRef(initial.revision);
   const savedKeyRef = useRef(workspaceKey(layout, selectedPaneId, seenCursors));
   const sequenceRef = useRef(0);
+  const mutationScopeRef = useRef(crypto.randomUUID());
   const tailRef = useRef<Promise<void>>(Promise.resolve());
 
   useEffect(() => {
@@ -52,8 +57,8 @@ export function useDashboardWorkspace(
       tailRef.current = tailRef.current.then(async () => {
         try {
           const saved = await backend.updateWorkspace({
-            requestId: `workspace-request-${requestSequence}`,
-            idempotencyKey: `workspace-save-${requestSequence}`,
+            requestId: scopedPreferenceMutationId("workspace-request", mutationScopeRef.current, requestSequence),
+            idempotencyKey: scopedPreferenceMutationId("workspace-save", mutationScopeRef.current, requestSequence),
             expectedRevision: revisionRef.current,
             selectedPaneId,
             layout: wireLayout,
@@ -103,6 +108,7 @@ export function useDashboardSettings(
   const [syncState, setSyncState] = useState<PreferenceSyncState>("synced");
   const revisionRef = useRef(initial.revision);
   const sequenceRef = useRef(0);
+  const mutationScopeRef = useRef(crypto.randomUUID());
   const tailRef = useRef<Promise<void>>(Promise.resolve());
 
   const recover = useCallback(async (error: unknown) => {
@@ -122,8 +128,8 @@ export function useDashboardSettings(
     tailRef.current = tailRef.current.then(async () => {
       try {
         const saved = await backend.patchSettings({
-          requestId: `settings-request-${requestSequence}`,
-          idempotencyKey: `settings-patch-${requestSequence}`,
+          requestId: scopedPreferenceMutationId("settings-request", mutationScopeRef.current, requestSequence),
+          idempotencyKey: scopedPreferenceMutationId("settings-patch", mutationScopeRef.current, requestSequence),
           expectedRevision: revisionRef.current,
           patch: settingsPatch,
         });
