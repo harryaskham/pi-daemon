@@ -634,6 +634,8 @@ implementation order. This list is a human-readable crosswalk.
 
 ### Post-completion operator surfaces
 
+- [x] `bd-e8cab3` — reload-unique Dash workspace/settings idempotency scopes so
+  every settings category remains editable across durable browser sessions.
 - [x] `bd-4e7a92` — restore cookie-authenticated Dash mutation authority after
   ordinary browser reload without storing the owner credential in JavaScript.
 - [x] `bd-3aae18` — explicit default-off high-trust authority-root overlap for
