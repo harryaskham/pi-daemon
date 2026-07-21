@@ -467,6 +467,7 @@ export class SessionInventory {
           ? 0
           : (this.#orderedPositions.get(after.inventoryId) ?? -1) + 1;
       let visited = 0;
+      let lastYieldAt = performance.now();
       for (let index = start; index < this.#orderedRecords.length; index += 1) {
         const record = this.#orderedRecords[index]!;
         if (recordMatches(record, normalized, searchBits, this.limits.searchBloomBytes)) {
@@ -474,7 +475,10 @@ export class SessionInventory {
           if (selected.length > limit) break;
         }
         visited += 1;
-        if (visited % 512 === 0) await yieldEventLoop();
+        if (visited % 256 === 0 && performance.now() - lastYieldAt >= 8) {
+          await yieldEventLoop();
+          lastYieldAt = performance.now();
+        }
       }
     }
     const pageRecords = selected.slice(0, limit);
