@@ -212,7 +212,7 @@ test("release invariants reject metadata, tag, changelog, and artifact drift", a
 
   const development = await checkRelease({ root });
   assert.equal(development.version, packageVersion);
-  assert.equal(development.changelogLabel, "2026-07-20");
+  assert.match(development.changelogLabel, /^\d{4}-\d{2}-\d{2}$/);
 
   const sourcePath = join(root, "src/version.ts");
   const source = await readFile(sourcePath, "utf8");
@@ -253,7 +253,7 @@ test("release invariants reject metadata, tag, changelog, and artifact drift", a
   const changelog = await readFile(changelogPath, "utf8");
   await writeFile(
     changelogPath,
-    changelog.replace(`${packageVersion} — 2026-07-20`, `${packageVersion} — unreleased`),
+    changelog.replace(`${packageVersion} — ${development.changelogLabel}`, `${packageVersion} — unreleased`),
   );
   await assert.rejects(
     checkRelease({ root, tag: `v${packageVersion}` }),
@@ -261,7 +261,7 @@ test("release invariants reject metadata, tag, changelog, and artifact drift", a
   );
   await writeFile(
     changelogPath,
-    changelog.replace(`${packageVersion} — 2026-07-20`, `${packageVersion} — 2026-07-14`),
+    changelog.replace(`${packageVersion} — ${development.changelogLabel}`, `${packageVersion} — 2026-07-14`),
   );
   const release = await checkRelease({
     root,

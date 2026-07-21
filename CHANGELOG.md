@@ -3,7 +3,11 @@
 All notable changes to Pi Daemon are documented here. The project follows
 semantic versioning once a release tag is cut.
 
-## Unreleased
+## 0.2.0 — 2026-07-21
+
+Pre-1.0 breaking runtime-policy release: Dashboard activation now preserves and
+executes explicitly reviewed source/runtime authority instead of always forcing
+the prior no-tools/no-resource policy.
 
 - preserve direct co-opt compatibility with normal owner-controlled Pi session directories without weakening private daemon-state modes or silently chmodding source data
 - restore source-branch provider/model/thinking policy during Dash activation and send canonical provider/model IDs through browser model switching
