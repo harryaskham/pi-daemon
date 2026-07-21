@@ -14,13 +14,13 @@
   runtimeExecutable =
     if cfg.mutableRuntime.enable
     then
-      pkgs.writeShellScript "pi-daemon-runtime" ''
+      toString (pkgs.writeShellScript "pi-daemon-runtime" ''
         candidate=${lib.escapeShellArg cfg.mutableRuntime.binaryPath}
         if [[ -x "$candidate" ]] && [[ ! "$candidate" -ef "$0" ]]; then
           exec "$candidate" "$@"
         fi
         exec ${lib.escapeShellArg "${cfg.package}/bin/pi-daemon"} "$@"
-      ''
+      '')
     else "${cfg.package}/bin/pi-daemon";
 
   instanceModule = {

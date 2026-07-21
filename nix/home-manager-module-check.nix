@@ -272,6 +272,7 @@ in
   assert portCollisionDetected;
   assert tokenCollisionDetected;
   assert webPortCollisionDetected;
+  assert builtins.isString normalAlphaExecutable;
     pkgs.runCommand "pi-daemon-home-manager-module-check" {} ''
       test ${lib.escapeShellArg (toString (builtins.length eval.config.home.packages))} = 1
       test ${lib.escapeShellArg normalAlphaIdentity} = ${lib.escapeShellArg (
