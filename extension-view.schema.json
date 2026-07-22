@@ -1,0 +1,313 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://a.skh.am/pi-daemon/extension-view.schema.json",
+  "title": "Pi declarative extension view v1",
+  "description": "Bounded code-free declarative extension views transported across Pi RPC, TUI fallback, and Dash Rich renderers.",
+  "oneOf": [
+    { "$ref": "#/$defs/view" },
+    { "$ref": "#/$defs/response" }
+  ],
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    },
+    "boundedText": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 65536
+    },
+    "negotiationCapability": {
+      "type": "object",
+      "required": ["protocol", "version", "source", "renderers", "browserCodeExecution", "imageSources", "limits"],
+      "properties": {
+        "protocol": { "const": "pi-declarative-view" },
+        "version": { "const": "1.0" },
+        "source": { "const": "pi-rpc-proposal" },
+        "renderers": {
+          "type": "object",
+          "required": ["rich", "tui", "rpc"],
+          "properties": {
+            "rich": { "const": "native" },
+            "tui": { "const": "fallback" },
+            "rpc": { "const": "transport" }
+          },
+          "additionalProperties": false
+        },
+        "browserCodeExecution": { "const": false },
+        "imageSources": { "const": "authorized-blob-only" },
+        "limits": {
+          "type": "object",
+          "required": ["maxViewBytes", "maxNodes", "maxDepth", "maxTextBytes", "maxActions", "maxFields", "maxOptions", "maxImages"],
+          "properties": {
+            "maxViewBytes": { "type": "integer", "minimum": 1, "maximum": 1048576 },
+            "maxNodes": { "type": "integer", "minimum": 1, "maximum": 1024 },
+            "maxDepth": { "type": "integer", "minimum": 1, "maximum": 32 },
+            "maxTextBytes": { "type": "integer", "minimum": 1, "maximum": 1048576 },
+            "maxActions": { "type": "integer", "minimum": 1, "maximum": 128 },
+            "maxFields": { "type": "integer", "minimum": 1, "maximum": 128 },
+            "maxOptions": { "type": "integer", "minimum": 1, "maximum": 512 },
+            "maxImages": { "type": "integer", "minimum": 1, "maximum": 64 }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "capabilities": {
+      "type": "object",
+      "required": ["actions", "links", "images"],
+      "properties": {
+        "actions": {
+          "type": "array",
+          "maxItems": 32,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/identifier" }
+        },
+        "links": { "const": "none" },
+        "images": { "const": "authorized-blob-only" }
+      },
+      "additionalProperties": false
+    },
+    "textNode": {
+      "type": "object",
+      "required": ["type", "text"],
+      "properties": {
+        "type": { "const": "text" },
+        "text": { "$ref": "#/$defs/boundedText" }
+      },
+      "additionalProperties": false
+    },
+    "markdownNode": {
+      "type": "object",
+      "required": ["type", "text"],
+      "properties": {
+        "type": { "const": "markdown" },
+        "text": { "$ref": "#/$defs/boundedText" }
+      },
+      "additionalProperties": false
+    },
+    "codeNode": {
+      "type": "object",
+      "required": ["type", "code"],
+      "properties": {
+        "type": { "const": "code" },
+        "code": { "type": "string", "maxLength": 65536 },
+        "language": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[A-Za-z0-9][A-Za-z0-9_+.-]*$" },
+        "filename": { "type": "string", "maxLength": 512 }
+      },
+      "additionalProperties": false
+    },
+    "diffNode": {
+      "type": "object",
+      "required": ["type", "diff"],
+      "properties": {
+        "type": { "const": "diff" },
+        "diff": { "type": "string", "maxLength": 65536 },
+        "language": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[A-Za-z0-9][A-Za-z0-9_+.-]*$" }
+      },
+      "additionalProperties": false
+    },
+    "imageNode": {
+      "type": "object",
+      "required": ["type", "blobRef", "mediaType", "alt"],
+      "properties": {
+        "type": { "const": "image" },
+        "blobRef": { "type": "string", "minLength": 6, "maxLength": 256, "pattern": "^blob:[A-Za-z0-9][A-Za-z0-9._:-]*$" },
+        "mediaType": { "enum": ["image/png", "image/jpeg", "image/gif", "image/webp"] },
+        "alt": { "type": "string", "maxLength": 1024 },
+        "width": { "type": "integer", "minimum": 1, "maximum": 16384 },
+        "height": { "type": "integer", "minimum": 1, "maximum": 16384 }
+      },
+      "additionalProperties": false
+    },
+    "keyValueNode": {
+      "type": "object",
+      "required": ["type", "entries"],
+      "properties": {
+        "type": { "const": "key-value" },
+        "entries": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "type": "object",
+            "required": ["key", "value"],
+            "properties": {
+              "key": { "type": "string", "minLength": 1, "maxLength": 256 },
+              "value": { "type": "string", "maxLength": 4096 }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "statusNode": {
+      "type": "object",
+      "required": ["type", "tone", "label"],
+      "properties": {
+        "type": { "const": "status" },
+        "tone": { "enum": ["neutral", "info", "success", "warning", "error"] },
+        "label": { "type": "string", "minLength": 1, "maxLength": 512 },
+        "detail": { "type": "string", "maxLength": 4096 }
+      },
+      "additionalProperties": false
+    },
+    "stackNode": {
+      "type": "object",
+      "required": ["type", "children"],
+      "properties": {
+        "type": { "const": "stack" },
+        "gap": { "enum": ["compact", "normal", "relaxed"] },
+        "children": { "type": "array", "minItems": 1, "maxItems": 256, "items": { "$ref": "#/$defs/node" } }
+      },
+      "additionalProperties": false
+    },
+    "gridNode": {
+      "type": "object",
+      "required": ["type", "columns", "children"],
+      "properties": {
+        "type": { "const": "grid" },
+        "columns": { "type": "integer", "minimum": 1, "maximum": 4 },
+        "children": { "type": "array", "minItems": 1, "maxItems": 256, "items": { "$ref": "#/$defs/node" } }
+      },
+      "additionalProperties": false
+    },
+    "actionNode": {
+      "type": "object",
+      "required": ["type", "actionId", "label"],
+      "properties": {
+        "type": { "const": "action" },
+        "actionId": { "$ref": "#/$defs/identifier" },
+        "label": { "type": "string", "minLength": 1, "maxLength": 512 },
+        "tone": { "enum": ["default", "primary", "danger"] }
+      },
+      "additionalProperties": false
+    },
+    "textField": {
+      "type": "object",
+      "required": ["type", "name", "label"],
+      "properties": {
+        "type": { "enum": ["text", "multiline"] },
+        "name": { "$ref": "#/$defs/identifier" },
+        "label": { "type": "string", "minLength": 1, "maxLength": 512 },
+        "required": { "type": "boolean" },
+        "placeholder": { "type": "string", "maxLength": 1024 },
+        "initial": { "type": "string", "maxLength": 8192 }
+      },
+      "additionalProperties": false
+    },
+    "selectField": {
+      "type": "object",
+      "required": ["type", "name", "label", "options"],
+      "properties": {
+        "type": { "const": "select" },
+        "name": { "$ref": "#/$defs/identifier" },
+        "label": { "type": "string", "minLength": 1, "maxLength": 512 },
+        "required": { "type": "boolean" },
+        "options": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 128,
+          "items": {
+            "type": "object",
+            "required": ["value", "label"],
+            "properties": {
+              "value": { "type": "string", "minLength": 1, "maxLength": 512 },
+              "label": { "type": "string", "minLength": 1, "maxLength": 512 }
+            },
+            "additionalProperties": false
+          }
+        },
+        "initial": { "type": "string", "minLength": 1, "maxLength": 512 }
+      },
+      "additionalProperties": false
+    },
+    "booleanField": {
+      "type": "object",
+      "required": ["type", "name", "label"],
+      "properties": {
+        "type": { "const": "boolean" },
+        "name": { "$ref": "#/$defs/identifier" },
+        "label": { "type": "string", "minLength": 1, "maxLength": 512 },
+        "required": { "type": "boolean" },
+        "initial": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "field": {
+      "oneOf": [
+        { "$ref": "#/$defs/textField" },
+        { "$ref": "#/$defs/selectField" },
+        { "$ref": "#/$defs/booleanField" }
+      ]
+    },
+    "formNode": {
+      "type": "object",
+      "required": ["type", "formId", "submitActionId", "submitLabel", "fields"],
+      "properties": {
+        "type": { "const": "form" },
+        "formId": { "$ref": "#/$defs/identifier" },
+        "submitActionId": { "$ref": "#/$defs/identifier" },
+        "submitLabel": { "type": "string", "minLength": 1, "maxLength": 512 },
+        "fields": { "type": "array", "minItems": 1, "maxItems": 32, "items": { "$ref": "#/$defs/field" } }
+      },
+      "additionalProperties": false
+    },
+    "node": {
+      "oneOf": [
+        { "$ref": "#/$defs/textNode" },
+        { "$ref": "#/$defs/markdownNode" },
+        { "$ref": "#/$defs/codeNode" },
+        { "$ref": "#/$defs/diffNode" },
+        { "$ref": "#/$defs/imageNode" },
+        { "$ref": "#/$defs/keyValueNode" },
+        { "$ref": "#/$defs/statusNode" },
+        { "$ref": "#/$defs/stackNode" },
+        { "$ref": "#/$defs/gridNode" },
+        { "$ref": "#/$defs/actionNode" },
+        { "$ref": "#/$defs/formNode" }
+      ]
+    },
+    "view": {
+      "type": "object",
+      "required": ["protocol", "version", "viewId", "revision", "fallbackText", "capabilities", "root"],
+      "properties": {
+        "protocol": { "const": "pi-declarative-view" },
+        "version": { "const": "1.0" },
+        "viewId": { "$ref": "#/$defs/identifier" },
+        "revision": { "type": "integer", "minimum": 0 },
+        "title": { "type": "string", "maxLength": 512 },
+        "fallbackText": { "type": "string", "minLength": 1, "maxLength": 4096 },
+        "capabilities": { "$ref": "#/$defs/capabilities" },
+        "root": { "$ref": "#/$defs/node" }
+      },
+      "additionalProperties": false
+    },
+    "response": {
+      "type": "object",
+      "required": ["protocol", "version", "viewId", "revision", "actionId"],
+      "properties": {
+        "protocol": { "const": "pi-declarative-view" },
+        "version": { "const": "1.0" },
+        "viewId": { "$ref": "#/$defs/identifier" },
+        "revision": { "type": "integer", "minimum": 0 },
+        "actionId": { "$ref": "#/$defs/identifier" },
+        "values": {
+          "type": "object",
+          "maxProperties": 32,
+          "propertyNames": { "$ref": "#/$defs/identifier" },
+          "additionalProperties": {
+            "oneOf": [
+              { "type": "string", "maxLength": 8192 },
+              { "type": "boolean" }
+            ]
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

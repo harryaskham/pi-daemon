@@ -40,6 +40,8 @@ import type {
   DashboardSessionDraftSendTicket,
 } from "@harryaskham/pi-daemon/dashboard-session-draft-contract";
 import type { ScheduleCapabilities } from "@harryaskham/pi-daemon/schedule-contract";
+import { EXTENSION_VIEW_CAPABILITY } from "@harryaskham/pi-daemon/extension-view-contract";
+import { createExtensionViewFixture } from "@harryaskham/pi-daemon/extension-view-fixtures";
 import type { JsonObject, JsonValue, SessionResource } from "@harryaskham/pi-daemon/session-api";
 import { LocalFixtureBackend } from "./fixture-backend";
 import { createTranscriptFixtures, createTranscriptShowcaseFixtures } from "./fixtures";
@@ -82,6 +84,7 @@ export class LiveFixtureDashboardBackend extends LocalFixtureBackend implements 
         rich: { available: true, replay: true, controller: true, commands: [...COMMANDS] },
         tui: { available: false, replay: true, controller: true, commands: [...COMMANDS], unavailableReason: "fixture-uses-local-tui-story" },
       },
+      extensionViews: structuredClone(EXTENSION_VIEW_CAPABILITY),
       limits: { ...DASH_DEFAULT_LIMITS },
       performanceBudgets: { ...DASH_PERFORMANCE_BUDGETS },
     };
@@ -391,6 +394,17 @@ class FixtureRichHub {
         if (text.includes("extension")) {
           this.#broadcast({ kind: "extension_ui", identity: this.identity, requestId: "fixture-extension", method: "confirm", payload: { title: "Extension confirmation", message: "Continue fixture?" } });
         }
+        if (text.includes("declarative extension view")) {
+          const view = createExtensionViewFixture();
+          this.#broadcast({
+            kind: "extension_view",
+            identity: this.identity,
+            requestId: "fixture-extension-view",
+            provenance: { transport: "pi-rpc", validator: "pi-daemon", validation: "validated", browserCodeExecution: false },
+            fallback: { text: view.fallbackText, reason: "unsupported-renderer" },
+            view,
+          });
+        }
         if (text.includes("extension surfaces")) {
           this.#broadcast({ kind: "extension_ui", identity: this.identity, requestId: "fixture-notify", method: "notify", payload: { message: "Fixture notification", notifyType: "warning" } });
           this.#broadcast({ kind: "extension_ui", identity: this.identity, requestId: "fixture-status", method: "setStatus", payload: { statusKey: "fixture", statusText: "Extension active" } });
@@ -437,7 +451,7 @@ class FixtureRichHub {
 
   answerExtension(id: string, requestId: string): void {
     if (this.#require(id).role !== "controller") throw new Error("Controller role is required");
-    if (requestId !== "fixture-extension") throw new Error("Extension request not found");
+    if (!["fixture-extension", "fixture-extension-view"].includes(requestId)) throw new Error("Extension request not found");
   }
 
   remove(id: string): void {

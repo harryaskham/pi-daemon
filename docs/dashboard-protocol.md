@@ -284,6 +284,19 @@ current rich-channel controller and receives a private command-result acknowledg
 A command that lost its response across disconnect is indeterminate; clients
 reconcile state/entries before deciding whether a new idempotency key is safe.
 
+## Declarative extension views
+
+When `extensionViews` is negotiated, a future compatible Pi RPC producer may
+emit `extension_ui_request(method=render_view)`. The daemon validates the exact
+`pi-declarative-view` v1 document before replay or browser delivery and emits an
+`extension_view` event with host-authored provenance. Rich renders only the
+allowlisted inert tree; TUI and older clients use the mandatory bounded fallback.
+No extension JavaScript, HTML, CSS, callback, arbitrary URL, or component
+factory reaches the browser. Actions and form submits are scoped to one exact
+view ID/revision and remain nested inside the normal request/subscription/controller
+correlation. See [Declarative extension views](declarative-extension-views) and
+[`extension-view.schema.json`](../extension-view.schema.json).
+
 ## Controller and idempotency rules
 
 `observer` and `controller` are concurrency roles inside one authenticated Dash
@@ -358,6 +371,8 @@ and single-record limits.
 | projection source / line / entries / output | 256 MiB / 1 MiB / 100,000 / 64 MiB |
 | projection cache count / bytes / one entry / age | 1,024 / 256 MiB / 64 MiB / 7 d |
 | image preview / authorized blob response | 256 KiB / 8 MiB |
+| extension view bytes / nodes / depth / text | 256 KiB / 256 / 16 / 128 KiB |
+| extension actions / fields / options / images | 32 / 32 / 128 / 16 |
 | replay events / one event / bytes / retention | 512 / 512 KiB / 2 MiB / 5 min |
 | workspaces / one workspace / panes / depth / pinned sessions | 64 / 1 MiB / 32 / 16 / 8 |
 | TUI rows / columns / changed rows / delta | 200 / 320 / 200 / 512 KiB |

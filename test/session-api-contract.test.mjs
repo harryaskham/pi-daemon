@@ -18,12 +18,14 @@ const readJson = async (path) =>
 const fixture = (name) => readJson(`fixtures/session-api/${name}`);
 
 async function contractValidator() {
-  const [schema, dashboardSchema, scheduleSchema] = await Promise.all([
+  const [schema, dashboardSchema, scheduleSchema, extensionViewSchema] = await Promise.all([
     readJson("session-api.schema.json"),
     readJson("dashboard-api.schema.json"),
     readJson("schedule.schema.json"),
+    readJson("extension-view.schema.json"),
   ]);
   const ajv = new Ajv2020({ allErrors: true, strict: true });
+  ajv.addSchema(extensionViewSchema);
   ajv.addSchema(dashboardSchema);
   ajv.addSchema(scheduleSchema);
   ajv.addSchema(schema);

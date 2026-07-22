@@ -368,8 +368,15 @@ export class PiDaemonSelfUpdater {
   async #validateInstalledVersion(version: string): Promise<void> {
     if (!SEMVER.test(version)) throw new SelfUpdateError("update_state_invalid", "managed update version is invalid");
     const root = this.#versionDir(version);
-    const canonicalRoot = await realpath(root).catch(() => undefined);
-    if (canonicalRoot === undefined || !isWithin(this.paths.installRoot, canonicalRoot)) {
+    const [canonicalInstallRoot, canonicalRoot] = await Promise.all([
+      realpath(this.paths.installRoot).catch(() => undefined),
+      realpath(root).catch(() => undefined),
+    ]);
+    if (
+      canonicalInstallRoot === undefined ||
+      canonicalRoot === undefined ||
+      !isWithin(canonicalInstallRoot, canonicalRoot)
+    ) {
       throw new SelfUpdateError("update_state_invalid", "managed update version is unavailable");
     }
     await this.#versionMetadata(version);

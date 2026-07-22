@@ -36,9 +36,10 @@ or Cacophony credentials.
 > standalone dedicated `pi-daemon web` lifecycle over the remote backend, and
 > the production same-origin browser client for input-only login, persisted
 > inventory/workspace/settings, preview-first hydration, multiplexed Rich/TUI
-> streams, correlated commands, replay recovery, liveness, extension UI, and a
-polished lazy New Session flow that performs no Pi runtime/model/tool work until
-its exactly-once first message.
+> streams, correlated commands, replay recovery, liveness, extension UI, inert
+> server-validated declarative extension views with scoped actions/TUI fallback,
+> and a polished lazy New Session flow that performs no Pi runtime/model/tool
+> work until its exactly-once first message.
 > Full credential-free install/CRUD/RPC/ACP/restart/security acceptance is green;
 > the repository is a release candidate, but no release tag is cut yet.
 

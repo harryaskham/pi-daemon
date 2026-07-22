@@ -7,6 +7,7 @@ import type {
   LiveExtensionRequest,
 } from "../dashboard-live-session";
 import { AlertCircle, Check, Clock3, ShieldCheck, X } from "../icons";
+import { DeclarativeExtensionView } from "./DeclarativeExtensionView";
 
 interface LiveSessionControlsProps {
   state: DashboardLiveSessionState;
@@ -75,6 +76,14 @@ export function LiveSessionControls({ state, controller }: LiveSessionControlsPr
       </div>
       <div className="extension-ui-stack">
         {state.extensionRequests.map((request) => <ExtensionRequest key={request.requestId} request={request} controller={controller} />)}
+        {state.extensionViews.map((event) => (
+          <DeclarativeExtensionView
+            key={event.requestId}
+            event={event}
+            disabled={state.role !== "controller"}
+            onRespond={(response) => void controller.answerExtensionUi(event.requestId, response as JsonObject)}
+          />
+        ))}
       </div>
     </div>
   );

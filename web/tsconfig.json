@@ -17,6 +17,8 @@
     "paths": {
       "@harryaskham/pi-daemon/dashboard-contract": ["../src/dashboard-contract.ts"],
       "@harryaskham/pi-daemon/dashboard-fixtures": ["../src/dashboard-fixtures.ts"],
+      "@harryaskham/pi-daemon/extension-view-contract": ["../src/extension-view-contract.ts"],
+      "@harryaskham/pi-daemon/extension-view-fixtures": ["../src/extension-view-fixtures.ts"],
       "@harryaskham/pi-daemon/dashboard-session-draft-contract": ["../src/dashboard-session-draft-contract.ts"],
       "@harryaskham/pi-daemon/session-api": ["../src/session-api.ts"],
       "@harryaskham/pi-daemon/schedule-contract": ["../src/schedule-contract.ts"],

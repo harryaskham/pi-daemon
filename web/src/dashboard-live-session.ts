@@ -9,6 +9,7 @@ import type {
   DashboardCommandResult,
   DashboardControllerRole,
   DashboardExtensionUiEvent,
+  DashboardExtensionViewEvent,
   DashboardSessionIdentity,
   DashboardTicketState,
   NormalizedTranscriptRecord,
@@ -79,6 +80,7 @@ export interface DashboardLiveSessionState {
   activationTicket?: ActivationTicket;
   exportTicket?: SessionExportTicket;
   extensionRequests: LiveExtensionRequest[];
+  extensionViews: DashboardExtensionViewEvent[];
   extensionNotifications: LiveExtensionNotification[];
   extensionStatuses: Record<string, string>;
   extensionWidgets: Record<string, LiveExtensionWidget>;
@@ -144,6 +146,7 @@ export class DashboardLiveSessionController {
       requestState: {},
       activationModes: [],
       extensionRequests: [],
+      extensionViews: [],
       extensionNotifications: [],
       extensionStatuses: {},
       extensionWidgets: {},
@@ -469,7 +472,10 @@ export class DashboardLiveSessionController {
   async answerExtensionUi(requestId: string, response: JsonObject): Promise<void> {
     if (!this.#channel) throw new Error("Live channel is unavailable");
     await this.#channel.answerExtensionUi(requestId, response);
-    this.#patch({ extensionRequests: this.#state.extensionRequests.filter((request) => request.requestId !== requestId) });
+    this.#patch({
+      extensionRequests: this.#state.extensionRequests.filter((request) => request.requestId !== requestId),
+      extensionViews: this.#state.extensionViews.filter((event) => event.requestId !== requestId),
+    });
   }
 
   markSeen(): void {
@@ -578,6 +584,15 @@ export class DashboardLiveSessionController {
     }
     if (event.kind === "extension_ui") {
       this.#acceptExtensionUi(event);
+      return;
+    }
+    if (event.kind === "extension_view") {
+      this.#patch({
+        extensionViews: [
+          ...this.#state.extensionViews.filter((candidate) => candidate.requestId !== event.requestId),
+          event,
+        ].slice(-8),
+      });
       return;
     }
     if (event.kind === "replay_gap") {

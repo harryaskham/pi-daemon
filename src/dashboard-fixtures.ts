@@ -34,6 +34,8 @@ import {
   type ApiSuccessEnvelope,
   type SessionResource,
 } from "./session-api.js";
+import { EXTENSION_VIEW_CAPABILITY } from "./extension-view-contract.js";
+import { createExtensionViewFixture } from "./extension-view-fixtures.js";
 
 const FIXTURE_TIME = "2026-07-18T12:00:00.000Z";
 const FIXTURE_CLIENT = "client-fixture-01";
@@ -86,6 +88,7 @@ export interface DashboardContractFixtures {
   streamExtensionUiResponse: DashStreamExtensionUiResponseFrame;
   streamReady: DashStreamSubscriptionReadyFrame;
   streamEvent: DashStreamSessionEventFrame;
+  streamExtensionView: DashStreamSessionEventFrame;
   streamTuiDelta: DashStreamTuiDeltaFrame;
   streamReplayGap: DashStreamReplayGapFrame;
   replayRecovery: DashboardReplayRecoveryFixture;
@@ -154,6 +157,7 @@ export function createDashboardCapabilitiesFixture(): DashboardCapabilities {
         unavailableReason: "interactive-view-seam-required",
       },
     },
+    extensionViews: structuredClone(EXTENSION_VIEW_CAPABILITY),
     limits: { ...DASH_DEFAULT_LIMITS },
     performanceBudgets: { ...DASH_PERFORMANCE_BUDGETS },
   };
@@ -535,6 +539,28 @@ export function createDashboardContractFixtures(): DashboardContractFixtures {
       event: { type: "agent_settled" },
     },
   };
+  const streamExtensionView: DashStreamSessionEventFrame = {
+    ...streamContext,
+    kind: "session_event",
+    correlationId: "correlation-extension-view-01",
+    subscriptionId: streamSubscribe.subscriptionId,
+    event: {
+      kind: "extension_view",
+      identity: snapshot.identity,
+      requestId: "extension-view-request-fixture-01",
+      provenance: {
+        transport: "pi-rpc",
+        validator: "pi-daemon",
+        validation: "validated",
+        browserCodeExecution: false,
+      },
+      fallback: {
+        text: "Review two changed files and choose whether to continue.",
+        reason: "unsupported-renderer",
+      },
+      view: createExtensionViewFixture(),
+    },
+  };
   const streamTuiDelta: DashStreamTuiDeltaFrame = {
     ...streamContext,
     kind: "tui_delta",
@@ -608,6 +634,7 @@ export function createDashboardContractFixtures(): DashboardContractFixtures {
         unavailableReason: "interactive-view-seam-required",
       },
     },
+    extensionViews: structuredClone(EXTENSION_VIEW_CAPABILITY),
     limits: { ...DASH_DEFAULT_LIMITS },
   };
   const lease: DashboardLeaseResource = {
@@ -657,6 +684,7 @@ export function createDashboardContractFixtures(): DashboardContractFixtures {
     streamExtensionUiResponse,
     streamReady,
     streamEvent,
+    streamExtensionView,
     streamTuiDelta,
     streamReplayGap,
     replayRecovery: { gap: streamReplayGap, freshSnapshot },

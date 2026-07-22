@@ -670,6 +670,9 @@ implementation order. This list is a human-readable crosswalk.
     serializable extension interactions.
   - [x] `bd-7de9ec` — final visual/performance/security/dual-mode acceptance,
     exact package gates, and uninterrupted 24-hour rolling soak (1,440/1,440).
+  - [x] `bd-470f81` — server-validated versioned declarative extension views:
+    inert Rich primitives, scoped correlated actions/forms, TUI fallback,
+    schema/fixtures/capability negotiation, and an upstream Pi seam proposal.
   - [x] `bd-1dc765` — P1 production interactivity hotfix: bounded single-pane
     transcript scrolling/composer containment, width-aware split repaint, and
     functional revisioned Settings category tabs.

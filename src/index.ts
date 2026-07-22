@@ -17,6 +17,8 @@ export * from "./dashboard-fixtures.js";
 export * from "./dashboard-neutral-api.js";
 export * from "./dashboard-tui-attachments.js";
 export * from "./durability.js";
+export * from "./extension-view-contract.js";
+export * from "./extension-view-fixtures.js";
 export * from "./multiplexer.js";
 export * from "./observability.js";
 export * from "./pi-adapter.js";

@@ -1373,7 +1373,10 @@ These lanes intentionally begin in parallel:
 
 ### Other post-v1 work
 
-- [ ] `bd-470f81` — declarative cross-mode rich extension renderer contract.
+- [x] `bd-470f81` — versioned declarative cross-mode extension-view contract,
+  strict server validator/schema/fixtures, host provenance, view-scoped correlated
+  actions/forms, native Rich renderer, mandatory TUI fallback, and upstream Pi
+  `renderView` proposal; browser extension code and ambient links remain forbidden.
 - [ ] `bd-4b2415` — full browser tree navigation/fork/clone experience.
 - [ ] `bd-b31a5d` — multi-user identity and per-session authorization epic.
 - [ ] `bd-e89a17` — optional native TLS and hardened remote browser deployment.

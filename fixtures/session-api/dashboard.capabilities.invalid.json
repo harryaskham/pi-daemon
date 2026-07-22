@@ -19,6 +19,28 @@
       "unavailableReason": "interactive-view-seam-required"
     }
   },
+  "extensionViews": {
+    "protocol": "pi-declarative-view",
+    "version": "1.0",
+    "source": "pi-rpc-proposal",
+    "renderers": {
+      "rich": "native",
+      "tui": "fallback",
+      "rpc": "transport"
+    },
+    "browserCodeExecution": false,
+    "imageSources": "authorized-blob-only",
+    "limits": {
+      "maxViewBytes": 262144,
+      "maxNodes": 256,
+      "maxDepth": 16,
+      "maxTextBytes": 131072,
+      "maxActions": 32,
+      "maxFields": 32,
+      "maxOptions": 128,
+      "maxImages": 16
+    }
+  },
   "limits": {
     "maxHttpBodyBytes": 1048576,
     "maxWebSocketFrameBytes": 1048576,

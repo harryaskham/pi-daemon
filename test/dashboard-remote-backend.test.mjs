@@ -9,6 +9,7 @@ import {
 } from "../dist/dashboard-remote-backend.js";
 import { asDashboardCursor } from "../dist/dashboard-contract.js";
 import { createDashboardContractFixtures } from "../dist/dashboard-fixtures.js";
+import { createExtensionViewFixture, createExtensionViewResponseFixture } from "../dist/extension-view-fixtures.js";
 import {
   assertDashboardBackendResourceConformance,
   assertDashboardRichChannelConformance,
@@ -591,6 +592,31 @@ test("remote Rich panes coalesce one attachment, enforce roles, correlate comman
   assert.ok(p95 < 50);
   assert.equal(controllerEvents.length, 80);
   assert.equal(observerEvents.length, 80);
+  service.emitRpc({
+    type: "extension_ui_request",
+    id: "remote-extension-view",
+    method: "render_view",
+    view: createExtensionViewFixture(),
+  });
+  assert.equal(controllerEvents.at(-1).kind, "extension_view");
+  assert.equal(controllerEvents.at(-1).provenance.validation, "validated");
+  await assert.rejects(
+    controller.answerExtensionUi("remote-extension-view", {
+      ...createExtensionViewResponseFixture(),
+      actionId: "not-declared",
+    }),
+    (error) => error.code === "invalid-view",
+  );
+  await controller.answerExtensionUi("remote-extension-view", createExtensionViewResponseFixture());
+  service.emitRpc({
+    type: "extension_ui_request",
+    id: "remote-extension-view-invalid",
+    method: "render_view",
+    view: { version: "9.0", fallbackText: "Remote TUI fallback." },
+  });
+  assert.equal(controllerEvents.at(-1).kind, "extension_view");
+  assert.equal(controllerEvents.at(-1).provenance.validation, "rejected");
+  assert.equal(controllerEvents.at(-1).fallback.text, "Remote TUI fallback.");
 
   const denied = await observer.command({
     correlationId: "observer-prompt",

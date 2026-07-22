@@ -90,6 +90,30 @@ describe("Dashboard live session controller", () => {
     await controller.stop();
   });
 
+  it("accepts validated declarative extension views and correlates scoped action responses", async () => {
+    const backend = new LiveFixtureDashboardBackend();
+    const session = backend.sessions[0]!;
+    const controller = new DashboardLiveSessionController(backend, session.inventoryId);
+    await controller.start();
+    await controller.command("prompt", { message: "show declarative extension view" });
+    await waitFor(() => controller.state.extensionViews.length === 1);
+    const event = controller.state.extensionViews[0];
+    expect(event).toMatchObject({
+      requestId: "fixture-extension-view",
+      provenance: { validation: "validated", browserCodeExecution: false },
+      view: { protocol: "pi-declarative-view", version: "1.0", viewId: "review-fixture-01" },
+    });
+    await controller.answerExtensionUi("fixture-extension-view", {
+      protocol: "pi-declarative-view",
+      version: "1.0",
+      viewId: "review-fixture-01",
+      revision: 2,
+      actionId: "continue",
+    });
+    expect(controller.state.extensionViews).toEqual([]);
+    await controller.stop();
+  });
+
   it("projects fire-and-forget extension notifications, status, widgets, title and editor text", async () => {
     const backend = new LiveFixtureDashboardBackend();
     const session = backend.sessions[0]!;

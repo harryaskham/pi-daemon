@@ -1,0 +1,13 @@
+{
+  "protocol": "pi-declarative-view",
+  "version": "1.0",
+  "viewId": "review-fixture-01",
+  "revision": 2,
+  "actionId": "submit-review",
+  "values": {
+    "summary": "Looks safe",
+    "decision": "approve",
+    "confirmed": true,
+    "notes": "Proceed with bounded rendering."
+  }
+}

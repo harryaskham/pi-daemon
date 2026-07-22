@@ -16,6 +16,7 @@ function previewState(
     activationModes: ["direct", "fork", "preview-only"],
     selectedActivationMode: "fork",
     extensionRequests: [],
+    extensionViews: [],
     extensionNotifications: [],
     extensionStatuses: {},
     extensionWidgets: {},
@@ -70,6 +71,17 @@ describe("preview composer layout", () => {
     );
     expect(css).toMatch(/\.new-session-body \{[^}]*overflow: auto;/);
     expect(css).toMatch(/@media \(max-width: 720px\)[\s\S]*\.new-session-form, \.new-session-resource-grid \{ grid-template-columns: 1fr; \}/);
+  });
+
+  it("keeps declarative extension rendering inert and free of extension-controlled browser execution or fetches", async () => {
+    const source = await readFile(
+      new URL("../components/DeclarativeExtensionView.tsx", import.meta.url),
+      "utf8",
+    );
+    expect(source).not.toContain("dangerouslySetInnerHTML");
+    expect(source).not.toMatch(/\beval\s*\(|new Function|\bfetch\s*\(|<iframe|<script|<style|src=\{/);
+    expect(source).toContain("createExtensionViewResponse");
+    expect(source).toContain("authorized blob");
   });
 
   it("does not render the former transcript-blocking preview action card", async () => {

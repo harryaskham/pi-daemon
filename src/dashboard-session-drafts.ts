@@ -762,13 +762,21 @@ export interface DashboardSessionDraftServiceOptions {
 export class DashboardSessionDraftService {
   readonly store: DashboardSessionDraftStore;
   readonly limits: DashboardSessionDraftLimits;
-  readonly #allowedRoots: readonly string[];
+  readonly #allowedRoots: Promise<readonly string[]>;
 
   constructor(options: DashboardSessionDraftServiceOptions) {
     if (options.allowedRoots.length === 0) throw new Error("allowedRoots must not be empty");
     this.store = options.store;
     this.limits = resolveDashboardSessionDraftLimits(options.limits);
-    this.#allowedRoots = options.allowedRoots.map((root) => resolve(root));
+    // Freeze existing roots to their canonical startup identity. This keeps
+    // Darwin's /var -> /private/var alias (and equivalent symlink aliases)
+    // comparable with the canonical cwd. A root absent at startup retains its
+    // lexical identity, so creating it later works but a later symlink target
+    // does not silently become authoritative.
+    this.#allowedRoots = Promise.all(options.allowedRoots.map(async (root) => {
+      const resolved = resolve(root);
+      return realpath(resolved).catch(() => resolved);
+    }));
   }
 
   recover(): Promise<DashboardSessionDraftRecovery> {
@@ -782,7 +790,8 @@ export class DashboardSessionDraftService {
     const cwd = await realpath(validated.spec.cwd).catch(() => {
       throw new DashboardSessionDraftError("draft_cwd_invalid", "draft cwd is unavailable");
     });
-    if (!this.#allowedRoots.some((root) => isWithin(root, cwd))) {
+    const allowedRoots = await this.#allowedRoots;
+    if (!allowedRoots.some((root) => isWithin(root, cwd))) {
       throw new DashboardSessionDraftError("draft_cwd_not_allowed", "draft cwd is outside allowed roots");
     }
     return this.store.create({

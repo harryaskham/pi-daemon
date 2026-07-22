@@ -11,6 +11,8 @@ import {
 import { asDashboardCursor } from "../dist/dashboard-contract.js";
 import { TranscriptProjectionError } from "../dist/transcript-projector.js";
 import { createDashboardContractFixtures } from "../dist/dashboard-fixtures.js";
+import { createExtensionViewFixture, createExtensionViewResponseFixture } from "../dist/extension-view-fixtures.js";
+import { ExtensionViewValidationError } from "../dist/extension-view-contract.js";
 import { createDashboardStreamHandler } from "../dist/dashboard-stream-router.js";
 import { Multiplexer } from "../dist/multiplexer.js";
 import { FileSessionCatalog } from "../dist/session-catalog.js";
@@ -57,7 +59,7 @@ class FakeRpcController {
 
   respondToExtensionUi(response) {
     this.responses.push(response);
-    return response.id === "ui-fixture";
+    return ["ui-fixture", "view-fixture"].includes(response.id);
   }
 
   cancelPendingUi() {
@@ -387,8 +389,35 @@ test("rich channels coalesce controller events, enforce roles, replay and durabl
     message: "Bounded fixture",
   });
   assert.equal(controllerEvents.at(-1).kind, "extension_ui");
+  factory.controller.emit({
+    type: "extension_ui_request",
+    id: "view-fixture",
+    method: "render_view",
+    view: createExtensionViewFixture(),
+  });
+  assert.equal(controllerEvents.at(-1).kind, "extension_view");
+  assert.equal(controllerEvents.at(-1).provenance.validation, "validated");
+  assert.equal(controllerEvents.at(-1).view.root.type, "stack");
+  await assert.rejects(
+    controller.answerExtensionUi("view-fixture", {
+      ...createExtensionViewResponseFixture(),
+      revision: 3,
+    }),
+    (error) => error instanceof ExtensionViewValidationError && error.code === "invalid-view",
+  );
+  await controller.answerExtensionUi("view-fixture", createExtensionViewResponseFixture());
+  factory.controller.emit({
+    type: "extension_ui_request",
+    id: "view-invalid",
+    method: "render_view",
+    view: { protocol: "pi-declarative-view", version: "2.0", fallbackText: "Use TUI." },
+  });
+  assert.equal(controllerEvents.at(-1).kind, "extension_view");
+  assert.equal(controllerEvents.at(-1).provenance.validation, "rejected");
+  assert.equal(controllerEvents.at(-1).view, undefined);
+  assert.equal(controllerEvents.at(-1).fallback.text, "Use TUI.");
   await controller.answerExtensionUi("ui-fixture", { confirmed: true });
-  assert.equal(factory.controller.responses.length, 1);
+  assert.equal(factory.controller.responses.length, 2);
   factory.controller.emit({ type: "non_serializable", value: 1n });
   assert.equal(controllerEvents.at(-1).kind, "session_event");
   assert.equal(controllerEvents.at(-1).event.type, "serialization_error");

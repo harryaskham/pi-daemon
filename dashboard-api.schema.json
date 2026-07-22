@@ -607,6 +607,9 @@
           },
           "additionalProperties": true
         },
+        "extensionViews": {
+          "$ref": "./extension-view.schema.json#/$defs/negotiationCapability"
+        },
         "limits": {
           "$ref": "#/$defs/limits"
         },
@@ -712,6 +715,9 @@
             }
           },
           "additionalProperties": true
+        },
+        "extensionViews": {
+          "$ref": "./extension-view.schema.json#/$defs/negotiationCapability"
         },
         "limits": {
           "$ref": "#/$defs/limits"
@@ -2789,6 +2795,51 @@
       },
       "additionalProperties": true
     },
+    "extensionViewEvent": {
+      "type": "object",
+      "required": [
+        "kind",
+        "identity",
+        "requestId",
+        "provenance",
+        "fallback"
+      ],
+      "properties": {
+        "kind": {
+          "const": "extension_view"
+        },
+        "identity": {
+          "$ref": "#/$defs/sessionIdentity"
+        },
+        "requestId": {
+          "$ref": "#/$defs/requestId"
+        },
+        "provenance": {
+          "type": "object",
+          "required": ["transport", "validator", "validation", "browserCodeExecution"],
+          "properties": {
+            "transport": { "const": "pi-rpc" },
+            "validator": { "const": "pi-daemon" },
+            "validation": { "enum": ["validated", "rejected"] },
+            "browserCodeExecution": { "const": false }
+          },
+          "additionalProperties": false
+        },
+        "fallback": {
+          "type": "object",
+          "required": ["text", "reason"],
+          "properties": {
+            "text": { "type": "string", "minLength": 1, "maxLength": 4096 },
+            "reason": { "enum": ["unsupported-renderer", "invalid-view", "unsupported-version", "view-capacity"] }
+          },
+          "additionalProperties": false
+        },
+        "view": {
+          "$ref": "./extension-view.schema.json#/$defs/view"
+        }
+      },
+      "additionalProperties": false
+    },
     "replayGap": {
       "type": "object",
       "required": [
@@ -3547,6 +3598,9 @@
                 },
                 {
                   "$ref": "#/$defs/extensionUiEvent"
+                },
+                {
+                  "$ref": "#/$defs/extensionViewEvent"
                 }
               ]
             }

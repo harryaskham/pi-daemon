@@ -21,6 +21,7 @@ import {
   type DashboardControlEvent,
   type DashboardCursor,
   type DashboardExtensionUiEvent,
+  type DashboardExtensionViewEvent,
   type DashboardFingerprint,
   type DashboardReplayGap,
   type DashboardScheduleDeleteRequest,
@@ -47,6 +48,15 @@ import {
   type TuiDimensions,
 } from "./dashboard-contract.js";
 import { DEFAULT_SCHEDULE_LIMITS, type ScheduleCapabilities } from "./schedule-contract.js";
+import {
+  EXTENSION_VIEW_DEFAULT_LIMITS,
+  EXTENSION_VIEW_PROTOCOL,
+  EXTENSION_VIEW_RPC_METHOD,
+  ExtensionViewValidationError,
+  parseExtensionViewDocument,
+  type ExtensionViewDocument,
+  parseExtensionViewResponse,
+} from "./extension-view-contract.js";
 import type {
   DashboardSessionDraftCancelRequest,
   DashboardSessionDraftCreateRequest,
@@ -598,6 +608,7 @@ class RemoteRichHub {
   readonly #initialPending: DashboardChannelEvent[] = [];
   readonly #commands = new Map<string, PendingRpcCommand>();
   readonly #commandResults = new Map<string, { fingerprint: string; promise: Promise<DashboardCommandResult> }>();
+  readonly #extensionViews = new Map<string, ExtensionViewDocument>();
   readonly #anonymousResponses: Array<{
     resolve: (response: PiRpcResponse) => void;
     reject: (error: Error) => void;
@@ -774,6 +785,7 @@ class RemoteRichHub {
       }
       this.#controllerChannelId = undefined;
       this.#remoteRole = "observer";
+      this.#extensionViews.clear();
       channel.setRole("observer");
       this.#broadcast({
         kind: "control",
@@ -799,6 +811,15 @@ class RemoteRichHub {
         );
       }
       this.#assertConnected();
+      const extensionView = this.#extensionViews.get(requestId);
+      if (response.protocol === EXTENSION_VIEW_PROTOCOL && extensionView === undefined) {
+        throw new RemoteDashboardBackendError("extension_request_not_found", "declarative extension view does not exist");
+      }
+      const normalized = extensionView === undefined
+        ? response
+        : response.cancelled === true && Object.keys(response).length === 1
+          ? response
+          : parseExtensionViewResponse(response, extensionView) as unknown as JsonObject;
       const rpcResponse = await new Promise<PiRpcResponse>((resolve, reject) => {
         const pending = {
           resolve,
@@ -817,7 +838,7 @@ class RemoteRichHub {
         try {
           this.#send({
             kind: "extension_ui_response",
-            response: { ...response, type: "extension_ui_response", id: requestId },
+            response: { ...normalized, type: "extension_ui_response", id: requestId },
           });
         } catch (error) {
           this.#anonymousResponses.pop();
@@ -831,6 +852,7 @@ class RemoteRichHub {
           "extension UI response was rejected",
         );
       }
+      this.#extensionViews.delete(requestId);
     };
     const result = this.#extensionTail.then(operation);
     this.#extensionTail = result.catch(() => undefined);
@@ -843,6 +865,7 @@ class RemoteRichHub {
     this.#channels.delete(channelId);
     if (this.#controllerChannelId === channelId) {
       this.#controllerChannelId = undefined;
+      this.#extensionViews.clear();
       if (this.#connectionReady && this.#remoteRole === "controller") {
         void this.#serializeControl(() => this.#sendControl("release_control"))
           .catch(() => undefined);
@@ -868,6 +891,7 @@ class RemoteRichHub {
     this.#events.length = 0;
     this.#initialPending.length = 0;
     this.#commandResults.clear();
+    this.#extensionViews.clear();
   }
 
   async #connect(
@@ -1263,6 +1287,16 @@ class RemoteRichHub {
   #publish(event: DashboardChannelEvent): void {
     const bytes = byteLength(event);
     if (bytes > this.#limits.maxEventBytes) return;
+    if (event.kind === "extension_view") {
+      if (event.view === undefined) this.#extensionViews.delete(event.requestId);
+      else {
+        if (this.#extensionViews.size >= this.#limits.maxReplayEvents) {
+          const oldest = this.#extensionViews.keys().next().value;
+          if (oldest !== undefined) this.#extensionViews.delete(oldest);
+        }
+        this.#extensionViews.set(event.requestId, event.view);
+      }
+    }
     const cursor = "cursor" in event ? event.cursor : undefined;
     this.#events.push({ event: structuredClone(event), bytes, ...(cursor === undefined ? {} : { cursor }) });
     if (this.#channels.size === 0) this.#initialPending.push(structuredClone(event));
@@ -2223,6 +2257,9 @@ function dashboardCapabilities(
             unavailableReason: service.presentations.tui.unavailableReason ?? "remote-tui-unavailable",
           },
     },
+    ...(service.extensionViews === undefined
+      ? {}
+      : { extensionViews: structuredClone(service.extensionViews) }),
     limits: {
       ...service.limits,
       maxSubscriptionsPerConnection: Math.min(
@@ -2254,6 +2291,9 @@ function mapRpcEvent(
     typeof frame.event.id === "string"
   ) {
     const { type: _type, id: _id, method, ...payload } = frame.event;
+    if (method === EXTENSION_VIEW_RPC_METHOD) {
+      return extensionViewEvent(frame.event.id, payload.view, identity, DASH_DEFAULT_LIMITS.maxReplayEventBytes);
+    }
     return {
       kind: "extension_ui",
       identity,
@@ -2269,6 +2309,53 @@ function mapRpcEvent(
     sequence: frame.sequence,
     event: structuredClone(frame.event) as PiRpcEvent,
   } satisfies DashboardSessionEvent;
+}
+
+function extensionViewEvent(
+  requestId: string,
+  rawView: unknown,
+  identity: DashboardSessionIdentity,
+  maxBytes: number,
+): DashboardExtensionViewEvent {
+  const provenance = {
+    transport: "pi-rpc",
+    validator: "pi-daemon",
+    browserCodeExecution: false,
+  } as const;
+  try {
+    const view = parseExtensionViewDocument(rawView, {
+      maxViewBytes: Math.min(EXTENSION_VIEW_DEFAULT_LIMITS.maxViewBytes, maxBytes),
+    });
+    return {
+      kind: "extension_view",
+      identity,
+      requestId,
+      provenance: { ...provenance, validation: "validated" },
+      fallback: { text: view.fallbackText, reason: "unsupported-renderer" },
+      view,
+    };
+  } catch (error) {
+    const reason = error instanceof ExtensionViewValidationError ? error.code : "invalid-view";
+    return {
+      kind: "extension_view",
+      identity,
+      requestId,
+      provenance: { ...provenance, validation: "rejected" },
+      fallback: { text: safeExtensionFallback(rawView), reason },
+    };
+  }
+}
+
+function safeExtensionFallback(rawView: unknown): string {
+  if (isRecord(rawView) && typeof rawView.fallbackText === "string") {
+    const value = rawView.fallbackText;
+    if (
+      value.length > 0 &&
+      Buffer.byteLength(value, "utf8") <= 4_096 &&
+      !/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/u.test(value)
+    ) return value;
+  }
+  return "This extension view is unavailable; use the compatible TUI fallback.";
 }
 
 function mapRpcGap(

@@ -57,7 +57,7 @@
           cp -R dist node_modules package.json CHANGELOG.md README.md SECURITY.md LICENSE \
             protocol.schema.json protocol-v2.schema.json tool-adapter.schema.json \
             session-api.schema.json session-api.openapi.json dashboard-api.schema.json \
-            dashboard-api.openapi.json dashboard-session-draft.schema.json \
+            extension-view.schema.json dashboard-api.openapi.json dashboard-session-draft.schema.json \
             schedule.schema.json "$packageRoot/"
           makeWrapper ${pkgs.nodejs_24}/bin/node "$out/bin/pi-daemon" \
             --add-flags "$packageRoot/dist/cli.js"
@@ -129,6 +129,7 @@
         cp ${./session-api.schema.json} "$out/session-api.schema.json"
         cp ${./session-api.openapi.json} "$out/session-api.openapi.json"
         cp ${./dashboard-api.schema.json} "$out/dashboard-api.schema.json"
+        cp ${./extension-view.schema.json} "$out/extension-view.schema.json"
         cp ${./dashboard-api.openapi.json} "$out/dashboard-api.openapi.json"
         cp ${./dashboard-session-draft.schema.json} "$out/dashboard-session-draft.schema.json"
         cp ${./schedule.schema.json} "$out/schedule.schema.json"
@@ -145,6 +146,8 @@
         test -s "$out/dashboard-ownership/index.html"
         test -s "$out/dashboard-service-api/index.html"
         test -s "$out/dashboard-api.schema.json"
+        test -s "$out/extension-view.schema.json"
+        test -s "$out/declarative-extension-views/index.html"
         test -s "$out/dashboard-api.openapi.json"
         test -s "$out/dashboard-session-drafts/index.html"
         test -s "$out/dashboard-session-draft.schema.json"

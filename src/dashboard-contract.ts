@@ -19,6 +19,10 @@ import type {
   ScheduleOverlapPolicy,
   ScheduleResource,
 } from "./schedule-contract.js";
+import type {
+  ExtensionViewCapability,
+  ExtensionViewDocument,
+} from "./extension-view-contract.js";
 
 export const DASH_API_VERSION = "1.0" as const;
 export const DASH_API_MAJOR = 1;
@@ -263,6 +267,8 @@ export interface DashboardServiceCapabilities {
       unavailableReason?: string;
     };
   };
+  /** Additive renderer negotiation; absent services never emit extension_view. */
+  extensionViews?: ExtensionViewCapability;
   limits: DashboardLimits;
 }
 
@@ -301,6 +307,8 @@ export interface DashboardCapabilities {
     rich: DashboardPresentationCapability;
     tui: DashboardPresentationCapability;
   };
+  /** Additive renderer negotiation; absent daemons never emit extension_view. */
+  extensionViews?: ExtensionViewCapability;
   limits: DashboardLimits;
   performanceBudgets: DashboardPerformanceBudgets;
 }
@@ -790,11 +798,30 @@ export interface DashboardExtensionUiEvent {
   payload: JsonObject;
 }
 
+export interface DashboardExtensionViewEvent {
+  kind: "extension_view";
+  identity: DashboardSessionIdentity;
+  requestId: string;
+  provenance: {
+    transport: "pi-rpc";
+    validator: "pi-daemon";
+    validation: "validated" | "rejected";
+    browserCodeExecution: false;
+  };
+  fallback: {
+    text: string;
+    reason: "unsupported-renderer" | "invalid-view" | "unsupported-version" | "view-capacity";
+  };
+  /** Omitted when validation fails; browser renderers show only fallback text. */
+  view?: ExtensionViewDocument;
+}
+
 export type DashboardChannelEvent =
   | DashboardSessionEvent
   | DashboardControlEvent
   | DashboardReplayGap
-  | DashboardExtensionUiEvent;
+  | DashboardExtensionUiEvent
+  | DashboardExtensionViewEvent;
 
 export type DashboardChannelListener<T> = (event: T) => void;
 export type DashboardUnsubscribe = () => void;
@@ -1051,7 +1078,11 @@ export interface DashStreamCommandResultFrame extends DashStreamServerFrameBase 
 export interface DashStreamSessionEventFrame extends DashStreamServerFrameBase {
   kind: "session_event";
   subscriptionId: string;
-  event: DashboardSessionEvent | DashboardControlEvent | DashboardExtensionUiEvent;
+  event:
+    | DashboardSessionEvent
+    | DashboardControlEvent
+    | DashboardExtensionUiEvent
+    | DashboardExtensionViewEvent;
 }
 
 export interface DashStreamTuiDeltaFrame extends DashStreamServerFrameBase {

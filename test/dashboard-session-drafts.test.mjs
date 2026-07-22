@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -59,7 +59,7 @@ test("draft CRUD is durable, idempotent, root-confined, and performs no runtime 
   assert.equal(created.state, "draft");
   assert.equal(created.firstMessageStartsSession, true);
   assert.equal(created.draftId, "draft-one");
-  assert.equal(created.spec.cwd, h.work);
+  assert.equal(created.spec.cwd, await realpath(h.work));
   assert.deepEqual(await h.service.create(createRequest(h.work)), created);
 
   await assert.rejects(
@@ -91,6 +91,26 @@ test("draft CRUD is durable, idempotent, root-confined, and performs no runtime 
     })).revision,
     2,
   );
+});
+
+test("allowed-root symlink aliases canonicalize once before cwd containment", { skip: process.platform === "win32" }, async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "pi-daemon-draft-root-alias-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const stateDir = join(root, "state");
+  const work = join(root, "work");
+  const allowedAlias = join(root, "allowed-alias");
+  await Promise.all([mkdir(stateDir, { mode: 0o700 }), mkdir(work, { mode: 0o700 })]);
+  await symlink(work, allowedAlias, "dir");
+  const service = new DashboardSessionDraftService({
+    store: new FileDashboardSessionDraftStore({ stateDir }),
+    allowedRoots: [allowedAlias],
+  });
+  await service.recover();
+  const created = await service.create(createRequest(work, {
+    draftId: "draft-root-alias",
+    idempotencyKey: "draft-root-alias-key",
+  }));
+  assert.equal(created.spec.cwd, await realpath(work));
 });
 
 test("first-send admission retains immutable draft revision and transitions draft atomically", async (t) => {
@@ -154,7 +174,7 @@ test("first-send admission retains immutable draft revision and transitions draf
   assert.deepEqual(live.materialization.session, work.targetSession);
 
   assert.deepEqual(dashboardSessionDraftSpecToSessionSpec(draft.spec), {
-    cwd: h.work,
+    cwd: draft.spec.cwd,
     target: { mode: "new" },
     tools: { mode: "none" },
     resources: draft.spec.resources,

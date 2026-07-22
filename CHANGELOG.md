@@ -6,6 +6,8 @@ semantic versioning once a release tag is cut.
 ## Unreleased
 
 - reopen retained imported Dash sessions from their exact managed JSONL directory instead of replaying the original fork target or rejecting the managed path as outside logical state, including active-branch model/thinking recovery for legacy prepared records
+- add a versioned, server-validated declarative extension-view contract with inert Rich primitives, capability-scoped correlated actions/forms, mandatory TUI fallback, strict schema/fixtures/bounds, and no browser extension code or ambient network authority
+- canonicalize Dash draft allowed roots and self-update install roots before containment checks so Darwin `/var` aliases do not cause false denial while later symlink targets remain unauthorized
 
 ## 0.2.2 — 2026-07-22
 

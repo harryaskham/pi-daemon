@@ -16,6 +16,7 @@ for (const contract of [
   "session-api.schema.json",
   "session-api.openapi.json",
   "dashboard-api.schema.json",
+  "extension-view.schema.json",
   "dashboard-api.openapi.json",
   "dashboard-session-draft.schema.json",
   "schedule.schema.json",

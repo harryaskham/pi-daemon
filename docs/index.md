@@ -28,6 +28,7 @@ remain neutral service surfaces—not Cacophony components.
 - [Dash transcript projection](transcript-projection) — bounded no-hydration JSONL branch rendering, cache, paging, and fingerprints
 - [Dash session inventory](dashboard-inventory) — owner-safe persisted 10k-session index, keyed search, opaque paging, and measured bootstrap
 - [Dash shadow TUI](shadow-tui) — bounded in-process virtual terminal, control stripping, performance proof, and the minimal Pi view seam
+- [Declarative extension views](declarative-extension-views) — versioned code-free Rich views, server validation, action correlation, TUI fallback, and upstream Pi seam
 - [Dash session ownership](dashboard-ownership) — explicit direct/fork leases, conflict guards, atomic export/append-back, and indeterminate recovery
 - [Dash lazy session drafts](dashboard-session-drafts) — no-runtime create/cancel persistence and exact-once first-send crash checkpoints
 - [Neutral Dash service API](dashboard-service-api) — service-bearer inventory, preview, activation/export/lease routes and TUI negotiation for remote backends
@@ -48,7 +49,7 @@ remain neutral service surfaces—not Cacophony components.
 - [NDJSON v1 JSON Schema](protocol.schema.json), [v2 JSON Schema](protocol-v2.schema.json), and [tool-adapter JSON Schema](tool-adapter.schema.json)
 - [Session API JSON Schema](session-api.schema.json) and [OpenAPI](session-api.openapi.json)
 - [Schedule JSON Schema](schedule.schema.json)
-- [Dash API JSON Schema](dashboard-api.schema.json) and [OpenAPI](dashboard-api.openapi.json)
+- [Dash API JSON Schema](dashboard-api.schema.json), [declarative extension-view schema](extension-view.schema.json), and [OpenAPI](dashboard-api.openapi.json)
 - [Source repository](https://github.com/harryaskham/pi-daemon)
 
 ## Status

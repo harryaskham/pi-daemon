@@ -19,12 +19,14 @@ const readJson = async (path) =>
 const fixture = (name) => readJson(`fixtures/dashboard-api/${name}`);
 
 async function contractValidator() {
-  const [schema, sessionSchema] = await Promise.all([
+  const [schema, sessionSchema, extensionViewSchema] = await Promise.all([
     readJson("dashboard-api.schema.json"),
     readJson("session-api.schema.json"),
+    readJson("extension-view.schema.json"),
   ]);
   const ajv = new Ajv2020({ allErrors: true, strict: true });
   ajv.addSchema(sessionSchema);
+  ajv.addSchema(extensionViewSchema);
   ajv.addSchema(schema);
   const validate = (definition, value) => {
     const compiled = ajv.getSchema(`${schema.$id}#/$defs/${definition}`);
@@ -59,6 +61,7 @@ test("typed builders and frozen Dash fixtures remain language-neutral equivalent
     ["stream.extension-ui-response.json", typed.streamExtensionUiResponse],
     ["stream.ready.json", typed.streamReady],
     ["stream.event.json", typed.streamEvent],
+    ["stream.extension-view.json", typed.streamExtensionView],
     ["stream.tui-delta.json", typed.streamTuiDelta],
     ["stream.replay-gap.json", typed.streamReplayGap],
     ["stream.replay-recovery.json", typed.replayRecovery],
@@ -89,6 +92,7 @@ test("published Dash fixtures validate against strict additive definitions", asy
     ["stream.extension-ui-response.json", "streamExtensionUiResponseFrame"],
     ["stream.ready.json", "streamSubscriptionReadyFrame"],
     ["stream.event.json", "streamSessionEventFrame"],
+    ["stream.extension-view.json", "streamSessionEventFrame"],
     ["stream.tui-delta.json", "streamTuiDeltaFrame"],
     ["stream.replay-gap.json", "streamReplayGapFrame"],
     ["stream.replay-recovery.json", "replayRecoveryFixture"],
@@ -187,6 +191,9 @@ test("capability negotiation publishes both peer renderers, all bounds, and budg
   assert.equal(capabilities.presentations.rich.available, true);
   assert.equal(capabilities.presentations.tui.available, false);
   assert.equal(typeof capabilities.presentations.tui.unavailableReason, "string");
+  assert.equal(capabilities.extensionViews.version, "1.0");
+  assert.deepEqual(capabilities.extensionViews.renderers, { rich: "native", tui: "fallback", rpc: "transport" });
+  assert.equal(capabilities.extensionViews.browserCodeExecution, false);
   assert.deepEqual(capabilities.limits, DASH_DEFAULT_LIMITS);
   assert.deepEqual(capabilities.performanceBudgets, DASH_PERFORMANCE_BUDGETS);
   assert.equal(
@@ -213,6 +220,7 @@ test("browser-storable fixtures contain no daemon bearer, cookie, credential, or
     workspace: fixtures.workspace,
     settings: fixtures.settings,
     streamReady: fixtures.streamReady,
+    streamExtensionView: fixtures.streamExtensionView,
   });
   for (const forbidden of [
     '"authorization"',

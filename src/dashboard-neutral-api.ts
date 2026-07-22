@@ -16,6 +16,7 @@ import {
   type TranscriptQuery,
 } from "./dashboard-contract.js";
 import type { SessionInventory } from "./session-inventory.js";
+import { EXTENSION_VIEW_CAPABILITY } from "./extension-view-contract.js";
 import {
   DashboardSessionDraftError,
   type DashboardSessionDraftCancelRequest,
@@ -120,6 +121,7 @@ export class DashboardNeutralApiController implements DashboardNeutralApi {
             : { unavailableReason: this.#tuiUnavailableReason }),
         },
       },
+      extensionViews: structuredClone(EXTENSION_VIEW_CAPABILITY),
       limits: { ...this.#limits },
     };
   }

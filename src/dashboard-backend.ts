@@ -23,6 +23,7 @@ import type {
   DashboardControlEvent,
   DashboardCursor,
   DashboardExtensionUiEvent,
+  DashboardExtensionViewEvent,
   DashboardReplayGap,
   DashboardScheduleDeleteRequest,
   DashboardScheduleMutationRequest,
@@ -73,6 +74,16 @@ import { scheduleCapabilities, type ScheduleCapabilities } from "./schedule-cont
 import type { SchedulerRuntime } from "./scheduler-runtime.js";
 import { ScheduleStoreError, type FileScheduleStore } from "./schedule-store.js";
 import type { SessionOwnershipService } from "./session-ownership.js";
+import {
+  EXTENSION_VIEW_CAPABILITY,
+  EXTENSION_VIEW_DEFAULT_LIMITS,
+  EXTENSION_VIEW_PROTOCOL,
+  EXTENSION_VIEW_RPC_METHOD,
+  ExtensionViewValidationError,
+  parseExtensionViewDocument,
+  type ExtensionViewDocument,
+  parseExtensionViewResponse,
+} from "./extension-view-contract.js";
 import {
   TranscriptProjectionError,
   type TranscriptProjector,
@@ -676,6 +687,7 @@ class InProcessRichHub {
   readonly #channels = new Map<string, InProcessRichChannel>();
   readonly #events: RetainedDashboardEvent[] = [];
   readonly #commandResults = new Map<string, { fingerprint: string; promise: Promise<DashboardCommandResult> }>();
+  readonly #extensionViews = new Map<string, ExtensionViewDocument>();
   readonly #unsubscribeController: () => void;
   #controllerChannelId: string | undefined;
   #sequence = 0;
@@ -832,6 +844,7 @@ class InProcessRichHub {
     this.#controllerChannelId = undefined;
     channel.setRole("observer");
     this.#controller.cancelPendingUi();
+    this.#extensionViews.clear();
     this.#broadcast({
       kind: "control",
       identity: this.identity,
@@ -846,12 +859,22 @@ class InProcessRichHub {
     if (channel.role !== "controller") {
       throw new InProcessDashboardBackendError("controller_required", "controller role is required");
     }
+    const extensionView = this.#extensionViews.get(requestId);
+    if (response.protocol === EXTENSION_VIEW_PROTOCOL && extensionView === undefined) {
+      throw new InProcessDashboardBackendError("extension_request_not_found", "declarative extension view does not exist");
+    }
+    const normalized = extensionView === undefined
+      ? response
+      : response.cancelled === true && Object.keys(response).length === 1
+        ? response
+        : parseExtensionViewResponse(response, extensionView) as unknown as JsonObject;
     const accepted = this.#controller.respondToExtensionUi({
       type: "extension_ui_response",
       id: requestId,
-      ...response,
+      ...normalized,
     } as RpcExtensionUIResponse);
     if (!accepted) throw new InProcessDashboardBackendError("extension_request_not_found", "extension UI request does not exist");
+    this.#extensionViews.delete(requestId);
   }
 
   remove(channelId: string): void {
@@ -861,6 +884,7 @@ class InProcessRichHub {
     if (this.#controllerChannelId === channelId) {
       this.#controllerChannelId = undefined;
       this.#controller.cancelPendingUi();
+      this.#extensionViews.clear();
       this.#broadcast({
         kind: "control",
         identity: this.identity,
@@ -879,6 +903,7 @@ class InProcessRichHub {
     this.#disposed = true;
     this.#unsubscribeController();
     this.#controller.cancelPendingUi();
+    this.#extensionViews.clear();
     for (const channel of [...this.#channels.values()]) channel.forceClose(reason);
     this.#channels.clear();
     this.#events.length = 0;
@@ -903,6 +928,16 @@ class InProcessRichHub {
     }
     const bytes = byteLength(event);
     if (bytes > this.#limits.maxEventBytes) return;
+    if (event.kind === "extension_view") {
+      if (event.view === undefined) this.#extensionViews.delete(event.requestId);
+      else {
+        if (this.#extensionViews.size >= this.#limits.maxReplayEvents) {
+          const oldest = this.#extensionViews.keys().next().value;
+          if (oldest !== undefined) this.#extensionViews.delete(oldest);
+        }
+        this.#extensionViews.set(event.requestId, event.view);
+      }
+    }
     this.#events.push({ sequence, cursor, event, bytes });
     this.#replayBytes += bytes;
     while (
@@ -1197,6 +1232,7 @@ function defaultCapabilities(
             unavailableReason: "interactive-view-seam-required",
           },
     },
+    extensionViews: structuredClone(EXTENSION_VIEW_CAPABILITY),
     limits: {
       ...DASH_DEFAULT_LIMITS,
       maxSubscriptionsPerConnection: backendLimits.maxChannelsPerHub,
@@ -1244,12 +1280,19 @@ function outputToEvent(
   maxBytes: number,
 ): DashboardChannelEvent {
   if (isRecord(output) && output.type === "extension_ui_request" && typeof output.id === "string") {
-    const { type: _type, id: _id, ...payload } = output;
+    // The pinned SDK union does not yet include the proposed render_view method;
+    // retain future-compatible runtime admission without widening its public type.
+    const rawOutput = output as unknown as Record<string, unknown>;
+    const { type: _type, id: _id, ...payload } = rawOutput;
+    const method = typeof payload.method === "string" ? payload.method : "unknown";
+    if (method === EXTENSION_VIEW_RPC_METHOD) {
+      return extensionViewEvent(output.id, payload.view, identity, maxBytes);
+    }
     return {
       kind: "extension_ui",
       identity,
       requestId: output.id,
-      method: typeof payload.method === "string" ? payload.method : "unknown",
+      method,
       payload: boundedObject(payload, maxBytes),
     } satisfies DashboardExtensionUiEvent;
   }
@@ -1260,6 +1303,56 @@ function outputToEvent(
     sequence,
     event: boundedObject(output, maxBytes) as PiRpcEvent,
   } satisfies DashboardSessionEvent;
+}
+
+function extensionViewEvent(
+  requestId: string,
+  rawView: unknown,
+  identity: DashboardSessionIdentity,
+  maxBytes: number,
+): DashboardExtensionViewEvent {
+  const provenance = {
+    transport: "pi-rpc",
+    validator: "pi-daemon",
+    browserCodeExecution: false,
+  } as const;
+  try {
+    const view = parseExtensionViewDocument(rawView, {
+      maxViewBytes: Math.min(EXTENSION_VIEW_DEFAULT_LIMITS.maxViewBytes, maxBytes),
+    });
+    return {
+      kind: "extension_view",
+      identity,
+      requestId,
+      provenance: { ...provenance, validation: "validated" },
+      fallback: { text: view.fallbackText, reason: "unsupported-renderer" },
+      view,
+    };
+  } catch (error) {
+    const reason = error instanceof ExtensionViewValidationError ? error.code : "invalid-view";
+    return {
+      kind: "extension_view",
+      identity,
+      requestId,
+      provenance: { ...provenance, validation: "rejected" },
+      fallback: {
+        text: safeExtensionFallback(rawView),
+        reason,
+      },
+    };
+  }
+}
+
+function safeExtensionFallback(rawView: unknown): string {
+  if (isRecord(rawView) && typeof rawView.fallbackText === "string") {
+    const value = rawView.fallbackText;
+    if (
+      value.length > 0 &&
+      Buffer.byteLength(value, "utf8") <= 4_096 &&
+      !/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/u.test(value)
+    ) return value;
+  }
+  return "This extension view is unavailable; use the compatible TUI fallback.";
 }
 
 function commandResult(response: RpcResponse, command: DashboardCommand): DashboardCommandResult {

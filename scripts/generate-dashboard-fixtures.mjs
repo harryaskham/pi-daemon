@@ -29,6 +29,7 @@ const files = {
   "stream.extension-ui-response.json": fixtures.streamExtensionUiResponse,
   "stream.ready.json": fixtures.streamReady,
   "stream.event.json": fixtures.streamEvent,
+  "stream.extension-view.json": fixtures.streamExtensionView,
   "stream.tui-delta.json": fixtures.streamTuiDelta,
   "stream.replay-gap.json": fixtures.streamReplayGap,
   "stream.replay-recovery.json": fixtures.replayRecovery,
