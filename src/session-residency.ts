@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { dirname } from "node:path";
 
 import { Multiplexer, MultiplexerError } from "./multiplexer.js";
 import type { ProtocolCommand } from "./protocol.js";
@@ -37,22 +38,24 @@ export async function ensureSessionResident(
     prepared.runtimeOptions.environmentOverlay,
   );
   let runtimeOptions = prepared.runtimeOptions;
-  if (retained.spec.target.mode === "fork") {
-    const sourceRef = retained.spec.target.sourceSession;
-    const source =
-      sourceRef === undefined
-        ? undefined
-        : await multiplexer.retainedSession(sourceRef);
-    if (source?.conversation?.sessionFile === undefined) {
-      throw new MultiplexerError(
-        "fork_source_unavailable",
-        "fork source has no retained Pi conversation",
-      );
-    }
+  const sessionFile = retained.conversation?.sessionFile;
+  if (sessionFile !== undefined) {
     runtimeOptions = {
       ...runtimeOptions,
-      resolvedSourceSessionPath: source.conversation.sessionFile,
+      persistedSpec: {
+        ...runtimeOptions.persistedSpec,
+        target: {
+          mode: "open",
+          path: sessionFile,
+          sessionDir: dirname(sessionFile),
+        },
+      },
     };
+  } else if (retained.spec.target.mode === "fork") {
+    throw new MultiplexerError(
+      "conversation_identity_missing",
+      "retained fork has no resolved Pi conversation identity",
+    );
   }
 
   const command: Extract<ProtocolCommand, { operation: "open" }> = {
@@ -61,7 +64,7 @@ export async function ensureSessionResident(
     operation: "open",
     sessionId: retained.sessionId,
     generation: retained.generation,
-    payload: sessionOpenPayloadFromSpec(prepared.persistedSpec),
+    payload: sessionOpenPayloadFromSpec(runtimeOptions.persistedSpec),
   };
   await multiplexer.open(command, {
     runtimeOptions,

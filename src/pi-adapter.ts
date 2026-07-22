@@ -234,7 +234,13 @@ export class PiSessionFactory implements SessionFactory {
       authStorage === this.authStorage && selectedAgentDir === this.agentDir
         ? this.modelRegistry
         : ModelRegistry.create(authStorage, join(selectedAgentDir, "models.json"));
-    const configuredModel = configuredSpec?.model;
+    const configuredModel =
+      configuredSpec === undefined
+        ? undefined
+        : mergeSessionModelSpec(
+            modelSpecFromSessionManager(sessionManager),
+            configuredSpec.model,
+          );
     const resolvedModel =
       configuredModel === undefined
         ? undefined
@@ -1130,6 +1136,56 @@ async function materializeSessionManager(
     );
   }
   return reopened;
+}
+
+type RuntimeModelSpec = NonNullable<
+  PreparedSessionRuntimeOptions["persistedSpec"]["model"]
+>;
+
+function modelSpecFromSessionManager(
+  sessionManager: SessionManager,
+): RuntimeModelSpec | undefined {
+  let provider: string | undefined;
+  let id: string | undefined;
+  let thinkingLevel: RuntimeModelSpec["thinkingLevel"];
+  for (const entry of sessionManager.getBranch()) {
+    if (entry.type === "model_change") {
+      provider = entry.provider;
+      id = entry.modelId;
+      continue;
+    }
+    if (
+      entry.type === "thinking_level_change" &&
+      isRuntimeThinkingLevel(entry.thinkingLevel)
+    ) {
+      thinkingLevel = entry.thinkingLevel;
+    }
+  }
+  if (provider === undefined || id === undefined) return undefined;
+  return {
+    provider,
+    id,
+    ...(thinkingLevel === undefined ? {} : { thinkingLevel }),
+  };
+}
+
+function mergeSessionModelSpec(
+  inherited: RuntimeModelSpec | undefined,
+  configured: RuntimeModelSpec | undefined,
+): RuntimeModelSpec | undefined {
+  if (configured === undefined) return inherited;
+  if (configured.provider !== undefined || configured.id !== undefined) {
+    return configured;
+  }
+  return inherited === undefined ? configured : { ...inherited, ...configured };
+}
+
+function isRuntimeThinkingLevel(
+  value: string,
+): value is NonNullable<RuntimeModelSpec["thinkingLevel"]> {
+  return ["off", "minimal", "low", "medium", "high", "xhigh", "max"].includes(
+    value,
+  );
 }
 
 async function createSessionManager(

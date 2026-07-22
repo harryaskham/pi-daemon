@@ -475,6 +475,8 @@ process appears per wake.
 
 ## Provisional Beads work board
 
+- [x] `bd-ed4382` Reopen retained imported Dash sessions from their exact managed
+  JSONL/session directory without replaying or resolving the original fork source.
 - [x] `bd-486f8c` Accept ordinary owner-controlled, non-writable Pi session
   directories for direct co-opt without weakening owner-private daemon state.
 - [x] `bd-8de7f4` Restore source-branch provider/model/thinking policy during

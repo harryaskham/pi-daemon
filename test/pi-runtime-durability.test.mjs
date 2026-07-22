@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
-import { chmod, mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import test from "node:test";
 
 import { AuthStorage, ModelRegistry } from "@earendil-works/pi-coding-agent";
@@ -10,6 +10,10 @@ import { FileDurabilityStore } from "../dist/durability.js";
 import { Multiplexer } from "../dist/multiplexer.js";
 import { PiSessionFactory } from "../dist/pi-adapter.js";
 import { FileSessionCatalog } from "../dist/session-catalog.js";
+import {
+  parseSessionConfiguration,
+  sessionOpenPayloadFromSpec,
+} from "../dist/session-config.js";
 
 const modelHarness = () => {
   const seedRegistry = ModelRegistry.inMemory(AuthStorage.inMemory());
@@ -71,6 +75,105 @@ const queuedWake = {
   idempotencyKey: "queued-after-loss",
   payload: { prompt: "must not run in a different conversation" },
 };
+
+test("configured fork restart reopens the managed JSONL without replaying its source", async (t) => {
+  const root = await realpath(
+    await mkdtemp(join(tmpdir(), "pi-daemon-runtime-imported-recovery-")),
+  );
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const stateDir = join(root, "state");
+  const agentDir = join(root, "agent");
+  const cwd = join(root, "work");
+  const sourceDir = join(root, "source");
+  const managedDir = join(root, "owned-sessions", "dash-imported");
+  await Promise.all([
+    mkdir(stateDir, { mode: 0o700 }),
+    mkdir(agentDir, { mode: 0o700 }),
+    mkdir(cwd),
+    mkdir(sourceDir, { mode: 0o700 }),
+    mkdir(managedDir, { recursive: true, mode: 0o700 }),
+  ]);
+  const source = join(sourceDir, "source.jsonl");
+  const timestamp = "2026-07-22T00:00:00.000Z";
+  await writeFile(
+    source,
+    `${JSON.stringify({ type: "session", version: 3, id: "pi-source", timestamp, cwd })}\n${JSON.stringify({ type: "message", id: "source-message", parentId: null, timestamp, message: { role: "user", content: "fixture", timestamp: Date.parse(timestamp) } })}\n`,
+    { mode: 0o600 },
+  );
+  const { authStorage, modelRegistry, model } = modelHarness();
+  const makeFactory = () =>
+    new RecordingFactory(
+      new PiSessionFactory({
+        stateDir,
+        agentDir,
+        allowedRoots: [cwd],
+        authStorage,
+        modelRegistry,
+      }),
+    );
+  const makeMux = (factory) =>
+    new Multiplexer({
+      factory,
+      durability: new FileDurabilityStore({ stateDir }),
+      catalog: new FileSessionCatalog({ stateDir }),
+    });
+  const prepared = parseSessionConfiguration({
+    cwd,
+    target: {
+      mode: "fork",
+      sourceSession: "inventory-source",
+      sessionDir: managedDir,
+    },
+    model: { provider: model.provider, id: model.id, thinkingLevel: "off" },
+    tools: { mode: "none" },
+    resources: {
+      extensions: [],
+      skills: [],
+      promptTemplates: [],
+      themes: [],
+      noContextFiles: true,
+    },
+  });
+  const command = {
+    protocolVersion: "1.0",
+    requestId: "open-imported-runtime",
+    operation: "open",
+    sessionId: "dash-imported",
+    generation: 1,
+    payload: sessionOpenPayloadFromSpec(prepared.persistedSpec),
+  };
+  const firstFactory = makeFactory();
+  const first = makeMux(firstFactory);
+  await first.recover();
+  await first.open(command, {
+    runtimeOptions: {
+      ...prepared.runtimeOptions,
+      resolvedSourceSessionPath: source,
+    },
+    environmentSummary: prepared.environmentSummary,
+    catalogSpec: prepared.persistedSpec,
+  });
+  const identity = firstFactory.adapters[0].identity();
+  assert.equal(dirname(identity.sessionFile), managedDir);
+  await first.dispose();
+
+  const restartedFactory = makeFactory();
+  const restarted = makeMux(restartedFactory);
+  const report = await restarted.recover();
+  assert.deepEqual(report.failures, []);
+  assert.deepEqual(report.opened, ["dash-imported"]);
+  assert.deepEqual(restartedFactory.adapters[0].identity(), identity);
+  assert.deepEqual(restartedFactory.requests[0].runtimeOptions.persistedSpec.target, {
+    mode: "open",
+    path: identity.sessionFile,
+    sessionDir: managedDir,
+  });
+  assert.equal(
+    "resolvedSourceSessionPath" in restartedFactory.requests[0].runtimeOptions,
+    false,
+  );
+  await restarted.dispose();
+});
 
 test("real Pi conversation identity survives restart and loss blocks queued replay", async (t) => {
   const root = await mkdtemp(join(tmpdir(), "pi-daemon-runtime-durability-"));

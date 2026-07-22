@@ -3,6 +3,10 @@
 All notable changes to Pi Daemon are documented here. The project follows
 semantic versioning once a release tag is cut.
 
+## Unreleased
+
+- reopen retained imported Dash sessions from their exact managed JSONL directory instead of replaying the original fork target or rejecting the managed path as outside logical state, including active-branch model/thinking recovery for legacy prepared records
+
 ## 0.2.2 — 2026-07-22
 
 - retain SIGTERM/SIGINT handlers until bounded serve/web shutdown completes so repeated supervisor stop signals cannot bypass cleanup

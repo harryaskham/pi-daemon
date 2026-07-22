@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { isAbsolute, resolve } from "node:path";
+import { dirname, isAbsolute, resolve } from "node:path";
 
 import {
   DurabilityError,
@@ -694,7 +694,11 @@ export class Multiplexer {
             target:
               sessionFile === undefined
                 ? record.spec.target
-                : { mode: "open", path: sessionFile },
+                : {
+                    mode: "open",
+                    path: sessionFile,
+                    sessionDir: dirname(sessionFile),
+                  },
           },
           environmentOverlay: Object.freeze({}),
         };

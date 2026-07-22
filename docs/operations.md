@@ -528,7 +528,11 @@ At startup, manifest/catalog/journal counts, individual records, aggregate
 bytes, per-session opens, and the total open phase are bounded. Manifests reopen
 the resolved Pi session file recorded after the original create/continue/open
 operation; the requested target is never rerun as though it were still
-unresolved. Full secret-free runtime configuration is reconstructed. Durable
+unresolved. A retained imported/forked session is reopened with the exact
+managed JSONL and its containing session directory; recovery never resolves or
+replays the original source fork. Legacy prepared records that predate persisted
+model policy recover the latest provider/model/thinking selection from that
+managed conversation's active branch. Full secret-free runtime configuration is reconstructed. Durable
 `queued` wakes then replay in the background while the transport listens, and
 queued mutation tickets replay through their secret-free commands. `accepted` wakes and `running` mutations become
 `indeterminate` and require client reconciliation. Readiness logs expose only

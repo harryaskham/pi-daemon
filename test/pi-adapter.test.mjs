@@ -542,15 +542,15 @@ test("factory opens owner-controlled external Pi sessions without chmodding norm
   await mkdir(sessionDir, { recursive: true, mode: 0o755 });
   await chmod(externalRoot, 0o755);
   await chmod(sessionDir, 0o755);
+  const { authStorage, modelRegistry, model } = modelHarness();
   const source = join(sessionDir, "source.jsonl");
   const timestamp = "2026-07-21T12:00:00.000Z";
   await writeFile(
     source,
-    `${JSON.stringify({ type: "session", version: 3, id: "external-source", timestamp, cwd })}\n${JSON.stringify({ type: "message", id: "source-message", parentId: null, timestamp, message: { role: "user", content: "fixture", timestamp: Date.parse(timestamp) } })}\n`,
+    `${JSON.stringify({ type: "session", version: 3, id: "external-source", timestamp, cwd })}\n${JSON.stringify({ type: "message", id: "source-message", parentId: null, timestamp, message: { role: "user", content: "fixture", timestamp: Date.parse(timestamp) } })}\n${JSON.stringify({ type: "model_change", id: "source-model", parentId: "source-message", timestamp, provider: model.provider, modelId: model.id })}\n${JSON.stringify({ type: "thinking_level_change", id: "source-thinking", parentId: "source-model", timestamp, thinkingLevel: "high" })}\n`,
     { mode: 0o644 },
   );
   await chmod(source, 0o644);
-  const { authStorage, modelRegistry, model } = modelHarness();
   const captures = [];
   const factory = new PiSessionFactory({
     stateDir,
@@ -570,7 +570,6 @@ test("factory opens owner-controlled external Pi sessions without chmodding norm
   const prepared = parseSessionConfiguration({
     cwd,
     target: { mode: "open", path: source, sessionDir },
-    model: { provider: model.provider, id: model.id },
     tools: { mode: "none" },
   });
   const adapter = await factory.open({
@@ -580,6 +579,9 @@ test("factory opens owner-controlled external Pi sessions without chmodding norm
   });
   await adapter.dispose();
   assert.equal(captures.length, 1);
+  assert.equal(captures[0].model.provider, model.provider);
+  assert.equal(captures[0].model.id, model.id);
+  assert.equal(captures[0].thinkingLevel, "high");
   assert.equal((await lstat(sessionDir)).mode & 0o777, 0o755);
   assert.equal((await lstat(source)).mode & 0o777, 0o644);
 

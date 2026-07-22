@@ -378,7 +378,11 @@ test("configured sessions recover full persisted runtime options without environ
   assert.deepEqual(request.runtimeOptions.persistedSpec.settings, {
     retry: { enabled: true },
   });
-  assert.equal(request.runtimeOptions.persistedSpec.target.mode, "open");
+  assert.deepEqual(request.runtimeOptions.persistedSpec.target, {
+    mode: "open",
+    path: "/state/sessions/configured-1.jsonl",
+    sessionDir: "/state/sessions",
+  });
   assert.equal("env" in request.runtimeOptions.persistedSpec, false);
   const retained = await restarted.retainedSession("configured");
   assert.equal(retained.spec.target.mode, "new");
