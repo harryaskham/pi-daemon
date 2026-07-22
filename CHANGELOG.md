@@ -3,6 +3,10 @@
 All notable changes to Pi Daemon are documented here. The project follows
 semantic versioning once a release tag is cut.
 
+## 0.2.1 — 2026-07-22
+
+- avoid scheduler-delay amplification in the standard 10,000-row inventory search path while retaining time-bounded event-loop yields for larger configured indexes
+
 ## 0.2.0 — 2026-07-21
 
 Pre-1.0 breaking runtime-policy release: Dashboard activation now preserves and

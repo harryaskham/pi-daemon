@@ -467,6 +467,7 @@ export class SessionInventory {
           ? 0
           : (this.#orderedPositions.get(after.inventoryId) ?? -1) + 1;
       let visited = 0;
+      const yieldDuringScan = this.#orderedRecords.length > 10_000;
       let lastYieldAt = performance.now();
       for (let index = start; index < this.#orderedRecords.length; index += 1) {
         const record = this.#orderedRecords[index]!;
@@ -475,7 +476,7 @@ export class SessionInventory {
           if (selected.length > limit) break;
         }
         visited += 1;
-        if (visited % 256 === 0 && performance.now() - lastYieldAt >= 8) {
+        if (yieldDuringScan && visited % 256 === 0 && performance.now() - lastYieldAt >= 8) {
           await yieldEventLoop();
           lastYieldAt = performance.now();
         }

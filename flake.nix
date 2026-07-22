@@ -24,11 +24,11 @@
       pkgs = import nixpkgs {inherit system;};
       package = pkgs.buildNpmPackage {
         pname = "pi-daemon";
-        version = "0.2.0";
+        version = "0.2.1";
         src = ./.;
 
         nodejs = pkgs.nodejs_24;
-        npmDepsHash = "sha256-2yRl6Z7bEH3rnUrbXdt5/a/IGZq2ZvsZa7VIQrZby7c=";
+        npmDepsHash = "sha256-C2oRTheCjkAllnYkVlWOP8ZrXCd+cUM7+sWB8JKX/AQ=";
         npmDepsFetcherVersion = 2;
         nativeBuildInputs = [pkgs.makeWrapper];
 
@@ -67,8 +67,8 @@
         '';
         doInstallCheck = true;
         installCheckPhase = ''
-          "$out/bin/pi-daemon" version | grep -Fx 0.2.0
-          "$out/bin/pi-daemon-rpc" --version | grep -Fx 0.2.0
+          "$out/bin/pi-daemon" version | grep -Fx 0.2.1
+          "$out/bin/pi-daemon-rpc" --version | grep -Fx 0.2.1
         '';
 
         meta = {
