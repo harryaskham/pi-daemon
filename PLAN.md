@@ -640,6 +640,8 @@ implementation order. This list is a human-readable crosswalk.
 
 ### Post-completion operator surfaces
 
+- [x] `bd-597aac` — publish the pre-1.0 breaking runtime/resource policy as
+  v0.2.2 after exact CI, package, checksum, and self-update acceptance.
 - [x] `bd-e8cab3` — reload-unique Dash workspace/settings idempotency scopes so
   every settings category remains editable across durable browser sessions.
 - [x] `bd-4e7a92` — restore cookie-authenticated Dash mutation authority after
