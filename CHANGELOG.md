@@ -3,6 +3,10 @@
 All notable changes to Pi Daemon are documented here. The project follows
 semantic versioning once a release tag is cut.
 
+## 0.2.2 — 2026-07-22
+
+- retain SIGTERM/SIGINT handlers until bounded serve/web shutdown completes so repeated supervisor stop signals cannot bypass cleanup
+
 ## 0.2.1 — 2026-07-22
 
 - avoid scheduler-delay amplification in the standard 10,000-row inventory search path while retaining time-bounded event-loop yields for larger configured indexes

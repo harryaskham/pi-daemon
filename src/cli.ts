@@ -356,8 +356,11 @@ async function runWeb(
       }
     }
   } finally {
-    signalLatch?.dispose();
-    await shutdown();
+    try {
+      await shutdown();
+    } finally {
+      signalLatch?.dispose();
+    }
   }
   return 0;
 }
@@ -814,9 +817,12 @@ async function runServe(
       }
     }
   } finally {
-    signalLatch?.dispose();
     if (sweepInterval !== undefined) clearInterval(sweepInterval);
-    await shutdown();
+    try {
+      await shutdown();
+    } finally {
+      signalLatch?.dispose();
+    }
   }
   return 0;
 }
