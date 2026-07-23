@@ -30,6 +30,12 @@ import {
 
 import { encodedSessionId, ensurePrivateDirectory } from "./durability.js";
 import {
+  InstalledPiPackageError,
+  emptyInstalledPiPackageResources,
+  resolveInstalledPiPackageResources,
+  type InstalledPiPackageResources,
+} from "./installed-package-resources.js";
+import {
   PiRpcController,
   type PiRpcControllerOptions,
 } from "./pi-rpc-controller.js";
@@ -321,6 +327,21 @@ export class PiSessionFactory implements SessionFactory {
       if (configuredSpec !== undefined) {
         await validateExplicitResourceAuthority(configuredSpec);
       }
+      let installedPackageResources = emptyInstalledPiPackageResources();
+      if (configuredSpec?.resources?.inheritInstalledPackages === true) {
+        try {
+          installedPackageResources = await resolveInstalledPiPackageResources({
+            cwd: canonicalCwd,
+            agentDir: selectedAgentDir,
+          });
+          await validateInstalledPackageResourceAuthority(installedPackageResources);
+        } catch (error) {
+          if (error instanceof InstalledPiPackageError) {
+            throw new PiAdapterError(error.code, error.message);
+          }
+          throw error;
+        }
+      }
       const settingsManager =
         configuredSpec === undefined
           ? SettingsManager.inMemory()
@@ -352,6 +373,7 @@ export class PiSessionFactory implements SessionFactory {
               resourceLoaderOptions: resourceLoaderOptions(
                 configuredSpec,
                 hostToolAdapter !== undefined,
+                installedPackageResources,
               ),
             });
       services.diagnostics.push(
@@ -361,7 +383,12 @@ export class PiSessionFactory implements SessionFactory {
         })),
       );
       if (configuredSpec !== undefined) {
-        assertExplicitResourcesLoaded(configuredSpec, services.resourceLoader);
+        assertExplicitResourcesLoaded(
+          configuredSpec,
+          services.resourceLoader,
+          installedPackageResources,
+          hostToolAdapter !== undefined,
+        );
       }
       const materializedSessionManager = await materializeSessionManager(
         runtimeSessionManager,
@@ -852,23 +879,68 @@ async function validateExplicitResourceAuthority(
   }
 }
 
+async function validateInstalledPackageResourceAuthority(
+  resources: InstalledPiPackageResources,
+): Promise<void> {
+  const getuid = process.getuid;
+  for (const path of [
+    ...resources.extensions,
+    ...resources.skills,
+    ...resources.promptTemplates,
+    ...resources.themes,
+  ]) {
+    let info;
+    try {
+      info = await lstat(path);
+    } catch {
+      throw new PiAdapterError(
+        "installed_package_unavailable",
+        "one or more Pi packages are not installed; install them with the Pi CLI",
+      );
+    }
+    if (
+      info.isSymbolicLink() ||
+      (!info.isFile() && !info.isDirectory()) ||
+      (getuid !== undefined && info.uid !== getuid() && info.uid !== 0) ||
+      (info.mode & 0o022) !== 0
+    ) {
+      throw new PiAdapterError(
+        "installed_package_resource_invalid",
+        "installed Pi package resources are not owner-controlled",
+      );
+    }
+  }
+}
+
 function assertExplicitResourcesLoaded(
   spec: PreparedSessionRuntimeOptions["persistedSpec"],
   loader: ResourceLoader,
+  installedPackages: InstalledPiPackageResources,
+  forceNoExtensions = false,
 ): void {
   const resources = spec.resources;
+  const installedExtensionCount = forceNoExtensions || resources?.noExtensions === true
+    ? 0
+    : installedPackages.extensions.length;
+  const installedSkillCount = resources?.noSkills === true ? 0 : installedPackages.skills.length;
+  const installedPromptCount = resources?.noPromptTemplates === true
+    ? 0
+    : installedPackages.promptTemplates.length;
+  const installedThemeCount = resources?.noThemes === true ? 0 : installedPackages.themes.length;
   const extensionFailures =
-    (resources?.extensions?.length ?? 0) > 0 ? loader.getExtensions().errors.length : 0;
+    (resources?.extensions?.length ?? 0) + installedExtensionCount > 0
+      ? loader.getExtensions().errors.length
+      : 0;
   const skillFailures =
-    (resources?.skills?.length ?? 0) > 0
+    (resources?.skills?.length ?? 0) + installedSkillCount > 0
       ? loader.getSkills().diagnostics.filter((entry) => entry.type === "error").length
       : 0;
   const promptFailures =
-    (resources?.promptTemplates?.length ?? 0) > 0
+    (resources?.promptTemplates?.length ?? 0) + installedPromptCount > 0
       ? loader.getPrompts().diagnostics.filter((entry) => entry.type === "error").length
       : 0;
   const themeFailures =
-    (resources?.themes?.length ?? 0) > 0
+    (resources?.themes?.length ?? 0) + installedThemeCount > 0
       ? loader.getThemes().diagnostics.filter((entry) => entry.type === "error").length
       : 0;
   if (extensionFailures + skillFailures + promptFailures + themeFailures > 0) {
@@ -882,6 +954,7 @@ function assertExplicitResourcesLoaded(
 function resourceLoaderOptions(
   spec: PreparedSessionRuntimeOptions["persistedSpec"],
   forceNoExtensions = false,
+  installedPackages: InstalledPiPackageResources = emptyInstalledPiPackageResources(),
 ): NonNullable<Parameters<typeof createAgentSessionServices>[0]["resourceLoaderOptions"]> {
   const resources = spec.resources;
   const approved = resources?.projectTrust === "approve";
@@ -889,11 +962,19 @@ function resourceLoaderOptions(
   const skills = resources?.skills ?? [];
   const prompts = resources?.promptTemplates ?? [];
   const themes = resources?.themes ?? [];
+  const installedExtensions = forceNoExtensions || resources?.noExtensions === true
+    ? []
+    : installedPackages.extensions;
+  const installedSkills = resources?.noSkills === true ? [] : installedPackages.skills;
+  const installedPrompts = resources?.noPromptTemplates === true
+    ? []
+    : installedPackages.promptTemplates;
+  const installedThemes = resources?.noThemes === true ? [] : installedPackages.themes;
   return {
-    additionalExtensionPaths: [...extensions],
-    additionalSkillPaths: [...skills],
-    additionalPromptTemplatePaths: [...prompts],
-    additionalThemePaths: [...themes],
+    additionalExtensionPaths: [...extensions, ...installedExtensions],
+    additionalSkillPaths: [...skills, ...installedSkills],
+    additionalPromptTemplatePaths: [...prompts, ...installedPrompts],
+    additionalThemePaths: [...themes, ...installedThemes],
     // Pi's no* switches retain explicit CLI/additional paths while excluding
     // ambient user/project discovery. An explicitly present list therefore
     // means "only these", including when it is empty.

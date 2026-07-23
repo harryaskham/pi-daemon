@@ -118,6 +118,7 @@ web:
       extensions: ["/opt/pi-extensions/agent-utils/m.js"]
       projectTrust: approve
       noContextFiles: true
+      inheritInstalledPackages: true
     settings:
       agentUtils: { modelShortcut: true }
   ui:
@@ -154,6 +155,7 @@ web:
       extensions: ["/opt/pi-extensions/agent-utils/m.js"],
       projectTrust: "approve",
       noContextFiles: true,
+      inheritInstalledPackages: true,
     },
     settings: { agentUtils: { modelShortcut: true } },
   });

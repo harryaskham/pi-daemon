@@ -157,7 +157,11 @@ model/tool/resource/settings policy and a memory-only environment overlay.
 Because arbitrary extensions share the process trust domain, they require an
 explicit trusted project/configuration policy; `unisolated` is not a sandbox.
 Dashboard activations use the owner-configured `web.runtimePolicy` for that
-bounded authority and otherwise remain no-tools/no-extensions. Direct and fork
+bounded authority and otherwise remain no-tools/no-extensions. An explicit
+`resources.inheritInstalledPackages: true` loads only global Pi packages already
+installed under the configured agent directory, honoring package manifests and
+filters without installing, updating, spawning a package manager, or using the
+network. Direct and fork
 activation restore the source active branch's provider, model, and thinking
 level before the first turn; model selection never falls through to arbitrary
 registry order when the source records an authenticated model.

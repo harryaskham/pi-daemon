@@ -148,6 +148,10 @@
         "noPromptTemplates": { "type": "boolean" },
         "noThemes": { "type": "boolean" },
         "noContextFiles": { "type": "boolean" },
+        "inheritInstalledPackages": {
+          "type": "boolean",
+          "description": "Load only package resources already installed by the Pi CLI; never install or update packages."
+        },
         "systemPrompt": { "type": "string", "maxLength": 262144 },
         "appendSystemPrompt": {
           "type": "array",

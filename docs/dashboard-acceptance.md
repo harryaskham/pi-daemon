@@ -135,6 +135,23 @@ accessible Access dialog exercises grants, revocation, owner transfer, workspace
 selection, active participant selection and audit without receiving credentials,
 canonical paths or the daemon bearer.
 
+## Installed Pi package inheritance acceptance
+
+Package inheritance is absent by default and activated only by the persisted
+`inheritInstalledPackages` resource authority. Acceptance uses local and managed
+npm package fixtures with real Pi manifests/filters, proves only enabled
+extension/skill/prompt/theme paths reach the isolated session resource loader,
+and verifies browser defaults contain neither package declarations nor install
+paths. Missing packages, insecure settings and malformed filters fail with
+content-free typed errors before SDK session creation.
+
+A fake `npm` executable and marker prove both installed and missing npm cases
+invoke no package-manager process. The resolver first maps configured npm/git/
+local declarations to existing user-scope install paths, then gives the Pi SDK
+absolute local paths only, making install/update/reconcile/network paths
+structurally unreachable. The configured package cache remains a bounded
+read-only source; Pi CLI is its sole installer.
+
 ## Multi-user activation and migration acceptance
 
 The final activation matrix runs the same configured static provider through

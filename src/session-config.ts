@@ -399,6 +399,7 @@ function parseResources(
     "noPromptTemplates",
     "noThemes",
     "noContextFiles",
+    "inheritInstalledPackages",
     "systemPrompt",
     "appendSystemPrompt",
     "projectTrust",
@@ -426,6 +427,7 @@ function parseResources(
     "noPromptTemplates",
     "noThemes",
     "noContextFiles",
+    "inheritInstalledPackages",
   ] as const) {
     if (input[field] !== undefined) result[field] = boolean(input[field], `spec.resources.${field}`);
   }

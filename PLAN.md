@@ -502,6 +502,8 @@ process appears per wake.
     transfer, explicit controller handoff, audit and UI.
   - [x] `bd-9d9899` Secret-path provider configuration, migration, UX,
     exhaustive security/compatibility proof and release documentation.
+- [x] `bd-5e5121` Explicitly inherit bounded global Pi package resources already
+  installed by the Pi CLI, with no daemon installer/update/network authority.
 
 ## 18. Completed scaffold board (historical PD identifiers)
 

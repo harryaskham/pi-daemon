@@ -33,7 +33,10 @@ It cannot carry raw environment, settings, extension/skill/template/theme paths,
 system prompts, service bearers, or host tool-adapter capabilities. Elevated
 `default` tools, approved discovery, and enabled resource kinds are accepted
 only when `web.sessionDefaults.inheritRuntimePolicy` selects an owner-controlled
-`web.runtimePolicy` that contains that authority. The daemon revalidates the
+`web.runtimePolicy` that contains that authority. If that policy sets
+`resources.inheritInstalledPackages`, materialization resolves only global Pi
+packages already installed by the Pi CLI; the browser receives no package
+settings or paths and cannot request installation. The daemon revalidates the
 canonical cwd and policy both before atomic storage and again before
 restart-time materialization.
 

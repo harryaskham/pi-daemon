@@ -40,7 +40,7 @@ project code or tools.
 - default Pi auth file must be an owner-only regular file
 - an absent custom-agent `auth.json` may be seeded once from the bounded owner-only normal Pi auth file or an explicit required seed; it is never synchronized, overwritten, logged, or returned
 - empty built-in/custom tool allowlist
-- empty extensions, skills, templates, themes, context files, and append prompt unless an owner-private `web.runtimePolicy` names exact reviewed resources; explicit lists exclude ambient user/project discovery and failures abort activation
+- empty extensions, skills, templates, themes, context files, and append prompt unless an owner-private `web.runtimePolicy` grants them; explicit lists exclude ambient discovery, while `inheritInstalledPackages` resolves only bounded global packages already installed by the Pi CLI and never installs/updates/spawns/uses network; missing or invalid resources abort activation
 - no Cacophony node token, CA key, daemon state, or orchestration authority
 - structured logs redact prompts, output/content, environment, and credentials
 - accepted wake requests are never blindly replayed after a crash

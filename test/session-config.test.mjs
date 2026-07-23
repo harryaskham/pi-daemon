@@ -45,6 +45,7 @@ test("session configuration separates durable policy from a bounded memory-only 
     resources: {
       extensions: ["git:github.com/harryaskham/agent-utils", "./reviewed.mjs"],
       skills: ["npm:reviewed-skills"],
+      inheritInstalledPackages: true,
     },
   }).persistedSpec.resources;
   assert.deepEqual(explicitResources.extensions, [
@@ -52,6 +53,7 @@ test("session configuration separates durable policy from a bounded memory-only 
     "/work/reviewed.mjs",
   ]);
   assert.deepEqual(explicitResources.skills, ["npm:reviewed-skills"]);
+  assert.equal(explicitResources.inheritInstalledPackages, true);
 
   assert.deepEqual(
     toolConfiguration(

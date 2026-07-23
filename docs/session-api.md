@@ -127,6 +127,7 @@ flags such as `--help`, `--version`, `--mode`, or an interactive resume picker.
 | `--provider`, `--model`, `--thinking`, `--models` | `spec.model` |
 | `--tools`, `--exclude-tools`, `--no-tools`, `--no-builtin-tools` | `spec.tools` |
 | extension/skill/prompt/theme paths and `--no-*` | `spec.resources` |
+| already-installed global Pi packages | `spec.resources.inheritInstalledPackages` |
 | system and appended prompts | `spec.resources.systemPrompt`, `appendSystemPrompt` |
 | `--approve`, `--no-approve` | `spec.resources.projectTrust` |
 | extension-defined flags | `spec.resources.extensionFlags` |
@@ -137,7 +138,10 @@ flags such as `--help`, `--version`, `--mode`, or an interactive resume picker.
 An interactive `--resume` picker maps to `GET /v1/session` followed by an
 explicit `open` or `fork` target. Resource paths are canonicalized to absolute
 paths at create/update admission so a later cwd switch does not reinterpret
-them.
+them. `inheritInstalledPackages` is explicit shared-process authority. It reads
+only the bounded global package declarations from `AGENT_DIR/settings.json` and
+requires Pi CLI's npm/git/local install paths to exist. Pi Daemon never installs,
+updates, reconciles, invokes a package manager, or uses network for this field.
 
 ### Environment contract
 

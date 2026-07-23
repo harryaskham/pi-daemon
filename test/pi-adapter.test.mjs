@@ -864,6 +864,91 @@ test("real Pi runtime new, switch, fork, and import preserve resolved conversati
   await adapter.dispose();
 });
 
+test("configured sessions inherit only Pi packages already installed by the Pi CLI", async () => {
+  const stateDir = await temporaryDirectory();
+  const agentDir = await temporaryDirectory();
+  const cwd = await temporaryDirectory();
+  const packageRoot = join(agentDir, "installed-fixture");
+  await mkdir(join(packageRoot, "extensions"), { recursive: true });
+  await writeFile(
+    join(packageRoot, "extensions", "fixture.mjs"),
+    "export default function () {}\n",
+  );
+  await writeFile(
+    join(packageRoot, "package.json"),
+    JSON.stringify({ name: "installed-fixture", pi: { extensions: ["./extensions/fixture.mjs"] } }),
+  );
+  await writeFile(
+    join(agentDir, "settings.json"),
+    `${JSON.stringify({ packages: ["./installed-fixture"] })}\n`,
+    { mode: 0o600 },
+  );
+  const { authStorage, modelRegistry, model } = modelHarness();
+  const captures = [];
+  const factory = new PiSessionFactory({
+    stateDir,
+    agentDir,
+    allowedRoots: [cwd],
+    authStorage,
+    modelRegistry,
+    async createSession(options) {
+      captures.push(options);
+      return {
+        session: new FakePiSession("installed-package", options.model, options.sessionManager),
+        extensionsResult: options.resourceLoader.getExtensions(),
+      };
+    },
+  });
+  const prepared = parseSessionConfiguration({
+    cwd,
+    target: { mode: "memory" },
+    model: { provider: model.provider, id: model.id },
+    tools: { mode: "none" },
+    resources: {
+      inheritInstalledPackages: true,
+      noSkills: true,
+      noPromptTemplates: true,
+      noThemes: true,
+      noContextFiles: true,
+      projectTrust: "approve",
+    },
+    isolation: { mode: "unisolated" },
+  });
+  const adapter = await factory.open({
+    sessionId: "installed-package",
+    generation: 1,
+    ...prepared.openRequest,
+  });
+  try {
+    assert.equal(prepared.persistedSpec.resources.inheritInstalledPackages, true);
+    assert.equal(captures.length, 1);
+    const loaded = captures[0].resourceLoader.getExtensions();
+    assert.equal(loaded.errors.length, 0);
+    assert.equal(loaded.extensions.length, 1);
+    assert.equal(loaded.extensions[0].path, join(packageRoot, "extensions", "fixture.mjs"));
+  } finally {
+    await adapter.dispose();
+  }
+
+  await writeFile(
+    join(agentDir, "settings.json"),
+    `${JSON.stringify({ packages: ["npm:missing-installed-fixture-987654321"] })}\n`,
+    { mode: 0o600 },
+  );
+  await assert.rejects(
+    factory.open({
+      sessionId: "missing-installed-package",
+      generation: 1,
+      ...prepared.openRequest,
+    }),
+    (error) =>
+      error instanceof PiAdapterError &&
+      error.code === "installed_package_unavailable" &&
+      !error.message.includes("missing-installed-fixture"),
+  );
+  assert.equal(captures.length, 1);
+});
+
 test("real Pi SDK loads only an explicitly approved extension command/tool profile without a model turn", async () => {
   const stateDir = await temporaryDirectory();
   const agentDir = await temporaryDirectory();

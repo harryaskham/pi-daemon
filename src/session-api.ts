@@ -123,6 +123,8 @@ export interface SessionResourceSpec {
   noPromptTemplates?: boolean;
   noThemes?: boolean;
   noContextFiles?: boolean;
+  /** Load only package resources already installed by the Pi CLI; never install/update. */
+  inheritInstalledPackages?: boolean;
   systemPrompt?: string;
   appendSystemPrompt?: string[];
   projectTrust?: ProjectTrustMode;

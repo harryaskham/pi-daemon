@@ -143,6 +143,8 @@ web:
         - /opt/pi-extensions/agent-utils/m.js
       projectTrust: approve
       noContextFiles: true
+      # Pi CLI owns installation/update; daemon resolves existing global installs only.
+      inheritInstalledPackages: true
     settings:
       agentUtils: { modelShortcut: true }
   sessionDefaults:
@@ -159,10 +161,24 @@ profile is `tools.mode: default`, `resources.projectTrust: approve`, all five
 `sessionDefaults.inheritRuntimePolicy: true`. Point
 `sessionDefaults.piSettingsFile` at `~/.pi/agent/settings.json` and set the
 instance `agentDir` to `~/.pi/agent` when normal user extensions, skills,
-prompts, and themes should be discoverable. This explicitly grants shared-process
-authority: every enabled tool or extension can reach the daemon process and
-other mutually trusted sessions. `settings.packages` remains prohibited; list
-reviewed package resources explicitly when required.
+prompts, and themes should be discoverable. Set
+`runtimePolicy.resources.inheritInstalledPackages: true` to load the global Pi
+package declarations from that agent directory. This explicitly grants
+shared-process authority: every enabled tool or extension can reach the daemon
+process and other mutually trusted sessions.
+
+Pi Daemon remains a package **consumer**, never an installer. It reads a bounded,
+owner-controlled `AGENT_DIR/settings.json`, validates at most 128 global package
+declarations and their filters, requires every npm/git/local package to already
+exist in Pi's managed cache, then applies the package manifest/filter to bounded
+extension, skill, prompt, and theme paths. Missing packages or invalid resources
+fail activation with a content-free error telling the operator to use `pi
+install`/`pi update --extensions`; Pi Daemon consumes the installed checkout and
+does not reconcile its version/ref. This path invokes no package-manager command,
+child process, update, reconciliation, or network request. Project-local package
+declarations are not inherited. `settings.packages` remains prohibited inside
+daemon YAML; the boolean authority flag is the only supported bridge to Pi's
+installed global package set.
 
 Relative YAML paths resolve from the configuration file; `~/` resolves from the
 service home. The file is byte/depth/property bounded, rejects duplicate or

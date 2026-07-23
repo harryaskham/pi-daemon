@@ -516,7 +516,7 @@ function parseWebRuntimePolicy(value: unknown): PiDaemonWebRuntimePolicyConfig {
     if (Object.prototype.hasOwnProperty.call(settings, "packages")) {
       throw new PiDaemonConfigError(
         "config_invalid",
-        "web.runtimePolicy.settings.packages is not allowed; list reviewed package references explicitly in resources.extensions/skills/promptTemplates/themes",
+        "web.runtimePolicy.settings.packages is not allowed; use resources.inheritInstalledPackages for Pi CLI installs or list reviewed resources explicitly",
       );
     }
   }

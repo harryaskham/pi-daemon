@@ -24,6 +24,7 @@
       "extensions": ["/srv/extensions/safe-a.ts"],
       "skills": ["/srv/skills/release"],
       "noThemes": true,
+      "inheritInstalledPackages": true,
       "projectTrust": "approve",
       "extensionFlags": {
         "release-mode": true,

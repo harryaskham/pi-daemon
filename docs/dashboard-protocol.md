@@ -381,7 +381,10 @@ Optional `sessionDefaults` capabilities expose only the effective browser-safe
 lazy-draft spec and content-free source labels. Pi settings/config paths,
 package values, explicit runtime resources, and host settings remain server-side;
 elevated draft policy is rechecked against owner runtime policy on create and
-materialization.
+materialization. An owner policy may inherit global Pi packages already installed
+under the server's agent directory. Only the resulting server-side resources are
+loaded; package declarations, install paths, and installer authority never enter
+the browser protocol.
 
 Settings distinguish configured defaults from a mutable UI-only runtime
 overlay. The overlay may change presentation preferences such as theme, editor,

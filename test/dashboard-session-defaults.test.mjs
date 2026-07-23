@@ -44,6 +44,7 @@ web:
       noPromptTemplates: false
       noThemes: false
       noContextFiles: false
+      inheritInstalledPackages: true
     settings:
       defaultProjectTrust: always
       steeringMode: all
@@ -94,6 +95,8 @@ test("owner defaults inherit Pi model settings and only browser-safe runtime aut
   assert.deepEqual(materialized.resources.extensions, [h.extension]);
   assert.equal(materialized.resources.projectTrust, "approve");
   assert.equal(materialized.resources.noContextFiles, false);
+  assert.equal(materialized.resources.inheritInstalledPackages, true);
+  assert.equal("inheritInstalledPackages" in defaults.spec.resources, false);
   assert.deepEqual(materialized.settings, {
     defaultProjectTrust: "always",
     steeringMode: "all",
