@@ -12,6 +12,7 @@
     "piSessionId": "pi-session-fixture-01",
     "createdAt": "2026-07-18T11:00:00.000Z",
     "modifiedAt": "2026-07-18T12:00:00.000Z",
+    "activityAt": "2026-07-18T12:00:00.000Z",
     "messageCount": 2,
     "entryCount": 4,
     "toolCallCount": 1,

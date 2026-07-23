@@ -266,9 +266,10 @@ export class DashboardLiveSessionController {
       error: undefined,
     });
     try {
+      const operationId = crypto.randomUUID();
       let ticket = await this.backend.activateSession(this.inventoryId, {
-        requestId: `dash-activation-${crypto.randomUUID()}`,
-        idempotencyKey: `dash-activation-${this.inventoryId}-${mode}`,
+        requestId: `dash-activation-${operationId}`,
+        idempotencyKey: `dash-activation-${this.inventoryId}-${mode}-${operationId}`,
         mode,
         ...(
           mode === "reuse" || this.#state.previewFingerprint === undefined
@@ -295,6 +296,10 @@ export class DashboardLiveSessionController {
       if (ticket.state !== "succeeded" || ticket.managedSession === undefined) {
         this.#patch({ phase: "error", error: { code: "activation_incomplete", message: "Activation did not produce a managed session", retryable: true } });
         return;
+      }
+      const refreshedInfo = await this.backend.getSessionInfo(this.inventoryId).catch(() => undefined);
+      if (refreshedInfo !== undefined && this.#current(generation)) {
+        this.#patch({ info: refreshedInfo });
       }
       await this.#connect(ticket.managedSession.sessionId, ticket.managedSession.generation, generation);
     } catch (error) {
@@ -383,7 +388,7 @@ export class DashboardLiveSessionController {
     const managed = this.#state.info.managed;
     if (managed !== undefined) {
       try {
-        await this.#connect(managed.sessionId, managed.generation, generation);
+        await this.activate("reuse");
       } catch (error) {
         if (this.#current(generation)) this.#fail(error, "hydration_failed", true);
       }

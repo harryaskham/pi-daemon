@@ -104,7 +104,7 @@ export type SessionWriterProbe = (path: string) =>
 
 export interface SessionOwnershipServiceOptions {
   stateDir: string;
-  inventory: Pick<SessionInventory, "getInfo" | "list" | "reconcile">;
+  inventory: Pick<SessionInventory, "getInfo" | "list" | "reconcile" | "markActive">;
   store: SessionOwnershipStore;
   runtime: SessionOwnershipRuntime;
   runtimeSpec: SessionOwnershipRuntimeSpecFactory;
@@ -418,6 +418,10 @@ export class SessionOwnershipService {
       if (activeMapping !== undefined) {
         await this.renewLease(activeMapping.managedSessionId, activeMapping.lease.leaseId);
       }
+      await this.#inventory.markActive(ticket.target, {
+        at: this.#timestamp(),
+        activation: "selected",
+      });
       return this.#store.markActivationSucceeded(ticket.ticketId, {
         managedSessionId,
         generation,
@@ -537,6 +541,10 @@ export class SessionOwnershipService {
     };
     await this.#store.save(record);
     await this.#inventory.reconcile();
+    await this.#inventory.markActive(ticket.target, {
+      at: now,
+      activation: "selected",
+    });
     return this.#store.markActivationSucceeded(ticket.ticketId, {
       managedSessionId,
       generation: opened.session.generation,

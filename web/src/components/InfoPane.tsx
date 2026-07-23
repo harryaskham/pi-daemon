@@ -41,7 +41,7 @@ export function InfoPane({ session, info, scheduleEditor }: InfoPaneProps) {
           <span className={`presence-dot presence-dot--${session.presence.runtime}${scheduleEditor && session.presence.runtime !== "running" && session.presence.scheduled ? " presence-dot--scheduled" : ""}${session.presence.unread ? " presence-dot--unread" : ""}`} />
           {session.presence.runtime.replace("-", " ")}
           <i />
-          modified {preciseRelativeTime(session.modifiedAt)}
+          active {preciseRelativeTime(session.activityAt ?? session.modifiedAt)}
         </div>
       </header>
 
@@ -64,7 +64,8 @@ export function InfoPane({ session, info, scheduleEditor }: InfoPaneProps) {
           <div><dt><Gauge size={14} /> Thinking</dt><dd>{session.thinking}</dd></div>
           <div><dt><GitBranch size={14} /> Pi session</dt><dd>{session.sessionId}</dd></div>
           <div><dt><Cpu size={14} /> Inventory ID</dt><dd>{session.inventoryId}</dd></div>
-          <div><dt><Clock3 size={14} /> Modified</dt><dd>{new Date(session.modifiedAt).toLocaleString()}</dd></div>
+          <div><dt><Clock3 size={14} /> Last active</dt><dd>{new Date(session.activityAt ?? session.modifiedAt).toLocaleString()}</dd></div>
+          <div><dt><Clock3 size={14} /> Source modified</dt><dd>{new Date(session.modifiedAt).toLocaleString()}</dd></div>
           {info?.source.canonicalPath ? <div><dt><FileCode2 size={14} /> Canonical path</dt><dd>{info.source.canonicalPath}</dd></div> : null}
           {info?.runtime ? <div><dt><Activity size={14} /> Readers / warm leases</dt><dd>{info.runtime.readerCount} / {info.runtime.warmLeaseCount}</dd></div> : null}
         </dl>

@@ -267,6 +267,29 @@ test("new session draft persists, cancels safely, and transitions one first send
   await expect(pane.locator('[data-record-source="optimistic"]')).toHaveCount(0);
 });
 
+test("activating an old direct-coopt session refreshes activity order without rewriting source modified time", async ({ page }) => {
+  await page.goto("./?fixture=1&state=ready");
+  const search = page.getByTestId("session-search");
+  await search.fill("session-09999");
+  const oldRow = page.locator("[data-session-row]").first();
+  await expect(oldRow).toContainText("09999");
+  await oldRow.click();
+  const pane = page.locator(".workspace-pane--selected");
+  await expect(pane.locator(".composer-status")).toContainText("First send will safe fork");
+  await pane.getByRole("button", { name: "Direct co-opt" }).click();
+  const editor = pane.getByTestId("composer-editor");
+  await editor.click();
+  await page.keyboard.type("activate old direct session");
+  await pane.getByRole("button", { name: "Activate & send" }).click();
+  await expect(pane.getByRole("button", { name: "Send message" })).toBeVisible();
+  await search.fill("");
+  await expect(page.locator("[data-session-row]").first()).toContainText("09999");
+  await page.locator("[data-session-row]").first().getByRole("button", { name: /Open information for/ }).click();
+  const selectedInfo = page.locator(".workspace-pane--selected");
+  await expect(selectedInfo.getByText("Last active", { exact: true })).toBeVisible();
+  await expect(selectedInfo.getByText("Source modified", { exact: true })).toBeVisible();
+});
+
 test("dormant preview stays scrollable and wakes on first composer send", async ({ page }) => {
   await page.goto("./?fixture=1&state=ready");
   await page.getByTestId("session-search").fill("session-00001");

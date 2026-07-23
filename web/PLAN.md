@@ -1405,6 +1405,9 @@ These lanes intentionally begin in parallel:
   preview and side-by-side divergence, edit-resubmit/fork/clone, negotiated
   controller-only in-place navigate/summarize frames, TUI handoff, and
   embedded/remote compatibility acceptance.
+- [x] `bd-b07f4d` — activation recency persists independently from source mtime,
+  reorders the hot inventory exactly once, refreshes current browser state, and
+  preserves stable revision-bound paging.
 - [ ] `bd-b31a5d` — multi-user identity and per-session authorization epic.
 - [x] `bd-e89a17` — optional native TLS and hardened remote browser deployment:
   file/fd material, atomic rotation, exact SNI/Host/Origin/public authority,

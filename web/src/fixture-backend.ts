@@ -49,9 +49,13 @@ export class LocalFixtureBackend implements DashboardFrontendBackend {
 
   async listSessions(query: SessionInventoryQuery): Promise<SessionInventoryPage> {
     const normalized = query.search?.trim().toLocaleLowerCase() ?? "";
+    const ordered = [...this.sessions].sort((left, right) =>
+      (right.activityAt ?? right.modifiedAt).localeCompare(left.activityAt ?? left.modifiedAt) ||
+      left.inventoryId.localeCompare(right.inventoryId)
+    );
     const matches = normalized.length === 0
-      ? this.sessions
-      : this.sessions.filter((session) =>
+      ? ordered
+      : ordered.filter((session) =>
           `${session.title}\n${session.cwd}\n${session.project}\n${session.sessionId}`
             .toLocaleLowerCase()
             .includes(normalized),

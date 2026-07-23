@@ -239,6 +239,7 @@ export function createDashboardContractFixtures(): DashboardContractFixtures {
     piSessionId: "pi-session-fixture-01",
     createdAt: "2026-07-18T11:00:00.000Z",
     modifiedAt: FIXTURE_TIME,
+    activityAt: FIXTURE_TIME,
     messageCount: 2,
     entryCount: 4,
     toolCallCount: 1,

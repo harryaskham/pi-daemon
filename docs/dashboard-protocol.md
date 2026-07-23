@@ -333,8 +333,9 @@ The browser must not blind-replay a command simply because its WebSocket closed.
 - unread attention.
 
 Frozen scenarios prove that scheduled+dormant+unread, user-turn+dormant+unread,
-and running-at-start are representable without overloading one boolean. Merely
-listing a session does not advance the seen cursor. Dash renders schedule
+and running-at-start are representable without overloading one boolean. Merely listing a session does not advance the seen cursor. Successful durable
+activation advances separate `activityAt` recency once, reorders the inventory,
+and never rewrites source `modifiedAt` or fingerprints. Dash renders schedule
 filters, countdowns, and the per-session editor only when `resources.schedules`
 is negotiated. A scheduled dormant session keeps its dark-magenta dot and
 countdown regardless of pane focus; an unseen completion adds, rather than

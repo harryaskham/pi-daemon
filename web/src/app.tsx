@@ -422,6 +422,7 @@ function DashWorkspace({
           }),
       cwd: liveState.info?.cwd ?? session.cwd,
       project: liveState.info?.projectLabel ?? session.project,
+      activityAt: liveState.info?.activityAt ?? session.activityAt ?? session.modifiedAt,
       model: liveState.info?.runtime?.model?.id ?? String(liveState.rpcState.model ?? session.model),
       thinking: thinkingLevel(liveState.info?.runtime?.model?.thinkingLevel ?? liveState.rpcState.thinkingLevel, session.thinking),
       presence: {
@@ -432,7 +433,10 @@ function DashWorkspace({
         unread: liveState.unread,
       },
     } satisfies SessionFixture;
-  }), [liveStates, sessions]);
+  }).sort((left, right) =>
+    (right.activityAt ?? right.modifiedAt).localeCompare(left.activityAt ?? left.modifiedAt) ||
+    left.inventoryId.localeCompare(right.inventoryId)
+  ), [liveStates, sessions]);
   const sessionById = useMemo(() => new Map(displaySessions.map((session) => [session.inventoryId, session])), [displaySessions]);
 
   const commitLayout = useCallback((next: LayoutNode) => {

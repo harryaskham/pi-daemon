@@ -1011,6 +1011,9 @@
         "modifiedAt": {
           "$ref": "#/$defs/timestamp"
         },
+        "activityAt": {
+          "$ref": "#/$defs/timestamp"
+        },
         "messageCount": {
           "type": "integer",
           "minimum": 0

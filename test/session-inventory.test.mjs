@@ -221,6 +221,60 @@ test("persisted inventory boots before reconcile and never stores full search te
   assert.equal(restarted.status().records, 1);
 });
 
+test("activation recency is durable, sorts to the top, and preserves source modified truth", async (t) => {
+  const { stateDir, sessionsRoot } = await fixture(t);
+  await writeSession(sessionsRoot, {
+    filename: "older.jsonl",
+    id: "pi-older",
+    name: "Older session",
+    timestamp: "2026-07-18T10:00:00.000Z",
+  });
+  await writeSession(sessionsRoot, {
+    filename: "newer.jsonl",
+    id: "pi-newer",
+    name: "Newer session",
+    timestamp: "2026-07-18T11:00:00.000Z",
+  });
+  const inventory = new SessionInventory({
+    stateDir,
+    catalog: new FakeCatalog(),
+    roots: [sessionsRoot],
+    activationPolicy: () => ({ eligible: true, modes: ["direct", "fork"] }),
+  });
+  await inventory.reconcile();
+  let page = await inventory.list();
+  assert.deepEqual(page.sessions.map((record) => record.piSessionId), ["pi-newer", "pi-older"]);
+  const beforeActivationPage = await inventory.list({ limit: 1 });
+  assert.ok(beforeActivationPage.nextCursor);
+  const older = page.sessions[1];
+  const sourceModifiedAt = older.modifiedAt;
+  const activatedAt = "2026-07-18T12:00:00.000Z";
+  const activated = await inventory.markActive(older.inventoryId, { at: activatedAt });
+  assert.equal(activated.activityAt, activatedAt);
+  assert.equal(activated.modifiedAt, sourceModifiedAt);
+  assert.equal(activated.presence.activation, "selected");
+  await assert.rejects(
+    inventory.list({ limit: 1, cursor: beforeActivationPage.nextCursor }),
+    (error) => error instanceof SessionInventoryError && error.code === "stale_inventory_cursor",
+  );
+  page = await inventory.list({ limit: 1 });
+  assert.equal(page.sessions[0].piSessionId, "pi-older");
+  assert.equal(page.sessions[0].modifiedAt, sourceModifiedAt);
+  assert.equal(page.sessions[0].activityAt, activatedAt);
+
+  const restarted = new SessionInventory({
+    stateDir,
+    catalog: new FakeCatalog(),
+    roots: [sessionsRoot],
+    activationPolicy: () => ({ eligible: true, modes: ["direct", "fork"] }),
+  });
+  await restarted.initialize();
+  await restarted.waitForFullIndex();
+  assert.equal((await restarted.list({ limit: 1 })).sessions[0].piSessionId, "pi-older");
+  await restarted.reconcile();
+  assert.equal((await restarted.list({ limit: 1 })).sessions[0].activityAt, activatedAt);
+});
+
 test("managed/external/memory rows merge without collapsing duplicate Pi IDs", async (t) => {
   const { stateDir, sessionsRoot } = await fixture(t);
   const first = await writeSession(sessionsRoot, {

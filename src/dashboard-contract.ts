@@ -412,7 +412,10 @@ export interface SessionInventoryRecord {
   piSessionId?: string;
   parentPiSessionId?: string;
   createdAt: string;
+  /** Source/catalog modification truth; activation must not rewrite it. */
   modifiedAt: string;
+  /** User-visible recency used for default ordering; defaults to modifiedAt on older indexes. */
+  activityAt?: string;
   messageCount: number;
   entryCount?: number;
   toolCallCount?: number;

@@ -93,8 +93,8 @@ paint path for the representative tree and a 902 ms cold 10,000-entry tree path.
 Only 30 tree rows existed in the DOM for the 10,000-entry fixture. Pure bounded
 10,000-node validation/projection has a 250 ms unit budget, animation-frame p95
 was 9.2 ms against the 16 ms frame-work contract, and stream/workspace commit
-work remained 1.3 ms. Current follow-on gates are Node 379/379, Web unit 74/74,
-and Playwright 18/18. Focused Playwright acceptance covers keyboard
+work remained 1.3 ms. Current follow-on gates are Node 380/380, Web unit 74/74,
+and Playwright 19/19. Focused Playwright acceptance covers keyboard
 Home/End/Left/Right selection, active-leaf ARIA truth, filtering, branch compare,
 edit-resubmit prefill, summarize/navigation, and O(visible) DOM behavior.
 

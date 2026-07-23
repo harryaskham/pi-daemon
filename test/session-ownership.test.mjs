@@ -9,6 +9,7 @@ import {
   readdir,
   realpath,
   rm,
+  utimes,
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -193,6 +194,8 @@ test("direct co-opt requires confirmation, revalidates fingerprint and joins dup
     "pi-direct",
     harness.cwd,
   );
+  const oldSourceTime = new Date("2026-07-18T12:00:00.000Z");
+  await utimes(source, oldSourceTime, oldSourceTime);
   const record = await inventoryRecord(harness.inventory, "pi-direct");
 
   const refused = await harness.service.activateSession(
@@ -207,11 +210,18 @@ test("direct co-opt requires confirmation, revalidates fingerprint and joins dup
     (await harness.inventory.getInfo(record.inventoryId)).source.fingerprint.value,
     { requestId: "activate-direct-valid", idempotencyKey: "activate-direct-valid-key" },
   );
+  const sourceModifiedAt = record.modifiedAt;
   const ticket = await harness.service.activateSession(record.inventoryId, request);
   assert.equal(ticket.state, "succeeded", JSON.stringify(ticket.error));
+  const activatedInventory = await harness.inventory.getInfo(record.inventoryId);
+  assert.equal(activatedInventory.modifiedAt, sourceModifiedAt);
+  assert.equal(activatedInventory.activityAt > sourceModifiedAt, true);
+  assert.equal(activatedInventory.presence.activation, "selected");
+  assert.equal((await harness.inventory.list({ limit: 1 })).sessions[0].inventoryId, record.inventoryId);
   assert.equal(harness.runtime.opens.length, 1);
   assert.equal(harness.runtime.opens[0].spec.target.path, await realpath(source));
   assert.deepEqual(await harness.service.activateSession(record.inventoryId, request), ticket);
+  assert.equal((await harness.inventory.getInfo(record.inventoryId)).activityAt, activatedInventory.activityAt);
   assert.equal(harness.runtime.opens.length, 1);
   const mapping = await harness.store.getByInventory(record.inventoryId);
   assert.equal(mapping.mode, "direct");

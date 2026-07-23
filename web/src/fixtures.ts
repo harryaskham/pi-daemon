@@ -53,6 +53,7 @@ export function createSessionFixtures(count = 10_000): SessionFixture[] {
       piSessionId: `pi-${sessionId}`,
       createdAt: new Date(now - (index + 90) * 91_000).toISOString(),
       modifiedAt,
+      activityAt: modifiedAt,
       messageCount: 12 + (index % 640),
       entryCount: 20 + (index % 1_100),
       toolCallCount: 3 + (index % 180),

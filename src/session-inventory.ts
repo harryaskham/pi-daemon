@@ -314,6 +314,7 @@ export class SessionInventory {
   #lastErrorCode: string | undefined;
   #issues: SessionInventoryIssue[] = [];
   #reconcilePromise: Promise<SessionInventoryReconcileResult> | undefined;
+  #writeTail: Promise<void> = Promise.resolve();
   #timer: NodeJS.Timeout | undefined;
 
   constructor(options: SessionInventoryOptions) {
@@ -440,7 +441,7 @@ export class SessionInventory {
       if (after !== undefined) {
         const position = this.#orderedPositions.get(after.inventoryId);
         const record = position === undefined ? undefined : this.#orderedRecords[position];
-        if (record?.inventory.modifiedAt !== after.modifiedAt) {
+        if (record === undefined || inventoryActivityAt(record.inventory) !== after.modifiedAt) {
           throw new SessionInventoryError(
             "invalid_inventory_cursor",
             "inventory cursor does not identify a retained row",
@@ -498,7 +499,7 @@ export class SessionInventory {
         version: 1,
         revision: this.#revision,
         queryDigest,
-        modifiedAt: pageRecords[pageRecords.length - 1]!.inventory.modifiedAt,
+        modifiedAt: inventoryActivityAt(pageRecords[pageRecords.length - 1]!.inventory),
         inventoryId: pageRecords[pageRecords.length - 1]!.inventory.inventoryId,
       });
     }
@@ -549,8 +550,99 @@ export class SessionInventory {
     };
   }
 
+  /**
+   * Persist user-visible recency without rewriting the source file mtime. The
+   * inventory ID is preferred; managed session IDs are accepted for attach
+   * paths that do not retain the inventory reference.
+   */
+  markActive(
+    sessionRef: string,
+    options: { at?: string; activation?: "selected" | "user-turn" | "external-turn" } = {},
+  ): Promise<SessionInventoryRecord | undefined> {
+    const run = this.#writeTail.then(() => this.#runMarkActive(sessionRef, options));
+    this.#writeTail = run.then(() => undefined, () => undefined);
+    return run;
+  }
+
+  async #runMarkActive(
+    sessionRef: string,
+    options: { at?: string; activation?: "selected" | "user-turn" | "external-turn" },
+  ): Promise<SessionInventoryRecord | undefined> {
+    await this.initialize();
+    await this.#fullIndexPromise;
+    const record = this.#records.get(sessionRef) ?? this.#orderedRecords.find(
+      (candidate) => candidate.inventory.managed?.sessionId === sessionRef,
+    );
+    if (record === undefined) return undefined;
+    const now = options.at ?? this.#timestamp();
+    if (parseTimestamp(now) === undefined) {
+      throw new SessionInventoryError("invalid_inventory_activity", "inventory activity timestamp is invalid");
+    }
+    const currentActivity = inventoryActivityAt(record.inventory);
+    const activation = record.inventory.presence.activation === "untouched" ||
+      record.inventory.presence.activation === "selected"
+      ? options.activation ?? "selected"
+      : record.inventory.presence.activation;
+    if (now <= currentActivity && activation === record.inventory.presence.activation) {
+      return cloneInventoryRecord(record.inventory);
+    }
+    const updated: StoredInventoryRecord = {
+      ...structuredClone(record),
+      inventory: {
+        ...structuredClone(record.inventory),
+        activityAt: now > currentActivity ? now : currentActivity,
+        presence: {
+          ...structuredClone(record.inventory.presence),
+          activation,
+        },
+      },
+    };
+    validateStoredRecord(updated, this.limits);
+    const records = this.#orderedRecords
+      .map((candidate) => candidate.inventory.inventoryId === updated.inventory.inventoryId ? updated : candidate)
+      .sort((left, right) => left.inventory.inventoryId.localeCompare(right.inventory.inventoryId));
+    const revision = inventoryRevision(records);
+    const orderedRecords = [...records].sort(compareStoredRecords);
+    const reconciledAt = this.#reconciledAt ?? now;
+    const index: PersistedInventoryIndex = {
+      formatVersion: SESSION_INVENTORY_FORMAT_VERSION,
+      searchKeyDigest: this.#requireSearchKeyDigest(),
+      revision,
+      builtAt: now,
+      reconciledAt,
+      records: orderedRecords,
+    };
+    const bytes = Buffer.byteLength(JSON.stringify(index), "utf8");
+    if (bytes > this.limits.maxIndexBytes) {
+      throw new SessionInventoryError(
+        "inventory_index_too_large",
+        "session inventory index exceeds byte limit",
+        false,
+        { maxIndexBytes: this.limits.maxIndexBytes, indexBytes: bytes },
+      );
+    }
+    const head: PersistedInventoryHead = {
+      formatVersion: SESSION_INVENTORY_FORMAT_VERSION,
+      revision,
+      builtAt: now,
+      reconciledAt,
+      records: orderedRecords
+        .slice(0, DASH_DEFAULT_LIMITS.maxInventoryPageItems + 1)
+        .map((candidate) => candidate.inventory),
+    };
+    await this.#writeSnapshot(index);
+    await atomicWritePrivateJson(this.#indexPath, index);
+    await atomicWritePrivateJson(this.#headPath, head);
+    this.#installRecords(orderedRecords, true);
+    this.#revision = revision;
+    return cloneInventoryRecord(updated.inventory);
+  }
+
   reconcile(): Promise<SessionInventoryReconcileResult> {
-    this.#reconcilePromise ??= this.#runReconcile().finally(() => {
+    if (this.#reconcilePromise !== undefined) return this.#reconcilePromise;
+    const run = this.#writeTail.then(() => this.#runReconcile());
+    this.#writeTail = run.then(() => undefined, () => undefined);
+    this.#reconcilePromise = run.finally(() => {
       this.#reconcilePromise = undefined;
     });
     return this.#reconcilePromise;
@@ -751,6 +843,11 @@ export class SessionInventory {
             : { parentPiSessionId: piIdByPath.get(resolve(file.parentSessionPath))! }),
           createdAt: file.createdAt,
           modifiedAt: file.modifiedAt,
+          activityAt: latestActivityAt(
+            file.modifiedAt,
+            catalog?.lastUsedAt,
+            this.#records.get(inventoryId)?.inventory.activityAt,
+          ),
           messageCount: file.messageCount,
           entryCount: file.entryCount,
           toolCallCount: file.toolCallCount,
@@ -824,6 +921,11 @@ export class SessionInventory {
             : { piSessionId: catalog.conversation.sessionId }),
           createdAt: catalog.createdAt,
           modifiedAt: catalog.updatedAt,
+          activityAt: latestActivityAt(
+            catalog.updatedAt,
+            catalog.lastUsedAt,
+            this.#records.get(inventoryId)?.inventory.activityAt,
+          ),
           messageCount: 0,
           managed,
           activation:
@@ -1458,12 +1560,22 @@ function inventoryIdFor(kind: string, source: string): string {
   return `inventory-${digest.slice(0, 32)}`;
 }
 
+function inventoryActivityAt(record: SessionInventoryRecord): string {
+  return record.activityAt ?? record.modifiedAt;
+}
+
+function latestActivityAt(...values: Array<string | undefined>): string {
+  return values.filter((value): value is string => value !== undefined).sort().at(-1)!;
+}
+
 function inventoryRevision(records: StoredInventoryRecord[]): string {
   const hash = createHash("sha256");
   for (const record of records) {
     hash.update(record.inventory.inventoryId);
     hash.update("\0");
     hash.update(record.inventory.modifiedAt);
+    hash.update("\0");
+    hash.update(inventoryActivityAt(record.inventory));
     hash.update("\0");
     hash.update(record.fingerprint?.value ?? "");
     hash.update("\0");
@@ -1543,6 +1655,7 @@ function validateInventoryHead(value: unknown): asserts value is PersistedInvent
       typeof record.inventoryId !== "string" ||
       typeof record.title !== "string" ||
       typeof record.modifiedAt !== "string" ||
+      (record.activityAt !== undefined && (typeof record.activityAt !== "string" || parseTimestamp(record.activityAt) === undefined)) ||
       "canonicalPath" in record ||
       "searchBloom" in record
     ) {
@@ -1636,6 +1749,7 @@ function validateSnapshotIndex(
       !isRecord(record.inventory) ||
       typeof record.inventory.inventoryId !== "string" ||
       typeof record.inventory.modifiedAt !== "string" ||
+      (record.inventory.activityAt !== undefined && (typeof record.inventory.activityAt !== "string" || parseTimestamp(record.inventory.activityAt) === undefined)) ||
       typeof record.inventory.title !== "string"
     ) {
       throw new SessionInventoryError(
@@ -1705,6 +1819,7 @@ function validateStoredRecord(
     inventory.title.length === 0 ||
     inventory.title.length > limits.maxTitleChars ||
     typeof inventory.modifiedAt !== "string" ||
+    (inventory.activityAt !== undefined && (typeof inventory.activityAt !== "string" || parseTimestamp(inventory.activityAt) === undefined)) ||
     typeof inventory.createdAt !== "string" ||
     typeof value.cwd !== "string" ||
     !isRecord(inventory.activation) ||
@@ -1941,6 +2056,7 @@ function cloneInventoryRecord(record: SessionInventoryRecord): SessionInventoryR
 
 function compareStoredRecords(left: StoredInventoryRecord, right: StoredInventoryRecord): number {
   return (
+    inventoryActivityAt(right.inventory).localeCompare(inventoryActivityAt(left.inventory)) ||
     right.inventory.modifiedAt.localeCompare(left.inventory.modifiedAt) ||
     left.inventory.inventoryId.localeCompare(right.inventory.inventoryId)
   );

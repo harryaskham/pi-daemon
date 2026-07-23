@@ -279,9 +279,9 @@ export function Sidebar({
                       <span>{session.projectLabel ?? session.project}<i>·</i>{session.cwdBasename ?? session.cwd.split("/").at(-1)}</span>
                     </span>
                     {schedulesAvailable && session.presence.runtime !== "running" && session.presence.scheduled ? <time className="session-row__countdown" dateTime={session.presence.scheduled.nextWakeAt} title={`Next wake ${preciseRelativeTime(session.presence.scheduled.nextWakeAt, countdownNow)}`}>{scheduleCountdown(session.presence.scheduled.nextWakeAt, countdownNow)}</time> : <time
-                      dateTime={session.modifiedAt}
-                      title={preciseRelativeTime(session.modifiedAt)}
-                    >{relativeTime(session.modifiedAt)}</time>}
+                      dateTime={session.activityAt ?? session.modifiedAt}
+                      title={`active ${preciseRelativeTime(session.activityAt ?? session.modifiedAt)} · source modified ${preciseRelativeTime(session.modifiedAt)}`}
+                    >{relativeTime(session.activityAt ?? session.modifiedAt)}</time>}
                   </button>
                   <button
                     type="button"

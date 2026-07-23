@@ -95,7 +95,9 @@ Title precedence is:
 First-message title derivation refuses obvious credential-bearing text. The
 public inventory row contains only bounded title, cwd basename/project label,
 Pi/daemon identities, timestamps, counts, activation eligibility, and
-orthogonal presence. It never contains a canonical path. The authenticated
+orthogonal presence. `modifiedAt` remains source/catalog modification truth;
+optional `activityAt` is user-visible activation recency and defaults to
+`modifiedAt` for older indexes. It never contains a canonical path. The authenticated
 `getInfo()` resource may include the full cwd, canonical source path,
 size/mtime/device/inode, exact fingerprint, ownership, aliases, and safe
 diagnostics.
@@ -130,10 +132,14 @@ environment value, or provider credential is retained in the index.
 
 ## Paging and request bounds
 
-Rows are preordered by descending modification time then `inventoryId`.
-Unfiltered first pages and continuation use precomputed positions. Opaque
-cursors bind the index revision, normalized filter digest, last modification
-time, and last inventory ID. Reusing one with different filters or a new index
+Rows are preordered by descending `activityAt` (falling back to `modifiedAt`),
+then source modification time and `inventoryId`. Successful reuse/direct/fork
+activation advances activity exactly once inside the durable activation work,
+persists the reordered hot head/index/snapshot, and leaves the source file mtime
+and fingerprint untouched. Duplicate reads of the same succeeded activation
+ticket do not advance it again. Unfiltered first pages and continuation use
+precomputed positions. Opaque cursors bind the index revision, normalized filter
+digest, last activity time, and last inventory ID. Reusing one with different filters or a new index
 generation returns a typed stale-cursor error.
 
 Search/filter scans stop after one extra result and yield to the event loop every

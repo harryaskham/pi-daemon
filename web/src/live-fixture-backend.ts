@@ -116,6 +116,7 @@ export class LiveFixtureDashboardBackend extends LocalFixtureBackend implements 
 
   async activateSession(inventoryId: string, request: ActivationRequest): Promise<ActivationTicket> {
     const session = await this.getSessionView(inventoryId);
+    if (request.mode !== "preview-only") session.activityAt = new Date().toISOString();
     const ticket: ActivationTicket = {
       ticketId: `activation-${request.idempotencyKey}`,
       requestId: request.requestId,

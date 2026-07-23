@@ -10,6 +10,7 @@ semantic versioning once a release tag is cut.
 - add a versioned, server-validated declarative extension-view contract with inert Rich primitives, capability-scoped correlated actions/forms, mandatory TUI fallback, strict schema/fixtures/bounds, and no browser extension code or ambient network authority
 - canonicalize Dash draft allowed roots and self-update install roots before containment checks so Darwin `/var` aliases do not cause false denial while later symlink targets remain unauthorized
 - add a virtualized bounded full session-tree navigator with authoritative active-leaf paths, filtering/comparison, controller-gated edit/fork/clone, and capability-negotiated in-place summarize/navigation over a private non-replayed framed result
+- persist separate activation recency so successful reuse/direct/fork sessions move to the top exactly once without rewriting source modification or fingerprint truth
 
 ## 0.2.2 — 2026-07-22
 
