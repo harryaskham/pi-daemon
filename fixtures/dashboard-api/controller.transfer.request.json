@@ -1,0 +1,8 @@
+{
+  "requestId": "controller-handoff-fixture-01",
+  "idempotencyKey": "controller-handoff-fixture-01",
+  "expectedRevision": 4,
+  "expectedControllerRevision": 8,
+  "targetIdentityId": "operator-fixture",
+  "targetParticipantId": "controller-participant-fixture-02"
+}

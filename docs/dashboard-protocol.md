@@ -175,6 +175,12 @@ The provisional routes are fixed under `/dash/v1`:
 | `POST /session-drafts/{draftId}/send` | admit one exact first message through durable phase checkpoints |
 | `GET /session-draft-send/{ticketId}` | retained first-send ticket including admitted draft revision and session generation |
 | `GET|PUT /workspaces/{workspaceId}` | strong-ETag split-tree and seen-cursor state |
+| `GET /workspaces`, `POST /workspaces/select` | bounded authorized workspace list and server-side browser-session selection |
+| `GET /authorization/{session|workspace}/{id}` | administrator-only central policy with exact ETag |
+| `PUT|DELETE /authorization/{kind}/{id}/grants/{identityId}` | durable-idempotent grant set/revocation with CSRF and policy revision |
+| `POST /authorization/{kind}/{id}/transfer` | atomic ownership transfer with optional retained old-owner role |
+| `GET /authorization/{kind}/{id}/audit` | bounded content-free resource audit window |
+| `GET|POST /authorization/{kind}/{id}/controller` | bounded active participants and release-before-grant controller handoff with a separate controller ETag |
 | `GET|PATCH|DELETE /settings` | effective UI settings, allowlisted overlay, and reset |
 | `GET /schedules/capabilities` | effective cron/timezone and schedule validation limits |
 | `GET /schedules`, `GET /schedules/{scheduleId}`, `GET /schedules/status` | bounded prompt-redacted schedule metadata and content-free status |
@@ -330,7 +336,7 @@ operator trust domain. They are not user identities. Observers may read and
 receive live output; mutating operations require explicit controller grant.
 Disconnect never grants control to a random observer.
 
-HTTP activation/export/workspace/settings mutations and reconnect-sensitive
+HTTP activation/export/workspace/settings/authorization mutations and reconnect-sensitive
 stream commands carry bounded idempotency/correlation values. The same key and
 semantic payload join retained work; reuse with a different payload conflicts.
 The browser must not blind-replay a command simply because its WebSocket closed.

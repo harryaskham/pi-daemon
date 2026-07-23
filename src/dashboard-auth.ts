@@ -199,6 +199,25 @@ export class DashboardBrowserAuth {
     };
   }
 
+  switchWorkspace(
+    session: DashboardAuthenticatedSession,
+    workspaceId: string,
+  ): DashboardAuthenticatedSession {
+    validateOpaqueId(workspaceId, "workspaceId");
+    const record = this.#activeRecord(session.sessionKey, this.#now().getTime());
+    if (record === undefined) {
+      throw new DashboardAuthError("unauthorized", "dashboard browser session is invalid");
+    }
+    record.workspaceId = workspaceId;
+    return {
+      sessionKey: record.sessionKey,
+      principal: structuredClone(record.principal),
+      clientId: record.clientId,
+      workspaceId: record.workspaceId,
+      expiresAt: new Date(record.expiresAtMs).toISOString(),
+    };
+  }
+
   browserSession(session: DashboardAuthenticatedSession): DashboardBrowserSessionResource {
     const record = this.revalidate(session);
     return {
@@ -228,12 +247,30 @@ export class DashboardBrowserAuth {
     this.#sessions.clear();
   }
 
+  principal(identityId: string): DashboardPrincipal | undefined {
+    const principal = this.#identityProvider.principal(identityId);
+    return principal === undefined ? undefined : structuredClone(principal);
+  }
+
   revokeIdentity(identityId: string): number {
     let revoked = 0;
     for (const [key, session] of this.#sessions) {
       if (session.principal.identityId !== identityId) continue;
       this.#sessions.delete(key);
       revoked += 1;
+    }
+    return revoked;
+  }
+
+  revokeIdentityWorkspace(identityId: string, workspaceId: string): string[] {
+    const revoked: string[] = [];
+    for (const [key, session] of this.#sessions) {
+      if (
+        session.principal.identityId !== identityId ||
+        session.workspaceId !== workspaceId
+      ) continue;
+      this.#sessions.delete(key);
+      revoked.push(key);
     }
     return revoked;
   }

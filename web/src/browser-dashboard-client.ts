@@ -55,6 +55,23 @@ import {
   type DashboardSessionDraftSendTicket,
 } from "@harryaskham/pi-daemon/dashboard-session-draft-contract";
 import type { ScheduleCapabilities } from "@harryaskham/pi-daemon/schedule-contract";
+import {
+  dashboardAuthorizationPolicyEtag,
+  dashboardControllerEtag,
+  type DashboardAuthorizationAuditResource,
+  type DashboardAuthorizationPolicyResource,
+  type DashboardControllerState,
+  type DashboardControllerTransferRequest,
+  type DashboardControllerTransferResource,
+  type DashboardGrantRevokeRequest,
+  type DashboardGrantSetRequest,
+  type DashboardOwnershipTransferRequest,
+  type DashboardWorkspaceAccessList,
+} from "@harryaskham/pi-daemon/dashboard-authorization-contract";
+import type {
+  DashboardResourcePolicy,
+  DashboardResourceRef,
+} from "@harryaskham/pi-daemon/dashboard-authorization";
 import type { JsonObject, JsonValue, SessionResource } from "@harryaskham/pi-daemon/session-api";
 import {
   DashboardRevisionConflict,
@@ -361,6 +378,120 @@ export class BrowserDashboardClient implements DashboardBackend, DashboardPrefer
     }
   }
 
+  listWorkspaces(): Promise<DashboardWorkspaceAccessList> {
+    return this.#request("GET", "/workspaces");
+  }
+
+  async selectWorkspace(workspaceId: string): Promise<DashboardBrowserSessionResource> {
+    const selected = await this.#request<DashboardBrowserSessionResource>(
+      "POST",
+      "/workspaces/select",
+      { requestId: this.#nextCorrelation("workspace-select"), workspaceId },
+      true,
+    );
+    this.#workspaceId = selected.workspaceId;
+    this.#csrfToken = selected.csrfToken;
+    this.#dropSocket(
+      new DashboardBrowserClientError("workspace_changed", "Dashboard workspace changed"),
+      false,
+    );
+    return selected;
+  }
+
+  getAuthorization(
+    kind: "session" | "workspace",
+    resourceId: string,
+  ): Promise<DashboardAuthorizationPolicyResource> {
+    return this.#request("GET", authorizationPath(kind, resourceId));
+  }
+
+  setAuthorizationGrant(
+    kind: "session" | "workspace",
+    resourceId: string,
+    identityId: string,
+    policy: DashboardResourcePolicy,
+    request: DashboardGrantSetRequest,
+  ): Promise<DashboardAuthorizationPolicyResource> {
+    return this.#authorizationMutation(
+      "PUT",
+      `${authorizationPath(kind, resourceId)}/grants/${pathPart(identityId)}`,
+      request,
+      policy,
+    );
+  }
+
+  revokeAuthorizationGrant(
+    kind: "session" | "workspace",
+    resourceId: string,
+    identityId: string,
+    policy: DashboardResourcePolicy,
+    request: DashboardGrantRevokeRequest,
+  ): Promise<DashboardAuthorizationPolicyResource> {
+    return this.#authorizationMutation(
+      "DELETE",
+      `${authorizationPath(kind, resourceId)}/grants/${pathPart(identityId)}`,
+      request,
+      policy,
+    );
+  }
+
+  transferAuthorizationOwnership(
+    kind: "session" | "workspace",
+    resourceId: string,
+    policy: DashboardResourcePolicy,
+    request: DashboardOwnershipTransferRequest,
+  ): Promise<DashboardAuthorizationPolicyResource> {
+    return this.#authorizationMutation(
+      "POST",
+      `${authorizationPath(kind, resourceId)}/transfer`,
+      request,
+      policy,
+    );
+  }
+
+  getAuthorizationAudit(
+    kind: "session" | "workspace",
+    resourceId: string,
+    afterSequence = 0,
+    limit = 100,
+  ): Promise<DashboardAuthorizationAuditResource> {
+    const query = new URLSearchParams({
+      afterSequence: String(afterSequence),
+      limit: String(limit),
+    });
+    return this.#request("GET", `${authorizationPath(kind, resourceId)}/audit?${query}`);
+  }
+
+  getControllerState(
+    kind: "session" | "workspace",
+    resourceId: string,
+  ): Promise<DashboardControllerState> {
+    return this.#request("GET", `${authorizationPath(kind, resourceId)}/controller`);
+  }
+
+  transferController(
+    kind: "session" | "workspace",
+    resourceId: string,
+    resource: DashboardResourceRef,
+    request: DashboardControllerTransferRequest,
+  ): Promise<DashboardControllerTransferResource> {
+    return this.#request(
+      "POST",
+      `${authorizationPath(kind, resourceId)}/controller`,
+      request,
+      true,
+      {
+        "If-Match": `"dashboard-authorization:${resource.kind}:${resource.id}:${request.expectedRevision}"`,
+        "Idempotency-Key": request.idempotencyKey,
+        "X-Request-ID": request.requestId,
+        "X-Controller-If-Match": dashboardControllerEtag(
+          resource,
+          request.expectedControllerRevision,
+        ),
+      },
+    );
+  }
+
   getWorkspace(workspaceId: string): Promise<DashboardWorkspaceResource> {
     return this.#request("GET", `/workspaces/${pathPart(workspaceId)}`);
   }
@@ -402,6 +533,19 @@ export class BrowserDashboardClient implements DashboardBackend, DashboardPrefer
         throw new DashboardRevisionConflict("settings", expectedRevision);
       }
       throw error;
+    });
+  }
+
+  #authorizationMutation(
+    method: "PUT" | "POST" | "DELETE",
+    path: string,
+    request: DashboardGrantSetRequest | DashboardGrantRevokeRequest | DashboardOwnershipTransferRequest,
+    policy: DashboardResourcePolicy,
+  ): Promise<DashboardAuthorizationPolicyResource> {
+    return this.#request(method, path, request, true, {
+      "If-Match": dashboardAuthorizationPolicyEtag(policy),
+      "Idempotency-Key": request.idempotencyKey,
+      "X-Request-ID": request.requestId,
     });
   }
 
@@ -1006,6 +1150,10 @@ function normalizeBasePath(path: string): string {
 function pathPart(value: string): string {
   if (value.length === 0) throw new DashboardBrowserClientError("invalid_request", "Dashboard resource identifier is empty");
   return encodeURIComponent(value);
+}
+
+function authorizationPath(kind: "session" | "workspace", resourceId: string): string {
+  return `/authorization/${kind}/${pathPart(resourceId)}`;
 }
 
 function browserClientId(): string {

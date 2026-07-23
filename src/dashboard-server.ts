@@ -62,8 +62,20 @@ import {
 import {
   DashboardAuthorizationError,
   DashboardAuthorizationService,
+  dashboardAuthorizationEtag,
+  type DashboardResourcePolicy,
+  type DashboardResourceRef,
   type DashboardResourceRole,
 } from "./dashboard-authorization.js";
+import {
+  dashboardControllerEtag,
+  type DashboardAuthorizationMutationRequest,
+  type DashboardControllerTransferRequest,
+  type DashboardGrantSetRequest,
+  type DashboardOwnershipTransferRequest,
+  type DashboardWorkspaceSelectionRequest,
+} from "./dashboard-authorization-contract.js";
+import { DashboardControllerCoordinator } from "./dashboard-controller-coordinator.js";
 import {
   validateDashboardSessionDraftCancelRequest,
   validateDashboardSessionDraftCreateRequest,
@@ -95,6 +107,7 @@ const DEFAULT_MAX_HEADER_BYTES = 32 * 1024;
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const DEFAULT_STATIC_MAX_BYTES = 8 * 1024 * 1024;
 const MAX_URL_BYTES = 8192;
+const MAX_CONTROLLER_TRANSFER_RECEIPTS = 256;
 const JSON_CONTENT_TYPE = "application/json; charset=utf-8";
 const CSP = [
   "default-src 'none'",
@@ -125,6 +138,7 @@ export interface DashboardServerOptions {
   workspaceStore: DashboardWorkspaceStore;
   settingsStore: DashboardSettingsStore;
   authorization?: DashboardAuthorizationService | DashboardAuthorizationEnforcer;
+  controllerCoordinator?: DashboardControllerCoordinator;
   assetsDir?: string;
   host?: string;
   port?: number;
@@ -170,6 +184,7 @@ export interface DashboardServerFromConfigOptions {
   streamHandlerFactory?: (options: {
     backend: DashboardBackend;
     authorization: DashboardAuthorizationEnforcer;
+    controllerCoordinator: DashboardControllerCoordinator;
     serverInstanceId: string;
     limits: DashboardLimits;
   }) => DashboardStreamHandler;
@@ -202,6 +217,7 @@ export class DashboardServer {
   readonly workspaceStore: DashboardWorkspaceStore;
   readonly settingsStore: DashboardSettingsStore;
   readonly authorization: DashboardAuthorizationEnforcer;
+  readonly controllerCoordinator: DashboardControllerCoordinator;
   readonly assetsDir: string;
   readonly host: string;
   readonly port: number;
@@ -222,6 +238,10 @@ export class DashboardServer {
   readonly #peers = new Set<DashboardWebSocketPeer>();
   readonly #peerSessionKeys = new Map<DashboardWebSocketPeer, string>();
   readonly #peerExpiryTimers = new Map<DashboardWebSocketPeer, NodeJS.Timeout>();
+  readonly #controllerTransfers = new Map<string, {
+    fingerprint: string;
+    promise: Promise<{ policy: DashboardResourcePolicy; controller: ReturnType<DashboardControllerCoordinator["state"]> }>;
+  }>();
   #started = false;
   #origin: string | undefined;
 
@@ -310,6 +330,7 @@ export class DashboardServer {
           maxInventoryPageItems: this.limits.dashboard.maxInventoryPageItems,
           cursorTtlMs: this.auth.sessionTtlMs,
         });
+    this.controllerCoordinator = options.controllerCoordinator ?? new DashboardControllerCoordinator();
     this.#streamHandler = options.streamHandler;
     const requestHandler = (request: IncomingMessage, response: ServerResponse): void => {
       void this.#handleRequest(request, response);
@@ -566,6 +587,276 @@ export class DashboardServer {
           { "Set-Cookie": expired },
         );
         return;
+      }
+
+      if (request.method === "GET" && url.pathname === `${DASH_API_BASE_PATH}/workspaces`) {
+        const visible = await this.authorization.authorization.listPolicies(
+          session.principal,
+          { kind: "workspace", limit: 100 },
+        );
+        const workspaces = await Promise.all(visible.policies.map(async (policy) => ({
+          workspace: await this.workspaceStore.getOrCreate(policy.resource.id),
+          policy,
+          role: (await this.authorization.effectiveRole(session.principal, policy.resource))!,
+        })));
+        sendJson(
+          response,
+          200,
+          successEnvelopeFrom(context, { workspaces, truncated: visible.truncated }),
+          this.limits.dashboard.maxOutboundBytesPerConnection,
+        );
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === `${DASH_API_BASE_PATH}/workspaces/select`) {
+        const body = workspaceSelectionRequest(
+          await readJsonBody(request, this.limits.dashboard.maxHttpBodyBytes),
+        );
+        await this.authorization.require(
+          session.principal,
+          workspaceResource(body.workspaceId),
+          "read",
+        );
+        await this.workspaceStore.getOrCreate(body.workspaceId);
+        this.#closeSessionPeers(session.sessionKey, 1008, "browser workspace changed");
+        const switched = this.auth.switchWorkspace(session, body.workspaceId);
+        const browserSession = this.auth.browserSession(switched);
+        sendJson(
+          response,
+          200,
+          successEnvelope(
+            requestId,
+            this.serverInstanceId,
+            switched.clientId,
+            switched.workspaceId,
+            browserSession,
+          ),
+          this.limits.dashboard.maxOutboundBytesPerConnection,
+          { [DASH_CSRF_HEADER]: browserSession.csrfToken },
+        );
+        return;
+      }
+
+      const authorizationRoute = matchAuthorizationRoute(url.pathname);
+      if (authorizationRoute !== undefined) {
+        if (authorizationRoute.action !== "audit" && url.searchParams.size > 0) {
+          throw invalidQuery();
+        }
+        const resource = authorizationRoute.kind === "session"
+          ? (await this.authorization.requireInventorySession(
+              session.principal,
+              authorizationRoute.resourceId,
+              "admin",
+            )).resource
+          : workspaceResource(authorizationRoute.resourceId);
+        if (authorizationRoute.action === "controller" && resource.kind !== "session") {
+          throw new DashboardAuthorizationError("not_found", "dashboard resource was not found", 404);
+        }
+        const policy = await this.authorization.authorization.policy(session.principal, resource);
+        const responseHeaders = { ETag: dashboardAuthorizationEtag(policy) };
+
+        if (request.method === "GET" && authorizationRoute.action === "policy") {
+          sendJson(
+            response,
+            200,
+            successEnvelopeFrom(context, { policy, role: "admin" as const }),
+            this.limits.dashboard.maxOutboundBytesPerConnection,
+            responseHeaders,
+          );
+          return;
+        }
+        if (request.method === "GET" && authorizationRoute.action === "audit") {
+          for (const key of url.searchParams.keys()) {
+            if (key !== "afterSequence" && key !== "limit") throw invalidQuery();
+          }
+          const audit = await this.authorization.authorization.auditEvents(
+            session.principal,
+            {
+              resource,
+              afterSequence: optionalNonNegativeQueryInteger(url, "afterSequence") ?? 0,
+              limit: optionalPositiveQueryInteger(url, "limit", 1_000) ?? 100,
+            },
+          );
+          sendJson(
+            response,
+            200,
+            successEnvelopeFrom(context, audit),
+            this.limits.dashboard.maxOutboundBytesPerConnection,
+          );
+          return;
+        }
+        if (request.method === "GET" && authorizationRoute.action === "controller") {
+          const controller = this.controllerCoordinator.state(resource);
+          sendJson(
+            response,
+            200,
+            successEnvelopeFrom(context, controller),
+            this.limits.dashboard.maxOutboundBytesPerConnection,
+            { ETag: dashboardControllerEtag(resource, controller.revision) },
+          );
+          return;
+        }
+        if (
+          request.method === "PUT" &&
+          authorizationRoute.action === "grant" &&
+          authorizationRoute.subjectIdentityId !== undefined
+        ) {
+          const body = grantSetRequest(
+            await readJsonBody(request, this.limits.dashboard.maxHttpBodyBytes),
+          );
+          assertMutationHeaders(request, body);
+          assertAuthorizationIfMatch(request, policy, body.expectedRevision);
+          requireKnownDashboardIdentity(this.auth, authorizationRoute.subjectIdentityId);
+          const updated = await this.authorization.authorization.setGrant({
+            principal: session.principal,
+            resource,
+            subjectIdentityId: authorizationRoute.subjectIdentityId,
+            role: body.role,
+            expectedRevision: body.expectedRevision,
+            idempotencyKey: body.idempotencyKey,
+          });
+          await this.controllerCoordinator.applyIdentityRole(
+            resource,
+            authorizationRoute.subjectIdentityId,
+            body.role,
+          );
+          sendJson(
+            response,
+            200,
+            successEnvelopeFrom(context, { policy: updated, role: "admin" as const }),
+            this.limits.dashboard.maxOutboundBytesPerConnection,
+            { ETag: dashboardAuthorizationEtag(updated) },
+          );
+          return;
+        }
+        if (
+          request.method === "DELETE" &&
+          authorizationRoute.action === "grant" &&
+          authorizationRoute.subjectIdentityId !== undefined
+        ) {
+          const body = authorizationMutationRequest(
+            await readJsonBody(request, this.limits.dashboard.maxHttpBodyBytes),
+          );
+          assertMutationHeaders(request, body);
+          assertAuthorizationIfMatch(request, policy, body.expectedRevision);
+          const updated = await this.authorization.authorization.revokeGrant({
+            principal: session.principal,
+            resource,
+            subjectIdentityId: authorizationRoute.subjectIdentityId,
+            expectedRevision: body.expectedRevision,
+            idempotencyKey: body.idempotencyKey,
+          });
+          await this.controllerCoordinator.applyIdentityRole(
+            resource,
+            authorizationRoute.subjectIdentityId,
+            undefined,
+          );
+          if (resource.kind === "workspace") {
+            for (const sessionKey of this.auth.revokeIdentityWorkspace(
+              authorizationRoute.subjectIdentityId,
+              resource.id,
+            )) {
+              this.#closeSessionPeers(sessionKey, 1008, "workspace access revoked");
+            }
+          }
+          sendJson(
+            response,
+            200,
+            successEnvelopeFrom(context, { policy: updated, role: "admin" as const }),
+            this.limits.dashboard.maxOutboundBytesPerConnection,
+            { ETag: dashboardAuthorizationEtag(updated) },
+          );
+          return;
+        }
+        if (request.method === "POST" && authorizationRoute.action === "transfer") {
+          const body = ownershipTransferRequest(
+            await readJsonBody(request, this.limits.dashboard.maxHttpBodyBytes),
+          );
+          assertMutationHeaders(request, body);
+          assertAuthorizationIfMatch(request, policy, body.expectedRevision);
+          requireKnownDashboardIdentity(this.auth, body.newOwnerIdentityId);
+          const previousOwnerIdentityId = policy.ownerIdentityId;
+          const updated = await this.authorization.authorization.transferOwnership({
+            principal: session.principal,
+            resource,
+            newOwnerIdentityId: body.newOwnerIdentityId,
+            ...(body.previousOwnerRole === undefined
+              ? {}
+              : { previousOwnerRole: body.previousOwnerRole }),
+            expectedRevision: body.expectedRevision,
+            idempotencyKey: body.idempotencyKey,
+          });
+          const previousRole = policyRoleForIdentity(updated, previousOwnerIdentityId);
+          await this.controllerCoordinator.applyIdentityRole(
+            resource,
+            previousOwnerIdentityId,
+            previousRole,
+          );
+          if (resource.kind === "workspace" && previousRole === undefined) {
+            for (const sessionKey of this.auth.revokeIdentityWorkspace(
+              previousOwnerIdentityId,
+              resource.id,
+            )) {
+              this.#closeSessionPeers(sessionKey, 1008, "workspace ownership transferred");
+            }
+          }
+          sendJson(
+            response,
+            200,
+            successEnvelopeFrom(context, { policy: updated, role: "admin" as const }),
+            this.limits.dashboard.maxOutboundBytesPerConnection,
+            { ETag: dashboardAuthorizationEtag(updated) },
+          );
+          return;
+        }
+        if (request.method === "POST" && authorizationRoute.action === "controller") {
+          const body = controllerTransferRequest(
+            await readJsonBody(request, this.limits.dashboard.maxHttpBodyBytes),
+          );
+          assertMutationHeaders(request, body);
+          assertAuthorizationIfMatch(request, policy, body.expectedRevision);
+          if (
+            requiredHeader(request.headers["x-controller-if-match"], "X-Controller-If-Match") !==
+            dashboardControllerEtag(resource, body.expectedControllerRevision)
+          ) {
+            throw new DashboardAuthorizationError(
+              "controller_revision_conflict",
+              "controller revision no longer matches",
+              409,
+            );
+          }
+          const targetPrincipal = requireKnownDashboardIdentity(this.auth, body.targetIdentityId);
+          const targetRole = targetPrincipal.globalRole === "administrator"
+            ? "admin"
+            : policyRoleForIdentity(policy, body.targetIdentityId);
+          if (targetRole === undefined || !authorizationRoleAtLeast(targetRole, "control")) {
+            throw new DashboardAuthorizationError(
+              "controller_target_unauthorized",
+              "controller transfer target lacks control authority",
+              409,
+            );
+          }
+          const transferred = await this.#transferController(
+            session,
+            resource,
+            policy,
+            body,
+          );
+          sendJson(
+            response,
+            200,
+            successEnvelopeFrom(context, transferred),
+            this.limits.dashboard.maxOutboundBytesPerConnection,
+            {
+              ETag: dashboardAuthorizationEtag(transferred.policy),
+              "X-Controller-ETag": dashboardControllerEtag(
+                resource,
+                transferred.controller.revision,
+              ),
+            },
+          );
+          return;
+        }
       }
 
       if (request.method === "GET" && url.pathname === `${DASH_API_BASE_PATH}/bootstrap`) {
@@ -1071,6 +1362,71 @@ export class DashboardServer {
     }
   }
 
+  #transferController(
+    session: DashboardAuthenticatedSession,
+    resource: DashboardResourceRef,
+    policy: DashboardResourcePolicy,
+    request: DashboardControllerTransferRequest,
+  ): Promise<{
+    policy: DashboardResourcePolicy;
+    controller: ReturnType<DashboardControllerCoordinator["state"]>;
+  }> {
+    const key = `${session.principal.identityId}\u0000${request.idempotencyKey}`;
+    const fingerprint = createHash("sha256").update(JSON.stringify({
+      resource,
+      request,
+    }), "utf8").digest("base64url");
+    const retained = this.#controllerTransfers.get(key);
+    if (retained !== undefined) {
+      if (retained.fingerprint !== fingerprint) {
+        return Promise.reject(new DashboardAuthorizationError(
+          "idempotency_conflict",
+          "idempotency key was already used for another controller transfer",
+          409,
+        ));
+      }
+      return retained.promise;
+    }
+    const promise = (async () => {
+      const transferred = await this.controllerCoordinator.transfer({
+        resource,
+        targetIdentityId: request.targetIdentityId,
+        ...(request.targetParticipantId === undefined
+          ? {}
+          : { targetParticipantId: request.targetParticipantId }),
+        expectedRevision: request.expectedControllerRevision,
+        correlationId: request.requestId,
+      });
+      let recorded: DashboardResourcePolicy;
+      try {
+        recorded = await this.authorization.authorization.recordControllerTransfer({
+          principal: session.principal,
+          resource,
+          ...(transferred.previousControllerIdentityId === undefined
+            ? {}
+            : { previousControllerIdentityId: transferred.previousControllerIdentityId }),
+          newControllerIdentityId: request.targetIdentityId,
+          expectedRevision: policy.revision,
+          idempotencyKey: request.idempotencyKey,
+        });
+      } catch {
+        throw new DashboardAuthorizationError(
+          "controller_transfer_indeterminate",
+          "controller transfer completed but its durable audit outcome is indeterminate",
+          500,
+        );
+      }
+      return { policy: recorded, controller: transferred.state };
+    })();
+    while (this.#controllerTransfers.size >= MAX_CONTROLLER_TRANSFER_RECEIPTS) {
+      const oldest = this.#controllerTransfers.keys().next().value;
+      if (oldest === undefined) break;
+      this.#controllerTransfers.delete(oldest);
+    }
+    this.#controllerTransfers.set(key, { fingerprint, promise });
+    return promise;
+  }
+
   async #serveStatic(
     response: ServerResponse,
     relativePath: string,
@@ -1350,10 +1706,12 @@ export async function createDashboardServerFromConfig(
   if (options.streamHandler !== undefined && options.streamHandlerFactory !== undefined) {
     throw new Error("configure either streamHandler or streamHandlerFactory, not both");
   }
+  const controllerCoordinator = new DashboardControllerCoordinator();
   const serverInstanceId = options.serverInstanceId ?? `dash-${randomUUID()}`;
   const streamHandler = options.streamHandler ?? options.streamHandlerFactory?.({
     backend: options.backend,
     authorization,
+    controllerCoordinator,
     serverInstanceId,
     limits: dashboardLimits,
   });
@@ -1363,6 +1721,7 @@ export async function createDashboardServerFromConfig(
     workspaceStore,
     settingsStore,
     authorization,
+    controllerCoordinator,
     ...(options.assetsDir === undefined ? {} : { assetsDir: options.assetsDir }),
     host: web.bind,
     port: web.port,
@@ -1624,6 +1983,144 @@ function exportRequest(value: unknown): SessionExportRequest {
       ? {}
       : { releaseAfterExport: object.releaseAfterExport }),
   };
+}
+
+interface DashboardAuthorizationRoute {
+  kind: "session" | "workspace";
+  resourceId: string;
+  action: "policy" | "grant" | "transfer" | "audit" | "controller";
+  subjectIdentityId?: string;
+}
+
+function matchAuthorizationRoute(pathname: string): DashboardAuthorizationRoute | undefined {
+  const prefix = `${DASH_API_BASE_PATH}/authorization/`;
+  if (!pathname.startsWith(prefix)) return undefined;
+  const raw = pathname.slice(prefix.length).split("/");
+  if (raw[0] !== "session" && raw[0] !== "workspace") return undefined;
+  try {
+    const resourceId = safeId(decodeURIComponent(raw[1] ?? ""), "resourceId");
+    if (raw.length === 2) return { kind: raw[0], resourceId, action: "policy" };
+    if (raw.length === 3 && ["transfer", "audit", "controller"].includes(raw[2]!)) {
+      return { kind: raw[0], resourceId, action: raw[2] as "transfer" | "audit" | "controller" };
+    }
+    if (raw.length === 4 && raw[2] === "grants") {
+      return {
+        kind: raw[0],
+        resourceId,
+        action: "grant",
+        subjectIdentityId: safeId(decodeURIComponent(raw[3]!), "subjectIdentityId"),
+      };
+    }
+  } catch (error) {
+    if (error instanceof DashboardServerError) throw error;
+  }
+  return undefined;
+}
+
+function authorizationMutationRequest(value: unknown): DashboardAuthorizationMutationRequest {
+  const object = requestObject(value, "authorization mutation request");
+  exactRequestKeys(object, ["requestId", "idempotencyKey", "expectedRevision"]);
+  return {
+    requestId: requiredId(object.requestId, "requestId"),
+    idempotencyKey: requiredId(object.idempotencyKey, "idempotencyKey"),
+    expectedRevision: positiveRevision(object.expectedRevision, "expectedRevision"),
+  };
+}
+
+function grantSetRequest(value: unknown): DashboardGrantSetRequest {
+  const object = requestObject(value, "grant mutation request");
+  exactRequestKeys(object, ["requestId", "idempotencyKey", "expectedRevision", "role"]);
+  if (object.role !== "read" && object.role !== "control" && object.role !== "admin") {
+    throw new DashboardServerError(400, "invalid_request", "authorization role is invalid");
+  }
+  return {
+    ...authorizationMutationRequest({
+      requestId: object.requestId,
+      idempotencyKey: object.idempotencyKey,
+      expectedRevision: object.expectedRevision,
+    }),
+    role: object.role,
+  };
+}
+
+function ownershipTransferRequest(value: unknown): DashboardOwnershipTransferRequest {
+  const object = requestObject(value, "ownership transfer request");
+  exactRequestKeys(object, [
+    "requestId",
+    "idempotencyKey",
+    "expectedRevision",
+    "newOwnerIdentityId",
+    "previousOwnerRole",
+  ], ["previousOwnerRole"]);
+  if (
+    object.previousOwnerRole !== undefined &&
+    object.previousOwnerRole !== "read" &&
+    object.previousOwnerRole !== "control" &&
+    object.previousOwnerRole !== "admin"
+  ) {
+    throw new DashboardServerError(400, "invalid_request", "previous owner role is invalid");
+  }
+  return {
+    ...authorizationMutationRequest({
+      requestId: object.requestId,
+      idempotencyKey: object.idempotencyKey,
+      expectedRevision: object.expectedRevision,
+    }),
+    newOwnerIdentityId: requiredId(object.newOwnerIdentityId, "newOwnerIdentityId"),
+    ...(object.previousOwnerRole === undefined
+      ? {}
+      : { previousOwnerRole: object.previousOwnerRole }),
+  };
+}
+
+function controllerTransferRequest(value: unknown): DashboardControllerTransferRequest {
+  const object = requestObject(value, "controller transfer request");
+  exactRequestKeys(object, [
+    "requestId",
+    "idempotencyKey",
+    "expectedRevision",
+    "expectedControllerRevision",
+    "targetIdentityId",
+    "targetParticipantId",
+  ], ["targetParticipantId"]);
+  return {
+    ...authorizationMutationRequest({
+      requestId: object.requestId,
+      idempotencyKey: object.idempotencyKey,
+      expectedRevision: object.expectedRevision,
+    }),
+    expectedControllerRevision: nonNegativeRevision(
+      object.expectedControllerRevision,
+      "expectedControllerRevision",
+    ),
+    targetIdentityId: requiredId(object.targetIdentityId, "targetIdentityId"),
+    ...(object.targetParticipantId === undefined
+      ? {}
+      : { targetParticipantId: requiredId(object.targetParticipantId, "targetParticipantId") }),
+  };
+}
+
+function workspaceSelectionRequest(value: unknown): DashboardWorkspaceSelectionRequest {
+  const object = requestObject(value, "workspace selection request");
+  exactRequestKeys(object, ["requestId", "workspaceId"]);
+  return {
+    requestId: requiredId(object.requestId, "requestId"),
+    workspaceId: requiredId(object.workspaceId, "workspaceId"),
+  };
+}
+
+function positiveRevision(value: unknown, name: string): number {
+  if (!Number.isSafeInteger(value) || (value as number) < 1) {
+    throw new DashboardServerError(400, "invalid_request", `${name} is invalid`);
+  }
+  return value as number;
+}
+
+function nonNegativeRevision(value: unknown, name: string): number {
+  if (!Number.isSafeInteger(value) || (value as number) < 0) {
+    throw new DashboardServerError(400, "invalid_request", `${name} is invalid`);
+  }
+  return value as number;
 }
 
 function requestObject(value: unknown, name: string): Record<string, unknown> {
@@ -2009,6 +2506,29 @@ function requireGlobalAdministrator(session: DashboardAuthenticatedSession): voi
   }
 }
 
+function requireKnownDashboardIdentity(
+  auth: DashboardBrowserAuth,
+  identityId: string,
+): NonNullable<ReturnType<DashboardBrowserAuth["principal"]>> {
+  const principal = auth.principal(identityId);
+  if (principal === undefined) {
+    throw new DashboardAuthorizationError(
+      "authorization_target_invalid",
+      "authorization target is unavailable",
+      409,
+    );
+  }
+  return principal;
+}
+
+function policyRoleForIdentity(
+  policy: DashboardResourcePolicy,
+  identityId: string,
+): DashboardResourceRole | undefined {
+  if (policy.ownerIdentityId === identityId) return "admin";
+  return policy.grants.find((grant) => grant.identityId === identityId)?.role;
+}
+
 function authorizationRoleAtLeast(
   actual: DashboardResourceRole,
   required: DashboardResourceRole,
@@ -2035,6 +2555,23 @@ function requiredHeader(value: string | string[] | undefined, name: string): str
   return value;
 }
 
+function assertAuthorizationIfMatch(
+  request: IncomingMessage,
+  policy: DashboardResourcePolicy,
+  expectedRevision: number,
+): void {
+  if (
+    requiredHeader(request.headers["if-match"], "If-Match") !==
+    dashboardAuthorizationEtag({ ...policy, revision: expectedRevision })
+  ) {
+    throw new DashboardAuthorizationError(
+      "authorization_revision_conflict",
+      "authorization policy revision no longer matches",
+      409,
+    );
+  }
+}
+
 function integerHeader(value: string | string[] | undefined, name: string): number {
   const text = requiredHeader(value, name);
   if (!/^\d+$/.test(text) || !Number.isSafeInteger(Number(text))) {
@@ -2059,6 +2596,19 @@ function singleQueryValue(url: URL, name: string): string | null {
   const values = url.searchParams.getAll(name);
   if (values.length > 1) throw invalidQuery();
   return values[0] ?? null;
+}
+
+function optionalNonNegativeQueryInteger(url: URL, name: string): number | undefined {
+  const value = singleQueryValue(url, name);
+  if (value === null) return undefined;
+  if (!/^\d+$/.test(value)) throw invalidQuery();
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed < 0) throw invalidQuery();
+  return parsed;
+}
+
+function optionalPositiveQueryInteger(url: URL, name: string, max: number): number | undefined {
+  return optionalQueryInteger(singleQueryValue(url, name), max);
 }
 
 function optionalQueryInteger(value: string | null, max: number): number | undefined {

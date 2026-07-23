@@ -5,6 +5,7 @@ semantic versioning once a release tag is cut.
 
 ## Unreleased
 
+- add bounded Dashboard authorization administration: durable-idempotent revisioned grants/revocation and ownership transfer, authorized workspace listing/selection with cookie revocation, content-free audit, an accessible SPA access dialog, and explicit controller handoff that releases the old backend controller before granting an authorized target
 - enforce the central Dashboard policy at every browser HTTP and Rich/TUI boundary with bounded principal-bound inventory cursors, absent/unauthorized parity, ticket/draft/schedule ownership, live revocation checks, identity-derived multi-user workspaces, and strict machine-bearer separation while retaining exact single-owner behavior
 - add the non-enabled multi-user Dashboard authorization foundation: validated principals, constant-time bounded static credential provider, identity-bound server sessions, exact `local-owner` compatibility, and a central owner-private revisioned read/control/admin policy plus content-free audit ledger
 - add optional native Dashboard HTTPS/WSS with bounded owner-controlled certificate/key file or inherited-fd sources, exact SNI/Host/Origin and loopback proxy evidence, atomic last-good rotation, HSTS/Secure cookies, content-free health, and secret-safe YAML/CLI/Home Manager deployment

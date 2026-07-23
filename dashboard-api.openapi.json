@@ -550,6 +550,157 @@
         }
       }
     },
+    "/workspaces": {
+      "get": {
+        "operationId": "listAuthorizedDashboardWorkspaces",
+        "summary": "List a bounded set of workspaces visible to the authenticated identity",
+        "responses": {
+          "200": { "description": "Authorized workspaces only" },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/workspaces/select": {
+      "post": {
+        "operationId": "selectAuthorizedDashboardWorkspace",
+        "summary": "Bind the current browser session to one authorized workspace",
+        "security": [{ "dashSession": [], "csrfHeader": [] }],
+        "x-origin-check-required": true,
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["requestId", "workspaceId"],
+                "properties": {
+                  "requestId": { "$ref": "./dashboard-api.schema.json#/$defs/identifier" },
+                  "workspaceId": { "$ref": "./dashboard-api.schema.json#/$defs/identifier" }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Browser session rebound to the selected workspace" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/authorization/{kind}/{resourceId}": {
+      "parameters": [
+        { "name": "kind", "in": "path", "required": true, "schema": { "enum": ["session", "workspace"] } },
+        { "name": "resourceId", "in": "path", "required": true, "schema": { "$ref": "./dashboard-api.schema.json#/$defs/identifier" } }
+      ],
+      "get": {
+        "operationId": "getDashboardAuthorizationPolicy",
+        "summary": "Read a resource policy as its administrator",
+        "responses": {
+          "200": { "description": "Revisioned central policy", "headers": { "ETag": { "$ref": "#/components/headers/ETag" } }, "content": { "application/json": { "schema": { "$ref": "./dashboard-api.schema.json#/$defs/authorizationPolicyEnvelope" } } } },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/authorization/{kind}/{resourceId}/grants/{identityId}": {
+      "parameters": [
+        { "name": "kind", "in": "path", "required": true, "schema": { "enum": ["session", "workspace"] } },
+        { "name": "resourceId", "in": "path", "required": true, "schema": { "$ref": "./dashboard-api.schema.json#/$defs/identifier" } },
+        { "name": "identityId", "in": "path", "required": true, "schema": { "$ref": "./dashboard-api.schema.json#/$defs/identifier" } },
+        { "$ref": "#/components/parameters/IfMatch" },
+        { "$ref": "#/components/parameters/IdempotencyKey" }
+      ],
+      "put": {
+        "operationId": "setDashboardAuthorizationGrant",
+        "summary": "Set one identity grant with revision and idempotency guards",
+        "security": [{ "dashSession": [], "csrfHeader": [] }],
+        "x-origin-check-required": true,
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "./dashboard-api.schema.json#/$defs/authorizationGrantRequest" } } } },
+        "responses": {
+          "200": { "description": "Updated policy" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      },
+      "delete": {
+        "operationId": "revokeDashboardAuthorizationGrant",
+        "summary": "Revoke one identity grant and live authority",
+        "security": [{ "dashSession": [], "csrfHeader": [] }],
+        "x-origin-check-required": true,
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "./dashboard-api.schema.json#/$defs/authorizationMutationRequest" } } } },
+        "responses": {
+          "200": { "description": "Updated policy" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    },
+    "/authorization/{kind}/{resourceId}/transfer": {
+      "parameters": [
+        { "name": "kind", "in": "path", "required": true, "schema": { "enum": ["session", "workspace"] } },
+        { "name": "resourceId", "in": "path", "required": true, "schema": { "$ref": "./dashboard-api.schema.json#/$defs/identifier" } },
+        { "$ref": "#/components/parameters/IfMatch" },
+        { "$ref": "#/components/parameters/IdempotencyKey" }
+      ],
+      "post": {
+        "operationId": "transferDashboardAuthorizationOwnership",
+        "summary": "Atomically transfer central policy ownership",
+        "security": [{ "dashSession": [], "csrfHeader": [] }],
+        "x-origin-check-required": true,
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "./dashboard-api.schema.json#/$defs/authorizationOwnershipTransferRequest" } } } },
+        "responses": {
+          "200": { "description": "Transferred policy" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    },
+    "/authorization/{kind}/{resourceId}/audit": {
+      "parameters": [
+        { "name": "kind", "in": "path", "required": true, "schema": { "enum": ["session", "workspace"] } },
+        { "name": "resourceId", "in": "path", "required": true, "schema": { "$ref": "./dashboard-api.schema.json#/$defs/identifier" } }
+      ],
+      "get": {
+        "operationId": "listDashboardAuthorizationAudit",
+        "summary": "Read bounded content-free policy audit facts",
+        "responses": {
+          "200": { "description": "Content-free audit events" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/authorization/{kind}/{resourceId}/controller": {
+      "parameters": [
+        { "name": "kind", "in": "path", "required": true, "schema": { "enum": ["session", "workspace"] } },
+        { "name": "resourceId", "in": "path", "required": true, "schema": { "$ref": "./dashboard-api.schema.json#/$defs/identifier" } }
+      ],
+      "get": {
+        "operationId": "getDashboardControllerState",
+        "summary": "Read active controller participants as a resource administrator",
+        "responses": {
+          "200": { "description": "Bounded live controller state", "headers": { "ETag": { "$ref": "#/components/headers/ETag" } }, "content": { "application/json": { "schema": { "$ref": "./dashboard-api.schema.json#/$defs/controllerStateEnvelope" } } } },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
+      "post": {
+        "operationId": "transferDashboardController",
+        "summary": "Release the old controller before granting an authorized active target",
+        "security": [{ "dashSession": [], "csrfHeader": [] }],
+        "x-origin-check-required": true,
+        "parameters": [
+          { "$ref": "#/components/parameters/IfMatch" },
+          { "$ref": "#/components/parameters/IdempotencyKey" },
+          { "name": "X-Controller-If-Match", "in": "header", "required": true, "schema": { "type": "string", "maxLength": 1024 } }
+        ],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "./dashboard-api.schema.json#/$defs/controllerTransferRequest" } } } },
+        "responses": {
+          "200": { "description": "Audited controller handoff" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    },
     "/settings": {
       "get": {
         "operationId": "getDashboardSettings",

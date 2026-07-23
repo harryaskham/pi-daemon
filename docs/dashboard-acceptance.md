@@ -116,6 +116,25 @@ adapter, browser grid and component fixtures pass their frame, replay,
 controller, accessibility and performance gates and become available only when
 that public seam is injected.
 
+## Multi-user authorization administration acceptance
+
+The administration slice proves that session/workspace policy reads require
+resource `admin`; grant set/revoke and ownership transfer require matching CSRF,
+request/idempotency headers, body keys and policy ETags; retained retries do not
+repeat a mutation; and a conflicting key fails. Shared workspace listing exposes
+only authorized workspaces, selection changes only server-side browser session
+state, and revocation immediately invalidates matching cookies and streams.
+Absent and unauthorized policy paths retain the same content-free response.
+
+Controller acceptance uses two live identities and records the call order: old
+controller release completes before target grant begins. A failed target grant
+leaves no controller and never silently restores the old one. Successful
+handoff requires target `control`, exact policy and controller revisions, retains
+one idempotent result, and persists exactly one content-free audit event. The
+accessible Access dialog exercises grants, revocation, owner transfer, workspace
+selection, active participant selection and audit without receiving credentials,
+canonical paths or the daemon bearer.
+
 ## Lazy new-session integration acceptance
 
 Parent `bd-e9fce1` is complete on main through three independently landed and

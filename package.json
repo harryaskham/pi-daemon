@@ -101,6 +101,14 @@
       "types": "./dist/dashboard-authorization-enforcer.d.ts",
       "import": "./dist/dashboard-authorization-enforcer.js"
     },
+    "./dashboard-authorization-contract": {
+      "types": "./dist/dashboard-authorization-contract.d.ts",
+      "import": "./dist/dashboard-authorization-contract.js"
+    },
+    "./dashboard-controller-coordinator": {
+      "types": "./dist/dashboard-controller-coordinator.d.ts",
+      "import": "./dist/dashboard-controller-coordinator.js"
+    },
     "./dashboard-tls": {
       "types": "./dist/dashboard-tls.d.ts",
       "import": "./dist/dashboard-tls.js"

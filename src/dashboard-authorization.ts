@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { constants } from "node:fs";
 import { chmod, lstat, mkdir, open, rename, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
@@ -16,6 +16,7 @@ export const DEFAULT_DASHBOARD_AUTHORIZATION_MAX_AUDIT_EVENTS = 10_000;
 export const DEFAULT_DASHBOARD_AUTHORIZATION_MAX_BYTES = 64 * 1024 * 1024;
 const MAX_RESOURCE_ID_BYTES = 256;
 const MAX_READ_SLACK_BYTES = 1;
+const MAX_IDEMPOTENCY_RECEIPTS = 1_024;
 
 export type DashboardAuthorizationMode = "single-owner" | "multi-user";
 export type DashboardResourceKind =
@@ -52,7 +53,8 @@ export type DashboardAuthorizationAuditAction =
   | "resource-adopted"
   | "grant-set"
   | "grant-revoked"
-  | "ownership-transferred";
+  | "ownership-transferred"
+  | "controller-transferred";
 
 export interface DashboardAuthorizationAuditEvent {
   sequence: number;
@@ -64,7 +66,17 @@ export interface DashboardAuthorizationAuditEvent {
   subjectIdentityId?: string;
   role?: DashboardResourceRole;
   previousOwnerIdentityId?: string;
+  previousControllerIdentityId?: string;
 }
+
+interface DashboardAuthorizationIdempotencyReceipt {
+  actorIdentityId: string;
+  key: string;
+  fingerprint: string;
+  result: DashboardResourcePolicy;
+}
+
+type PendingIdempotencyReceipt = Omit<DashboardAuthorizationIdempotencyReceipt, "result">;
 
 interface DashboardAuthorizationState {
   formatVersion: typeof AUTHORIZATION_FORMAT_VERSION;
@@ -73,6 +85,7 @@ interface DashboardAuthorizationState {
   droppedAuditEvents: number;
   policies: DashboardResourcePolicy[];
   audit: DashboardAuthorizationAuditEvent[];
+  idempotency: DashboardAuthorizationIdempotencyReceipt[];
 }
 
 export interface DashboardAuthorizationLimits {
@@ -167,6 +180,29 @@ export class DashboardAuthorizationService {
     return role;
   }
 
+  async listPolicies(
+    principal: DashboardPrincipal,
+    options: { kind?: DashboardResourceKind; limit?: number } = {},
+  ): Promise<{ policies: DashboardResourcePolicy[]; truncated: boolean }> {
+    validatePrincipal(principal);
+    const limit = options.limit ?? 100;
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 1_000) {
+      throw new DashboardAuthorizationError("invalid_request", "policy limit is invalid");
+    }
+    await this.initialize();
+    await this.#tail;
+    this.#assertAvailable();
+    const visible = this.#state!.policies.filter(
+      (policy) =>
+        (options.kind === undefined || policy.resource.kind === options.kind) &&
+        this.#effectiveRole(principal, policy.resource) !== undefined,
+    );
+    return {
+      policies: structuredClone(visible.slice(0, limit)),
+      truncated: visible.length > limit,
+    };
+  }
+
   async policy(
     principal: DashboardPrincipal,
     resource: DashboardResourceRef,
@@ -233,13 +269,23 @@ export class DashboardAuthorizationService {
     subjectIdentityId: string;
     role: DashboardResourceRole;
     expectedRevision: number;
+    idempotencyKey?: string;
   }): Promise<DashboardResourcePolicy> {
     validatePrincipal(options.principal);
     const ref = validateResourceRef(options.resource);
     const subject = validateDashboardIdentityId(options.subjectIdentityId);
     validateRole(options.role);
     validateRevision(options.expectedRevision);
+    const receipt = pendingReceipt(options.principal, options.idempotencyKey, {
+      operation: "grant-set",
+      resource: ref,
+      subjectIdentityId: subject,
+      role: options.role,
+      expectedRevision: options.expectedRevision,
+    });
     return this.#mutate(async () => {
+      const replay = this.#replayReceipt(receipt);
+      if (replay !== undefined) return replay;
       const policy = await this.#mutableAdminPolicy(options.principal, ref);
       assertExpectedRevision(policy, options.expectedRevision);
       if (subject === policy.ownerIdentityId) {
@@ -269,6 +315,7 @@ export class DashboardAuthorizationService {
           subjectIdentityId: subject,
           role: options.role,
         },
+        receipt,
       );
     });
   }
@@ -278,16 +325,27 @@ export class DashboardAuthorizationService {
     resource: DashboardResourceRef;
     subjectIdentityId: string;
     expectedRevision: number;
+    idempotencyKey?: string;
   }): Promise<DashboardResourcePolicy> {
     validatePrincipal(options.principal);
     const ref = validateResourceRef(options.resource);
     const subject = validateDashboardIdentityId(options.subjectIdentityId);
     validateRevision(options.expectedRevision);
+    const receipt = pendingReceipt(options.principal, options.idempotencyKey, {
+      operation: "grant-revoked",
+      resource: ref,
+      subjectIdentityId: subject,
+      expectedRevision: options.expectedRevision,
+    });
     return this.#mutate(async () => {
+      const replay = this.#replayReceipt(receipt);
+      if (replay !== undefined) return replay;
       const policy = await this.#mutableAdminPolicy(options.principal, ref);
       assertExpectedRevision(policy, options.expectedRevision);
       const grants = policy.grants.filter(({ identityId }) => identityId !== subject);
-      if (grants.length === policy.grants.length) return structuredClone(policy);
+      if (grants.length === policy.grants.length) {
+        return this.#recordReceipt(policy, receipt);
+      }
       return this.#replacePolicy(
         policy,
         { ...policy, grants },
@@ -297,6 +355,7 @@ export class DashboardAuthorizationService {
           resource: ref,
           subjectIdentityId: subject,
         },
+        receipt,
       );
     });
   }
@@ -307,16 +366,28 @@ export class DashboardAuthorizationService {
     newOwnerIdentityId: string;
     previousOwnerRole?: DashboardResourceRole;
     expectedRevision: number;
+    idempotencyKey?: string;
   }): Promise<DashboardResourcePolicy> {
     validatePrincipal(options.principal);
     const ref = validateResourceRef(options.resource);
     const nextOwner = validateDashboardIdentityId(options.newOwnerIdentityId);
     if (options.previousOwnerRole !== undefined) validateRole(options.previousOwnerRole);
     validateRevision(options.expectedRevision);
+    const receipt = pendingReceipt(options.principal, options.idempotencyKey, {
+      operation: "ownership-transferred",
+      resource: ref,
+      newOwnerIdentityId: nextOwner,
+      previousOwnerRole: options.previousOwnerRole ?? null,
+      expectedRevision: options.expectedRevision,
+    });
     return this.#mutate(async () => {
+      const replay = this.#replayReceipt(receipt);
+      if (replay !== undefined) return replay;
       const policy = await this.#mutableAdminPolicy(options.principal, ref);
       assertExpectedRevision(policy, options.expectedRevision);
-      if (policy.ownerIdentityId === nextOwner) return structuredClone(policy);
+      if (policy.ownerIdentityId === nextOwner) {
+        return this.#recordReceipt(policy, receipt);
+      }
       const previousOwner = policy.ownerIdentityId;
       const grants = policy.grants.filter(
         ({ identityId }) => identityId !== nextOwner && identityId !== previousOwner,
@@ -338,7 +409,51 @@ export class DashboardAuthorizationService {
             ? {}
             : { role: options.previousOwnerRole }),
         },
+        receipt,
       );
+    });
+  }
+
+  recordControllerTransfer(options: {
+    principal: DashboardPrincipal;
+    resource: DashboardResourceRef;
+    previousControllerIdentityId?: string;
+    newControllerIdentityId: string;
+    expectedRevision: number;
+    idempotencyKey: string;
+  }): Promise<DashboardResourcePolicy> {
+    validatePrincipal(options.principal);
+    const ref = validateResourceRef(options.resource);
+    const previous = options.previousControllerIdentityId === undefined
+      ? undefined
+      : validateDashboardIdentityId(options.previousControllerIdentityId);
+    const next = validateDashboardIdentityId(options.newControllerIdentityId);
+    validateRevision(options.expectedRevision);
+    const receipt = pendingReceipt(options.principal, options.idempotencyKey, {
+      operation: "controller-transferred",
+      resource: ref,
+      previousControllerIdentityId: previous ?? null,
+      newControllerIdentityId: next,
+      expectedRevision: options.expectedRevision,
+    })!;
+    return this.#mutate(async () => {
+      const replay = this.#replayReceipt(receipt);
+      if (replay !== undefined) return replay;
+      const policy = await this.#mutableAdminPolicy(options.principal, ref);
+      assertExpectedRevision(policy, options.expectedRevision);
+      const state = this.#state!;
+      const timestamp = this.#timestamp();
+      state.revision += 1;
+      appendAudit(state, this.limits, {
+        actorIdentityId: options.principal.identityId,
+        action: "controller-transferred",
+        resource: ref,
+        subjectIdentityId: next,
+        ...(previous === undefined ? {} : { previousControllerIdentityId: previous }),
+      }, timestamp);
+      this.#appendReceipt(receipt, policy);
+      await this.#write();
+      return structuredClone(policy);
     });
   }
 
@@ -377,14 +492,25 @@ export class DashboardAuthorizationService {
       throw hiddenResourceError();
     }
     const state = this.#state!;
+    if (resource !== undefined) {
+      // Global audit sequence gaps would reveal otherwise-inaccessible activity.
+      // Resource administrators receive a retained-window-relative sequence
+      // instead; only global administrators receive global truncation facts.
+      const events = state.audit
+        .filter((event) => resourceKey(event.resource) === resourceKey(resource))
+        .map((event, index) => ({ ...event, sequence: index + 1 }));
+      return {
+        events: structuredClone(
+          events.filter((event) => event.sequence > afterSequence).slice(0, limit),
+        ),
+        droppedEvents: 0,
+        nextSequence: events.length + 1,
+      };
+    }
     return {
       events: structuredClone(
         state.audit
-          .filter(
-            (event) =>
-              event.sequence > afterSequence &&
-              (resource === undefined || resourceKey(event.resource) === resourceKey(resource)),
-          )
+          .filter((event) => event.sequence > afterSequence)
           .slice(0, limit),
       ),
       droppedEvents: state.droppedAuditEvents,
@@ -475,6 +601,7 @@ export class DashboardAuthorizationService {
     previous: DashboardResourcePolicy,
     next: DashboardResourcePolicy,
     event: Omit<DashboardAuthorizationAuditEvent, "sequence" | "eventId" | "occurredAt">,
+    receipt?: PendingIdempotencyReceipt,
   ): Promise<DashboardResourcePolicy> {
     const state = this.#state!;
     const index = state.policies.indexOf(previous);
@@ -491,12 +618,56 @@ export class DashboardAuthorizationService {
     this.#policyIndex.set(resourceKey(updated.resource), updated);
     state.revision += 1;
     appendAudit(state, this.limits, event, timestamp);
+    this.#appendReceipt(receipt, updated);
     await this.#write();
     return structuredClone(updated);
   }
 
+  async #recordReceipt(
+    policy: DashboardResourcePolicy,
+    receipt: PendingIdempotencyReceipt | undefined,
+  ): Promise<DashboardResourcePolicy> {
+    if (receipt === undefined) return structuredClone(policy);
+    this.#state!.revision += 1;
+    this.#appendReceipt(receipt, policy);
+    await this.#write();
+    return structuredClone(policy);
+  }
+
+  #replayReceipt(
+    receipt: PendingIdempotencyReceipt | undefined,
+  ): DashboardResourcePolicy | undefined {
+    if (receipt === undefined) return undefined;
+    const retained = this.#state!.idempotency.find(
+      (candidate) =>
+        candidate.actorIdentityId === receipt.actorIdentityId &&
+        candidate.key === receipt.key,
+    );
+    if (retained === undefined) return undefined;
+    if (retained.fingerprint !== receipt.fingerprint) {
+      throw new DashboardAuthorizationError(
+        "idempotency_conflict",
+        "idempotency key was already used for another authorization mutation",
+        409,
+      );
+    }
+    return structuredClone(retained.result);
+  }
+
+  #appendReceipt(
+    receipt: PendingIdempotencyReceipt | undefined,
+    result: DashboardResourcePolicy,
+  ): void {
+    if (receipt === undefined) return;
+    this.#state!.idempotency.push({ ...receipt, result: structuredClone(result) });
+    this.#state!.idempotency = this.#state!.idempotency.slice(-MAX_IDEMPOTENCY_RECEIPTS);
+  }
+
   async #write(): Promise<void> {
     const state = this.#state!;
+    while (state.idempotency.length > 0 && jsonBytes(state) + 1 > this.limits.maxBytes) {
+      state.idempotency.shift();
+    }
     while (state.audit.length > 0 && jsonBytes(state) + 1 > this.limits.maxBytes) {
       state.audit.shift();
       state.droppedAuditEvents += 1;
@@ -631,7 +802,8 @@ function validateStoredState(
     "droppedAuditEvents",
     "policies",
     "audit",
-  ]);
+    "idempotency",
+  ], ["idempotency"]);
   if (object.formatVersion !== AUTHORIZATION_FORMAT_VERSION) throw corruptAuthorizationState();
   const revision = storedInteger(object.revision);
   const nextAuditSequence = storedInteger(object.nextAuditSequence, 1);
@@ -640,6 +812,12 @@ function validateStoredState(
     throw corruptAuthorizationState();
   }
   if (!Array.isArray(object.audit) || object.audit.length > limits.maxAuditEvents) {
+    throw corruptAuthorizationState();
+  }
+  if (
+    object.idempotency !== undefined &&
+    (!Array.isArray(object.idempotency) || object.idempotency.length > MAX_IDEMPOTENCY_RECEIPTS)
+  ) {
     throw corruptAuthorizationState();
   }
   const policyKeys = new Set<string>();
@@ -651,6 +829,15 @@ function validateStoredState(
     return policy;
   });
   const audit = object.audit.map(validateStoredAuditEvent);
+  const idempotency = (object.idempotency ?? []).map((entry) =>
+    validateStoredIdempotencyReceipt(entry, limits),
+  );
+  const receiptKeys = new Set<string>();
+  for (const receipt of idempotency) {
+    const key = `${receipt.actorIdentityId}\u0000${receipt.key}`;
+    if (receiptKeys.has(key)) throw corruptAuthorizationState();
+    receiptKeys.add(key);
+  }
   for (let index = 1; index < audit.length; index += 1) {
     if (audit[index - 1]!.sequence >= audit[index]!.sequence) throw corruptAuthorizationState();
   }
@@ -664,6 +851,7 @@ function validateStoredState(
     droppedAuditEvents,
     policies,
     audit,
+    idempotency,
   };
 }
 
@@ -716,14 +904,21 @@ function validateStoredAuditEvent(value: unknown): DashboardAuthorizationAuditEv
     "subjectIdentityId",
     "role",
     "previousOwnerIdentityId",
+    "previousControllerIdentityId",
   ];
-  assertExactKeys(object, allowed, ["subjectIdentityId", "role", "previousOwnerIdentityId"]);
+  assertExactKeys(object, allowed, [
+    "subjectIdentityId",
+    "role",
+    "previousOwnerIdentityId",
+    "previousControllerIdentityId",
+  ]);
   if (![
     "resource-created",
     "resource-adopted",
     "grant-set",
     "grant-revoked",
     "ownership-transferred",
+    "controller-transferred",
   ].includes(object.action as string)) {
     throw corruptAuthorizationState();
   }
@@ -735,15 +930,20 @@ function validateStoredAuditEvent(value: unknown): DashboardAuthorizationAuditEv
   const previousOwnerIdentityId = object.previousOwnerIdentityId === undefined
     ? undefined
     : validateStoredIdentityId(object.previousOwnerIdentityId);
+  const previousControllerIdentityId = object.previousControllerIdentityId === undefined
+    ? undefined
+    : validateStoredIdentityId(object.previousControllerIdentityId);
   if (
     ((action === "resource-created" || action === "resource-adopted") &&
-      (subjectIdentityId === undefined || role !== undefined || previousOwnerIdentityId !== undefined)) ||
+      (subjectIdentityId === undefined || role !== undefined || previousOwnerIdentityId !== undefined || previousControllerIdentityId !== undefined)) ||
     (action === "grant-set" &&
-      (subjectIdentityId === undefined || role === undefined || previousOwnerIdentityId !== undefined)) ||
+      (subjectIdentityId === undefined || role === undefined || previousOwnerIdentityId !== undefined || previousControllerIdentityId !== undefined)) ||
     (action === "grant-revoked" &&
-      (subjectIdentityId === undefined || role !== undefined || previousOwnerIdentityId !== undefined)) ||
+      (subjectIdentityId === undefined || role !== undefined || previousOwnerIdentityId !== undefined || previousControllerIdentityId !== undefined)) ||
     (action === "ownership-transferred" &&
-      (subjectIdentityId === undefined || previousOwnerIdentityId === undefined))
+      (subjectIdentityId === undefined || previousOwnerIdentityId === undefined || previousControllerIdentityId !== undefined)) ||
+    (action === "controller-transferred" &&
+      (subjectIdentityId === undefined || role !== undefined || previousOwnerIdentityId !== undefined))
   ) {
     throw corruptAuthorizationState();
   }
@@ -757,6 +957,21 @@ function validateStoredAuditEvent(value: unknown): DashboardAuthorizationAuditEv
     ...(subjectIdentityId === undefined ? {} : { subjectIdentityId }),
     ...(role === undefined ? {} : { role }),
     ...(previousOwnerIdentityId === undefined ? {} : { previousOwnerIdentityId }),
+    ...(previousControllerIdentityId === undefined ? {} : { previousControllerIdentityId }),
+  };
+}
+
+function validateStoredIdempotencyReceipt(
+  value: unknown,
+  limits: Readonly<DashboardAuthorizationLimits>,
+): DashboardAuthorizationIdempotencyReceipt {
+  const object = storedObject(value);
+  assertExactKeys(object, ["actorIdentityId", "key", "fingerprint", "result"]);
+  return {
+    actorIdentityId: validateStoredIdentityId(object.actorIdentityId),
+    key: storedOpaqueString(object.key, 512),
+    fingerprint: storedOpaqueString(object.fingerprint, 128),
+    result: validateStoredPolicy(object.result, limits),
   };
 }
 
@@ -854,6 +1069,22 @@ function hiddenResourceError(): DashboardAuthorizationError {
   return new DashboardAuthorizationError("not_found", "dashboard resource was not found", 404);
 }
 
+function pendingReceipt(
+  principal: DashboardPrincipal,
+  key: string | undefined,
+  request: Record<string, unknown>,
+): PendingIdempotencyReceipt | undefined {
+  if (key === undefined) return undefined;
+  if (key.length < 1 || Buffer.byteLength(key, "utf8") > 512) {
+    throw new DashboardAuthorizationError("invalid_request", "idempotency key is invalid");
+  }
+  return {
+    actorIdentityId: principal.identityId,
+    key,
+    fingerprint: createHash("sha256").update(JSON.stringify(request), "utf8").digest("base64url"),
+  };
+}
+
 function emptyAuthorizationState(): DashboardAuthorizationState {
   return {
     formatVersion: AUTHORIZATION_FORMAT_VERSION,
@@ -862,6 +1093,7 @@ function emptyAuthorizationState(): DashboardAuthorizationState {
     droppedAuditEvents: 0,
     policies: [],
     audit: [],
+    idempotency: [],
   };
 }
 

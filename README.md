@@ -127,10 +127,13 @@ Every browser HTTP, inventory, ticket, draft, schedule, Rich, and TUI boundary
 now enforces the identity-bound owner-private central read/control/admin ledger.
 Inventory uses bounded principal/query-bound opaque cursors; absent and
 unauthorized resources share one content-free denial; live streams revalidate
-policy and provider state before sensitive frames/events. The remote backend
-still receives only the machine bearer. Multi-user configuration remains
-intentionally unavailable until grant administration, migration, and acceptance
-land; existing deployments remain the exact `local-owner` single-operator mode. See
+policy and provider state before sensitive frames/events. Revisioned grant,
+workspace sharing/revocation, ownership transfer, content-free audit, and an
+explicit release-before-grant controller handoff are available through the BFF
+and accessible SPA administration dialog. The remote backend still receives
+only the machine bearer. Multi-user configuration remains intentionally
+unavailable until provider configuration, migration, and final acceptance land;
+existing deployments remain the exact `local-owner` single-operator mode. See
 [Dashboard identity and authorization](docs/dashboard-authorization.md).
 
 Both executables treat an `EPIPE` from stdout or stderr as a normal early-closing

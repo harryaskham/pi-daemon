@@ -88,6 +88,11 @@ test("published Dash fixtures validate against strict additive definitions", asy
     ["export.states.json", "exportTicketFixtureSet"],
     ["presence.scenarios.json", "presenceScenarioSet"],
     ["workspace.resource.json", "workspace"],
+    ["authorization.policy.json", "authorizationPolicyResource"],
+    ["authorization.grant.request.json", "authorizationGrantRequest"],
+    ["authorization.transfer.request.json", "authorizationOwnershipTransferRequest"],
+    ["controller.state.json", "controllerState"],
+    ["controller.transfer.request.json", "controllerTransferRequest"],
     ["settings.resource.json", "settings"],
     ["error.response.json", "errorEnvelope"],
     ["stream.subscribe.json", "streamSubscribeFrame"],
@@ -245,6 +250,19 @@ test("browser-storable fixtures contain no daemon bearer, cookie, credential, or
     "__Host-pi-daemon-dash",
   ]) {
     assert.equal(serialized.toLowerCase().includes(forbidden.toLowerCase()), false, forbidden);
+  }
+});
+
+test("authorization administration fixtures remain content-free", async () => {
+  const serialized = JSON.stringify(await Promise.all([
+    fixture("authorization.policy.json"),
+    fixture("authorization.grant.request.json"),
+    fixture("authorization.transfer.request.json"),
+    fixture("controller.state.json"),
+    fixture("controller.transfer.request.json"),
+  ])).toLowerCase();
+  for (const forbidden of ["credential", "bearer", "canonicalpath", "/users/", "private key"]) {
+    assert.equal(serialized.includes(forbidden), false, forbidden);
   }
 });
 

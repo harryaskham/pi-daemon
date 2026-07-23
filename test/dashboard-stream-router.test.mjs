@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { createDashboardStreamHandler } from "../dist/dashboard-stream-router.js";
+import { DashboardControllerCoordinator } from "../dist/dashboard-controller-coordinator.js";
 import { createDashboardContractFixtures } from "../dist/dashboard-fixtures.js";
 
 const SESSION = {
@@ -49,15 +50,16 @@ function fakeBackend(overrides = {}) {
   const calls = [];
   const makeRich = (options) => {
     const listeners = new Set();
+    let role = options.role;
     const channel = {
       presentation: "rich",
       identity,
-      role: options.role,
+      get role() { return role; },
       snapshot: fixtures.streamReady.snapshot,
       closed: 0,
       async command(command) { calls.push(["command", command]); return { correlationId: command.correlationId, state: command.operation === "prompt" ? "streaming" : "completed" }; },
-      async requestControl(correlationId) { calls.push(["requestControl", correlationId]); return { correlationId, state: "completed" }; },
-      async releaseControl(correlationId) { calls.push(["releaseControl", correlationId]); return { correlationId, state: "completed" }; },
+      async requestControl(correlationId) { calls.push(["requestControl", correlationId]); role = "controller"; return { correlationId, state: "completed" }; },
+      async releaseControl(correlationId) { calls.push(["releaseControl", correlationId]); role = "observer"; return { correlationId, state: "completed" }; },
       async answerExtensionUi(requestId, response) { calls.push(["extensionUi", requestId, response]); },
       subscribe(listener) { listeners.add(listener); for (const event of overrides.initialEvents ?? []) listener(event); return () => listeners.delete(listener); },
       emit(event) { for (const listener of listeners) listener(event); },
@@ -91,7 +93,15 @@ function connect(backend, overrides = {}) {
       };
     },
   };
-  createDashboardStreamHandler({ backend, authorization, serverInstanceId: "dash-router-fixture", limits: LIMITS })({
+  createDashboardStreamHandler({
+    backend,
+    authorization,
+    ...(overrides.controllerCoordinator === undefined
+      ? {}
+      : { controllerCoordinator: overrides.controllerCoordinator }),
+    serverInstanceId: "dash-router-fixture",
+    limits: LIMITS,
+  })({
     session: SESSION,
     revalidateSession: overrides.revalidateSession ?? (() => SESSION),
     peer,
@@ -151,6 +161,26 @@ test("routes authenticated rich frames with exact identity and correlation", asy
   await settle();
   assert.equal(peer.sent.at(-1).kind, "session_event");
   assert.equal(peer.sent.at(-1).subscriptionId, "pane-1");
+});
+
+test("stream subscriptions register live controller participants and release them on close", async () => {
+  const { backend } = fakeBackend();
+  const coordinator = new DashboardControllerCoordinator();
+  const peer = connect(backend, { controllerCoordinator: coordinator });
+  await hello(peer);
+  await subscribe(peer);
+  const resource = { kind: "session", id: "managed:session-fixture-01" };
+  const ready = coordinator.state(resource);
+  assert.equal(ready.controllerIdentityId, SESSION.principal.identityId);
+  assert.equal(ready.participants.length, 1);
+  await peer.receive(base("control", "release-coordinated", {
+    subscriptionId: "pane-1",
+    action: "release",
+  }));
+  assert.equal(coordinator.state(resource).controllerIdentityId, undefined);
+  peer.disconnect();
+  await settle();
+  assert.deepEqual(coordinator.state(resource).participants, []);
 });
 
 test("reconnect replay gap is emitted before its fresh atomic snapshot", async () => {

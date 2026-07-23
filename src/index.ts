@@ -12,6 +12,8 @@ export {
   type DashboardAuthorizationEnforcerOptions,
   type AuthorizedDashboardSession,
 } from "./dashboard-authorization-enforcer.js";
+export * from "./dashboard-authorization-contract.js";
+export * from "./dashboard-controller-coordinator.js";
 export * from "./dashboard-tls.js";
 export * from "./dashboard-backend.js";
 export * from "./dashboard-remote-backend.js";

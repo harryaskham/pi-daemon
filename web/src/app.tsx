@@ -19,6 +19,7 @@ import type {
 } from "@harryaskham/pi-daemon/dashboard-contract";
 import type { DashboardSessionDraftResource } from "@harryaskham/pi-daemon/dashboard-session-draft-contract";
 import { BrowserDashboardClient, DashboardBrowserClientError } from "./browser-dashboard-client";
+import { AuthorizationPanel } from "./components/AuthorizationPanel";
 import { ConnectedChatPane } from "./components/ConnectedChatPane";
 import { ConnectedInfoPane } from "./components/ConnectedInfoPane";
 import { ConnectedTuiPane } from "./components/ConnectedTuiPane";
@@ -223,7 +224,9 @@ function DashWorkspace({
   const tuiWorkStartedAt = useRef<number | undefined>(undefined);
   const workspaceWorkStartedAt = useRef<number | undefined>(undefined);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [accessOpen, setAccessOpen] = useState(false);
   const [keyboardHelpOpen, setKeyboardHelpOpen] = useState(false);
+  const authorizationClient = backend instanceof BrowserDashboardClient ? backend : undefined;
   const [tuiStores] = useState(() => {
     const cache = new TuiFrameCache<InventoryId>();
     if (firstSession !== undefined && fixtureMode) {
@@ -720,6 +723,7 @@ function DashWorkspace({
         <div className="workspace-notice" aria-live="polite">
           <button type="button" className="mobile-menu-button" aria-label="Open session drawer" onClick={() => setSidebarOpen(true)}><Menu size={15} /></button>
           <i />{notice}
+          {authorizationClient === undefined ? null : <button type="button" className="keyboard-help-button" aria-label="Open access administration" onClick={() => setAccessOpen(true)}>Access</button>}
           <button type="button" className="keyboard-help-button" aria-label="Open keyboard guide" onClick={() => setKeyboardHelpOpen(true)}><CircleHelp size={13} /> Keys</button>
           <span>{workspace.syncState === "synced" ? `workspace r${workspace.resource.revision}` : `workspace ${workspace.syncState}`} · Ctrl-hjkl focus · Ctrl-Shift-hjkl swap</span>
         </div>
@@ -744,6 +748,13 @@ function DashWorkspace({
         />
       </div>
       <KeyboardHelp submitKey={composerSubmitKey} open={keyboardHelpOpen} onClose={() => setKeyboardHelpOpen(false)} />
+      {authorizationClient === undefined ? null : <AuthorizationPanel
+        open={accessOpen}
+        client={authorizationClient}
+        workspaceId={workspace.resource.workspaceId}
+        {...(selectedInventoryId === undefined ? {} : { selectedInventoryId })}
+        onClose={() => setAccessOpen(false)}
+      />}
       <SettingsModal
         open={settingsOpen}
         vimEnabled={vimEnabled}

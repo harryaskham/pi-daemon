@@ -473,6 +473,13 @@ must then exactly match `publicOrigin` and arrive from loopback. See
 [Dashboard transport security](dashboard-transport-security) for downgrade,
 SNI, HSTS, cookie, file-mode, and failure semantics.
 
+The SPA **Access** dialog and `/dash/v1/authorization/...` BFF routes are the
+only supported grant, revocation, ownership-transfer, workspace-selection and
+controller-handoff surfaces. They require exact CSRF and revision headers and
+never accept a service bearer. Multi-user provider configuration remains
+intentionally unavailable until the final migration/acceptance slice; current
+operators see the same `local-owner` workspace through these policy-safe paths.
+
 ## Nix-on-Droid cache bootstrap
 
 Pi Daemon remains a Node service even though the interactive Pi CLI can be

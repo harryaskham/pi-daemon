@@ -16,6 +16,8 @@
     "baseUrl": ".",
     "paths": {
       "@harryaskham/pi-daemon/dashboard-contract": ["../src/dashboard-contract.ts"],
+      "@harryaskham/pi-daemon/dashboard-authorization": ["../src/dashboard-authorization.ts"],
+      "@harryaskham/pi-daemon/dashboard-authorization-contract": ["../src/dashboard-authorization-contract.ts"],
       "@harryaskham/pi-daemon/dashboard-fixtures": ["../src/dashboard-fixtures.ts"],
       "@harryaskham/pi-daemon/extension-view-contract": ["../src/extension-view-contract.ts"],
       "@harryaskham/pi-daemon/extension-view-fixtures": ["../src/extension-view-fixtures.ts"],

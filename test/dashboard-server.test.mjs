@@ -825,6 +825,217 @@ test("multi-user enforcement filters inventory and hides sessions, tickets and d
   assert.equal((await fetch(`${h.origin}/dash/v1/schedules/status`, {
     headers: privateHeaders(h.origin, member),
   })).status, 403);
+
+  const authorizationPath = `${h.origin}/dash/v1/authorization/session/${h.fixtures.sessionInfo.inventoryId}`;
+  const policyResponse = await jsonResponse(await fetch(authorizationPath, {
+    headers: privateHeaders(h.origin, member),
+  }));
+  assert.equal(policyResponse.response.status, 200);
+  assert.equal((await fetch(authorizationPath, {
+    headers: privateHeaders(h.origin, other),
+  })).status, 404);
+  const grantBody = {
+    requestId: "grant-other-read",
+    idempotencyKey: "grant-other-read-key",
+    expectedRevision: policyResponse.json.data.policy.revision,
+    role: "control",
+  };
+  const grantHeaders = {
+    ...privateHeaders(h.origin, member, true),
+    "Content-Type": "application/json",
+    "If-Match": policyResponse.response.headers.get("etag"),
+    "X-Request-ID": grantBody.requestId,
+    "Idempotency-Key": grantBody.idempotencyKey,
+  };
+  const grantedOther = await jsonResponse(await fetch(`${authorizationPath}/grants/other`, {
+    method: "PUT",
+    headers: grantHeaders,
+    body: JSON.stringify(grantBody),
+  }));
+  assert.equal(grantedOther.response.status, 200);
+  const replayedGrant = await jsonResponse(await fetch(`${authorizationPath}/grants/other`, {
+    method: "PUT",
+    headers: grantHeaders,
+    body: JSON.stringify(grantBody),
+  }));
+  assert.deepEqual(replayedGrant.json.data, grantedOther.json.data);
+  assert.equal((await fetch(
+    `${h.origin}/dash/v1/sessions/${h.fixtures.sessionInfo.inventoryId}`,
+    { headers: privateHeaders(h.origin, other) },
+  )).status, 200);
+
+  const controllerOrder = [];
+  let memberControllerRole = "controller";
+  let otherControllerRole = "observer";
+  h.server.controllerCoordinator.register({
+    resource: sessionResource,
+    identityId: "member",
+    presentation: "rich",
+    role: () => memberControllerRole,
+    async requestControl(correlationId) { memberControllerRole = "controller"; return { correlationId, state: "completed" }; },
+    async releaseControl(correlationId) { controllerOrder.push("release-member"); memberControllerRole = "observer"; return { correlationId, state: "completed" }; },
+    async close() {},
+  });
+  const otherParticipant = h.server.controllerCoordinator.register({
+    resource: sessionResource,
+    identityId: "other",
+    presentation: "tui",
+    role: () => otherControllerRole,
+    async requestControl(correlationId) {
+      assert.equal(memberControllerRole, "observer");
+      controllerOrder.push("grant-other");
+      otherControllerRole = "controller";
+      return { correlationId, state: "completed" };
+    },
+    async releaseControl(correlationId) { otherControllerRole = "observer"; return { correlationId, state: "completed" }; },
+    async close() {},
+  });
+  const controllerBefore = await jsonResponse(await fetch(`${authorizationPath}/controller`, {
+    headers: privateHeaders(h.origin, member),
+  }));
+  const controllerBody = {
+    requestId: "handoff-other",
+    idempotencyKey: "handoff-other-key",
+    expectedRevision: grantedOther.json.data.policy.revision,
+    expectedControllerRevision: controllerBefore.json.data.revision,
+    targetIdentityId: "other",
+    targetParticipantId: otherParticipant.participantId,
+  };
+  const handedOff = await jsonResponse(await fetch(`${authorizationPath}/controller`, {
+    method: "POST",
+    headers: {
+      ...privateHeaders(h.origin, member, true),
+      "Content-Type": "application/json",
+      "If-Match": grantedOther.response.headers.get("etag"),
+      "X-Controller-If-Match": controllerBefore.response.headers.get("etag"),
+      "X-Request-ID": controllerBody.requestId,
+      "Idempotency-Key": controllerBody.idempotencyKey,
+    },
+    body: JSON.stringify(controllerBody),
+  }));
+  assert.equal(handedOff.response.status, 200);
+  assert.deepEqual(controllerOrder, ["release-member", "grant-other"]);
+  assert.equal(handedOff.json.data.controller.controllerIdentityId, "other");
+  assert.equal((await fetch(`${authorizationPath}/controller`, {
+    method: "POST",
+    headers: {
+      ...privateHeaders(h.origin, member, true),
+      "Content-Type": "application/json",
+      "If-Match": grantedOther.response.headers.get("etag"),
+      "X-Controller-If-Match": controllerBefore.response.headers.get("etag"),
+      "X-Request-ID": controllerBody.requestId,
+      "Idempotency-Key": controllerBody.idempotencyKey,
+    },
+    body: JSON.stringify(controllerBody),
+  })).status, 200);
+  assert.deepEqual(controllerOrder, ["release-member", "grant-other"]);
+
+  const revokeBody = {
+    requestId: "revoke-other-read",
+    idempotencyKey: "revoke-other-read-key",
+    expectedRevision: grantedOther.json.data.policy.revision,
+  };
+  const revokedOther = await jsonResponse(await fetch(`${authorizationPath}/grants/other`, {
+    method: "DELETE",
+    headers: {
+      ...privateHeaders(h.origin, member, true),
+      "Content-Type": "application/json",
+      "If-Match": grantedOther.response.headers.get("etag"),
+      "X-Request-ID": revokeBody.requestId,
+      "Idempotency-Key": revokeBody.idempotencyKey,
+    },
+    body: JSON.stringify(revokeBody),
+  }));
+  assert.equal(revokedOther.response.status, 200);
+  assert.equal((await fetch(
+    `${h.origin}/dash/v1/sessions/${h.fixtures.sessionInfo.inventoryId}`,
+    { headers: privateHeaders(h.origin, other) },
+  )).status, 404);
+
+  const transferBody = {
+    requestId: "transfer-session-owner",
+    idempotencyKey: "transfer-session-owner-key",
+    expectedRevision: revokedOther.json.data.policy.revision,
+    newOwnerIdentityId: "other",
+    previousOwnerRole: "read",
+  };
+  const transferred = await jsonResponse(await fetch(`${authorizationPath}/transfer`, {
+    method: "POST",
+    headers: {
+      ...privateHeaders(h.origin, member, true),
+      "Content-Type": "application/json",
+      "If-Match": revokedOther.response.headers.get("etag"),
+      "X-Request-ID": transferBody.requestId,
+      "Idempotency-Key": transferBody.idempotencyKey,
+    },
+    body: JSON.stringify(transferBody),
+  }));
+  assert.equal(transferred.response.status, 200);
+  assert.equal(transferred.json.data.policy.ownerIdentityId, "other");
+  const audit = await jsonResponse(await fetch(`${authorizationPath}/audit?limit=50&afterSequence=0`, {
+    headers: privateHeaders(h.origin, member),
+  }));
+  assert.equal(audit.response.status, 200);
+  assert.equal(audit.json.data.events.at(-1).action, "ownership-transferred");
+  assert.doesNotMatch(JSON.stringify(audit.json), /credential|private member prompt/i);
+
+  const memberWorkspaceId = member.json.data.workspaceId;
+  const workspaceAuthorizationPath = `${h.origin}/dash/v1/authorization/workspace/${memberWorkspaceId}`;
+  const workspacePolicy = await jsonResponse(await fetch(workspaceAuthorizationPath, {
+    headers: privateHeaders(h.origin, member),
+  }));
+  const workspaceGrant = {
+    requestId: "share-workspace-other",
+    idempotencyKey: "share-workspace-other-key",
+    expectedRevision: workspacePolicy.json.data.policy.revision,
+    role: "read",
+  };
+  const shared = await jsonResponse(await fetch(`${workspaceAuthorizationPath}/grants/other`, {
+    method: "PUT",
+    headers: {
+      ...privateHeaders(h.origin, member, true),
+      "Content-Type": "application/json",
+      "If-Match": workspacePolicy.response.headers.get("etag"),
+      "X-Request-ID": workspaceGrant.requestId,
+      "Idempotency-Key": workspaceGrant.idempotencyKey,
+    },
+    body: JSON.stringify(workspaceGrant),
+  }));
+  assert.equal(shared.response.status, 200);
+  const otherWorkspaces = await jsonResponse(await fetch(`${h.origin}/dash/v1/workspaces`, {
+    headers: privateHeaders(h.origin, other),
+  }));
+  assert.equal(otherWorkspaces.response.status, 200);
+  assert.equal(otherWorkspaces.json.data.workspaces.some(({ workspace }) => workspace.workspaceId === memberWorkspaceId), true);
+  const selected = await jsonResponse(await fetch(`${h.origin}/dash/v1/workspaces/select`, {
+    method: "POST",
+    headers: {
+      ...privateHeaders(h.origin, other, true),
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ requestId: "select-shared-workspace", workspaceId: memberWorkspaceId }),
+  }));
+  assert.equal(selected.response.status, 200);
+  assert.equal(selected.json.data.workspaceId, memberWorkspaceId);
+  const workspaceRevoke = {
+    requestId: "unshare-workspace-other",
+    idempotencyKey: "unshare-workspace-other-key",
+    expectedRevision: shared.json.data.policy.revision,
+  };
+  assert.equal((await fetch(`${workspaceAuthorizationPath}/grants/other`, {
+    method: "DELETE",
+    headers: {
+      ...privateHeaders(h.origin, member, true),
+      "Content-Type": "application/json",
+      "If-Match": shared.response.headers.get("etag"),
+      "X-Request-ID": workspaceRevoke.requestId,
+      "Idempotency-Key": workspaceRevoke.idempotencyKey,
+    },
+    body: JSON.stringify(workspaceRevoke),
+  })).status, 200);
+  assert.equal((await fetch(`${h.origin}/dash/v1/bootstrap`, {
+    headers: privateHeaders(h.origin, other),
+  })).status, 401);
 });
 
 test("lazy draft BFF CRUD is authenticated, revisioned, and separate from first-send execution", async (t) => {

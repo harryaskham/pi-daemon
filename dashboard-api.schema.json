@@ -53,6 +53,27 @@
       "$ref": "#/$defs/workspaceEnvelope"
     },
     {
+      "$ref": "#/$defs/authorizationPolicyResource"
+    },
+    {
+      "$ref": "#/$defs/authorizationPolicyEnvelope"
+    },
+    {
+      "$ref": "#/$defs/authorizationGrantRequest"
+    },
+    {
+      "$ref": "#/$defs/authorizationOwnershipTransferRequest"
+    },
+    {
+      "$ref": "#/$defs/controllerState"
+    },
+    {
+      "$ref": "#/$defs/controllerStateEnvelope"
+    },
+    {
+      "$ref": "#/$defs/controllerTransferRequest"
+    },
+    {
       "$ref": "#/$defs/settingsPatchRequest"
     },
     {
@@ -4440,6 +4461,151 @@
           }
         }
       ]
+    },
+    "authorizationResourceRef": {
+      "type": "object",
+      "required": ["kind", "id"],
+      "properties": {
+        "kind": { "enum": ["session", "workspace", "draft", "draft-ticket", "activation-ticket", "export-ticket", "schedule"] },
+        "id": { "$ref": "#/$defs/identifier" }
+      },
+      "additionalProperties": false
+    },
+    "authorizationRole": {
+      "enum": ["read", "control", "admin"]
+    },
+    "authorizationGrant": {
+      "type": "object",
+      "required": ["identityId", "role"],
+      "properties": {
+        "identityId": { "$ref": "#/$defs/identifier" },
+        "role": { "$ref": "#/$defs/authorizationRole" }
+      },
+      "additionalProperties": false
+    },
+    "authorizationPolicy": {
+      "type": "object",
+      "required": ["resource", "ownerIdentityId", "grants", "revision", "createdAt", "updatedAt"],
+      "properties": {
+        "resource": { "$ref": "#/$defs/authorizationResourceRef" },
+        "ownerIdentityId": { "$ref": "#/$defs/identifier" },
+        "grants": {
+          "type": "array",
+          "maxItems": 64,
+          "items": { "$ref": "#/$defs/authorizationGrant" }
+        },
+        "revision": { "type": "integer", "minimum": 1 },
+        "createdAt": { "$ref": "#/$defs/timestamp" },
+        "updatedAt": { "$ref": "#/$defs/timestamp" }
+      },
+      "additionalProperties": false
+    },
+    "authorizationPolicyResource": {
+      "type": "object",
+      "required": ["policy", "role"],
+      "properties": {
+        "policy": { "$ref": "#/$defs/authorizationPolicy" },
+        "role": { "const": "admin" }
+      },
+      "additionalProperties": false
+    },
+    "authorizationPolicyEnvelope": {
+      "allOf": [
+        { "$ref": "#/$defs/httpEnvelopeBase" },
+        {
+          "type": "object",
+          "required": ["data"],
+          "properties": {
+            "ok": { "const": true },
+            "data": { "$ref": "#/$defs/authorizationPolicyResource" }
+          }
+        }
+      ]
+    },
+    "authorizationMutationRequest": {
+      "type": "object",
+      "required": ["requestId", "idempotencyKey", "expectedRevision"],
+      "properties": {
+        "requestId": { "$ref": "#/$defs/identifier" },
+        "idempotencyKey": { "$ref": "#/$defs/identifier" },
+        "expectedRevision": { "type": "integer", "minimum": 1 }
+      },
+      "additionalProperties": false
+    },
+    "authorizationGrantRequest": {
+      "type": "object",
+      "required": ["requestId", "idempotencyKey", "expectedRevision", "role"],
+      "properties": {
+        "requestId": { "$ref": "#/$defs/identifier" },
+        "idempotencyKey": { "$ref": "#/$defs/identifier" },
+        "expectedRevision": { "type": "integer", "minimum": 1 },
+        "role": { "$ref": "#/$defs/authorizationRole" }
+      },
+      "additionalProperties": false
+    },
+    "authorizationOwnershipTransferRequest": {
+      "type": "object",
+      "required": ["requestId", "idempotencyKey", "expectedRevision", "newOwnerIdentityId"],
+      "properties": {
+        "requestId": { "$ref": "#/$defs/identifier" },
+        "idempotencyKey": { "$ref": "#/$defs/identifier" },
+        "expectedRevision": { "type": "integer", "minimum": 1 },
+        "newOwnerIdentityId": { "$ref": "#/$defs/identifier" },
+        "previousOwnerRole": { "$ref": "#/$defs/authorizationRole" }
+      },
+      "additionalProperties": false
+    },
+    "controllerParticipant": {
+      "type": "object",
+      "required": ["participantId", "identityId", "presentation", "role"],
+      "properties": {
+        "participantId": { "$ref": "#/$defs/identifier" },
+        "identityId": { "$ref": "#/$defs/identifier" },
+        "presentation": { "enum": ["rich", "tui"] },
+        "role": { "enum": ["observer", "controller"] }
+      },
+      "additionalProperties": false
+    },
+    "controllerState": {
+      "type": "object",
+      "required": ["resource", "revision", "participants"],
+      "properties": {
+        "resource": { "$ref": "#/$defs/authorizationResourceRef" },
+        "revision": { "type": "integer", "minimum": 0 },
+        "controllerIdentityId": { "$ref": "#/$defs/identifier" },
+        "participants": {
+          "type": "array",
+          "maxItems": 64,
+          "items": { "$ref": "#/$defs/controllerParticipant" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "controllerStateEnvelope": {
+      "allOf": [
+        { "$ref": "#/$defs/httpEnvelopeBase" },
+        {
+          "type": "object",
+          "required": ["data"],
+          "properties": {
+            "ok": { "const": true },
+            "data": { "$ref": "#/$defs/controllerState" }
+          }
+        }
+      ]
+    },
+    "controllerTransferRequest": {
+      "type": "object",
+      "required": ["requestId", "idempotencyKey", "expectedRevision", "expectedControllerRevision", "targetIdentityId"],
+      "properties": {
+        "requestId": { "$ref": "#/$defs/identifier" },
+        "idempotencyKey": { "$ref": "#/$defs/identifier" },
+        "expectedRevision": { "type": "integer", "minimum": 1 },
+        "expectedControllerRevision": { "type": "integer", "minimum": 0 },
+        "targetIdentityId": { "$ref": "#/$defs/identifier" },
+        "targetParticipantId": { "$ref": "#/$defs/identifier" }
+      },
+      "additionalProperties": false
     },
     "scheduleCapabilities": {
       "type": "object",

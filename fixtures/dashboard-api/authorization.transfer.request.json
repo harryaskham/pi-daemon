@@ -1,0 +1,7 @@
+{
+  "requestId": "authorization-owner-fixture-01",
+  "idempotencyKey": "authorization-owner-fixture-01",
+  "expectedRevision": 4,
+  "newOwnerIdentityId": "operator-fixture",
+  "previousOwnerRole": "read"
+}

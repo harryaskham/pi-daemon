@@ -238,6 +238,40 @@ describe("same-origin browser dashboard client", () => {
     expect(JSON.stringify(calls.map((call) => call.init?.headers))).not.toMatch(/authorization|bearer/i);
   });
 
+  it("uses CSRF, exact policy/controller ETags and no bearer for authorization administration", async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const policy = {
+      resource: { kind: "session" as const, id: "managed:session-test" },
+      ownerIdentityId: "owner-test",
+      grants: [],
+      revision: 3,
+      createdAt: "2026-07-19T00:00:00.000Z",
+      updatedAt: "2026-07-19T00:00:00.000Z",
+    };
+    const fetch = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      calls.push({ url: String(url), ...(init === undefined ? {} : { init }) });
+      if (String(url).endsWith("/login")) return new Response(JSON.stringify(envelope({ clientId: CLIENT, workspaceId: WORKSPACE, expiresAt: "2026-07-20T00:00:00.000Z", csrfToken: "csrf-test" })));
+      return new Response(JSON.stringify(envelope({ policy: { ...policy, revision: 4 }, role: "admin" })));
+    });
+    const client = new BrowserDashboardClient({ fetch: fetch as typeof globalThis.fetch });
+    await client.login("owner-private-credential");
+    await client.setAuthorizationGrant("session", "inventory-test", "operator-test", policy, {
+      requestId: "grant-test",
+      idempotencyKey: "grant-test-key",
+      expectedRevision: 3,
+      role: "control",
+    });
+    expect(calls[1]?.url).toBe("/dash/v1/authorization/session/inventory-test/grants/operator-test");
+    expect(calls[1]?.init?.headers).toMatchObject({
+      "x-pi-daemon-csrf": "csrf-test",
+      "If-Match": '"dashboard-authorization:session:managed:session-test:3"',
+      "Idempotency-Key": "grant-test-key",
+      "X-Request-ID": "grant-test",
+    });
+    expect(Object.keys(calls[1]?.init?.headers ?? {})).not.toContain("Authorization");
+    expect(JSON.stringify(calls[1]?.init?.headers)).not.toMatch(/bearer/i);
+  });
+
   it("uses only cookie BFF draft routes with CSRF, idempotency and exact draft ETags", async () => {
     const calls: Array<{ url: string; init?: RequestInit }> = [];
     const spec = {

@@ -129,9 +129,39 @@ UTF-8/JSON/schema, symlinks, wrong owner/mode, and oversize state fail closed
 without quarantine/reset.
 
 Audit retention is bounded. Global administrators may read the retained global
-window; resource administrators may read only the matching resource window. A
-monotonic next sequence and dropped-event count make truncation explicit instead
-of pretending the retained window is complete.
+window with its monotonic sequence and dropped-event count. Resource
+administrators receive only the matching retained window with window-relative
+sequences; global gaps and truncation counts are deliberately withheld so they
+cannot become an inaccessible-resource activity oracle.
+
+## Administration and live controller handoff
+
+The same-origin BFF exposes bounded administrator-only resources under
+`/dash/v1/authorization/{session|workspace}/{opaqueId}`. Policy GET returns an
+exact ETag. Grant PUT/revoke DELETE and ownership-transfer POST require CSRF,
+matching `If-Match`, matching request/header IDs, an expected revision, and a
+retained durable idempotency key. A retry returns the retained policy snapshot;
+reusing the key with different content fails. Targets must be present in the
+configured identity provider, but unsuccessful lookups never disclose another
+resource.
+
+`GET /dash/v1/workspaces` lists at most 100 authorized workspaces, and
+`POST /dash/v1/workspaces/select` rebinds only the current server-side browser
+session after workspace-read authorization. Revoking the selected workspace
+immediately revokes matching browser sessions and their streams. The SPA's
+accessible **Access & controller** dialog supports workspace switching,
+session/workspace grants, revocation, ownership transfer, audit inspection, and
+controller handoff without storing identity authority in browser state.
+
+Every Rich/TUI subscription registers one bounded live controller participant
+against its canonical central resource. The handoff endpoint requires both the
+policy ETag and a separate controller revision ETag. It validates that the target
+has at least `control`, releases the old backend controller and waits for that
+result, then requests target control. It never restores the old controller
+implicitly after a failed target grant. A successful handoff appends exactly one
+durable, content-free `controller-transferred` audit event; same-process retries
+reuse a bounded idempotency result. Policy revocation closes readers or releases
+downgraded controllers immediately.
 
 ## Migration and enablement
 
@@ -144,9 +174,10 @@ Migration has two explicit modes:
   may see/adopt unowned legacy inventory; all other resources require an
   explicit policy.
 
-The service must refuse multi-user configuration until route/stream enforcement,
-filtered paging, revocation, administration, and migration acceptance are all
-available. There is no intermediate mode where several identities authenticate
+The service must continue to refuse multi-user configuration until provider
+configuration, migration, and final exhaustive acceptance are available; route
+and stream enforcement, filtered paging, revocation, and administration are now
+implemented. There is no intermediate mode where several identities authenticate
 but share v1's all-powerful browser backend.
 
 ## Enforcement map
@@ -215,6 +246,7 @@ persistent schedule mutation requires resource/session `admin`.
   backends with bounded no-existence-leak inventory paging and compatibility
   migration (implemented).
 - `bd-284b03` — grant/workspace administration, revocation, ownership and
-  controller transfer with revisions, idempotency, audit and accessible UI.
+  controller transfer with revisions, idempotency, audit and accessible UI
+  (implemented).
 - `bd-9d9899` — credential-path configuration, migration/operations, full UI,
   restart/revocation/no-leak/security parity and release gates.

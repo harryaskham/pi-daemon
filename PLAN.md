@@ -498,7 +498,7 @@ process appears per wake.
     owner-private centralized policy/audit foundation.
   - [x] `bd-fce8f4` HTTP/stream enforcement, no-existence-leak inventory paging,
     dedicated/embedded parity and exact single-owner migration.
-  - [ ] `bd-284b03` Revisioned grants, workspace sharing/revocation, ownership
+  - [x] `bd-284b03` Revisioned grants, workspace sharing/revocation, ownership
     transfer, explicit controller handoff, audit and UI.
   - [ ] `bd-9d9899` Secret-path provider configuration, migration, UX,
     exhaustive security/compatibility proof and release documentation.

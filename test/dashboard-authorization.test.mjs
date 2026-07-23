@@ -153,6 +153,51 @@ test("ownership transfer is revisioned, durable and content-free audited", async
   assert.equal(await restarted.effectiveRole(OWNER, SESSION), "read");
 });
 
+test("authorization mutations retain durable idempotency and controller audit evidence", async (t) => {
+  const { service, stateDir } = await fixture(t);
+  const created = await service.registerCreatedResource(OWNER, SESSION);
+  const request = {
+    principal: OWNER,
+    resource: SESSION,
+    subjectIdentityId: READER.identityId,
+    role: "control",
+    expectedRevision: created.revision,
+    idempotencyKey: "grant-reader-once",
+  };
+  const granted = await service.setGrant(request);
+  const replayed = await service.setGrant(request);
+  assert.deepEqual(replayed, granted);
+  await assert.rejects(
+    service.setGrant({ ...request, role: "admin" }),
+    (error) => error.code === "idempotency_conflict",
+  );
+
+  const recorded = await service.recordControllerTransfer({
+    principal: OWNER,
+    resource: SESSION,
+    previousControllerIdentityId: OWNER.identityId,
+    newControllerIdentityId: READER.identityId,
+    expectedRevision: granted.revision,
+    idempotencyKey: "controller-reader-once",
+  });
+  assert.equal(recorded.revision, granted.revision);
+  await service.recordControllerTransfer({
+    principal: OWNER,
+    resource: SESSION,
+    previousControllerIdentityId: OWNER.identityId,
+    newControllerIdentityId: READER.identityId,
+    expectedRevision: granted.revision,
+    idempotencyKey: "controller-reader-once",
+  });
+  const events = (await service.auditEvents(OWNER, { resource: SESSION })).events;
+  assert.equal(events.filter(({ action }) => action === "controller-transferred").length, 1);
+  assert.equal(events.at(-1).previousControllerIdentityId, OWNER.identityId);
+
+  const restarted = new DashboardAuthorizationService({ stateDir, mode: "multi-user" });
+  await restarted.initialize();
+  assert.deepEqual(await restarted.setGrant(request), granted);
+});
+
 test("single-owner migration is implicit while multi-user unknown resources fail closed", async (t) => {
   const stateDir = await mkdtemp(join(tmpdir(), "pi-daemon-authorization-migration-"));
   await chmod(stateDir, 0o700);
@@ -165,6 +210,27 @@ test("single-owner migration is implicit while multi-user unknown resources fail
   const multi = new DashboardAuthorizationService({ stateDir, mode: "multi-user" });
   assert.equal(await multi.effectiveRole(localOwner, SESSION), undefined);
   assert.equal(await multi.effectiveRole(ADMIN, SESSION), "admin");
+});
+
+test("authorization state written before idempotency receipts migrates in place", async (t) => {
+  const { service, stateDir } = await fixture(t);
+  const created = await service.registerCreatedResource(OWNER, SESSION);
+  const path = join(stateDir, "web", "authorization-v1.json");
+  const oldState = JSON.parse(await readFile(path, "utf8"));
+  delete oldState.idempotency;
+  await writeFile(path, `${JSON.stringify(oldState)}\n`, { mode: 0o600 });
+  const restarted = new DashboardAuthorizationService({ stateDir, mode: "multi-user" });
+  await restarted.initialize();
+  const granted = await restarted.setGrant({
+    principal: OWNER,
+    resource: SESSION,
+    subjectIdentityId: READER.identityId,
+    role: "read",
+    expectedRevision: created.revision,
+    idempotencyKey: "first-retained-receipt",
+  });
+  assert.equal(granted.revision, 2);
+  assert.equal(Array.isArray(JSON.parse(await readFile(path, "utf8")).idempotency), true);
 });
 
 test("authorization corruption and insecure files fail closed without quarantine reset", async (t) => {

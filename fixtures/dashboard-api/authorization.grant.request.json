@@ -1,0 +1,6 @@
+{
+  "requestId": "authorization-grant-fixture-01",
+  "idempotencyKey": "authorization-grant-fixture-01",
+  "expectedRevision": 4,
+  "role": "control"
+}

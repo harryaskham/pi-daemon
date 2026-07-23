@@ -1,0 +1,22 @@
+{
+  "resource": {
+    "kind": "session",
+    "id": "managed:session-fixture-01"
+  },
+  "revision": 8,
+  "controllerIdentityId": "owner-fixture",
+  "participants": [
+    {
+      "participantId": "controller-participant-fixture-01",
+      "identityId": "owner-fixture",
+      "presentation": "rich",
+      "role": "controller"
+    },
+    {
+      "participantId": "controller-participant-fixture-02",
+      "identityId": "operator-fixture",
+      "presentation": "tui",
+      "role": "observer"
+    }
+  ]
+}

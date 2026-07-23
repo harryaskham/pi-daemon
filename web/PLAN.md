@@ -1450,7 +1450,7 @@ These lanes intentionally begin in parallel:
   - [x] `bd-07a348` — principal/provider, identity-bound browser session and
     owner-private central policy/audit foundation.
   - [x] `bd-fce8f4` — no-leak HTTP/stream enforcement and single-owner migration.
-  - [ ] `bd-284b03` — grants, workspace sharing, revocation, transfer, audit/UI.
+  - [x] `bd-284b03` — grants, workspace sharing, revocation, transfer, audit/UI.
   - [ ] `bd-9d9899` — final provider configuration, UX, migration and exhaustive
     security/compatibility acceptance.
 - [x] `bd-e89a17` — optional native TLS and hardened remote browser deployment:

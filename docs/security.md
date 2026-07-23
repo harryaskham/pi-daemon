@@ -56,7 +56,8 @@ project code or tools.
 - Dash browser sessions are bounded, revocable, server-side records addressed by an HMAC-signed opaque `HttpOnly`, `SameSite=Strict` cookie; their server-side record now binds a validated principal while the cookie remains identity-free
 - the multi-user foundation compares every bounded static credential digest, preserves `local-owner` compatibility, and persists resource roles only in one owner-private central policy/audit ledger that fails closed and rolls back memory on publication failure
 - every browser HTTP, principal-bound inventory cursor, direct resource/ticket lookup, and Rich/TUI frame/event now enforces that ledger with content-free absent/unauthorized parity; the dedicated backend still receives only the machine bearer
-- multi-user configuration remains unavailable until grant administration, migration and exhaustive acceptance land; existing deployments remain exact `local-owner` compatibility
+- authorization administration requires resource admin, CSRF, exact policy/controller ETags and durable bounded idempotency; revocation closes matching workspaces/channels, and controller handoff waits for old-controller release before target grant and content-free audit
+- multi-user configuration remains unavailable until provider configuration, migration and exhaustive acceptance land; existing deployments remain exact `local-owner` compatibility
 - a cookie-authenticated same-origin bootstrap reproduces the session-bound HMAC CSRF token in a no-store response header, so an ordinary browser reload restores mutation authority without putting the owner credential, cookie, or CSRF token in browser storage
 - Dash private routes authenticate before route matching; mutations require exact Host, Origin, and per-session CSRF validation
 - Dash plaintext listeners are loopback-only; remote deployments use an operator-owned loopback TLS proxy or native HTTPS/WSS with bounded file/fd material and TLS 1.2 minimum
