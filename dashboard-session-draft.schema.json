@@ -101,7 +101,9 @@
       "properties": {
         "mode": {
           "enum": [
+            "default",
             "none",
+            "no-builtin",
             "allowlist"
           ]
         },
@@ -182,7 +184,8 @@
         "projectTrust": {
           "enum": [
             "default",
-            "deny"
+            "deny",
+            "approve"
           ]
         }
       }

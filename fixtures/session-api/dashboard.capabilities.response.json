@@ -47,6 +47,36 @@
         "maxImages": 16
       }
     },
+    "sessionDefaults": {
+      "spec": {
+        "cwd": "/home/fixture",
+        "persistence": "persistent",
+        "model": {
+          "provider": "github-copilot",
+          "id": "gpt-5.6-sol",
+          "thinkingLevel": "high"
+        },
+        "tools": {
+          "mode": "default"
+        },
+        "resources": {
+          "noExtensions": false,
+          "noSkills": false,
+          "noPromptTemplates": false,
+          "noThemes": false,
+          "noContextFiles": false,
+          "projectTrust": "approve"
+        },
+        "isolation": {
+          "mode": "unisolated"
+        }
+      },
+      "sources": {
+        "cwd": "configured",
+        "model": "pi-settings",
+        "authority": "runtime-policy"
+      }
+    },
     "limits": {
       "maxHttpBodyBytes": 1048576,
       "maxWebSocketFrameBytes": 1048576,

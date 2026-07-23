@@ -12,6 +12,7 @@ semantic versioning once a release tag is cut.
 - canonicalize Dash draft allowed roots and self-update install roots before containment checks so Darwin `/var` aliases do not cause false denial while later symlink targets remain unauthorized
 - add a virtualized bounded full session-tree navigator with authoritative active-leaf paths, filtering/comparison, controller-gated edit/fork/clone, and capability-negotiated in-place summarize/navigation over a private non-replayed framed result
 - persist separate activation recency so successful reuse/direct/fork sessions move to the top exactly once without rewriting source modification or fingerprint truth
+- add owner-configurable lazy New Session defaults for home cwd, bounded Pi provider/model/thinking settings, default tools, approved discovery, and runtime-policy-capped authority without pre-send Pi work or browser path leakage
 
 ## 0.2.2 — 2026-07-22
 

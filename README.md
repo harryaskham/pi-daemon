@@ -40,8 +40,9 @@ or Cacophony credentials.
 > server-validated declarative extension views with scoped actions/TUI fallback,
 > a virtualized full branch-tree navigator with compare/edit/fork/clone and
 > capability-gated in-place summarize/navigation, durable activation-recency
-> ordering independent of source mtime, and a polished lazy New
-> Session flow that performs no Pi runtime/model/tool
+> ordering independent of source mtime, owner-configurable home/Pi-settings/
+> trusted-policy New Session defaults, and a polished lazy New Session flow that
+> performs no Pi runtime/model/tool
 > work until its exactly-once first message.
 > Full credential-free install/CRUD/RPC/ACP/restart/security acceptance is green;
 > the repository is a release candidate, but no release tag is cut yet.

@@ -7,6 +7,7 @@ import {
   type DashboardLeaseResource,
   type DashboardLimits,
   type DashboardServiceCapabilities,
+  type DashboardSessionDefaultsResource,
   type SessionExportRequest,
   type SessionExportTicket,
   type SessionInfoResource,
@@ -71,6 +72,7 @@ export interface DashboardNeutralApiControllerOptions {
   schedulesAvailable?: boolean;
   drafts?: Pick<DashboardSessionDraftService, "create" | "get" | "cancel">;
   draftExecution?: DashboardSessionDraftExecution;
+  sessionDefaults?: DashboardSessionDefaultsResource;
 }
 
 /** Transport-neutral service API used by authenticated HTTP and remote backends. */
@@ -84,6 +86,7 @@ export class DashboardNeutralApiController implements DashboardNeutralApi {
   readonly #schedulesAvailable: boolean;
   readonly #drafts: DashboardNeutralApiControllerOptions["drafts"];
   readonly #draftExecution: DashboardSessionDraftExecution | undefined;
+  readonly #sessionDefaults: DashboardSessionDefaultsResource | undefined;
 
   constructor(options: DashboardNeutralApiControllerOptions) {
     this.#inventory = options.inventory;
@@ -95,6 +98,7 @@ export class DashboardNeutralApiController implements DashboardNeutralApi {
     this.#schedulesAvailable = options.schedulesAvailable ?? false;
     this.#drafts = options.drafts;
     this.#draftExecution = options.draftExecution;
+    this.#sessionDefaults = options.sessionDefaults;
   }
 
   async capabilities(): Promise<DashboardServiceCapabilities> {
@@ -123,6 +127,9 @@ export class DashboardNeutralApiController implements DashboardNeutralApi {
         },
       },
       extensionViews: structuredClone(EXTENSION_VIEW_CAPABILITY),
+      ...(this.#sessionDefaults === undefined
+        ? {}
+        : { sessionDefaults: structuredClone(this.#sessionDefaults) }),
       limits: { ...this.#limits },
     };
   }

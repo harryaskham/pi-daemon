@@ -29,6 +29,7 @@ import type {
   DashboardScheduleMutationRequest,
   DashboardScheduleResource,
   DashboardScheduleStatus,
+  DashboardSessionDefaultsResource,
   DashboardSessionEvent,
   DashboardSessionIdentity,
   DashboardTuiChannel,
@@ -155,6 +156,7 @@ export interface InProcessDashboardBackendOptions {
   draftExecution?: DashboardSessionDraftExecution;
   tuiChannels?: InProcessDashboardTuiChannels;
   capabilities?: DashboardCapabilities;
+  sessionDefaults?: DashboardSessionDefaultsResource;
   limits?: Partial<InProcessDashboardBackendLimits>;
 }
 
@@ -208,6 +210,7 @@ export class InProcessDashboardBackend implements DashboardBackend {
       options.schedules !== undefined,
       options.drafts !== undefined,
       this.#limits,
+      options.sessionDefaults,
     );
     this.#unsubscribeMultiplexer = this.#multiplexer.subscribe((event) => {
       if (event.sessionId === undefined) return;
@@ -1189,6 +1192,7 @@ function defaultCapabilities(
   schedulesAvailable: boolean,
   draftsAvailable: boolean,
   backendLimits: InProcessDashboardBackendLimits,
+  sessionDefaults?: DashboardSessionDefaultsResource,
 ): DashboardCapabilities {
   const commands: DashboardCommandOperation[] = [
     "get_state",
@@ -1247,6 +1251,9 @@ function defaultCapabilities(
           },
     },
     extensionViews: structuredClone(EXTENSION_VIEW_CAPABILITY),
+    ...(sessionDefaults === undefined
+      ? {}
+      : { sessionDefaults: structuredClone(sessionDefaults) }),
     limits: {
       ...DASH_DEFAULT_LIMITS,
       maxSubscriptionsPerConnection: backendLimits.maxChannelsPerHub,

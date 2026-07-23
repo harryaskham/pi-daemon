@@ -25,14 +25,25 @@ The draft spec is intentionally smaller than the trusted Session API spec:
 - optional bounded name;
 - `persistent` or `memory` new-session persistence;
 - optional provider/model/thinking selection;
-- `none` or bounded explicit built-in tool allowlist;
-- boolean discovery-denial choices and `default`/`deny` project trust;
+- `default`, `none`, `no-builtin`, or bounded explicit tool allowlist;
+- boolean discovery controls and `default`/`deny`/`approve` project trust;
 - honest `unisolated` isolation.
 
 It cannot carry raw environment, settings, extension/skill/template/theme paths,
-system prompts, `approve` trust, service bearers, or host tool-adapter
-capabilities. The daemon revalidates the canonical cwd and policy before the
-draft is atomically stored.
+system prompts, service bearers, or host tool-adapter capabilities. Elevated
+`default` tools, approved discovery, and enabled resource kinds are accepted
+only when `web.sessionDefaults.inheritRuntimePolicy` selects an owner-controlled
+`web.runtimePolicy` that contains that authority. The daemon revalidates the
+canonical cwd and policy both before atomic storage and again before
+restart-time materialization.
+
+When configured, capabilities return one browser-safe `sessionDefaults` spec:
+canonical cwd, provider/model/thinking values, visible tool/resource controls,
+and content-free source labels. The Pi settings path, package list, explicit
+resource paths, host settings, and all secrets remain server-side. Pi settings
+are owner/root-owned, non-writable bounded JSON; only `trueDefault*`/`default*`
+provider, model, and thinking fields are read. No Pi runtime, provider request,
+resource load, or model call occurs while resolving or displaying defaults.
 
 ## Resources and routes
 

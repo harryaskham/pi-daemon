@@ -10,6 +10,10 @@ import {
 } from "./dashboard-backend.js";
 import { DashboardNeutralApiController } from "./dashboard-neutral-api.js";
 import {
+  assertDashboardSessionDraftWithinRuntimePolicy,
+  resolveDashboardSessionDefaults,
+} from "./dashboard-session-defaults.js";
+import {
   DashboardSessionDraftService,
   FileDashboardSessionDraftStore,
 } from "./dashboard-session-drafts.js";
@@ -57,13 +61,12 @@ export function dashboardActivationRuntimeSpec(
     target: { mode: "memory" },
     ...(configured?.model === undefined ? {} : { model: configured.model }),
     tools: configured?.tools ?? { mode: "none" },
-    resources: {
+    resources: configured?.resources ?? {
       extensions: [],
       skills: [],
       promptTemplates: [],
       themes: [],
       noContextFiles: true,
-      ...(configured?.resources ?? {}),
     },
     ...(configured?.settings === undefined ? {} : { settings: configured.settings }),
     isolation: { mode: "unisolated" },
@@ -127,6 +130,12 @@ export class EmbeddedDashboardServiceRuntime {
       defaultSessionRoot: piSessionsRoot,
     });
     const runtimePolicy = options.loadedConfig.config.web?.runtimePolicy;
+    const sessionDefaults = await resolveDashboardSessionDefaults(options.loadedConfig, {
+      allowedRoots: options.allowedRoots,
+    });
+    const draftRuntimePolicy = options.loadedConfig.config.web?.sessionDefaults?.inheritRuntimePolicy === true
+      ? runtimePolicy
+      : undefined;
 
     let ownership: SessionOwnershipService;
     const inventory = new SessionInventory({
@@ -143,12 +152,16 @@ export class EmbeddedDashboardServiceRuntime {
     const drafts = new DashboardSessionDraftService({
       store: draftStore,
       allowedRoots: options.allowedRoots,
+      authorizeSpec: (spec) =>
+        assertDashboardSessionDraftWithinRuntimePolicy(spec, draftRuntimePolicy),
     });
     let backend: InProcessDashboardBackend | undefined;
     const draftMaterializer = new DashboardSessionDraftMaterializer({
       store: draftStore,
       runtime: new MultiplexerDashboardSessionDraftRuntime({
         multiplexer: options.multiplexer,
+        ...(draftRuntimePolicy === undefined ? {} : { runtimePolicy: draftRuntimePolicy }),
+        enforceRuntimePolicy: true,
         hasController: (sessionId) =>
           (backend?.hasController(sessionId) ?? false) ||
           (options.rpcAttachments?.hasController(sessionId) ?? false),
@@ -186,6 +199,7 @@ export class EmbeddedDashboardServiceRuntime {
       ...(options.schedules === undefined ? {} : { schedules: options.schedules }),
       ...(options.scheduler === undefined ? {} : { scheduler: options.scheduler }),
       ...(options.tuiChannels === undefined ? {} : { tuiChannels: options.tuiChannels }),
+      ...(sessionDefaults === undefined ? {} : { sessionDefaults }),
     });
     const neutralApi = new DashboardNeutralApiController({
       inventory,
@@ -195,6 +209,7 @@ export class EmbeddedDashboardServiceRuntime {
       draftExecution: draftMaterializer,
       tuiAvailable: options.tuiChannels !== undefined,
       schedulesAvailable: options.schedules !== undefined,
+      ...(sessionDefaults === undefined ? {} : { sessionDefaults }),
       ...(options.tuiChannels === undefined
         ? { tuiUnavailableReason: "server-side interactive view is unavailable" }
         : {}),

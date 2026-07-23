@@ -125,6 +125,10 @@
       "types": "./dist/dashboard-session-drafts.d.ts",
       "import": "./dist/dashboard-session-drafts.js"
     },
+    "./dashboard-session-defaults": {
+      "types": "./dist/dashboard-session-defaults.d.ts",
+      "import": "./dist/dashboard-session-defaults.js"
+    },
     "./dashboard-session-materializer": {
       "types": "./dist/dashboard-session-materializer.d.ts",
       "import": "./dist/dashboard-session-materializer.js"

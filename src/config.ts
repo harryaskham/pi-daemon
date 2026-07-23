@@ -111,6 +111,15 @@ export interface PiDaemonWebRuntimePolicyConfig {
   settings?: JsonObject;
 }
 
+export interface PiDaemonWebSessionDefaultsConfig {
+  /** Resolved relative to the selected daemon config; use ~ for the service home. */
+  cwd?: string;
+  /** Owner-controlled Pi settings JSON used only for provider/model/thinking defaults. */
+  piSettingsFile?: string;
+  /** Copy the owner runtime authority into the browser-safe draft defaults. */
+  inheritRuntimePolicy?: boolean;
+}
+
 export interface PiDaemonWebConfig {
   enabled?: boolean;
   mode?: DashboardDeploymentMode;
@@ -131,6 +140,8 @@ export interface PiDaemonWebConfig {
    * Nothing is inherited from ambient project or normal Pi settings.
    */
   runtimePolicy?: PiDaemonWebRuntimePolicyConfig;
+  /** Optional owner defaults for lazy New Session drafts; absent retains restrictive browser defaults. */
+  sessionDefaults?: PiDaemonWebSessionDefaultsConfig;
   /** Forward-compatible, bounded UI defaults. Browser/runtime validation is stricter. */
   ui?: { [key: string]: ConfigJson };
 }
@@ -422,6 +433,7 @@ function parseWeb(value: unknown): PiDaemonWebConfig {
     "residency",
     "tui",
     "runtimePolicy",
+    "sessionDefaults",
     "ui",
   ]);
   const result: PiDaemonWebConfig = {};
@@ -442,10 +454,35 @@ function parseWeb(value: unknown): PiDaemonWebConfig {
   if (object.runtimePolicy !== undefined) {
     result.runtimePolicy = parseWebRuntimePolicy(object.runtimePolicy);
   }
+  if (object.sessionDefaults !== undefined) {
+    result.sessionDefaults = parseWebSessionDefaults(
+      object.sessionDefaults,
+      result.runtimePolicy,
+    );
+  }
   if (object.ui !== undefined) {
     const ui = objectValue(object.ui, "web.ui");
     rejectSecretLikeKeys(ui, "web.ui");
     result.ui = structuredClone(ui) as { [key: string]: ConfigJson };
+  }
+  return result;
+}
+
+function parseWebSessionDefaults(
+  value: unknown,
+  runtimePolicy: PiDaemonWebRuntimePolicyConfig | undefined,
+): PiDaemonWebSessionDefaultsConfig {
+  const object = objectValue(value, "web.sessionDefaults");
+  assertKnownKeys(object, ["cwd", "piSettingsFile", "inheritRuntimePolicy"]);
+  const result: PiDaemonWebSessionDefaultsConfig = {};
+  copyOptionalString(object, result, "cwd");
+  copyOptionalString(object, result, "piSettingsFile");
+  copyOptionalBoolean(object, result, "inheritRuntimePolicy");
+  if (result.inheritRuntimePolicy === true && runtimePolicy === undefined) {
+    throw new PiDaemonConfigError(
+      "config_invalid",
+      "web.sessionDefaults.inheritRuntimePolicy requires web.runtimePolicy",
+    );
   }
   return result;
 }

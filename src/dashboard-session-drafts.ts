@@ -11,6 +11,7 @@ import {
   stateFileSize,
   validatePrivateFileIfExists,
 } from "./durability.js";
+import type { PiDaemonWebRuntimePolicyConfig } from "./config.js";
 import type {
   ApiErrorBody,
   SessionModelSpec,
@@ -77,7 +78,7 @@ export interface DashboardSessionDraftSpec {
     thinkingLevel?: SessionThinkingLevel;
   };
   tools: {
-    mode: "none" | "allowlist";
+    mode: "default" | "none" | "no-builtin" | "allowlist";
     include?: string[];
     exclude?: string[];
   };
@@ -87,7 +88,7 @@ export interface DashboardSessionDraftSpec {
     noPromptTemplates: boolean;
     noThemes: boolean;
     noContextFiles: boolean;
-    projectTrust: "default" | "deny";
+    projectTrust: "default" | "deny" | "approve";
   };
   isolation: { mode: "unisolated" };
 }
@@ -756,6 +757,7 @@ export interface DashboardSessionDraftServiceOptions {
   store: DashboardSessionDraftStore;
   allowedRoots: readonly string[];
   limits?: Partial<DashboardSessionDraftLimits>;
+  authorizeSpec?: (spec: DashboardSessionDraftSpec) => void;
 }
 
 /** Syntax/root policy and CRUD facade; intentionally has no runtime dependency. */
@@ -763,11 +765,13 @@ export class DashboardSessionDraftService {
   readonly store: DashboardSessionDraftStore;
   readonly limits: DashboardSessionDraftLimits;
   readonly #allowedRoots: Promise<readonly string[]>;
+  readonly #authorizeSpec: ((spec: DashboardSessionDraftSpec) => void) | undefined;
 
   constructor(options: DashboardSessionDraftServiceOptions) {
     if (options.allowedRoots.length === 0) throw new Error("allowedRoots must not be empty");
     this.store = options.store;
     this.limits = resolveDashboardSessionDraftLimits(options.limits);
+    this.#authorizeSpec = options.authorizeSpec;
     // Freeze existing roots to their canonical startup identity. This keeps
     // Darwin's /var -> /private/var alias (and equivalent symlink aliases)
     // comparable with the canonical cwd. A root absent at startup retains its
@@ -794,9 +798,11 @@ export class DashboardSessionDraftService {
     if (!allowedRoots.some((root) => isWithin(root, cwd))) {
       throw new DashboardSessionDraftError("draft_cwd_not_allowed", "draft cwd is outside allowed roots");
     }
+    const spec = { ...validated.spec, cwd };
+    this.#authorizeSpec?.(spec);
     return this.store.create({
       ...validated,
-      spec: { ...validated.spec, cwd },
+      spec,
     });
   }
 
@@ -825,16 +831,33 @@ export class DashboardSessionDraftService {
 
 export function dashboardSessionDraftSpecToSessionSpec(
   draft: DashboardSessionDraftSpec,
+  runtimePolicy?: PiDaemonWebRuntimePolicyConfig,
 ): SessionSpec {
-  const model: SessionModelSpec | undefined = draft.model === undefined
+  const selectedModel = draft.model ?? runtimePolicy?.model;
+  const model: SessionModelSpec | undefined = selectedModel === undefined
     ? undefined
-    : { ...draft.model };
+    : { ...selectedModel };
   const tools: SessionToolSpec = {
     mode: draft.tools.mode,
     ...(draft.tools.include === undefined ? {} : { include: [...draft.tools.include] }),
     ...(draft.tools.exclude === undefined ? {} : { exclude: [...draft.tools.exclude] }),
   };
-  const resources: SessionResourceSpec = { ...draft.resources };
+  const resources: SessionResourceSpec = {
+    ...(runtimePolicy?.resources ?? {}),
+    ...draft.resources,
+    ...(draft.resources.noExtensions && runtimePolicy?.resources?.extensions !== undefined
+      ? { extensions: [] }
+      : {}),
+    ...(draft.resources.noSkills && runtimePolicy?.resources?.skills !== undefined
+      ? { skills: [] }
+      : {}),
+    ...(draft.resources.noPromptTemplates && runtimePolicy?.resources?.promptTemplates !== undefined
+      ? { promptTemplates: [] }
+      : {}),
+    ...(draft.resources.noThemes && runtimePolicy?.resources?.themes !== undefined
+      ? { themes: [] }
+      : {}),
+  };
   return {
     cwd: draft.cwd,
     ...(draft.name === undefined ? {} : { name: draft.name }),
@@ -842,6 +865,9 @@ export function dashboardSessionDraftSpecToSessionSpec(
     ...(model === undefined ? {} : { model }),
     tools,
     resources,
+    ...(runtimePolicy?.settings === undefined
+      ? {}
+      : { settings: structuredClone(runtimePolicy.settings) }),
     isolation: { mode: "unisolated" },
   };
 }
@@ -910,7 +936,10 @@ export function validateDashboardSessionDraftSpec(
   }
   const tools = strictRecord(input.tools, "draft tools");
   strictKeys(tools, ["mode", "include", "exclude"], "draft tools");
-  if (tools.mode !== "none" && tools.mode !== "allowlist") throw invalid("draft tool mode is invalid");
+  if (!["default", "none", "no-builtin", "allowlist"].includes(tools.mode as string)) {
+    throw invalid("draft tool mode is invalid");
+  }
+  const toolMode = tools.mode as DashboardSessionDraftSpec["tools"]["mode"];
   const include = optionalStringArray(tools.include, "tools.include", limits);
   const exclude = optionalStringArray(tools.exclude, "tools.exclude", limits);
   if (tools.mode === "none" && ((include?.length ?? 0) > 0 || (exclude?.length ?? 0) > 0)) {
@@ -929,9 +958,10 @@ export function validateDashboardSessionDraftSpec(
   for (const key of resourceKeys.slice(0, -1)) {
     if (typeof resources[key] !== "boolean") throw invalid(`draft resource ${key} is invalid`);
   }
-  if (resources.projectTrust !== "default" && resources.projectTrust !== "deny") {
+  if (!["default", "deny", "approve"].includes(resources.projectTrust as string)) {
     throw invalid("draft project trust is invalid");
   }
+  const projectTrust = resources.projectTrust as DashboardSessionDraftSpec["resources"]["projectTrust"];
   const isolation = strictRecord(input.isolation, "draft isolation");
   strictKeys(isolation, ["mode"], "draft isolation");
   if (isolation.mode !== "unisolated") throw invalid("draft isolation mode is invalid");
@@ -962,7 +992,7 @@ export function validateDashboardSessionDraftSpec(
     persistence: input.persistence,
     ...(model === undefined ? {} : { model }),
     tools: {
-      mode: tools.mode,
+      mode: toolMode,
       ...(include === undefined ? {} : { include }),
       ...(exclude === undefined ? {} : { exclude }),
     },
@@ -972,7 +1002,7 @@ export function validateDashboardSessionDraftSpec(
       noPromptTemplates: resources.noPromptTemplates as boolean,
       noThemes: resources.noThemes as boolean,
       noContextFiles: resources.noContextFiles as boolean,
-      projectTrust: resources.projectTrust,
+      projectTrust,
     },
     isolation: { mode: "unisolated" },
   };

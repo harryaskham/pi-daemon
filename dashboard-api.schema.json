@@ -498,6 +498,26 @@
         "clone"
       ]
     },
+    "sessionDefaults": {
+      "type": "object",
+      "required": ["spec", "sources"],
+      "properties": {
+        "spec": {
+          "$ref": "./dashboard-session-draft.schema.json#/$defs/spec"
+        },
+        "sources": {
+          "type": "object",
+          "required": ["cwd", "model", "authority"],
+          "properties": {
+            "cwd": { "const": "configured" },
+            "model": { "enum": ["pi-settings", "runtime-policy", "none"] },
+            "authority": { "enum": ["runtime-policy", "restricted"] }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
     "presentationCapability": {
       "type": "object",
       "required": [
@@ -637,6 +657,9 @@
         "extensionViews": {
           "$ref": "./extension-view.schema.json#/$defs/negotiationCapability"
         },
+        "sessionDefaults": {
+          "$ref": "#/$defs/sessionDefaults"
+        },
         "limits": {
           "$ref": "#/$defs/limits"
         },
@@ -748,6 +771,9 @@
         },
         "extensionViews": {
           "$ref": "./extension-view.schema.json#/$defs/negotiationCapability"
+        },
+        "sessionDefaults": {
+          "$ref": "#/$defs/sessionDefaults"
         },
         "limits": {
           "$ref": "#/$defs/limits"

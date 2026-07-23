@@ -3,7 +3,10 @@ import type {
   DashboardSessionDraftResource,
   DashboardSessionDraftSendTicket,
 } from "@harryaskham/pi-daemon/dashboard-session-draft-contract";
-import type { DashboardBackend } from "@harryaskham/pi-daemon/dashboard-contract";
+import type {
+  DashboardBackend,
+  DashboardSessionDefaultsResource,
+} from "@harryaskham/pi-daemon/dashboard-contract";
 import { Bot, Check, Clock3, X } from "../icons";
 import {
   defaultSessionDraftForm,
@@ -20,6 +23,7 @@ export interface NewSessionPaneProps {
   targetId: string;
   initialCwd: string;
   draft?: DashboardSessionDraftResource;
+  defaults?: DashboardSessionDefaultsResource;
   vimEnabled: boolean;
   composerHistory: string[];
   onToggleVim(): void;
@@ -47,6 +51,7 @@ export function NewSessionPane({
   targetId,
   initialCwd,
   draft,
+  defaults,
   vimEnabled,
   composerHistory,
   onToggleVim,
@@ -56,7 +61,9 @@ export function NewSessionPane({
   onMaterialized,
 }: NewSessionPaneProps) {
   const [form, setForm] = useState<SessionDraftFormValues>(() =>
-    draft === undefined ? defaultSessionDraftForm(initialCwd) : sessionDraftFormFromSpec(draft.spec),
+    draft === undefined
+      ? defaultSessionDraftForm(initialCwd, defaults?.spec)
+      : sessionDraftFormFromSpec(draft.spec),
   );
   const [resource, setResource] = useState(draft);
   const [ticket, setTicket] = useState<DashboardSessionDraftSendTicket>();
@@ -225,7 +232,7 @@ export function NewSessionPane({
           </label>
           <label className="new-session-field">
             <span>Tool policy</span>
-            <select value={form.toolsMode} onChange={(event) => patch("toolsMode", event.target.value as SessionDraftFormValues["toolsMode"])} disabled={!editable}><option value="none">No tools</option><option value="allowlist">Allowlist</option></select>
+            <select value={form.toolsMode} onChange={(event) => patch("toolsMode", event.target.value as SessionDraftFormValues["toolsMode"])} disabled={!editable}><option value="default">All/default tools</option><option value="none">No tools</option><option value="no-builtin">Extension tools only</option><option value="allowlist">Allowlist</option></select>
           </label>
           {form.toolsMode === "allowlist" ? <label className="new-session-field new-session-field--wide"><span>Allowed tools <i>comma separated</i></span><input value={form.toolNames} onChange={(event) => patch("toolNames", event.target.value)} disabled={!editable} aria-invalid={validation.errors.tools !== undefined} />{validation.errors.tools ? <small>{validation.errors.tools}</small> : null}</label> : null}
           <details className="new-session-resources new-session-field--wide">
@@ -238,10 +245,19 @@ export function NewSessionPane({
                 ["noThemes", "Disable themes"],
                 ["noContextFiles", "Disable context files"],
               ] as const).map(([key, label]) => <label key={key}><input type="checkbox" checked={form[key]} onChange={(event) => patch(key, event.target.checked)} disabled={!editable} /> {label}</label>)}
-              <label>Project trust <select value={form.projectTrust} onChange={(event) => patch("projectTrust", event.target.value as SessionDraftFormValues["projectTrust"])} disabled={!editable}><option value="deny">Deny discovery</option><option value="default">Default</option></select></label>
+              <label>Project trust <select value={form.projectTrust} onChange={(event) => patch("projectTrust", event.target.value as SessionDraftFormValues["projectTrust"])} disabled={!editable}><option value="approve">Approved</option><option value="default">Default</option><option value="deny">Deny discovery</option></select></label>
               <span>Isolation: unisolated shared process</span>
             </div>
           </details>
+          {defaults !== undefined ? (
+            <section className="new-session-authority" aria-label="Effective new session defaults">
+              <strong>Owner defaults</strong>
+              <span>cwd · {defaults.sources.cwd}</span>
+              <span>model · {defaults.sources.model}</span>
+              <span>authority · {defaults.sources.authority}</span>
+              <small>Visible tool/resource controls may reduce this policy; the service rejects authority above owner policy, while owner-fixed settings remain server-side.</small>
+            </section>
+          ) : null}
         </form>
       </div>
 

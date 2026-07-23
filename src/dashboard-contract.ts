@@ -4,6 +4,7 @@ import type {
   DashboardSessionDraftResource,
   DashboardSessionDraftSendRequest,
   DashboardSessionDraftSendTicket,
+  DashboardSessionDraftSpec,
 } from "./dashboard-session-drafts.js";
 import type {
   ApiErrorBody,
@@ -253,6 +254,15 @@ export interface DashboardPresentationCapability {
   unavailableReason?: string;
 }
 
+export interface DashboardSessionDefaultsResource {
+  spec: DashboardSessionDraftSpec;
+  sources: {
+    cwd: "configured";
+    model: "pi-settings" | "runtime-policy" | "none";
+    authority: "runtime-policy" | "restricted";
+  };
+}
+
 export interface DashboardServiceCapabilities {
   apiVersion: typeof DASH_API_VERSION;
   authentication: "service-bearer";
@@ -280,6 +290,8 @@ export interface DashboardServiceCapabilities {
   };
   /** Additive renderer negotiation; absent services never emit extension_view. */
   extensionViews?: ExtensionViewCapability;
+  /** Browser-safe effective lazy-session defaults; source paths never leave the service. */
+  sessionDefaults?: DashboardSessionDefaultsResource;
   limits: DashboardLimits;
 }
 
@@ -321,6 +333,8 @@ export interface DashboardCapabilities {
   };
   /** Additive renderer negotiation; absent daemons never emit extension_view. */
   extensionViews?: ExtensionViewCapability;
+  /** Browser-safe effective lazy-session defaults; source paths never leave the BFF. */
+  sessionDefaults?: DashboardSessionDefaultsResource;
   limits: DashboardLimits;
   performanceBudgets: DashboardPerformanceBudgets;
 }

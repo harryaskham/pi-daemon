@@ -33,14 +33,12 @@ test("lazy session draft fixtures satisfy strict schema and TypeScript validatio
   }
 });
 
-test("draft contract rejects ambient authority and keeps private first message out of resources", async () => {
+test("draft contract excludes raw ambient authority and keeps private first message out of resources", async () => {
   const request = await json("../fixtures/dashboard-api/session-draft.create.request.json");
   for (const mutate of [
     (value) => { value.spec.env = { TOKEN: "secret" }; },
     (value) => { value.spec.settings = { unsafe: true }; },
     (value) => { value.spec.resources.extensions = ["project-extension"]; },
-    (value) => { value.spec.resources.projectTrust = "approve"; },
-    (value) => { value.spec.tools.mode = "default"; },
   ]) {
     const invalid = structuredClone(request);
     mutate(invalid);

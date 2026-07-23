@@ -149,6 +149,10 @@ kbd { border: 1px solid var(--dash-border-subtle); border-bottom-color: var(--da
 .new-session-resource-grid label { display: flex; align-items: center; gap: 6px; }
 .new-session-resource-grid label:last-of-type { grid-column: 1 / -1; }
 .new-session-resource-grid span { grid-column: 1 / -1; font-family: var(--dash-font-mono); }
+.new-session-authority { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 8px 9px; border: 1px solid color-mix(in srgb, var(--dash-state-success) 42%, var(--dash-border-subtle)); border-radius: var(--dash-radius-sm); background: color-mix(in srgb, var(--dash-state-success) 6%, var(--dash-bg-deep)); color: var(--dash-fg-muted); }
+.new-session-authority strong { color: var(--dash-state-success); }
+.new-session-authority span { padding: 3px 6px; border-radius: var(--dash-radius-pill); background: var(--dash-bg-elevated); font: 8px var(--dash-font-mono); }
+.new-session-authority small { flex-basis: 100%; color: var(--dash-fg-dim); }
 .new-session-footer { flex: 0 0 auto; }
 .new-session-footer .composer-status svg { flex: 0 0 auto; }
 .new-session-footer .composer-status small { color: var(--dash-fg-dim); }

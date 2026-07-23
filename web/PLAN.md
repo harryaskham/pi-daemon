@@ -1433,10 +1433,14 @@ These lanes intentionally begin in parallel:
 - [x] `bd-b07f4d` — activation recency persists independently from source mtime,
   reorders the hot inventory exactly once, refreshes current browser state, and
   preserves stable revision-bound paging.
+- [x] `bd-3cddd3` — owner-resolved home cwd and Pi model/thinking defaults,
+  browser-safe effective authority labels, default/all tool and approved-resource
+  controls capped by runtime policy at create and materialization, and no work
+  before first send.
 - [ ] `bd-b31a5d` — multi-user identity and per-session authorization epic;
   detailed threat model and central-policy architecture in
   `docs/dashboard-authorization.md`.
-  - [ ] `bd-07a348` — principal/provider, identity-bound browser session and
+  - [x] `bd-07a348` — principal/provider, identity-bound browser session and
     owner-private central policy/audit foundation.
   - [ ] `bd-fce8f4` — no-leak HTTP/stream enforcement and single-owner migration.
   - [ ] `bd-284b03` — grants, workspace sharing, revocation, transfer, audit/UI.
@@ -1448,8 +1452,8 @@ These lanes intentionally begin in parallel:
   Home Manager secret paths.
 
 The original four follow-ons depended on now-complete `bd-7de9ec`; declarative
-views and native TLS are landed while browser tree navigation and multi-user
-authorization remain open. Root `PLAN.md` contains only a concise epic
+views, browser tree navigation, and native TLS are landed while multi-user
+authorization remains open. Root `PLAN.md` contains only a concise epic
 cross-reference; this file remains the detailed Dash architecture.
 
 ## 25. V1 acceptance

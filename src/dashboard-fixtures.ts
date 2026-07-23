@@ -104,6 +104,27 @@ export interface DashboardContractFixtures {
   serviceLeaseEnvelope: ApiSuccessEnvelope<DashboardLeaseResource>;
 }
 
+function sessionDefaultsFixture(): NonNullable<DashboardCapabilities["sessionDefaults"]> {
+  return {
+    spec: {
+      cwd: "/home/fixture",
+      persistence: "persistent",
+      model: { provider: "github-copilot", id: "gpt-5.6-sol", thinkingLevel: "high" },
+      tools: { mode: "default" },
+      resources: {
+        noExtensions: false,
+        noSkills: false,
+        noPromptTemplates: false,
+        noThemes: false,
+        noContextFiles: false,
+        projectTrust: "approve",
+      },
+      isolation: { mode: "unisolated" },
+    },
+    sources: { cwd: "configured", model: "pi-settings", authority: "runtime-policy" },
+  };
+}
+
 export function createDashboardCapabilitiesFixture(): DashboardCapabilities {
   const commonCommands = [
     "get_state",
@@ -160,6 +181,7 @@ export function createDashboardCapabilitiesFixture(): DashboardCapabilities {
       },
     },
     extensionViews: structuredClone(EXTENSION_VIEW_CAPABILITY),
+    sessionDefaults: sessionDefaultsFixture(),
     limits: { ...DASH_DEFAULT_LIMITS },
     performanceBudgets: { ...DASH_PERFORMANCE_BUDGETS },
   };
@@ -639,6 +661,7 @@ export function createDashboardContractFixtures(): DashboardContractFixtures {
       },
     },
     extensionViews: structuredClone(EXTENSION_VIEW_CAPABILITY),
+    sessionDefaults: sessionDefaultsFixture(),
     limits: { ...DASH_DEFAULT_LIMITS },
   };
   const lease: DashboardLeaseResource = {

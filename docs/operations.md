@@ -145,9 +145,24 @@ web:
       noContextFiles: true
     settings:
       agentUtils: { modelShortcut: true }
+  sessionDefaults:
+    cwd: ~
+    piSettingsFile: ~/.pi/agent/settings.json
+    inheritRuntimePolicy: true
   ui:
     theme: { name: nord-midnight }
 ```
+
+For a mutually trusted, single-user daemon, the most permissive supported
+profile is `tools.mode: default`, `resources.projectTrust: approve`, all five
+`no*` resource flags set to `false`, and
+`sessionDefaults.inheritRuntimePolicy: true`. Point
+`sessionDefaults.piSettingsFile` at `~/.pi/agent/settings.json` and set the
+instance `agentDir` to `~/.pi/agent` when normal user extensions, skills,
+prompts, and themes should be discoverable. This explicitly grants shared-process
+authority: every enabled tool or extension can reach the daemon process and
+other mutually trusted sessions. `settings.packages` remains prohibited; list
+reviewed package resources explicitly when required.
 
 Relative YAML paths resolve from the configuration file; `~/` resolves from the
 service home. The file is byte/depth/property bounded, rejects duplicate or
@@ -166,9 +181,14 @@ lists, but they select every matching package resource; prefer absolute paths to
 individual reviewed modules when a package contains unrelated tools. Filesystem
 extension/skill/template/theme paths must be absolute. `settings.packages` is
 rejected on this shared-host surface so
-it cannot re-enable ambient package discovery. With no policy, activation
-remains no-tools and loads no
-ambient extensions, packages, context files, or project resources. A direct or
+it cannot re-enable ambient package discovery. With no policy, activation remains no-tools and loads no ambient extensions,
+packages, context files, or project resources. Optional `web.sessionDefaults`
+can select a canonical default cwd, read only provider/model/thinking defaults
+from one owner-controlled bounded Pi settings JSON file, and copy the effective
+runtime policy into browser-safe lazy-draft defaults. The settings path and all
+unrelated settings/package values stay server-side. `inheritRuntimePolicy`
+requires an explicit policy; draft creation and restart-time materialization
+both reject any browser policy above it. A direct or
 fork activation first restores the latest model and thinking level on the
 source session's active branch; the configured model is a fallback for sources
 without those entries. `sessionStorage` is used by the ownership service. A
@@ -315,6 +335,15 @@ file, environment, roots, and logs:
   };
 }
 ```
+
+Home Manager can generate the non-secret policy file directly. For example,
+`xdg.configFile."pi/daemon/work/config.yaml".text` may contain the `web:` block
+above, while the instance sets `configFile` to that generated path,
+`agentDir = "${config.home.homeDirectory}/.pi/agent"`, and
+`dedicatedWeb = { enable = true; port = 17465; };`. The module passes only paths
+and non-secret policy through launchd/systemd; Pi settings contents and auth are
+read at runtime. Module evaluation tests force both the config-file path and
+separate dedicated-web service identity.
 
 `home-manager switch` installs the package, creates native-supervisor log
 parents, and enables `pi-daemon-work.service` on Linux systemd,

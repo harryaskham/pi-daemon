@@ -33,6 +33,28 @@ describe("new session draft frontend model", () => {
     });
   });
 
+  it("hydrates owner-provided home, Pi model, all-tools and approved-resource defaults", () => {
+    const defaults = {
+      cwd: "/home/operator",
+      persistence: "persistent" as const,
+      model: { provider: "github-copilot", id: "gpt-5.6-sol", thinkingLevel: "high" as const },
+      tools: { mode: "default" as const },
+      resources: {
+        noExtensions: false,
+        noSkills: false,
+        noPromptTemplates: false,
+        noThemes: false,
+        noContextFiles: false,
+        projectTrust: "approve" as const,
+      },
+      isolation: { mode: "unisolated" as const },
+    };
+    expect(validateSessionDraftForm(defaultSessionDraftForm("", defaults))).toEqual({
+      spec: defaults,
+      errors: {},
+    });
+  });
+
   it("rejects relative cwd, split model identity and unsafe or empty allowlists", () => {
     const form = {
       ...defaultSessionDraftForm("relative/path"),

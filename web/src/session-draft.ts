@@ -12,14 +12,14 @@ export interface SessionDraftFormValues {
   provider: string;
   modelId: string;
   thinkingLevel: SessionThinkingLevel;
-  toolsMode: "none" | "allowlist";
+  toolsMode: "default" | "none" | "no-builtin" | "allowlist";
   toolNames: string;
   noExtensions: boolean;
   noSkills: boolean;
   noPromptTemplates: boolean;
   noThemes: boolean;
   noContextFiles: boolean;
-  projectTrust: "default" | "deny";
+  projectTrust: "default" | "deny" | "approve";
 }
 
 export interface SessionDraftValidation {
@@ -27,7 +27,17 @@ export interface SessionDraftValidation {
   errors: Record<string, string>;
 }
 
-export function defaultSessionDraftForm(cwd = ""): SessionDraftFormValues {
+export function defaultSessionDraftForm(
+  cwd = "",
+  defaults?: DashboardSessionDraftSpec,
+): SessionDraftFormValues {
+  if (defaults !== undefined) {
+    return {
+      ...sessionDraftFormFromSpec(defaults),
+      cwd: cwd || defaults.cwd,
+      name: "",
+    };
+  }
   return {
     cwd,
     name: "",
@@ -98,7 +108,7 @@ export function validateSessionDraftForm(
     errors.tools = "Use at most 32 bounded neutral tool names.";
   }
   if (values.toolsMode === "allowlist" && tools.length === 0) {
-    errors.tools = "Add at least one tool or choose no tools.";
+    errors.tools = "Add at least one tool or choose a different tool policy.";
   }
   if (Object.keys(errors).length > 0) return { errors };
   const spec: DashboardSessionDraftSpec = {

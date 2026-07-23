@@ -697,6 +697,9 @@ implementation order. This list is a human-readable crosswalk.
     secret-safe file/fd inputs, atomic certificate rotation, and remote health.
   - [x] `bd-b07f4d` — durable activation recency distinct from source mtime so
     old reuse/direct/fork sessions move to the first inventory row exactly once.
+  - [x] `bd-3cddd3` — owner-configurable lazy-session home/Pi-settings defaults
+    and runtime-policy-capped default tools/project resources without browser
+    path leakage or pre-send runtime work.
   - [x] `bd-1dc765` — P1 production interactivity hotfix: bounded single-pane
     transcript scrolling/composer containment, width-aware split repaint, and
     functional revisioned Settings category tabs.

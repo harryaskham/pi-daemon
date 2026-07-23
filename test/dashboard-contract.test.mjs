@@ -19,14 +19,16 @@ const readJson = async (path) =>
 const fixture = (name) => readJson(`fixtures/dashboard-api/${name}`);
 
 async function contractValidator() {
-  const [schema, sessionSchema, extensionViewSchema] = await Promise.all([
+  const [schema, sessionSchema, extensionViewSchema, draftSchema] = await Promise.all([
     readJson("dashboard-api.schema.json"),
     readJson("session-api.schema.json"),
     readJson("extension-view.schema.json"),
+    readJson("dashboard-session-draft.schema.json"),
   ]);
   const ajv = new Ajv2020({ allErrors: true, strict: true });
   ajv.addSchema(sessionSchema);
   ajv.addSchema(extensionViewSchema);
+  ajv.addSchema(draftSchema);
   ajv.addSchema(schema);
   const validate = (definition, value) => {
     const compiled = ajv.getSchema(`${schema.$id}#/$defs/${definition}`);
@@ -196,6 +198,17 @@ test("capability negotiation publishes both peer renderers, all bounds, and budg
   assert.equal(capabilities.extensionViews.browserCodeExecution, false);
   assert.equal(capabilities.resources.treeNavigation, true);
   assert.equal(capabilities.presentations.rich.commands.includes("navigate_tree"), true);
+  assert.deepEqual(capabilities.sessionDefaults, {
+    spec: {
+      cwd: "/home/fixture",
+      persistence: "persistent",
+      model: { provider: "github-copilot", id: "gpt-5.6-sol", thinkingLevel: "high" },
+      tools: { mode: "default" },
+      resources: { noExtensions: false, noSkills: false, noPromptTemplates: false, noThemes: false, noContextFiles: false, projectTrust: "approve" },
+      isolation: { mode: "unisolated" },
+    },
+    sources: { cwd: "configured", model: "pi-settings", authority: "runtime-policy" },
+  });
   assert.deepEqual(capabilities.limits, DASH_DEFAULT_LIMITS);
   assert.deepEqual(capabilities.performanceBudgets, DASH_PERFORMANCE_BUDGETS);
   assert.equal(

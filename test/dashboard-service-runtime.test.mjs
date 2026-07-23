@@ -45,13 +45,7 @@ test("Dashboard activation applies only the explicit trusted runtime policy", ()
     target: { mode: "memory" },
     model: policy.model,
     tools: policy.tools,
-    resources: {
-      extensions: policy.resources.extensions,
-      skills: [],
-      promptTemplates: [],
-      themes: [],
-      ...policy.resources,
-    },
+    resources: policy.resources,
     settings: policy.settings,
     isolation: { mode: "unisolated" },
   });

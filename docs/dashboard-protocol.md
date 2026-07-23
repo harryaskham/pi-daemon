@@ -356,6 +356,12 @@ presentation; an information pane identifies only the inventory item. Seen
 cursors are persisted per workspace. `PUT` uses both a strong ETag and explicit
 expected revision/idempotency fields.
 
+Optional `sessionDefaults` capabilities expose only the effective browser-safe
+lazy-draft spec and content-free source labels. Pi settings/config paths,
+package values, explicit runtime resources, and host settings remain server-side;
+elevated draft policy is rechecked against owner runtime policy on create and
+materialization.
+
 Settings distinguish configured defaults from a mutable UI-only runtime
 overlay. The overlay may change presentation preferences such as theme, editor,
 sidebar, transcript expansion, reduced motion, and bounded browser cache. It

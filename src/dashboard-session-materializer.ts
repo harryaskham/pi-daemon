@@ -1,5 +1,7 @@
 import { createHash } from "node:crypto";
 
+import type { PiDaemonWebRuntimePolicyConfig } from "./config.js";
+import { assertDashboardSessionDraftWithinRuntimePolicy } from "./dashboard-session-defaults.js";
 import type { RpcResponse } from "@earendil-works/pi-coding-agent";
 
 import {
@@ -333,6 +335,8 @@ export class DashboardSessionDraftMaterializerError extends Error {
 export interface MultiplexerDashboardSessionDraftRuntimeOptions {
   multiplexer: Multiplexer;
   hasController?: (sessionId: string) => boolean | Promise<boolean>;
+  runtimePolicy?: PiDaemonWebRuntimePolicyConfig;
+  enforceRuntimePolicy?: boolean;
 }
 
 /** Embedded/service runtime adapter; construction itself performs no Pi work. */
@@ -342,18 +346,25 @@ export class MultiplexerDashboardSessionDraftRuntime
   readonly #hasController:
     | ((sessionId: string) => boolean | Promise<boolean>)
     | undefined;
+  readonly #runtimePolicy: PiDaemonWebRuntimePolicyConfig | undefined;
+  readonly #enforceRuntimePolicy: boolean;
 
   constructor(options: MultiplexerDashboardSessionDraftRuntimeOptions) {
     this.#multiplexer = options.multiplexer;
     this.#hasController = options.hasController;
+    this.#runtimePolicy = options.runtimePolicy;
+    this.#enforceRuntimePolicy = options.enforceRuntimePolicy ?? false;
   }
 
   async materialize(
     input: DashboardSessionDraftMaterializeInput,
   ): Promise<DashboardSessionDraftIdentity> {
     input.signal.throwIfAborted();
+    if (this.#enforceRuntimePolicy) {
+      assertDashboardSessionDraftWithinRuntimePolicy(input.spec, this.#runtimePolicy);
+    }
     const prepared = parseSessionConfiguration(
-      dashboardSessionDraftSpecToSessionSpec(input.spec),
+      dashboardSessionDraftSpecToSessionSpec(input.spec, this.#runtimePolicy),
     );
     const retained = await this.#multiplexer.retainedSession(input.targetSession.sessionId);
     if (retained !== undefined && retained.generation === input.targetSession.generation) {

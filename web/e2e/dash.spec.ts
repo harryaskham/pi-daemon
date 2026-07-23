@@ -249,6 +249,15 @@ test("new session draft persists, cancels safely, and transitions one first send
   const pane = page.locator(".workspace-pane--selected");
   await expect(pane.getByRole("heading", { name: "An empty conversation" })).toBeVisible();
   await expect(pane.locator(".composer-status")).toContainText("No network or runtime work has started");
+  await expect(pane.getByLabel("Working directory")).toHaveValue("/home/fixture");
+  await expect(pane.getByLabel(/Provider/)).toHaveValue("github-copilot");
+  await expect(pane.getByLabel("Model ID")).toHaveValue("gpt-5.6-sol");
+  await expect(pane.getByLabel("Thinking")).toHaveValue("high");
+  await expect(pane.getByLabel("Tool policy")).toHaveValue("default");
+  await pane.getByText("Resources and trust policy").click();
+  await expect(pane.getByLabel("Project trust")).toHaveValue("approve");
+  await expect(pane.getByLabel("Effective new session defaults")).toContainText("model · pi-settings");
+  await expect(pane.getByLabel("Effective new session defaults")).toContainText("authority · runtime-policy");
   await pane.getByRole("button", { name: "Cancel new session draft" }).click();
   await expect(pane.getByRole("heading", { name: "Choose a session" })).toBeVisible();
 

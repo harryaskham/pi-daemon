@@ -2300,6 +2300,9 @@ function dashboardCapabilities(
     ...(service.extensionViews === undefined
       ? {}
       : { extensionViews: structuredClone(service.extensionViews) }),
+    ...(service.sessionDefaults === undefined
+      ? {}
+      : { sessionDefaults: structuredClone(service.sessionDefaults) }),
     limits: {
       ...service.limits,
       maxSubscriptionsPerConnection: Math.min(

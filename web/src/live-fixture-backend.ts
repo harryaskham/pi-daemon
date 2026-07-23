@@ -85,6 +85,17 @@ export class LiveFixtureDashboardBackend extends LocalFixtureBackend implements 
         tui: { available: false, replay: true, controller: true, commands: [...COMMANDS], unavailableReason: "fixture-uses-local-tui-story" },
       },
       extensionViews: structuredClone(EXTENSION_VIEW_CAPABILITY),
+      sessionDefaults: {
+        spec: {
+          cwd: "/home/fixture",
+          persistence: "persistent",
+          model: { provider: "github-copilot", id: "gpt-5.6-sol", thinkingLevel: "high" },
+          tools: { mode: "default" },
+          resources: { noExtensions: false, noSkills: false, noPromptTemplates: false, noThemes: false, noContextFiles: false, projectTrust: "approve" },
+          isolation: { mode: "unisolated" },
+        },
+        sources: { cwd: "configured", model: "pi-settings", authority: "runtime-policy" },
+      },
       limits: { ...DASH_DEFAULT_LIMITS },
       performanceBudgets: { ...DASH_PERFORMANCE_BUDGETS },
     };

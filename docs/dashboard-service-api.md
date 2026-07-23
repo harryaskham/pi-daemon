@@ -71,6 +71,12 @@ controller resolves the authenticated inventory information resource and passes
 only its canonical path plus exact current fingerprint to `TranscriptProjector`.
 It never accepts an arbitrary client path.
 
+When owner defaults are configured, neutral capabilities include only the
+effective browser-safe lazy-draft spec and content-free cwd/model/authority
+source labels. Pi settings/config paths, package values, explicit resource
+paths, and host settings never cross the service boundary. Draft create and
+restart-time materialization independently enforce the current owner policy.
+
 Every effective bound is returned by neutral capabilities. Request bodies use
 the existing API body limit; response serialization uses the same pre-allocation
 bound as all other API records. Because one projected transcript may legitimately

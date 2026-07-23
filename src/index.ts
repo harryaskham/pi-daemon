@@ -15,6 +15,7 @@ export * from "./dashboard-server.js";
 export * from "./dashboard-stream-router.js";
 export * from "./dashboard-service-runtime.js";
 export * from "./dashboard-session-drafts.js";
+export * from "./dashboard-session-defaults.js";
 export * from "./dashboard-session-materializer.js";
 export * from "./dashboard-fixtures.js";
 export * from "./dashboard-neutral-api.js";

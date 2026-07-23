@@ -365,7 +365,8 @@ function DashWorkspace({
     const localId = crypto.randomUUID();
     const targetId = `draft-local:${localId}`;
     const selected = sessions.find((session) => session.inventoryId === selectedInventoryId);
-    const initialCwd = selected?.cwd.startsWith("/") ? selected.cwd : "";
+    const configuredCwd = capabilities.sessionDefaults?.spec.cwd;
+    const initialCwd = configuredCwd ?? (selected?.cwd.startsWith("/") ? selected.cwd : "");
     setDraftPanes((current) => {
       const next = new Map(current);
       next.set(targetId, { initialCwd, loading: false });
@@ -380,7 +381,7 @@ function DashWorkspace({
     setSelectedInventoryId(undefined);
     setSidebarOpen(false);
     setNotice("Local session draft opened · no network or runtime work started");
-  }, [capabilities.resources.sessionDrafts, layout, selectedInventoryId, selectedPaneId, sessions, setLayout]);
+  }, [capabilities.resources.sessionDrafts, capabilities.sessionDefaults, layout, selectedInventoryId, selectedPaneId, sessions, setLayout]);
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent): void {
@@ -529,6 +530,9 @@ function DashWorkspace({
           backend={backend}
           targetId={targetId}
           initialCwd={draftPane?.initialCwd ?? ""}
+          {...(capabilities.sessionDefaults === undefined
+            ? {}
+            : { defaults: capabilities.sessionDefaults })}
           {...(draftPane?.draft === undefined ? {} : { draft: draftPane.draft })}
           vimEnabled={vimEnabled}
           composerHistory={composerHistory}
@@ -674,7 +678,7 @@ function DashWorkspace({
         </div> : null}
       </div>
     );
-  }, [backend, capabilities.presentations.tui.available, commitLayout, composerHistory, demoState, draftPanes, fixtureMode, getTuiState, layout, mountedTuiPanes, replaceTuiState, resizeTui, selectedPaneId, sendTuiInput, sessionById, setPanePresentation, settings, streamText, tuiStoreRevision, vimEnabled]);
+  }, [backend, capabilities.presentations.tui.available, capabilities.sessionDefaults, commitLayout, composerHistory, demoState, draftPanes, fixtureMode, getTuiState, layout, mountedTuiPanes, replaceTuiState, resizeTui, selectedPaneId, sendTuiInput, sessionById, setPanePresentation, settings, streamText, tuiStoreRevision, vimEnabled]);
 
   return (
     <div className="dash-app" data-theme={settings.resource.effective.theme.name} data-density={density} data-reduced-motion={reducedMotion ? "true" : "false"} data-sidebar-open={sidebarOpen ? "true" : "false"}>
@@ -911,6 +915,17 @@ function liveFixtureCapabilities(): DashboardCapabilities {
     presentations: {
       rich: { available: true, replay: true, controller: true, commands: [] },
       tui: { available: true, replay: true, controller: true, commands: [] },
+    },
+    sessionDefaults: {
+      spec: {
+        cwd: "/home/fixture",
+        persistence: "persistent",
+        model: { provider: "github-copilot", id: "gpt-5.6-sol", thinkingLevel: "high" },
+        tools: { mode: "default" },
+        resources: { noExtensions: false, noSkills: false, noPromptTemplates: false, noThemes: false, noContextFiles: false, projectTrust: "approve" },
+        isolation: { mode: "unisolated" },
+      },
+      sources: { cwd: "configured", model: "pi-settings", authority: "runtime-policy" },
     },
     limits: { ...DASH_DEFAULT_LIMITS },
     performanceBudgets: { ...DASH_PERFORMANCE_BUDGETS },
