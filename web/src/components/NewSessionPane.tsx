@@ -25,6 +25,7 @@ export interface NewSessionPaneProps {
   draft?: DashboardSessionDraftResource;
   defaults?: DashboardSessionDefaultsResource;
   vimEnabled: boolean;
+  submitKey: "enter" | "mod-enter";
   composerHistory: string[];
   onToggleVim(): void;
   onSubmitted(value: string): void;
@@ -53,6 +54,7 @@ export function NewSessionPane({
   draft,
   defaults,
   vimEnabled,
+  submitKey,
   composerHistory,
   onToggleVim,
   onSubmitted,
@@ -270,6 +272,7 @@ export function NewSessionPane({
         <Suspense fallback={<div className="composer composer--loading"><i /><span>Loading the editor chunk…</span></div>}>
           <Composer
             vimEnabled={vimEnabled}
+            submitKey={submitKey}
             history={composerHistory}
             disabled={busy || validation.spec === undefined || !sendable}
             submitLabel="Start session"

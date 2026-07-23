@@ -8,6 +8,7 @@ type SettingsTab = "appearance" | "editor" | "transcript" | "cache";
 interface SettingsModalProps {
   open: boolean;
   vimEnabled: boolean;
+  submitKey: DashboardUiSettings["editor"]["submitKey"];
   reducedMotion: boolean;
   density: "comfortable" | "compact";
   themeName: string;
@@ -19,6 +20,7 @@ interface SettingsModalProps {
   syncState: PreferenceSyncState;
   onClose(): void;
   onVimChange(enabled: boolean): void;
+  onSubmitKeyChange(submitKey: DashboardUiSettings["editor"]["submitKey"]): void;
   onReducedMotionChange(enabled: boolean): void;
   onDensityChange(density: "comfortable" | "compact"): void;
   onThemeChange(theme: string): void;
@@ -41,6 +43,7 @@ function Toggle({ label, checked, onChange }: { label: string; checked: boolean;
 export function SettingsModal({
   open,
   vimEnabled,
+  submitKey,
   reducedMotion,
   density,
   themeName,
@@ -52,6 +55,7 @@ export function SettingsModal({
   syncState,
   onClose,
   onVimChange,
+  onSubmitKeyChange,
   onReducedMotionChange,
   onDensityChange,
   onThemeChange,
@@ -124,7 +128,14 @@ export function SettingsModal({
 
           {activeTab === "editor" ? <>
             <section className="settings-toggle-row"><div><div className="setting-heading"><h3>Vim composer</h3><SourceBadge source={sources["editor.mode"]} /></div><p>Use maintained modal CodeMirror editing. Pane shortcuts remain outside insert mode.</p></div><Toggle label="Vim composer" checked={vimEnabled} onChange={onVimChange} /></section>
-            <section><div className="setting-heading"><div><h3>Keyboard behavior</h3><p><kbd>⌘↵</kbd> sends, <kbd>Shift↵</kbd> inserts a newline, <kbd>Ctrl-h/j/k/l</kbd> moves pane focus, and <kbd>Ctrl-Shift-h/j/k/l</kbd> swaps targets without moving focus.</p></div></div></section>
+            <section>
+              <div className="setting-heading"><div><h3>Send key</h3><p>Choose single-line chat behavior or preserve multiline Enter.</p></div><SourceBadge source={sources["editor.submitKey"]} /></div>
+              <div className="segmented-control" role="radiogroup" aria-label="Composer send key">
+                <button type="button" role="radio" aria-checked={submitKey === "enter"} className={submitKey === "enter" ? "is-active" : ""} onClick={() => onSubmitKeyChange("enter")}>Enter sends</button>
+                <button type="button" role="radio" aria-checked={submitKey === "mod-enter"} className={submitKey === "mod-enter" ? "is-active" : ""} onClick={() => onSubmitKeyChange("mod-enter")}>⌘/Ctrl-Enter sends</button>
+              </div>
+            </section>
+            <section><div className="setting-heading"><div><h3>Keyboard behavior</h3><p>{submitKey === "enter" ? <><kbd>Enter</kbd> sends and <kbd>Shift↵</kbd> inserts a newline.</> : <><kbd>⌘/Ctrl↵</kbd> sends and <kbd>Enter</kbd> inserts a newline.</>} <kbd>Ctrl-h/j/k/l</kbd> moves pane focus, and <kbd>Ctrl-Shift-h/j/k/l</kbd> swaps targets without moving focus.</p></div></div></section>
           </> : null}
 
           {activeTab === "transcript" ? <>

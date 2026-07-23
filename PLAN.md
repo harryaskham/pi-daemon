@@ -700,6 +700,8 @@ implementation order. This list is a human-readable crosswalk.
   - [x] `bd-3cddd3` — owner-configurable lazy-session home/Pi-settings defaults
     and runtime-policy-capped default tools/project resources without browser
     path leakage or pre-send runtime work.
+  - [x] `bd-57149a` — revisioned composer send-key policy: Enter sends by
+    default, Shift-Enter newlines, and an alternate multiline Cmd/Ctrl-Enter mode.
   - [x] `bd-1dc765` — P1 production interactivity hotfix: bounded single-pane
     transcript scrolling/composer containment, width-aware split repaint, and
     functional revisioned Settings category tabs.

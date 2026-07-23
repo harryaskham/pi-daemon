@@ -6,7 +6,8 @@
       "density": "comfortable"
     },
     "editor": {
-      "mode": "vim"
+      "mode": "vim",
+      "submitKey": "enter"
     },
     "sidebar": {
       "initialLimit": 100,
@@ -29,6 +30,7 @@
   "sources": {
     "theme.name": "config",
     "editor.mode": "runtime",
+    "editor.submitKey": "default",
     "sidebar.initialLimit": "default"
   }
 }

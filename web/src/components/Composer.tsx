@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { basicSetup } from "codemirror";
+import { insertNewline } from "@codemirror/commands";
 import { markdown } from "@codemirror/lang-markdown";
-import { Compartment, EditorState } from "@codemirror/state";
+import { Compartment, EditorState, Prec } from "@codemirror/state";
 import { EditorView, keymap, placeholder } from "@codemirror/view";
 import { vim } from "@replit/codemirror-vim";
 import { Keyboard, Send } from "../icons";
@@ -15,9 +16,16 @@ export interface ComposerProps {
   externalValue?: string;
   disabled?: boolean;
   submitLabel?: string;
+  submitKey?: "enter" | "mod-enter";
   hint?: string;
   onSubmit(value: string): void | boolean | Promise<void | boolean>;
   onToggleVim(): void;
+}
+
+export function composerShortcut(submitKey: "enter" | "mod-enter"): string {
+  return submitKey === "enter"
+    ? "Enter send · Shift↵ newline"
+    : "⌘/Ctrl↵ send · Enter newline";
 }
 
 export default function Composer({
@@ -27,7 +35,8 @@ export default function Composer({
   externalValue,
   disabled = false,
   submitLabel = "Send",
-  hint = "⌘↵ send · Shift↵ newline",
+  submitKey = "enter",
+  hint,
   onSubmit,
   onToggleVim,
 }: ComposerProps) {
@@ -69,7 +78,7 @@ export default function Composer({
           "data-testid": "composer-editor",
         }),
         placeholder("Ask Pi to inspect, build, explain, or refine…"),
-        keymap.of([
+        Prec.highest(keymap.of([
           {
             key: "Alt-ArrowUp",
             run: (view) => {
@@ -103,15 +112,20 @@ export default function Composer({
             },
           },
           {
-            key: "Mod-Enter",
+            key: "Shift-Enter",
+            run: (view) => insertNewline(view),
+          },
+          {
+            key: submitKey === "enter" ? "Enter" : "Mod-Enter",
             run: (view) => {
+              if (view.composing) return false;
               const value = view.state.doc.toString().trim();
               if (!value || disabledRef.current) return true;
               void submitValue(view, value);
               return true;
             },
           },
-        ]),
+        ])),
         EditorView.updateListener.of((update) => {
           if (!update.docChanged) return;
           valueRef.current = update.state.doc.toString();
@@ -139,7 +153,7 @@ export default function Composer({
       view.destroy();
       viewRef.current = null;
     };
-  }, [vimEnabled]);
+  }, [submitKey, vimEnabled]);
 
   useEffect(() => {
     const view = viewRef.current;
@@ -217,7 +231,7 @@ export default function Composer({
         >
           <Keyboard size={14} /> {vimEnabled ? "VIM · INSERT" : "PLAIN"}
         </button>
-        <span className="composer-hint">{submitting ? "Activating and sending…" : hint}</span>
+        <span className="composer-hint">{submitting ? "Activating and sending…" : hint ?? composerShortcut(submitKey)}</span>
         <button
           type="button"
           className="send-button"

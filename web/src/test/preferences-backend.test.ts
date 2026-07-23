@@ -18,14 +18,14 @@ function resources() {
     revision: 4,
     effective: {
       theme: { name: "nord-midnight", density: "comfortable" },
-      editor: { mode: "vim" },
+      editor: { mode: "vim", submitKey: "enter" },
       sidebar: { initialLimit: 100, showProject: true, groupBy: "none" },
       transcript: { expandTools: false, expandThinking: false },
       motion: { reduced: false },
       cache: { transcriptBytes: 8_000_000, transcriptEntries: 32 },
     },
     runtimeOverlay: {},
-    sources: { "theme.name": "config", "editor.mode": "config" },
+    sources: { "theme.name": "config", "editor.mode": "config", "editor.submitKey": "default" },
   };
   return { workspace, settings };
 }
@@ -67,13 +67,13 @@ describe("revisioned dashboard preferences backend", () => {
       expectedRevision: 4,
       patch: {
         theme: { name: "nord-frost", density: "compact" },
-        editor: { mode: "multiline" },
+        editor: { mode: "multiline", submitKey: "mod-enter" },
         motion: { reduced: true },
       },
     });
     expect(patched.effective).toMatchObject({
       theme: { name: "nord-frost", density: "compact" },
-      editor: { mode: "multiline" },
+      editor: { mode: "multiline", submitKey: "mod-enter" },
       motion: { reduced: true },
     });
     expect(patched.sources["theme.name"]).toBe("runtime");

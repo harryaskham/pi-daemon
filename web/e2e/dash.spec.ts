@@ -445,6 +445,46 @@ test("composer completion and bounded history work outside Vim mode", async ({ p
   await expect(editor).toContainText("pasted line two");
 });
 
+test("composer send-key setting defaults to Enter and preserves multiline plus Vim behavior", async ({ page }) => {
+  await page.goto("./?fixture=1&state=ready");
+  const pane = page.locator(".workspace-pane--selected");
+  await pane.getByRole("button", { name: /VIM · INSERT/ }).click();
+  const editor = pane.getByTestId("composer-editor");
+  const sendButton = pane.getByRole("button", { name: "Send message" });
+  await editor.click();
+  await page.keyboard.type("first line");
+  await page.keyboard.press("Shift+Enter");
+  await page.keyboard.type("second line");
+  await expect(editor).toContainText("first line");
+  await expect(editor).toContainText("second line");
+  await page.keyboard.press("Enter");
+  await expect(sendButton).toBeDisabled();
+
+  await page.getByRole("button", { name: "Settings" }).click();
+  const settings = page.locator(".settings-dialog");
+  await settings.getByRole("tab", { name: "Editor & keys" }).click();
+  await settings.getByRole("radio", { name: "⌘/Ctrl-Enter sends" }).click();
+  await settings.getByRole("button", { name: "Done" }).click();
+  await editor.click();
+  await page.keyboard.type("multiline one");
+  await page.keyboard.press("Enter");
+  await page.keyboard.type("multiline two");
+  await expect(editor).toContainText("multiline one");
+  await expect(editor).toContainText("multiline two");
+  await page.keyboard.press("ControlOrMeta+Enter");
+  await expect(sendButton).toBeDisabled();
+
+  await page.getByRole("button", { name: "Settings" }).click();
+  await settings.getByRole("tab", { name: "Editor & keys" }).click();
+  await settings.getByRole("radio", { name: "Enter sends", exact: true }).click();
+  await settings.getByRole("button", { name: "Done" }).click();
+  await page.getByRole("button", { name: "PLAIN" }).click();
+  await editor.click();
+  await page.keyboard.type("vim enter send");
+  await page.keyboard.press("Enter");
+  await expect(sendButton).toBeDisabled();
+});
+
 test("TUI presentation streams one canonical controller grid to read-only pane mirrors", async ({ page }) => {
   await page.goto("./?fixture=1&state=ready");
   const primary = page.locator('[data-pane-id="primary"]');

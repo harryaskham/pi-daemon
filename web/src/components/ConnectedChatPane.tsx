@@ -17,6 +17,7 @@ interface ConnectedChatPaneProps {
   demoState: DemoState;
   streamText: string;
   vimEnabled: boolean;
+  submitKey: "enter" | "mod-enter";
   composerHistory: string[];
   initialManaged?: { sessionId: string; generation: number };
   onStateChange?(state: DashboardLiveSessionState): void;
@@ -38,6 +39,7 @@ export function ConnectedChatPane({
   demoState,
   streamText,
   vimEnabled,
+  submitKey,
   composerHistory,
   initialManaged,
   onStateChange,
@@ -69,6 +71,7 @@ export function ConnectedChatPane({
       demoState={demoState}
       streamText={streamText}
       vimEnabled={vimEnabled}
+      submitKey={submitKey}
       composerHistory={composerHistory}
       needsReconcile={live.state.transcript?.needsReconcile ?? false}
       droppedRecords={live.state.transcript?.droppedRecords ?? 0}

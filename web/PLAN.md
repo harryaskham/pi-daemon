@@ -746,7 +746,11 @@ its own settings UI.
 ### 13.5 Vim input
 
 The composer supports normal multiline mode and an optional real modal Vim
-mode. This is a browser editor concern, not an attempt to execute Pi's terminal
+mode. Its revisioned `editor.submitKey` setting defaults to `enter`: plain Enter
+submits and Shift-Enter inserts a newline. `mod-enter` preserves multiline Enter
+and submits with Cmd/Ctrl-Enter. The exact effective shortcut appears in the
+composer, settings, and keyboard guide; both modes must preserve IME composition.
+This is a browser editor concern, not an attempt to execute Pi's terminal
 `CustomEditor`. A CodeMirror 6 editor with a maintained Vim keymap is the
 provisional choice. It must preserve IME, accessibility, paste, autocomplete,
 and app shortcuts.
@@ -1437,6 +1441,9 @@ These lanes intentionally begin in parallel:
   browser-safe effective authority labels, default/all tool and approved-resource
   controls capped by runtime policy at create and materialization, and no work
   before first send.
+- [x] `bd-57149a` — revisioned Enter-send default and multiline Cmd/Ctrl-Enter
+  alternative across plain/Vim CodeMirror, settings, hints, keyboard help, IME,
+  and Playwright acceptance.
 - [ ] `bd-b31a5d` — multi-user identity and per-session authorization epic;
   detailed threat model and central-policy architecture in
   `docs/dashboard-authorization.md`.

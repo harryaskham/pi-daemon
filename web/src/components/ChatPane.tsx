@@ -27,6 +27,7 @@ interface ChatPaneProps {
   demoState: DemoState;
   streamText: string;
   vimEnabled: boolean;
+  submitKey: "enter" | "mod-enter";
   composerHistory: string[];
   needsReconcile: boolean;
   droppedRecords: number;
@@ -53,6 +54,7 @@ export interface LiveComposerPresentation {
 export function liveComposerPresentation(
   state: DashboardLiveSessionState,
   fixtureError = false,
+  submitKey: "enter" | "mod-enter" = "enter",
 ): LiveComposerPresentation {
   if (fixtureError) {
     return {
@@ -68,7 +70,9 @@ export function liveComposerPresentation(
     return {
       disabled: !controller,
       submitLabel: "Send",
-      hint: controller ? "⌘↵ send · Shift↵ newline" : "Request control to send",
+      hint: controller
+        ? submitKey === "enter" ? "Enter send · Shift↵ newline" : "⌘/Ctrl↵ send · Enter newline"
+        : "Request control to send",
       ...(controller ? {} : { status: "Observer mode · request control to send" }),
       tone: controller ? "normal" : "warning",
     };
@@ -186,6 +190,7 @@ export function ChatPane({
   demoState,
   streamText,
   vimEnabled,
+  submitKey,
   composerHistory,
   needsReconcile,
   droppedRecords,
@@ -202,6 +207,7 @@ export function ChatPane({
   const composer = liveComposerPresentation(
     liveState,
     fixtureMode && demoState === "error",
+    submitKey,
   );
   const activationModes = liveState.activationModes.filter(
     (mode) =>
@@ -359,6 +365,7 @@ export function ChatPane({
         <Suspense fallback={<div className="composer composer--loading"><i /><span>Loading the editor chunk…</span></div>}>
           <Composer
             vimEnabled={vimEnabled}
+            submitKey={submitKey}
             history={composerHistory}
             commands={commandNames(liveState.availableCommands)}
             {...(liveState.treeEditorText !== undefined

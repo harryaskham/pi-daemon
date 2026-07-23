@@ -14,6 +14,7 @@ semantic versioning once a release tag is cut.
 - add a virtualized bounded full session-tree navigator with authoritative active-leaf paths, filtering/comparison, controller-gated edit/fork/clone, and capability-negotiated in-place summarize/navigation over a private non-replayed framed result
 - persist separate activation recency so successful reuse/direct/fork sessions move to the top exactly once without rewriting source modification or fingerprint truth
 - add owner-configurable lazy New Session defaults for home cwd, bounded Pi provider/model/thinking settings, default tools, approved discovery, and runtime-policy-capped authority without pre-send Pi work or browser path leakage
+- default the revisioned composer to Enter-to-send with Shift-Enter newline, while preserving an optional multiline Enter plus Cmd/Ctrl-Enter send mode across plain/Vim editing and IME
 
 ## 0.2.2 — 2026-07-22
 

@@ -373,8 +373,10 @@ materialization.
 
 Settings distinguish configured defaults from a mutable UI-only runtime
 overlay. The overlay may change presentation preferences such as theme, editor,
-sidebar, transcript expansion, reduced motion, and bounded browser cache. It
-cannot change bind/auth/TLS, roots, credential references, daemon resource
+sidebar, transcript expansion, reduced motion, bounded browser cache, and
+`editor.submitKey`. The default `enter` policy sends on Enter and inserts a
+newline on Shift-Enter; `mod-enter` preserves multiline Enter and sends on
+Cmd/Ctrl-Enter. It cannot change bind/auth/TLS, roots, credential references, daemon resource
 limits, or trusted runtime policy.
 
 The implemented stores use owner-only directories and atomic owner-only JSON

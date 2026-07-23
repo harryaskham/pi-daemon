@@ -147,7 +147,7 @@ function fixtureBootstrap(): {
     revision: 1,
     effective: {
       theme: { name: "nord-midnight", density: "comfortable" },
-      editor: { mode: "vim" },
+      editor: { mode: "vim", submitKey: "enter" },
       sidebar: { initialLimit: 100, showProject: true, groupBy: "none" },
       transcript: { expandTools: false, expandThinking: false },
       motion: { reduced: window.matchMedia("(prefers-reduced-motion: reduce)").matches },
@@ -158,6 +158,7 @@ function fixtureBootstrap(): {
       "theme.name": "config",
       "theme.density": "config",
       "editor.mode": "config",
+      "editor.submitKey": "default",
       "motion.reduced": "default",
     },
   };
@@ -205,6 +206,7 @@ function DashWorkspace({
   const settings = useDashboardSettings(preferencesBackend, initialSettings);
   const { layout, setLayout, selectedPaneId, setSelectedPaneId } = workspace;
   const vimEnabled = settings.resource.effective.editor.mode === "vim";
+  const composerSubmitKey = settings.resource.effective.editor.submitKey;
   const reducedMotion = settings.resource.effective.motion.reduced;
   const density = settings.resource.effective.theme.density;
   const [selectedInventoryId, setSelectedInventoryId] = useState<InventoryId | undefined>(firstSession?.inventoryId);
@@ -535,6 +537,7 @@ function DashWorkspace({
             : { defaults: capabilities.sessionDefaults })}
           {...(draftPane?.draft === undefined ? {} : { draft: draftPane.draft })}
           vimEnabled={vimEnabled}
+          submitKey={composerSubmitKey}
           composerHistory={composerHistory}
           onToggleVim={() => settings.patch({ editor: { mode: vimEnabled ? "multiline" : "vim" } })}
           onSubmitted={(value) => {
@@ -617,6 +620,7 @@ function DashWorkspace({
         demoState={demoState}
         streamText={streamText}
         vimEnabled={vimEnabled}
+        submitKey={composerSubmitKey}
         composerHistory={composerHistory}
         {...(session.inventoryId.startsWith("draft-live:") && session.managed !== undefined
           ? {
@@ -678,7 +682,7 @@ function DashWorkspace({
         </div> : null}
       </div>
     );
-  }, [backend, capabilities.presentations.tui.available, capabilities.sessionDefaults, commitLayout, composerHistory, demoState, draftPanes, fixtureMode, getTuiState, layout, mountedTuiPanes, replaceTuiState, resizeTui, selectedPaneId, sendTuiInput, sessionById, setPanePresentation, settings, streamText, tuiStoreRevision, vimEnabled]);
+  }, [backend, capabilities.presentations.tui.available, capabilities.sessionDefaults, commitLayout, composerHistory, composerSubmitKey, demoState, draftPanes, fixtureMode, getTuiState, layout, mountedTuiPanes, replaceTuiState, resizeTui, selectedPaneId, sendTuiInput, sessionById, setPanePresentation, settings, streamText, tuiStoreRevision, vimEnabled]);
 
   return (
     <div className="dash-app" data-theme={settings.resource.effective.theme.name} data-density={density} data-reduced-motion={reducedMotion ? "true" : "false"} data-sidebar-open={sidebarOpen ? "true" : "false"}>
@@ -739,10 +743,11 @@ function DashWorkspace({
           renderPane={renderPane}
         />
       </div>
-      <KeyboardHelp open={keyboardHelpOpen} onClose={() => setKeyboardHelpOpen(false)} />
+      <KeyboardHelp submitKey={composerSubmitKey} open={keyboardHelpOpen} onClose={() => setKeyboardHelpOpen(false)} />
       <SettingsModal
         open={settingsOpen}
         vimEnabled={vimEnabled}
+        submitKey={composerSubmitKey}
         reducedMotion={reducedMotion}
         density={density}
         themeName={settings.resource.effective.theme.name}
@@ -754,6 +759,7 @@ function DashWorkspace({
         syncState={settings.syncState}
         onClose={() => setSettingsOpen(false)}
         onVimChange={(enabled) => settings.patch({ editor: { mode: enabled ? "vim" : "multiline" } })}
+        onSubmitKeyChange={(submitKey) => settings.patch({ editor: { submitKey } })}
         onReducedMotionChange={(enabled) => settings.patch({ motion: { reduced: enabled } })}
         onDensityChange={(nextDensity) => settings.patch({ theme: { density: nextDensity } })}
         onThemeChange={(theme) => settings.patch({ theme: { name: theme } })}

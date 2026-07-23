@@ -99,6 +99,17 @@ describe("preview composer layout", () => {
     expect(source).not.toContain("dangerouslySetInnerHTML");
   });
 
+  it("keeps configurable composer submission explicit and composition-safe", async () => {
+    const source = await readFile(
+      new URL("../components/Composer.tsx", import.meta.url),
+      "utf8",
+    );
+    expect(source).toContain('submitKey === "enter" ? "Enter" : "Mod-Enter"');
+    expect(source).toContain('key: "Shift-Enter"');
+    expect(source).toContain("view.composing");
+    expect(source).toContain("Prec.highest");
+  });
+
   it("does not render the former transcript-blocking preview action card", async () => {
     const source = await readFile(
       new URL("../components/LiveSessionControls.tsx", import.meta.url),

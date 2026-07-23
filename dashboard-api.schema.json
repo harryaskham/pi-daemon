@@ -2199,13 +2199,20 @@
         "editor": {
           "type": "object",
           "required": [
-            "mode"
+            "mode",
+            "submitKey"
           ],
           "properties": {
             "mode": {
               "enum": [
                 "multiline",
                 "vim"
+              ]
+            },
+            "submitKey": {
+              "enum": [
+                "enter",
+                "mod-enter"
               ]
             }
           },

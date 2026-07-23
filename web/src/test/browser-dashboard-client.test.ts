@@ -51,7 +51,7 @@ const bootstrap: DashboardBootstrapResource = {
     revision: 1,
     effective: {
       theme: { name: "nord-midnight", density: "comfortable" },
-      editor: { mode: "multiline" },
+      editor: { mode: "multiline", submitKey: "enter" },
       sidebar: { initialLimit: 100, showProject: true, groupBy: "none" },
       transcript: { expandTools: false, expandThinking: false },
       motion: { reduced: false },

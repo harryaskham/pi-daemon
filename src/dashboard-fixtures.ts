@@ -484,7 +484,7 @@ export function createDashboardContractFixtures(): DashboardContractFixtures {
     revision: 4,
     effective: {
       theme: { name: "nord-midnight", density: "comfortable" },
-      editor: { mode: "vim" },
+      editor: { mode: "vim", submitKey: "enter" },
       sidebar: { initialLimit: 100, showProject: true, groupBy: "none" },
       transcript: { expandTools: false, expandThinking: false },
       motion: { reduced: false },
@@ -497,6 +497,7 @@ export function createDashboardContractFixtures(): DashboardContractFixtures {
     sources: {
       "theme.name": "config",
       "editor.mode": "runtime",
+      "editor.submitKey": "default",
       "sidebar.initialLimit": "default",
     },
   };

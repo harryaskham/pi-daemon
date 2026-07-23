@@ -191,13 +191,15 @@ test("settings overlay is strictly UI-only with configured/runtime source report
   assert.equal(initial.effective.sidebar.showProject, false);
   assert.equal(initial.sources["theme.density"], "config");
   assert.equal(initial.sources["editor.mode"], "default");
+  assert.equal(initial.effective.editor.submitKey, "enter");
+  assert.equal(initial.sources["editor.submitKey"], "default");
 
   const request = {
     requestId: "request-settings-01",
     idempotencyKey: "idempotency-settings-01",
     expectedRevision: 0,
     patch: {
-      editor: { mode: "vim" },
+      editor: { mode: "vim", submitKey: "mod-enter" },
       motion: { reduced: true },
       cache: { transcriptEntries: 8 },
     },
@@ -205,9 +207,11 @@ test("settings overlay is strictly UI-only with configured/runtime source report
   const updated = await store.patch(request, settingsEtag(initial));
   assert.equal(updated.revision, 1);
   assert.equal(updated.effective.editor.mode, "vim");
+  assert.equal(updated.effective.editor.submitKey, "mod-enter");
   assert.equal(updated.effective.motion.reduced, true);
   assert.equal(updated.effective.theme.density, "compact");
   assert.equal(updated.sources["editor.mode"], "runtime");
+  assert.equal(updated.sources["editor.submitKey"], "runtime");
   assert.deepEqual(await store.patch(request, settingsEtag(initial)), updated);
 
   await assert.rejects(
@@ -243,6 +247,7 @@ test("settings overlay is strictly UI-only with configured/runtime source report
   assert.equal(reset.revision, 2);
   assert.deepEqual(reset.runtimeOverlay, {});
   assert.equal(reset.effective.editor.mode, "multiline");
+  assert.equal(reset.effective.editor.submitKey, "enter");
   assert.equal(reset.effective.theme.density, "compact");
   assert.equal(reset.sources["editor.mode"], "default");
   assert.equal(reset.sources["theme.density"], "config");

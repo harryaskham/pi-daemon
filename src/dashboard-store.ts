@@ -33,7 +33,7 @@ const MAX_READ_SLACK_BYTES = 1;
 
 export const DASH_DEFAULT_UI_SETTINGS: Readonly<DashboardUiSettings> = Object.freeze({
   theme: Object.freeze({ name: "nord-midnight", density: "comfortable" }),
-  editor: Object.freeze({ mode: "multiline" }),
+  editor: Object.freeze({ mode: "multiline", submitKey: "enter" }),
   sidebar: Object.freeze({ initialLimit: 100, showProject: true, groupBy: "none" }),
   transcript: Object.freeze({ expandTools: false, expandThinking: false }),
   motion: Object.freeze({ reduced: false }),
@@ -673,11 +673,17 @@ export function validateSettingsPatch(
   }
   if (object.editor !== undefined) {
     const group = inputObject(object.editor, "editor settings");
-    assertExactKeys(group, ["mode"], false, ["mode"]);
+    assertExactKeys(group, ["mode", "submitKey"], false, ["mode", "submitKey"]);
     const editor: NonNullable<DashboardUiSettingsPatch["editor"]> = {};
     if (group.mode !== undefined) {
       if (group.mode !== "multiline" && group.mode !== "vim") throw invalidSettings("editor.mode");
       editor.mode = group.mode;
+    }
+    if (group.submitKey !== undefined) {
+      if (group.submitKey !== "enter" && group.submitKey !== "mod-enter") {
+        throw invalidSettings("editor.submitKey");
+      }
+      editor.submitKey = group.submitKey;
     }
     result.editor = editor;
   }
@@ -800,6 +806,7 @@ const SETTING_PATHS = [
   "theme.name",
   "theme.density",
   "editor.mode",
+  "editor.submitKey",
   "sidebar.initialLimit",
   "sidebar.showProject",
   "sidebar.groupBy",

@@ -710,7 +710,11 @@ export interface DashboardWorkspaceUpdateRequest {
 
 export interface DashboardUiSettings {
   theme: { name: string; density: "compact" | "comfortable" };
-  editor: { mode: "multiline" | "vim" };
+  editor: {
+    mode: "multiline" | "vim";
+    /** enter: Enter sends and Shift-Enter newlines; mod-enter preserves multiline Enter. */
+    submitKey: "enter" | "mod-enter";
+  };
   sidebar: { initialLimit: number; showProject: boolean; groupBy: "none" | "source" | "age" };
   transcript: { expandTools: boolean; expandThinking: boolean };
   motion: { reduced: boolean };
