@@ -122,12 +122,14 @@ no-store transport probe. Certificate/key bytes never enter YAML, argv, Nix
 store values, status, or logs. See
 [Dashboard transport security](docs/dashboard-transport-security.md).
 
-The exported multi-user foundation now binds a validated principal to each
-server-side browser session and provides one owner-private central
-read/control/admin policy and audit ledger. Multi-user configuration is
-intentionally not exposed until every HTTP/stream, paging, revocation, sharing,
-and migration gate lands; existing deployments remain the exact `local-owner`
-single-operator mode. See
+Every browser HTTP, inventory, ticket, draft, schedule, Rich, and TUI boundary
+now enforces the identity-bound owner-private central read/control/admin ledger.
+Inventory uses bounded principal/query-bound opaque cursors; absent and
+unauthorized resources share one content-free denial; live streams revalidate
+policy and provider state before sensitive frames/events. The remote backend
+still receives only the machine bearer. Multi-user configuration remains
+intentionally unavailable until grant administration, migration, and acceptance
+land; existing deployments remain the exact `local-owner` single-operator mode. See
 [Dashboard identity and authorization](docs/dashboard-authorization.md).
 
 Both executables treat an `EPIPE` from stdout or stderr as a normal early-closing

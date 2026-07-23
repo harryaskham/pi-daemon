@@ -225,6 +225,8 @@ test(
       "dist/dashboard-identity.d.ts",
       "dist/dashboard-authorization.js",
       "dist/dashboard-authorization.d.ts",
+      "dist/dashboard-authorization-enforcer.js",
+      "dist/dashboard-authorization-enforcer.d.ts",
       "dist/dashboard-tls.js",
       "dist/dashboard-tls.d.ts",
       "dist/dashboard-store.js",
@@ -388,6 +390,7 @@ test(
         'import { DashboardBrowserAuth } from "@harryaskham/pi-daemon/dashboard-auth";',
         'import { StaticDashboardIdentityProvider } from "@harryaskham/pi-daemon/dashboard-identity";',
         'import { DashboardAuthorizationService } from "@harryaskham/pi-daemon/dashboard-authorization";',
+        'import { DashboardAuthorizationEnforcer } from "@harryaskham/pi-daemon/dashboard-authorization-enforcer";',
         'import { loadDashboardTls } from "@harryaskham/pi-daemon/dashboard-tls";',
         'import { DashboardWorkspaceStore } from "@harryaskham/pi-daemon/dashboard-store";',
         'import { DashboardServer } from "@harryaskham/pi-daemon/dashboard-server";',
@@ -414,14 +417,14 @@ test(
         'const dashFixture = createDashboardContractFixtures();',
         'const fingerprint = formatSessionSourceFingerprint(new Uint8Array(32));',
         'const extensionView = parseExtensionViewDocument(createExtensionViewFixture());',
-        'process.stdout.write(`${PI_DAEMON_VERSION} ${SESSION_API_VERSION} ${isolation} ${DEFAULT_RPC_STDIO_BRIDGE_LIMITS.reconnectAttempts} ${typeof SessionApiClient} ${schema.title} ${protocolV2Schema.title} ${toolAdapterSchema.title} ${typeof parseSupportedProtocolCommand} ${NEUTRAL_TOOL_OPERATIONS.length} ${sessionSchema.title} ${openapi.openapi} ${DASH_API_VERSION} ${DASH_DEFAULT_LIMITS.maxInventoryPageItems} ${dashFixture.transcript.hydration} ${dashSchema.title} ${EXTENSION_VIEW_VERSION} ${extensionView.viewId} ${extensionViewSchema.title} ${dashOpenapi.openapi} ${DASHBOARD_SESSION_DRAFT_CONTRACT_VERSION} ${draftSchema.title} ${typeof dashboardSessionDraftEtag} ${typeof DashboardSessionDraftMaterializer} ${typeof resolveDashboardSessionDefaults} ${DEFAULT_SESSION_INVENTORY_LIMITS.maxSessions} ${fingerprint.slice(0, 7)} ${typeof TranscriptProjector} ${typeof DashboardBrowserAuth} ${typeof StaticDashboardIdentityProvider} ${typeof DashboardAuthorizationService} ${typeof loadDashboardTls} ${typeof DashboardWorkspaceStore} ${typeof DashboardServer} ${typeof EmbeddedDashboardServiceRuntime} ${typeof InProcessDashboardBackend} ${typeof RemoteDashboardBackend} ${typeof VirtualTerminal} ${typeof SessionOwnershipService} ${typeof FileSessionOwnershipStore} ${typeof DashboardNeutralApiController} ${typeof UnavailableDashboardTuiAttachments} ${typeof ShadowTuiHost} ${typeof ShadowTuiAttachmentManager}\n`);',
+        'process.stdout.write(`${PI_DAEMON_VERSION} ${SESSION_API_VERSION} ${isolation} ${DEFAULT_RPC_STDIO_BRIDGE_LIMITS.reconnectAttempts} ${typeof SessionApiClient} ${schema.title} ${protocolV2Schema.title} ${toolAdapterSchema.title} ${typeof parseSupportedProtocolCommand} ${NEUTRAL_TOOL_OPERATIONS.length} ${sessionSchema.title} ${openapi.openapi} ${DASH_API_VERSION} ${DASH_DEFAULT_LIMITS.maxInventoryPageItems} ${dashFixture.transcript.hydration} ${dashSchema.title} ${EXTENSION_VIEW_VERSION} ${extensionView.viewId} ${extensionViewSchema.title} ${dashOpenapi.openapi} ${DASHBOARD_SESSION_DRAFT_CONTRACT_VERSION} ${draftSchema.title} ${typeof dashboardSessionDraftEtag} ${typeof DashboardSessionDraftMaterializer} ${typeof resolveDashboardSessionDefaults} ${DEFAULT_SESSION_INVENTORY_LIMITS.maxSessions} ${fingerprint.slice(0, 7)} ${typeof TranscriptProjector} ${typeof DashboardBrowserAuth} ${typeof StaticDashboardIdentityProvider} ${typeof DashboardAuthorizationService} ${typeof DashboardAuthorizationEnforcer} ${typeof loadDashboardTls} ${typeof DashboardWorkspaceStore} ${typeof DashboardServer} ${typeof EmbeddedDashboardServiceRuntime} ${typeof InProcessDashboardBackend} ${typeof RemoteDashboardBackend} ${typeof VirtualTerminal} ${typeof SessionOwnershipService} ${typeof FileSessionOwnershipStore} ${typeof DashboardNeutralApiController} ${typeof UnavailableDashboardTuiAttachments} ${typeof ShadowTuiHost} ${typeof ShadowTuiAttachmentManager}\n`);',
         "",
       ].join("\n"),
     );
     const imported = await run(process.execPath, [basename(importCheck)], { cwd: consumer });
     assert.equal(
       imported.stdout,
-      `${packageVersion} 1.0 unisolated 8 function Pi Daemon protocol v1 Pi Daemon protocol v2 Pi Daemon host tool-adapter protocol v1 function 6 Pi Daemon additive session API v1 3.1.0 1.0 100 not-requested Pi Daemon Dash browser API v1 1.0 review-fixture-01 Pi declarative extension view v1 3.1.0 1.0 Pi Daemon Dash lazy session draft contract v1 function function function 10000 sha256: ${Array(17).fill("function").join(" ")}\n`,
+      `${packageVersion} 1.0 unisolated 8 function Pi Daemon protocol v1 Pi Daemon protocol v2 Pi Daemon host tool-adapter protocol v1 function 6 Pi Daemon additive session API v1 3.1.0 1.0 100 not-requested Pi Daemon Dash browser API v1 1.0 review-fixture-01 Pi declarative extension view v1 3.1.0 1.0 Pi Daemon Dash lazy session draft contract v1 function function function 10000 sha256: ${Array(18).fill("function").join(" ")}\n`,
     );
   },
 );

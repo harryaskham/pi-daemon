@@ -6,6 +6,7 @@ import { createDashboardContractFixtures } from "../dist/dashboard-fixtures.js";
 
 const SESSION = {
   sessionKey: "cookie-session",
+  principal: { identityId: "local-owner", globalRole: "administrator" },
   clientId: "client-fixture",
   workspaceId: "workspace-fixture",
   expiresAt: new Date(Date.now() + 60_000).toISOString(),
@@ -75,9 +76,26 @@ function fakeBackend(overrides = {}) {
   return { backend, calls, channels, fixtures, identity };
 }
 
-function connect(backend) {
+function connect(backend, overrides = {}) {
   const peer = new FakePeer();
-  createDashboardStreamHandler({ backend, serverInstanceId: "dash-router-fixture", limits: LIMITS })({ session: SESSION, peer });
+  const authorization = overrides.authorization ?? {
+    async require() { return "admin"; },
+    async requireManagedSession(_principal, sessionRef) {
+      return { resource: { kind: "session", id: `managed:${sessionRef}` }, role: "admin" };
+    },
+    async requireInventorySession(_principal, inventoryId) {
+      return {
+        resource: { kind: "session", id: `inventory:${inventoryId}` },
+        role: "admin",
+        info: await backend.getSessionInfo(inventoryId),
+      };
+    },
+  };
+  createDashboardStreamHandler({ backend, authorization, serverInstanceId: "dash-router-fixture", limits: LIMITS })({
+    session: SESSION,
+    revalidateSession: overrides.revalidateSession ?? (() => SESSION),
+    peer,
+  });
   return peer;
 }
 
@@ -130,6 +148,7 @@ test("routes authenticated rich frames with exact identity and correlation", asy
   assert.deepEqual(calls.find(([kind]) => kind === "extensionUi"), ["extensionUi", "extension-request-1", { confirmed: true }]);
 
   channels[0].emit(fixtures.streamEvent.event);
+  await settle();
   assert.equal(peer.sent.at(-1).kind, "session_event");
   assert.equal(peer.sent.at(-1).subscriptionId, "pane-1");
 });
@@ -194,6 +213,58 @@ test("slow backend work is bounded, does not block control frames, and is never 
   assert.equal(peer.sent.some((frame) => frame.correlationId === "slow-1" && frame.kind === "command_result"), false);
 });
 
+test("policy revocation blocks commands and closes live event subscriptions", async () => {
+  const { backend, channels, fixtures } = fakeBackend();
+  let role = "control";
+  const authorization = {
+    async require(_principal, _resource, required) {
+      const rank = { read: 1, control: 2, admin: 3 };
+      if (role === undefined || rank[role] < rank[required]) {
+        throw Object.assign(new Error("dashboard resource was not found"), {
+          code: "resource_not_found",
+        });
+      }
+      return role;
+    },
+    async requireManagedSession(_principal, sessionRef, required) {
+      await this.require(SESSION.principal, {}, required);
+      return { resource: { kind: "session", id: `managed:${sessionRef}` }, role };
+    },
+  };
+  const peer = connect(backend, { authorization });
+  await hello(peer);
+  await subscribe(peer);
+  const sentBeforeRevocation = peer.sent.length;
+  role = undefined;
+  channels[0].emit(fixtures.streamEvent.event);
+  await settle();
+  await settle();
+  assert.equal(peer.sent.length, sentBeforeRevocation);
+  assert.equal(channels[0].closed, 1);
+
+  await peer.receive(base("command", "revoked-command", {
+    subscriptionId: "pane-1",
+    operation: "prompt",
+    payload: { message: "must not run" },
+  }));
+  assert.equal(peer.sent.at(-1).error.code, "subscription_not_found");
+});
+
+test("provider revocation closes the browser stream before another frame", async () => {
+  const { backend } = fakeBackend();
+  let active = true;
+  const peer = connect(backend, {
+    revalidateSession: () => {
+      if (!active) throw new Error("revoked");
+      return SESSION;
+    },
+  });
+  await hello(peer);
+  active = false;
+  await peer.receive(base("hello", "after-revoke", { requestedVersion: "1.0" }));
+  assert.deepEqual(peer.closeCalls.at(-1), [1008, "browser session revoked"]);
+});
+
 test("TUI input/resize are validated and socket close tears every channel down", async () => {
   const tuiCalls = [];
   const fixtures = createDashboardContractFixtures();
@@ -203,7 +274,7 @@ test("TUI input/resize are validated and socket close tears every channel down",
     backend: {
       async openTuiChannel(options) {
         const channel = {
-          presentation: "tui", identity, role: "controller", closed: 0,
+          presentation: "tui", identity, role: options.role, closed: 0,
           snapshot: { ...fixtures.streamTuiDelta.delta, rows: [], cursor: fixtures.streamTuiDelta.delta.cursorState, highWaterCursor: fixtures.streamTuiDelta.delta.cursor },
           async resize(value) { tuiCalls.push(["resize", value]); },
           async sendInput(value) { tuiCalls.push(["input", value]); },
@@ -225,6 +296,22 @@ test("TUI input/resize are validated and socket close tears every channel down",
   assert.deepEqual(tuiCalls, [["resize", { rows: 30, columns: 100 }], ["input", { type: "key", key: "Enter", modifiers: ["ctrl"] }]]);
   await peer.receive(base("tui_resize", "resize-bad", { subscriptionId: "pane-1", dimensions: { rows: 999, columns: 80 } }));
   assert.equal(peer.sent.at(-1).error.code, "invalid_frame");
+
+  const observer = connect(backend);
+  await hello(observer);
+  await subscribe(observer, {
+    subscriptionId: "pane-observer",
+    presentation: "tui",
+    role: "observer",
+    tuiDimensions: { rows: 24, columns: 80 },
+  });
+  await observer.receive(base("tui_input", "observer-input", {
+    subscriptionId: "pane-observer",
+    input: { type: "text", text: "must not run" },
+  }));
+  assert.equal(observer.sent.at(-1).error.code, "controller_required");
+  assert.equal(tuiCalls.filter(([kind]) => kind === "input").length, 1);
+  observer.disconnect();
   peer.disconnect();
   await settle();
   assert.equal(channels[0].closed, 1);

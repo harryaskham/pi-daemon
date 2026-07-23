@@ -146,6 +146,15 @@ names, oversized files, and writable/untrusted files fail closed. The explicit
 is visibly labelled, contains only generated data, opens no production channel,
 and grants no authority.
 
+Every authenticated route and `pi-daemon-dash.v1` frame is mediated by the
+central policy ledger described in
+[Dashboard identity and authorization](dashboard-authorization). Inventory
+pages expose only authorized records through bounded, principal/query-bound
+opaque cursors. Session/ticket/draft/schedule direct lookups return the same
+content-free `not_found` result for absent and unauthorized IDs. The
+remote backend continues to send only the daemon's machine bearer; browser
+principal data never enters neutral service requests.
+
 ## HTTP resources and envelopes
 
 The provisional routes are fixed under `/dash/v1`:

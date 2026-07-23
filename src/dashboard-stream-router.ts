@@ -17,11 +17,21 @@ import {
 import type { JsonObject } from "./session-api.js";
 import type { DashboardAuthenticatedSession } from "./dashboard-auth.js";
 import type {
+  DashboardResourceRef,
+  DashboardResourceRole,
+} from "./dashboard-authorization.js";
+import type { DashboardAuthorizationEnforcer } from "./dashboard-authorization-enforcer.js";
+import type {
   DashboardStreamHandler,
   DashboardWebSocketPeer,
 } from "./dashboard-server.js";
 
 const ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+const MAX_PENDING_AUTHORIZED_EVENTS_PER_SUBSCRIPTION = 64;
+const READ_ONLY_COMMANDS = new Set<DashboardCommandOperation>([
+  "get_state", "get_entries", "get_session_stats", "get_commands",
+  "get_available_models", "get_tree",
+]);
 const COMMANDS = new Set<DashboardCommandOperation>([
   "get_state", "get_entries", "get_session_stats", "get_commands",
   "get_available_models", "prompt", "steer", "follow_up", "abort",
@@ -32,6 +42,7 @@ const COMMANDS = new Set<DashboardCommandOperation>([
 
 export interface DashboardStreamRouterOptions {
   backend: DashboardBackend;
+  authorization: DashboardAuthorizationEnforcer;
   serverInstanceId: string;
   limits: Pick<DashboardLimits,
     | "maxSubscriptionsPerConnection"
@@ -46,6 +57,13 @@ type Channel = DashboardChannel | DashboardTuiChannel;
 
 interface Subscription {
   channel: Channel;
+  authorization: DashboardResourceRef;
+  requiredRole: DashboardResourceRole;
+  eventQueue: Array<{
+    correlationId: string;
+    event: DashboardChannelEvent | DashboardTuiChannelEvent;
+  }>;
+  authorizingEvents: boolean;
   unsubscribe: () => void;
 }
 
@@ -64,21 +82,29 @@ interface ParsedBase {
  */
 export class DashboardStreamRouter {
   readonly #backend: DashboardBackend;
+  readonly #authorization: DashboardAuthorizationEnforcer;
   readonly #serverInstanceId: string;
   readonly #limits: DashboardStreamRouterOptions["limits"];
 
   constructor(options: DashboardStreamRouterOptions) {
     this.#backend = options.backend;
+    this.#authorization = options.authorization;
     this.#serverInstanceId = boundedId(options.serverInstanceId, "serverInstanceId");
     this.#limits = options.limits;
   }
 
-  handle(context: { session: DashboardAuthenticatedSession; peer: StreamPeer }): void {
+  handle(context: {
+    session: DashboardAuthenticatedSession;
+    revalidateSession?: () => DashboardAuthenticatedSession;
+    peer: StreamPeer;
+  }): void {
     const connection = new DashboardStreamConnection(
       this.#backend,
+      this.#authorization,
       this.#serverInstanceId,
       this.#limits,
       context.session,
+      context.revalidateSession ?? (() => context.session),
       context.peer,
     );
     connection.start();
@@ -94,9 +120,11 @@ export function createDashboardStreamHandler(
 
 class DashboardStreamConnection {
   readonly #backend: DashboardBackend;
+  readonly #authorization: DashboardAuthorizationEnforcer;
   readonly #serverInstanceId: string;
   readonly #limits: DashboardStreamRouterOptions["limits"];
   readonly #session: DashboardAuthenticatedSession;
+  readonly #revalidateSession: () => DashboardAuthenticatedSession;
   readonly #peer: StreamPeer;
   readonly #subscriptions = new Map<string, Subscription>();
   readonly #pendingOpens = new Set<string>();
@@ -107,15 +135,19 @@ class DashboardStreamConnection {
 
   constructor(
     backend: DashboardBackend,
+    authorization: DashboardAuthorizationEnforcer,
     serverInstanceId: string,
     limits: DashboardStreamRouterOptions["limits"],
     session: DashboardAuthenticatedSession,
+    revalidateSession: () => DashboardAuthenticatedSession,
     peer: StreamPeer,
   ) {
     this.#backend = backend;
+    this.#authorization = authorization;
     this.#serverInstanceId = serverInstanceId;
     this.#limits = limits;
     this.#session = session;
+    this.#revalidateSession = revalidateSession;
     this.#peer = peer;
   }
 
@@ -132,6 +164,13 @@ class DashboardStreamConnection {
 
   async #onMessage(text: string): Promise<void> {
     if (this.#closed) return;
+    try {
+      this.#revalidateSession();
+    } catch {
+      this.#peer.close(1008, "browser session revoked");
+      await this.#closeAll();
+      return;
+    }
     let value: unknown;
     try {
       value = JSON.parse(text);
@@ -193,14 +232,15 @@ class DashboardStreamConnection {
     const role = requiredEnum(frame.role, ["observer", "controller"] as const, "role");
     const generation = optionalNonNegativeInteger(frame.generation, "generation");
     const cursor = optionalCursor(frame.cursor);
-    const sessionRef = await this.#resolveSessionRef(frame);
+    const requiredRole: DashboardResourceRole = role === "controller" ? "control" : "read";
+    const target = await this.#resolveSessionRef(frame, requiredRole);
     this.#pendingOpens.add(subscriptionId);
     let channel: Channel | undefined;
     try {
       channel = presentation === "rich"
-        ? await this.#backend.openSessionChannel({ sessionRef, role, ...(generation === undefined ? {} : { generation }), ...(cursor === undefined ? {} : { cursor }) })
+        ? await this.#backend.openSessionChannel({ sessionRef: target.sessionRef, role, ...(generation === undefined ? {} : { generation }), ...(cursor === undefined ? {} : { cursor }) })
         : await this.#backend.openTuiChannel({
-            sessionRef,
+            sessionRef: target.sessionRef,
             role,
             ...(generation === undefined ? {} : { generation }),
             ...(cursor === undefined ? {} : { cursor }),
@@ -222,15 +262,34 @@ class DashboardStreamConnection {
           void this.#closeAll();
           return;
         }
-        if (!ready) buffered.push(event);
-        else this.#sendEvent(subscriptionId, frame.correlationId, channel!, event);
+        if (!ready) {
+          if (buffered.length >= MAX_PENDING_AUTHORIZED_EVENTS_PER_SUBSCRIPTION) {
+            this.#peer.close(1009, "dashboard authorization event bound exceeded");
+            void this.#closeAll();
+            return;
+          }
+          buffered.push(event);
+        } else this.#queueAuthorizedEvent(subscriptionId, frame.correlationId, event);
       });
       if (this.#closed) {
         unsubscribe();
         await channel.close();
         return;
       }
-      this.#subscriptions.set(subscriptionId, { channel, unsubscribe });
+      await this.#authorization.require(
+        this.#session.principal,
+        target.authorization,
+        requiredRole,
+      );
+      this.#revalidateSession();
+      this.#subscriptions.set(subscriptionId, {
+        channel,
+        authorization: target.authorization,
+        requiredRole,
+        eventQueue: [],
+        authorizingEvents: false,
+        unsubscribe,
+      });
       for (const event of buffered.filter((candidate) => candidate.kind === "replay_gap")) {
         this.#sendEvent(subscriptionId, frame.correlationId, channel, event);
       }
@@ -256,23 +315,40 @@ class DashboardStreamConnection {
     }
   }
 
-  async #resolveSessionRef(frame: Record<string, unknown>): Promise<string> {
+  async #resolveSessionRef(
+    frame: Record<string, unknown>,
+    requiredRole: DashboardResourceRole,
+  ): Promise<{ sessionRef: string; authorization: DashboardResourceRef }> {
     const hasInventory = frame.inventoryId !== undefined;
     const hasSession = frame.sessionRef !== undefined;
     if (hasInventory === hasSession) throw new StreamFrameError("invalid_frame", "subscribe requires exactly one session reference");
-    if (hasSession) return requiredId(frame.sessionRef, "sessionRef");
-    const info = await this.#backend.getSessionInfo(requiredId(frame.inventoryId, "inventoryId"));
+    if (hasSession) {
+      const sessionRef = requiredId(frame.sessionRef, "sessionRef");
+      const decision = await this.#authorization.requireManagedSession(
+        this.#session.principal,
+        sessionRef,
+        requiredRole,
+      );
+      return { sessionRef, authorization: decision.resource };
+    }
+    const decision = await this.#authorization.requireInventorySession(
+      this.#session.principal,
+      requiredId(frame.inventoryId, "inventoryId"),
+      requiredRole,
+    );
+    const info = decision.info;
     if (info.managed === undefined) throw new StreamFrameError("session_not_managed", "inventory session is not managed");
     if (frame.generation !== undefined && frame.generation !== info.managed.generation) {
       throw new StreamFrameError("stale_generation", "session generation changed");
     }
-    return info.managed.sessionId;
+    return { sessionRef: info.managed.sessionId, authorization: decision.resource };
   }
 
   async #unsubscribe(frame: ParsedBase & Record<string, unknown>): Promise<void> {
     const id = requiredId(frame.subscriptionId, "subscriptionId");
     const subscription = this.#requireSubscription(id);
     this.#subscriptions.delete(id);
+    subscription.eventQueue.length = 0;
     subscription.unsubscribe();
     await subscription.channel.close();
   }
@@ -287,6 +363,10 @@ class DashboardStreamConnection {
     const idempotencyKey = optionalBoundedText(frame.idempotencyKey, "idempotencyKey", 512);
     const payload = optionalObject(frame.payload, "payload");
     this.#launch(frame.correlationId, async () => {
+      await this.#authorizeSubscription(
+        id,
+        READ_ONLY_COMMANDS.has(operation) ? "read" : "control",
+      );
       const result = await channel.command({
         correlationId: frame.correlationId,
         ...(idempotencyKey === undefined ? {} : { idempotencyKey }),
@@ -304,6 +384,7 @@ class DashboardStreamConnection {
     const channel = this.#requireSubscription(id).channel;
     const action = requiredEnum(frame.action, ["request", "release"] as const, "action");
     this.#launch(frame.correlationId, async () => {
+      await this.#authorizeSubscription(id, "control");
       const result = action === "request"
         ? await channel.requestControl(frame.correlationId)
         : await channel.releaseControl(frame.correlationId);
@@ -319,6 +400,7 @@ class DashboardStreamConnection {
     const requestId = requiredId(frame.requestId, "requestId");
     const response = requiredObject(frame.response, "response");
     this.#launch(frame.correlationId, async () => {
+      await this.#authorizeSubscription(id, "control");
       await channel.answerExtensionUi(requestId, response);
       this.#commandResult(id, frame.correlationId, { correlationId: frame.correlationId, state: "completed" });
     });
@@ -330,6 +412,7 @@ class DashboardStreamConnection {
     if (channel.presentation !== "tui") throw new StreamFrameError("presentation_mismatch", "resize requires a TUI subscription");
     const value = dimensions(frame.dimensions, this.#limits);
     this.#launch(frame.correlationId, async () => {
+      await this.#authorizeSubscription(id, "read");
       await channel.resize(value);
       this.#commandResult(id, frame.correlationId, { correlationId: frame.correlationId, state: "completed" });
     });
@@ -339,11 +422,43 @@ class DashboardStreamConnection {
     const id = requiredId(frame.subscriptionId, "subscriptionId");
     const channel = this.#requireSubscription(id).channel;
     if (channel.presentation !== "tui") throw new StreamFrameError("presentation_mismatch", "input requires a TUI subscription");
+    if (channel.role !== "controller") throw new StreamFrameError("controller_required", "TUI input requires controller role");
     const input = tuiInput(frame.input);
     this.#launch(frame.correlationId, async () => {
+      await this.#authorizeSubscription(id, "control");
       await channel.sendInput(input);
       this.#commandResult(id, frame.correlationId, { correlationId: frame.correlationId, state: "completed" });
     });
+  }
+
+  async #authorizeSubscription(
+    subscriptionId: string,
+    requiredRole: DashboardResourceRole,
+  ): Promise<void> {
+    const subscription = this.#requireSubscription(subscriptionId);
+    try {
+      this.#revalidateSession();
+      await this.#authorization.require(
+        this.#session.principal,
+        subscription.authorization,
+        requiredRole,
+      );
+    } catch {
+      await this.#closeUnauthorizedSubscription(subscriptionId);
+      throw new StreamFrameError(
+        "not_found",
+        "dashboard resource was not found",
+      );
+    }
+  }
+
+  async #closeUnauthorizedSubscription(subscriptionId: string): Promise<void> {
+    const subscription = this.#subscriptions.get(subscriptionId);
+    if (subscription === undefined) return;
+    this.#subscriptions.delete(subscriptionId);
+    subscription.eventQueue.length = 0;
+    subscription.unsubscribe();
+    await subscription.channel.close().catch(() => undefined);
   }
 
   #launch(correlationId: string, operation: () => Promise<void>): void {
@@ -358,6 +473,64 @@ class DashboardStreamConnection {
       })
       .finally(() => this.#inFlight.delete(pending));
     this.#inFlight.add(pending);
+  }
+
+  #queueAuthorizedEvent(
+    subscriptionId: string,
+    correlationId: string,
+    event: DashboardChannelEvent | DashboardTuiChannelEvent,
+  ): void {
+    const subscription = this.#subscriptions.get(subscriptionId);
+    if (subscription === undefined) return;
+    if (subscription.eventQueue.length >= MAX_PENDING_AUTHORIZED_EVENTS_PER_SUBSCRIPTION) {
+      void this.#closeUnauthorizedSubscription(subscriptionId);
+      return;
+    }
+    subscription.eventQueue.push({ correlationId, event });
+    if (subscription.authorizingEvents) return;
+    subscription.authorizingEvents = true;
+    void this.#drainAuthorizedEvents(subscriptionId, subscription);
+  }
+
+  async #drainAuthorizedEvents(
+    subscriptionId: string,
+    subscription: Subscription,
+  ): Promise<void> {
+    try {
+      while (
+        !this.#closed &&
+        this.#subscriptions.get(subscriptionId) === subscription &&
+        subscription.eventQueue.length > 0
+      ) {
+        this.#revalidateSession();
+        await this.#authorization.require(
+          this.#session.principal,
+          subscription.authorization,
+          subscription.requiredRole,
+        );
+        const pending = subscription.eventQueue.shift();
+        if (pending !== undefined) {
+          this.#sendEvent(
+            subscriptionId,
+            pending.correlationId,
+            subscription.channel,
+            pending.event,
+          );
+        }
+      }
+    } catch {
+      await this.#closeUnauthorizedSubscription(subscriptionId);
+    } finally {
+      subscription.authorizingEvents = false;
+      if (
+        !this.#closed &&
+        this.#subscriptions.get(subscriptionId) === subscription &&
+        subscription.eventQueue.length > 0
+      ) {
+        subscription.authorizingEvents = true;
+        void this.#drainAuthorizedEvents(subscriptionId, subscription);
+      }
+    }
   }
 
   #sendEvent(subscriptionId: string, correlationId: string, channel: Channel, event: DashboardChannelEvent | DashboardTuiChannelEvent): void {
@@ -415,7 +588,10 @@ class DashboardStreamConnection {
     this.#closed = true;
     const subscriptions = [...this.#subscriptions.values()];
     this.#subscriptions.clear();
-    for (const subscription of subscriptions) subscription.unsubscribe();
+    for (const subscription of subscriptions) {
+      subscription.eventQueue.length = 0;
+      subscription.unsubscribe();
+    }
     await Promise.allSettled(subscriptions.map((subscription) => subscription.channel.close()));
   }
 }

@@ -1442,7 +1442,7 @@ These lanes intentionally begin in parallel:
   `docs/dashboard-authorization.md`.
   - [x] `bd-07a348` — principal/provider, identity-bound browser session and
     owner-private central policy/audit foundation.
-  - [ ] `bd-fce8f4` — no-leak HTTP/stream enforcement and single-owner migration.
+  - [x] `bd-fce8f4` — no-leak HTTP/stream enforcement and single-owner migration.
   - [ ] `bd-284b03` — grants, workspace sharing, revocation, transfer, audit/UI.
   - [ ] `bd-9d9899` — final provider configuration, UX, migration and exhaustive
     security/compatibility acceptance.

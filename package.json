@@ -97,6 +97,10 @@
       "types": "./dist/dashboard-authorization.d.ts",
       "import": "./dist/dashboard-authorization.js"
     },
+    "./dashboard-authorization-enforcer": {
+      "types": "./dist/dashboard-authorization-enforcer.d.ts",
+      "import": "./dist/dashboard-authorization-enforcer.js"
+    },
     "./dashboard-tls": {
       "types": "./dist/dashboard-tls.d.ts",
       "import": "./dist/dashboard-tls.js"

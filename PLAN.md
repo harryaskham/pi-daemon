@@ -494,9 +494,9 @@ process appears per wake.
 - [ ] `bd-b31a5d` Replace the single-operator Dash trust domain with the central
   identity/per-resource authorization architecture in
   `docs/dashboard-authorization.md`; never add ACL fields to v1 resources.
-  - [ ] `bd-07a348` Principal/provider, identity-bound browser session and
+  - [x] `bd-07a348` Principal/provider, identity-bound browser session and
     owner-private centralized policy/audit foundation.
-  - [ ] `bd-fce8f4` HTTP/stream enforcement, no-existence-leak inventory paging,
+  - [x] `bd-fce8f4` HTTP/stream enforcement, no-existence-leak inventory paging,
     dedicated/embedded parity and exact single-owner migration.
   - [ ] `bd-284b03` Revisioned grants, workspace sharing/revocation, ownership
     transfer, explicit controller handoff, audit and UI.

@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { constants } from "node:fs";
 import { open } from "node:fs/promises";
 import {
@@ -9,7 +9,7 @@ import {
 } from "node:http";
 import { createServer as createHttpsServer, type Server as HttpsServer } from "node:https";
 import { isIP } from "node:net";
-import { basename, extname, join } from "node:path";
+import { basename, dirname, extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Duplex } from "node:stream";
 import { createSecureContext, type SecureContext } from "node:tls";
@@ -49,6 +49,21 @@ import {
   type DashboardAuthenticatedSession,
 } from "./dashboard-auth.js";
 import { dashboardSessionDraftEtag } from "./dashboard-session-draft-contract.js";
+import {
+  DashboardAuthorizationEnforcer,
+  activationTicketResource,
+  draftResource,
+  draftTicketResource,
+  exportTicketResource,
+  managedSessionRef,
+  scheduleResource,
+  workspaceResource,
+} from "./dashboard-authorization-enforcer.js";
+import {
+  DashboardAuthorizationError,
+  DashboardAuthorizationService,
+  type DashboardResourceRole,
+} from "./dashboard-authorization.js";
 import {
   validateDashboardSessionDraftCancelRequest,
   validateDashboardSessionDraftCreateRequest,
@@ -109,6 +124,7 @@ export interface DashboardServerOptions {
   auth: DashboardBrowserAuth;
   workspaceStore: DashboardWorkspaceStore;
   settingsStore: DashboardSettingsStore;
+  authorization?: DashboardAuthorizationService | DashboardAuthorizationEnforcer;
   assetsDir?: string;
   host?: string;
   port?: number;
@@ -134,6 +150,8 @@ export interface DashboardServerAddress {
 
 export interface DashboardStreamHandlerContext {
   session: DashboardAuthenticatedSession;
+  /** Revalidates provider-backed cookie identity before every sensitive frame/event. */
+  revalidateSession: () => DashboardAuthenticatedSession;
   peer: DashboardWebSocketPeer;
 }
 
@@ -151,6 +169,7 @@ export interface DashboardServerFromConfigOptions {
   streamHandler?: DashboardStreamHandler;
   streamHandlerFactory?: (options: {
     backend: DashboardBackend;
+    authorization: DashboardAuthorizationEnforcer;
     serverInstanceId: string;
     limits: DashboardLimits;
   }) => DashboardStreamHandler;
@@ -182,6 +201,7 @@ export class DashboardServer {
   readonly auth: DashboardBrowserAuth;
   readonly workspaceStore: DashboardWorkspaceStore;
   readonly settingsStore: DashboardSettingsStore;
+  readonly authorization: DashboardAuthorizationEnforcer;
   readonly assetsDir: string;
   readonly host: string;
   readonly port: number;
@@ -279,6 +299,17 @@ export class DashboardServer {
     ) {
       throw new RangeError("maxWebSocketFrameBytes cannot exceed the outbound connection bound");
     }
+    this.authorization = options.authorization instanceof DashboardAuthorizationEnforcer
+      ? options.authorization
+      : new DashboardAuthorizationEnforcer({
+          backend: this.backend,
+          authorization: options.authorization ?? new DashboardAuthorizationService({
+            stateDir: dirname(this.workspaceStore.stateDir),
+            mode: "single-owner",
+          }),
+          maxInventoryPageItems: this.limits.dashboard.maxInventoryPageItems,
+          cursorTtlMs: this.auth.sessionTtlMs,
+        });
     this.#streamHandler = options.streamHandler;
     const requestHandler = (request: IncomingMessage, response: ServerResponse): void => {
       void this.#handleRequest(request, response);
@@ -340,6 +371,7 @@ export class DashboardServer {
 
   async start(): Promise<DashboardServerAddress> {
     if (this.#started) throw new Error("DashboardServer is already started");
+    await this.authorization.initialize();
     await this.settingsStore.get();
     await new Promise<void>((resolvePromise, rejectPromise) => {
       const onError = (error: Error): void => {
@@ -477,12 +509,27 @@ export class DashboardServer {
       if (request.method === "POST" && url.pathname === `${DASH_API_BASE_PATH}/login`) {
         this.#assertMutationOrigin(request);
         const body = await readJsonBody(request, this.limits.dashboard.maxHttpBodyBytes);
-        const result = this.auth.login(body as DashboardLoginRequest);
+        let result = this.auth.login(body as DashboardLoginRequest);
+        let issued = tryAuthenticate(this.auth, result.setCookie);
+        if (issued === undefined) throw new Error("issued dashboard browser session is unavailable");
+        if (this.authorization.authorization.mode === "multi-user") {
+          const workspaceId = identityWorkspaceId(issued.principal.identityId);
+          if (issued.workspaceId !== workspaceId) {
+            this.auth.revoke(issued);
+            result = this.auth.login({ ...(body as DashboardLoginRequest), workspaceId });
+            issued = tryAuthenticate(this.auth, result.setCookie);
+            if (issued === undefined) throw new Error("issued dashboard browser session is unavailable");
+          }
+        }
         try {
+          await this.authorization.registerCreated(
+            issued.principal,
+            "workspace",
+            result.session.workspaceId,
+          );
           await this.workspaceStore.getOrCreate(result.session.workspaceId);
         } catch (error) {
-          const issued = tryAuthenticate(this.auth, result.setCookie);
-          if (issued !== undefined) this.auth.revoke(issued);
+          this.auth.revoke(issued);
           throw error;
         }
         sendJson(
@@ -523,10 +570,17 @@ export class DashboardServer {
 
       if (request.method === "GET" && url.pathname === `${DASH_API_BASE_PATH}/bootstrap`) {
         const settings = await this.settingsStore.get();
+        await this.authorization.require(
+          session.principal,
+          workspaceResource(session.workspaceId),
+          "read",
+        );
         const [capabilities, workspace, inventory] = await Promise.all([
           this.capabilities(),
           this.workspaceStore.getOrCreate(session.workspaceId),
-          this.backend.listSessions({ limit: settings.effective.sidebar.initialLimit }),
+          this.authorization.listSessions(session.principal, {
+            limit: settings.effective.sidebar.initialLimit,
+          }),
         ]);
         const resumed = this.auth.browserSession(session);
         sendJson(
@@ -545,6 +599,7 @@ export class DashboardServer {
         );
         assertMutationHeaders(request, body);
         const draft = await this.backend.createSessionDraft(body);
+        await this.authorization.registerCreated(session.principal, "draft", draft.draftId);
         sendJson(
           response,
           201,
@@ -559,7 +614,10 @@ export class DashboardServer {
       }
 
       if (request.method === "GET" && url.pathname === `${DASH_API_BASE_PATH}/sessions`) {
-        const page = await this.backend.listSessions(inventoryQuery(url, this.limits.dashboard));
+        const page = await this.authorization.listSessions(
+          session.principal,
+          inventoryQuery(url, this.limits.dashboard),
+        );
         sendJson(response, 200, successEnvelopeFrom(context, page), this.limits.dashboard.maxOutboundBytesPerConnection);
         return;
       }
@@ -570,12 +628,29 @@ export class DashboardServer {
         "",
       );
       if (request.method === "GET" && draftSendTicketMatch !== undefined) {
+        await this.authorization.require(
+          session.principal,
+          draftTicketResource(draftSendTicketMatch),
+          "read",
+        );
         const ticket = await this.backend.getSessionDraftSend(draftSendTicketMatch);
+        if (ticket.session !== undefined) {
+          await this.authorization.registerCreated(
+            session.principal,
+            "session",
+            managedSessionRef(ticket.session.sessionId).id,
+          );
+        }
         sendJson(response, 200, successEnvelopeFrom(context, ticket), this.limits.dashboard.maxOutboundBytesPerConnection);
         return;
       }
       const draftMatch = matchPath(url.pathname, `${DASH_API_BASE_PATH}/session-drafts/`, "");
       if (request.method === "GET" && draftMatch !== undefined) {
+        await this.authorization.require(
+          session.principal,
+          draftResource(draftMatch),
+          "read",
+        );
         const draft = await this.backend.getSessionDraft(draftMatch);
         sendJson(
           response,
@@ -592,12 +667,29 @@ export class DashboardServer {
         "/send",
       );
       if (request.method === "POST" && draftSendMatch !== undefined) {
+        await this.authorization.require(
+          session.principal,
+          draftResource(draftSendMatch),
+          "control",
+        );
         const body = validateDashboardSessionDraftSendRequest(
           await readJsonBody(request, this.limits.dashboard.maxHttpBodyBytes),
         );
         assertMutationHeaders(request, body);
         assertDashboardDraftIfMatch(request, draftSendMatch, body.expectedRevision);
         const ticket = await this.backend.sendSessionDraft(draftSendMatch, body);
+        await this.authorization.registerCreated(
+          session.principal,
+          "draft-ticket",
+          ticket.ticketId,
+        );
+        if (ticket.session !== undefined) {
+          await this.authorization.registerCreated(
+            session.principal,
+            "session",
+            managedSessionRef(ticket.session.sessionId).id,
+          );
+        }
         sendJson(
           response,
           202,
@@ -608,6 +700,11 @@ export class DashboardServer {
         return;
       }
       if (request.method === "DELETE" && draftMatch !== undefined) {
+        await this.authorization.require(
+          session.principal,
+          draftResource(draftMatch),
+          "control",
+        );
         const body = validateDashboardSessionDraftCancelRequest(
           await readJsonBody(request, this.limits.dashboard.maxHttpBodyBytes),
         );
@@ -626,12 +723,21 @@ export class DashboardServer {
 
       const sessionMatch = matchPath(url.pathname, `${DASH_API_BASE_PATH}/sessions/`, "");
       if (request.method === "GET" && sessionMatch !== undefined) {
-        const info = await this.backend.getSessionInfo(sessionMatch);
+        const { info } = await this.authorization.requireInventorySession(
+          session.principal,
+          sessionMatch,
+          "read",
+        );
         sendJson(response, 200, successEnvelopeFrom(context, info), this.limits.dashboard.maxOutboundBytesPerConnection);
         return;
       }
       const transcriptMatch = matchPath(url.pathname, `${DASH_API_BASE_PATH}/sessions/`, "/transcript");
       if (request.method === "GET" && transcriptMatch !== undefined) {
+        await this.authorization.requireInventorySession(
+          session.principal,
+          transcriptMatch,
+          "read",
+        );
         const transcript = await this.backend.getTranscript(
           transcriptMatch,
           transcriptQuery(url, this.limits.dashboard),
@@ -642,26 +748,93 @@ export class DashboardServer {
       const activateMatch = matchPath(url.pathname, `${DASH_API_BASE_PATH}/sessions/`, "/activate");
       if (request.method === "POST" && activateMatch !== undefined) {
         const body = await readJsonBody(request, this.limits.dashboard.maxHttpBodyBytes);
-        const ticket = await this.backend.activateSession(activateMatch, activationRequest(body));
+        const activation = activationRequest(body);
+        await this.authorization.requireInventorySession(
+          session.principal,
+          activateMatch,
+          activation.mode === "preview-only"
+            ? "read"
+            : activation.mode === "reuse"
+              ? "control"
+              : "admin",
+        );
+        const ticket = await this.backend.activateSession(activateMatch, activation);
+        await this.authorization.registerCreated(
+          session.principal,
+          "activation-ticket",
+          ticket.ticketId,
+        );
+        if (
+          ticket.managedSession !== undefined &&
+          (ticket.mode === "direct" || ticket.mode === "fork")
+        ) {
+          await this.authorization.registerCreated(
+            session.principal,
+            "session",
+            managedSessionRef(ticket.managedSession.sessionId).id,
+          );
+        }
         sendJson(response, 202, successEnvelopeFrom(context, ticket), this.limits.dashboard.maxOutboundBytesPerConnection);
         return;
       }
       const activationMatch = matchPath(url.pathname, `${DASH_API_BASE_PATH}/activation/`, "");
       if (request.method === "GET" && activationMatch !== undefined) {
+        await this.authorization.require(
+          session.principal,
+          activationTicketResource(activationMatch),
+          "read",
+        );
         const ticket = await this.backend.getActivation(activationMatch);
+        if (
+          ticket.managedSession !== undefined &&
+          (ticket.mode === "direct" || ticket.mode === "fork")
+        ) {
+          await this.authorization.registerCreated(
+            session.principal,
+            "session",
+            managedSessionRef(ticket.managedSession.sessionId).id,
+          );
+        }
         sendJson(response, 200, successEnvelopeFrom(context, ticket), this.limits.dashboard.maxOutboundBytesPerConnection);
         return;
       }
       const exportMatch = matchPath(url.pathname, `${DASH_API_BASE_PATH}/sessions/`, "/export");
       if (request.method === "POST" && exportMatch !== undefined) {
+        await this.authorization.requireManagedSession(
+          session.principal,
+          exportMatch,
+          "admin",
+        );
         const body = await readJsonBody(request, this.limits.dashboard.maxHttpBodyBytes);
         const ticket = await this.backend.exportSession(exportMatch, exportRequest(body));
+        await this.authorization.registerCreated(
+          session.principal,
+          "export-ticket",
+          ticket.ticketId,
+        );
+        if (ticket.exportedInventoryId !== undefined) {
+          await this.authorization.registerInventorySessionIfPresent(
+            session.principal,
+            ticket.exportedInventoryId,
+          );
+        }
         sendJson(response, 202, successEnvelopeFrom(context, ticket), this.limits.dashboard.maxOutboundBytesPerConnection);
         return;
       }
       const exportTicketMatch = matchPath(url.pathname, `${DASH_API_BASE_PATH}/export/`, "");
       if (request.method === "GET" && exportTicketMatch !== undefined) {
+        await this.authorization.require(
+          session.principal,
+          exportTicketResource(exportTicketMatch),
+          "read",
+        );
         const ticket = await this.backend.getExport(exportTicketMatch);
+        if (ticket.exportedInventoryId !== undefined) {
+          await this.authorization.registerInventorySessionIfPresent(
+            session.principal,
+            ticket.exportedInventoryId,
+          );
+        }
         sendJson(response, 200, successEnvelopeFrom(context, ticket), this.limits.dashboard.maxOutboundBytesPerConnection);
         return;
       }
@@ -672,6 +845,7 @@ export class DashboardServer {
         return;
       }
       if (request.method === "GET" && url.pathname === `${DASH_API_BASE_PATH}/schedules/status`) {
+        requireGlobalAdministrator(session);
         const status = await this.backend.scheduleStatus();
         sendJson(response, 200, successEnvelopeFrom(context, status), this.limits.dashboard.maxOutboundBytesPerConnection);
         return;
@@ -679,7 +853,26 @@ export class DashboardServer {
       if (url.pathname === `${DASH_API_BASE_PATH}/schedules`) {
         if (request.method === "GET") {
           const sessionRef = scheduleListQuery(url);
-          const schedules = (await this.backend.listSchedules(sessionRef)).map(contentSafeSchedule);
+          if (sessionRef !== undefined) {
+            await this.authorization.requireManagedSession(
+              session.principal,
+              sessionRef,
+              "control",
+            );
+          }
+          const candidates = (await this.backend.listSchedules(sessionRef)).map(contentSafeSchedule);
+          const decisions = await Promise.all(
+            candidates.map(async (candidate) => ({
+              candidate,
+              role: await this.authorization.effectiveRole(
+                session.principal,
+                scheduleResource(candidate.scheduleId),
+              ),
+            })),
+          );
+          const schedules = decisions
+            .filter(({ role }) => role !== undefined && authorizationRoleAtLeast(role, "control"))
+            .map(({ candidate }) => candidate);
           if (schedules.length > DEFAULT_SCHEDULE_LIMITS.maxSchedules) {
             throw new DashboardServerError(500, "schedule_response_capacity", "schedule response count exceeds its bound");
           }
@@ -692,7 +885,17 @@ export class DashboardServer {
             DEFAULT_SCHEDULE_LIMITS.maxRecordBytes,
           )), false);
           assertMutationHeaders(request, body);
+          await this.authorization.requireManagedSession(
+            session.principal,
+            body.schedule.sessionRef,
+            "admin",
+          );
           const resource = contentSafeSchedule(await this.backend.createSchedule(body));
+          await this.authorization.registerCreated(
+            session.principal,
+            "schedule",
+            resource.scheduleId,
+          );
           sendJson(response, 201, successEnvelopeFrom(context, resource), this.limits.dashboard.maxOutboundBytesPerConnection, {
             ETag: scheduleEtag(resource.scheduleId, resource.revision),
           });
@@ -702,6 +905,11 @@ export class DashboardServer {
       const scheduleMatch = matchPath(url.pathname, `${DASH_API_BASE_PATH}/schedules/`, "");
       if (scheduleMatch !== undefined) {
         if (request.method === "GET") {
+          await this.authorization.require(
+            session.principal,
+            scheduleResource(scheduleMatch),
+            "control",
+          );
           const resource = contentSafeSchedule(await this.backend.getSchedule(scheduleMatch));
           sendJson(response, 200, successEnvelopeFrom(context, resource), this.limits.dashboard.maxOutboundBytesPerConnection, {
             ETag: scheduleEtag(resource.scheduleId, resource.revision),
@@ -709,6 +917,11 @@ export class DashboardServer {
           return;
         }
         if (request.method === "PUT") {
+          await this.authorization.require(
+            session.principal,
+            scheduleResource(scheduleMatch),
+            "admin",
+          );
           const body = scheduleMutationRequest(await readJsonBody(request, Math.min(
             this.limits.dashboard.maxHttpBodyBytes,
             DEFAULT_SCHEDULE_LIMITS.maxRecordBytes,
@@ -722,6 +935,11 @@ export class DashboardServer {
           return;
         }
         if (request.method === "DELETE") {
+          await this.authorization.require(
+            session.principal,
+            scheduleResource(scheduleMatch),
+            "admin",
+          );
           const body = scheduleDeleteRequest(await readJsonBody(request, 4096));
           assertMutationHeaders(request, body);
           assertScheduleIfMatch(request, scheduleMatch, body.expectedRevision);
@@ -737,6 +955,11 @@ export class DashboardServer {
           throw new DashboardServerError(404, "not_found", "dashboard route was not found");
         }
         if (request.method === "GET") {
+          await this.authorization.require(
+            session.principal,
+            workspaceResource(workspaceMatch),
+            "read",
+          );
           const workspace = await this.workspaceStore.getOrCreate(workspaceMatch);
           sendJson(
             response,
@@ -748,6 +971,11 @@ export class DashboardServer {
           return;
         }
         if (request.method === "PUT") {
+          await this.authorization.require(
+            session.principal,
+            workspaceResource(workspaceMatch),
+            "control",
+          );
           const body = await readJsonBody(request, this.limits.dashboard.maxHttpBodyBytes);
           const workspace = await this.workspaceStore.update(
             workspaceMatch,
@@ -778,6 +1006,7 @@ export class DashboardServer {
           return;
         }
         if (request.method === "PATCH") {
+          requireGlobalAdministrator(session);
           const body = await readJsonBody(request, this.limits.dashboard.maxHttpBodyBytes);
           const settings = await this.settingsStore.patch(
             body as DashboardSettingsPatchRequest,
@@ -793,6 +1022,7 @@ export class DashboardServer {
           return;
         }
         if (request.method === "DELETE") {
+          requireGlobalAdministrator(session);
           const expectedRevision = integerHeader(
             request.headers["x-expected-revision"],
             "X-Expected-Revision",
@@ -871,6 +1101,11 @@ export class DashboardServer {
         throw new DashboardAuthError("unauthorized", "upgrade denied");
       }
       const session = this.auth.authenticate(request.headers.cookie);
+      await this.authorization.require(
+        session.principal,
+        workspaceResource(session.workspaceId),
+        "read",
+      );
       if (this.#peers.size >= this.limits.dashboard.maxConnections) {
         throw new DashboardServerError(503, "connection_capacity", "dashboard connection capacity is exhausted", true);
       }
@@ -896,7 +1131,11 @@ export class DashboardServer {
           peer.close(1013, "dashboard stream backend unavailable");
           return;
         }
-        Promise.resolve(this.#streamHandler({ session, peer })).catch(() => {
+        Promise.resolve(this.#streamHandler({
+          session,
+          revalidateSession: () => this.auth.revalidate(session),
+          peer,
+        })).catch(() => {
           peer.close(1011, "dashboard stream failed");
         });
       });
@@ -1095,12 +1334,26 @@ export async function createDashboardServerFromConfig(
     limits: dashboardLimits,
     configuredUi: web.ui,
   });
+  // Multi-user configuration remains intentionally unavailable. The local-owner
+  // compatibility provider and implicit policy migration are still enforced at
+  // every boundary so enabling a provider later cannot expose an old bypass.
+  const authorizationService = new DashboardAuthorizationService({
+    stateDir: options.stateDir,
+    mode: "single-owner",
+  });
+  const authorization = new DashboardAuthorizationEnforcer({
+    backend: options.backend,
+    authorization: authorizationService,
+    maxInventoryPageItems: dashboardLimits.maxInventoryPageItems,
+    cursorTtlMs: auth.sessionTtlMs,
+  });
   if (options.streamHandler !== undefined && options.streamHandlerFactory !== undefined) {
     throw new Error("configure either streamHandler or streamHandlerFactory, not both");
   }
   const serverInstanceId = options.serverInstanceId ?? `dash-${randomUUID()}`;
   const streamHandler = options.streamHandler ?? options.streamHandlerFactory?.({
     backend: options.backend,
+    authorization,
     serverInstanceId,
     limits: dashboardLimits,
   });
@@ -1109,6 +1362,7 @@ export async function createDashboardServerFromConfig(
     auth,
     workspaceStore,
     settingsStore,
+    authorization,
     ...(options.assetsDir === undefined ? {} : { assetsDir: options.assetsDir }),
     host: web.bind,
     port: web.port,
@@ -1695,6 +1949,12 @@ function envelopeContext(
 }
 
 function safeHttpError(error: unknown): { status: number; body: ApiErrorBody } {
+  if (error instanceof DashboardAuthorizationError) {
+    return {
+      status: error.status,
+      body: { code: error.code, message: error.message, retryable: false },
+    };
+  }
   if (error instanceof DashboardAuthError) {
     return { status: error.status, body: { code: error.code, message: error.message, retryable: false } };
   }
@@ -1733,6 +1993,28 @@ function safeHttpError(error: unknown): { status: number; body: ApiErrorBody } {
     status: 500,
     body: { code: "internal_error", message: "dashboard request failed", retryable: false },
   };
+}
+
+function identityWorkspaceId(identityId: string): string {
+  const digest = createHash("sha256")
+    .update("dashboard-workspace-v1\0", "utf8")
+    .update(identityId, "utf8")
+    .digest("base64url");
+  return `workspace-${digest.slice(0, 32)}`;
+}
+
+function requireGlobalAdministrator(session: DashboardAuthenticatedSession): void {
+  if (session.principal.globalRole !== "administrator") {
+    throw new DashboardServerError(403, "forbidden", "dashboard administrator role is required");
+  }
+}
+
+function authorizationRoleAtLeast(
+  actual: DashboardResourceRole,
+  required: DashboardResourceRole,
+): boolean {
+  const rank = { read: 1, control: 2, admin: 3 } as const;
+  return rank[actual] >= rank[required];
 }
 
 function tryAuthenticate(

@@ -547,8 +547,22 @@ test("browser stream router conforms against the real in-process backend and ful
     onClose(listener) { onClose = listener; return () => {}; },
     close() {},
   };
+  const authorization = {
+    async require() { return "admin"; },
+    async requireManagedSession(_principal, sessionRef) {
+      return { resource: { kind: "session", id: `managed:${sessionRef}` }, role: "admin" };
+    },
+  };
+  const session = {
+    sessionKey: "authenticated-cookie-session",
+    principal: { identityId: "local-owner", globalRole: "administrator" },
+    clientId: "client-in-process",
+    workspaceId: "workspace-in-process",
+    expiresAt: new Date(Date.now() + 60_000).toISOString(),
+  };
   createDashboardStreamHandler({
     backend,
+    authorization,
     serverInstanceId: "dash-in-process-fixture",
     limits: {
       maxSubscriptionsPerConnection: 4,
@@ -557,12 +571,8 @@ test("browser stream router conforms against the real in-process backend and ful
       maxTuiColumns: 120,
     },
   })({
-    session: {
-      sessionKey: "authenticated-cookie-session",
-      clientId: "client-in-process",
-      workspaceId: "workspace-in-process",
-      expiresAt: new Date(Date.now() + 60_000).toISOString(),
-    },
+    session,
+    revalidateSession: () => session,
     peer,
   });
   const frame = (kind, correlationId, extra = {}) => JSON.stringify({

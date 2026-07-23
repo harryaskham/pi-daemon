@@ -21,6 +21,9 @@ import test from "node:test";
 import WebSocket from "ws";
 
 import { DASH_CSRF_HEADER, DashboardBrowserAuth } from "../dist/dashboard-auth.js";
+import { DashboardAuthorizationService } from "../dist/dashboard-authorization.js";
+import { primarySessionRef } from "../dist/dashboard-authorization-enforcer.js";
+import { StaticDashboardIdentityProvider } from "../dist/dashboard-identity.js";
 import { DASH_STREAM_SUBPROTOCOL } from "../dist/dashboard-contract.js";
 import { createDashboardContractFixtures } from "../dist/dashboard-fixtures.js";
 import { loadPiDaemonConfig } from "../dist/config.js";
@@ -30,6 +33,9 @@ import { loadDashboardTls } from "../dist/dashboard-tls.js";
 import { generateTlsPair } from "./tls-fixture.mjs";
 
 const CREDENTIAL = "dashboard-server-fixture-credential-012345";
+const ADMIN_CREDENTIAL = "dashboard-server-admin-credential-012345";
+const MEMBER_CREDENTIAL = "dashboard-server-member-credential-012345";
+const OTHER_CREDENTIAL = "dashboard-server-other-credential-012345";
 
 async function fixture(t, overrides = {}) {
   const root = await mkdtemp(join(tmpdir(), "pi-daemon-dashboard-server-"));
@@ -44,8 +50,10 @@ async function fixture(t, overrides = {}) {
   await writeFile(join(assetsDir, "assets", "app-12345678.js"), "globalThis.__dashLoaded=true;\n", { mode: 0o600 });
   await writeFile(join(assetsDir, "assets", "app-12345678.css"), ":root{color-scheme:dark}\n", { mode: 0o600 });
   const stateDir = join(root, "state");
-  const auth = new DashboardBrowserAuth({
-    credential: CREDENTIAL,
+  const auth = overrides.auth ?? new DashboardBrowserAuth({
+    ...(overrides.identityProvider === undefined
+      ? { credential: CREDENTIAL }
+      : { identityProvider: overrides.identityProvider }),
     sessionTtlMs: 60_000,
     secureCookies: overrides.secureCookies ?? false,
   });
@@ -58,7 +66,19 @@ async function fixture(t, overrides = {}) {
   const backend = {
     async capabilities() { calls.push("capabilities"); return { ...fixtures.capabilities, resources: { ...fixtures.capabilities.resources, schedules: true, sessionDrafts: true } }; },
     async listSessions(query) { calls.push(["listSessions", query]); return fixtures.inventory; },
-    async getSessionInfo(id) { calls.push(["getSessionInfo", id]); return fixtures.sessionInfo; },
+    async getSessionInfo(id) {
+      calls.push(["getSessionInfo", id]);
+      if (id === fixtures.exportTicket.exportedInventoryId) {
+        return {
+          ...fixtures.sessionInfo,
+          inventoryId: id,
+          piSessionId: "pi-exported-fixture-01",
+          managed: undefined,
+          source: { ...fixtures.sessionInfo.source, aliases: [{ inventoryId: id }] },
+        };
+      }
+      return fixtures.sessionInfo;
+    },
     async getTranscript(id, query) { calls.push(["getTranscript", id, query]); return fixtures.transcript; },
     async activateSession(id, request) { calls.push(["activateSession", id, request]); return fixtures.activationTicket; },
     async getActivation(id) { calls.push(["getActivation", id]); return fixtures.activationTicket; },
@@ -76,7 +96,16 @@ async function fixture(t, overrides = {}) {
     async updateSchedule(_id, request) { schedule = { ...schedule, ...request.schedule, prompt: request.schedule.prompt ?? schedule.prompt, revision: schedule.revision + 1 }; return schedule; },
     async deleteSchedule() { schedule = undefined; },
     async scheduleStatus() { return { timerRuntime: false, externalTimersSupported: true, scheduleCount: schedule === undefined ? 0 : 1, enabledCount: schedule?.enabled ? 1 : 0 }; },
-    async getManagedSession() { throw new Error("not used by HTTP fixture"); },
+    async getManagedSession(sessionRef) {
+      calls.push(["getManagedSession", sessionRef]);
+      if (sessionRef !== fixtures.sessionInfo.managed.sessionId) {
+        throw Object.assign(new Error("managed session not found"), { code: "session_not_found" });
+      }
+      return {
+        sessionId: sessionRef,
+        generation: fixtures.sessionInfo.managed.generation,
+      };
+    },
     async openSessionChannel() { throw new Error("not used by HTTP fixture"); },
     async openTuiChannel() { throw new Error("not used by HTTP fixture"); },
   };
@@ -94,6 +123,10 @@ async function fixture(t, overrides = {}) {
       stateDir,
       limits,
       configuredUi: { theme: { name: "nord-midnight", density: "compact" } },
+    }),
+    authorization: overrides.authorization ?? new DashboardAuthorizationService({
+      stateDir,
+      mode: overrides.authorizationMode ?? "single-owner",
     }),
     assetsDir,
     host: overrides.host ?? "127.0.0.1",
@@ -523,7 +556,7 @@ test("bootstrap stays preview-only and backend resources use bounded typed query
     headers: privateHeaders(origin, session),
   });
   assert.equal(sessions.status, 200);
-  assert.deepEqual(calls[0], ["listSessions", { limit: 5, search: "fixture", runtime: ["running"], unread: true }]);
+  assert.deepEqual(calls[0], ["listSessions", { limit: 6, search: "fixture", runtime: ["running"], unread: true }]);
   assert.equal((await fetch(`${origin}/dash/v1/sessions?limit=99999`, {
     headers: privateHeaders(origin, session),
   })).status, 400);
@@ -534,7 +567,10 @@ test("bootstrap stays preview-only and backend resources use bounded typed query
   }));
   assert.equal(transcript.response.status, 200);
   assert.equal(transcript.json.data.hydration, "not-requested");
-  assert.deepEqual(calls[0], ["getTranscript", "inventory-fixture-01", { limit: 10, direction: "older" }]);
+  assert.deepEqual(
+    calls.find(([kind]) => kind === "getTranscript"),
+    ["getTranscript", "inventory-fixture-01", { limit: 10, direction: "older" }],
+  );
   assert.deepEqual(transcript.json.data.records, fixtures.transcript.records);
 
   calls.length = 0;
@@ -547,7 +583,10 @@ test("bootstrap stays preview-only and backend resources use bounded typed query
     body: JSON.stringify(fixtures.activationRequest),
   });
   assert.equal(activation.status, 202);
-  assert.deepEqual(calls[0], ["activateSession", "inventory-fixture-01", fixtures.activationRequest]);
+  assert.deepEqual(
+    calls.find(([kind]) => kind === "activateSession"),
+    ["activateSession", "inventory-fixture-01", fixtures.activationRequest],
+  );
   const unsafeActivation = await fetch(`${origin}/dash/v1/sessions/inventory-fixture-01/activate`, {
     method: "POST",
     headers: {
@@ -557,7 +596,7 @@ test("bootstrap stays preview-only and backend resources use bounded typed query
     body: JSON.stringify({ ...fixtures.activationRequest, credential: "must-not-reach-backend" }),
   });
   assert.equal(unsafeActivation.status, 400);
-  assert.equal(calls.length, 1);
+  assert.equal(calls.filter(([kind]) => kind === "activateSession").length, 1);
 
   const exported = await fetch(`${origin}/dash/v1/sessions/session-fixture-01/export`, {
     method: "POST",
@@ -568,7 +607,224 @@ test("bootstrap stays preview-only and backend resources use bounded typed query
     body: JSON.stringify(fixtures.exportRequest),
   });
   assert.equal(exported.status, 202);
-  assert.deepEqual(calls[1], ["exportSession", "session-fixture-01", fixtures.exportRequest]);
+  assert.deepEqual(
+    calls.find(([kind]) => kind === "exportSession"),
+    ["exportSession", "session-fixture-01", fixtures.exportRequest],
+  );
+});
+
+test("multi-user enforcement filters inventory and hides sessions, tickets and drafts", async (t) => {
+  const identityProvider = new StaticDashboardIdentityProvider([
+    { identityId: "admin", globalRole: "administrator", credential: ADMIN_CREDENTIAL },
+    { identityId: "member", globalRole: "member", credential: MEMBER_CREDENTIAL },
+    { identityId: "other", globalRole: "member", credential: OTHER_CREDENTIAL },
+  ]);
+  const h = await fixture(t, { identityProvider, authorizationMode: "multi-user" });
+  const adminPrincipal = { identityId: "admin", globalRole: "administrator" };
+  const member = await login(h.origin, {
+    credential: MEMBER_CREDENTIAL,
+    clientId: "client-member",
+    workspaceId: "workspace-member",
+  });
+  const other = await login(h.origin, {
+    credential: OTHER_CREDENTIAL,
+    clientId: "client-other",
+    workspaceId: "workspace-other",
+  });
+  assert.equal(member.response.status, 200);
+  assert.equal(other.response.status, 200);
+  assert.notEqual(member.json.data.workspaceId, "workspace-member");
+  assert.notEqual(other.json.data.workspaceId, member.json.data.workspaceId);
+
+  const authorization = h.server.authorization.authorization;
+  const sessionResource = primarySessionRef(h.fixtures.sessionInfo);
+  let policy = await authorization.adoptResource(
+    adminPrincipal,
+    sessionResource,
+    adminPrincipal.identityId,
+  );
+  policy = await authorization.setGrant({
+    principal: adminPrincipal,
+    resource: sessionResource,
+    subjectIdentityId: "member",
+    role: "read",
+    expectedRevision: policy.revision,
+  });
+
+  const memberInventory = await jsonResponse(await fetch(`${h.origin}/dash/v1/sessions`, {
+    headers: privateHeaders(h.origin, member),
+  }));
+  const otherInventory = await jsonResponse(await fetch(`${h.origin}/dash/v1/sessions`, {
+    headers: privateHeaders(h.origin, other),
+  }));
+  assert.deepEqual(memberInventory.json.data.sessions.map(({ inventoryId }) => inventoryId), [
+    h.fixtures.sessionInfo.inventoryId,
+  ]);
+  assert.deepEqual(otherInventory.json.data.sessions, []);
+
+  const memberInfo = await fetch(
+    `${h.origin}/dash/v1/sessions/${h.fixtures.sessionInfo.inventoryId}`,
+    { headers: privateHeaders(h.origin, member) },
+  );
+  const deniedInfo = await jsonResponse(await fetch(
+    `${h.origin}/dash/v1/sessions/${h.fixtures.sessionInfo.inventoryId}`,
+    { headers: privateHeaders(h.origin, other) },
+  ));
+  const absentInfo = await jsonResponse(await fetch(
+    `${h.origin}/dash/v1/sessions/inventory-absent`,
+    { headers: privateHeaders(h.origin, other) },
+  ));
+  assert.equal(memberInfo.status, 200);
+  assert.equal(deniedInfo.response.status, 404);
+  assert.deepEqual(deniedInfo.json.error, absentInfo.json.error);
+
+  const deniedActivation = await fetch(
+    `${h.origin}/dash/v1/sessions/${h.fixtures.sessionInfo.inventoryId}/activate`,
+    {
+      method: "POST",
+      headers: {
+        ...privateHeaders(h.origin, member, true),
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(h.fixtures.activationRequest),
+    },
+  );
+  assert.equal(deniedActivation.status, 404);
+  policy = await authorization.setGrant({
+    principal: adminPrincipal,
+    resource: sessionResource,
+    subjectIdentityId: "member",
+    role: "control",
+    expectedRevision: policy.revision,
+  });
+  const activation = await jsonResponse(await fetch(
+    `${h.origin}/dash/v1/sessions/${h.fixtures.sessionInfo.inventoryId}/activate`,
+    {
+      method: "POST",
+      headers: {
+        ...privateHeaders(h.origin, member, true),
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(h.fixtures.activationRequest),
+    },
+  ));
+  assert.equal(activation.response.status, 202);
+  const ticketPath = `${h.origin}/dash/v1/activation/${activation.json.data.ticketId}`;
+  assert.equal((await fetch(ticketPath, { headers: privateHeaders(h.origin, member) })).status, 200);
+  assert.equal((await fetch(ticketPath, { headers: privateHeaders(h.origin, other) })).status, 404);
+
+  const spec = {
+    cwd: h.root,
+    persistence: "persistent",
+    tools: { mode: "none" },
+    resources: {
+      noExtensions: true,
+      noSkills: true,
+      noPromptTemplates: true,
+      noThemes: true,
+      noContextFiles: true,
+      projectTrust: "deny",
+    },
+    isolation: { mode: "unisolated" },
+  };
+  const draftBody = {
+    requestId: "member-draft-create",
+    idempotencyKey: "member-draft-create-key",
+    draftId: "member-draft-01",
+    spec,
+  };
+  assert.equal((await fetch(`${h.origin}/dash/v1/session-drafts`, {
+    method: "POST",
+    headers: {
+      ...privateHeaders(h.origin, member, true),
+      "Content-Type": "application/json",
+      "X-Request-ID": draftBody.requestId,
+      "Idempotency-Key": draftBody.idempotencyKey,
+    },
+    body: JSON.stringify(draftBody),
+  })).status, 201);
+  const draftPath = `${h.origin}/dash/v1/session-drafts/${draftBody.draftId}`;
+  assert.equal((await fetch(draftPath, { headers: privateHeaders(h.origin, member) })).status, 200);
+  assert.equal((await fetch(draftPath, { headers: privateHeaders(h.origin, other) })).status, 404);
+  assert.equal((await fetch(`${h.origin}/dash/v1/settings`, {
+    method: "PATCH",
+    headers: {
+      ...privateHeaders(h.origin, member, true),
+      "Content-Type": "application/json",
+      "If-Match": '"irrelevant"',
+    },
+    body: JSON.stringify({}),
+  })).status, 403);
+
+  const exportPath = `${h.origin}/dash/v1/sessions/${h.fixtures.sessionInfo.managed.sessionId}/export`;
+  assert.equal((await fetch(exportPath, {
+    method: "POST",
+    headers: {
+      ...privateHeaders(h.origin, member, true),
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(h.fixtures.exportRequest),
+  })).status, 404);
+  policy = await authorization.setGrant({
+    principal: adminPrincipal,
+    resource: sessionResource,
+    subjectIdentityId: "member",
+    role: "admin",
+    expectedRevision: policy.revision,
+  });
+  const exported = await jsonResponse(await fetch(exportPath, {
+    method: "POST",
+    headers: {
+      ...privateHeaders(h.origin, member, true),
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(h.fixtures.exportRequest),
+  }));
+  assert.equal(exported.response.status, 202);
+  const exportTicketPath = `${h.origin}/dash/v1/export/${exported.json.data.ticketId}`;
+  assert.equal((await fetch(exportTicketPath, { headers: privateHeaders(h.origin, member) })).status, 200);
+  assert.equal((await fetch(exportTicketPath, { headers: privateHeaders(h.origin, other) })).status, 404);
+
+  const schedule = {
+    scheduleId: "member-job",
+    sessionRef: h.fixtures.sessionInfo.managed.sessionId,
+    enabled: true,
+    cron: "0 9 * * 1-5",
+    timezone: "UTC",
+    prompt: "private member prompt",
+    overlapPolicy: "skip",
+    missedWakePolicy: { mode: "skip" },
+    jitterMs: 0,
+    maxAdmissionDelayMs: 300000,
+  };
+  const scheduleRequest = {
+    requestId: "member-schedule-create",
+    idempotencyKey: "member-schedule-key",
+    schedule,
+  };
+  assert.equal((await fetch(`${h.origin}/dash/v1/schedules`, {
+    method: "POST",
+    headers: {
+      ...privateHeaders(h.origin, member, true),
+      "Content-Type": "application/json",
+      "Idempotency-Key": scheduleRequest.idempotencyKey,
+      "X-Request-ID": scheduleRequest.requestId,
+    },
+    body: JSON.stringify(scheduleRequest),
+  })).status, 201);
+  assert.equal((await fetch(`${h.origin}/dash/v1/schedules/member-job`, {
+    headers: privateHeaders(h.origin, member),
+  })).status, 200);
+  assert.equal((await fetch(`${h.origin}/dash/v1/schedules/member-job`, {
+    headers: privateHeaders(h.origin, other),
+  })).status, 404);
+  const otherSchedules = await jsonResponse(await fetch(`${h.origin}/dash/v1/schedules`, {
+    headers: privateHeaders(h.origin, other),
+  }));
+  assert.deepEqual(otherSchedules.json.data.schedules, []);
+  assert.equal((await fetch(`${h.origin}/dash/v1/schedules/status`, {
+    headers: privateHeaders(h.origin, member),
+  })).status, 403);
 });
 
 test("lazy draft BFF CRUD is authenticated, revisioned, and separate from first-send execution", async (t) => {

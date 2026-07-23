@@ -22,6 +22,7 @@ export type DashboardResourceKind =
   | "session"
   | "workspace"
   | "draft"
+  | "draft-ticket"
   | "activation-ticket"
   | "export-ticket"
   | "schedule";
@@ -769,6 +770,7 @@ function validateResourceRef(value: unknown): DashboardResourceRef {
     "session",
     "workspace",
     "draft",
+    "draft-ticket",
     "activation-ticket",
     "export-ticket",
     "schedule",

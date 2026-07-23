@@ -129,6 +129,7 @@ test("clean package builds include the content-hashed Dash SPA and secure server
     "dashboard-auth",
     "dashboard-identity",
     "dashboard-authorization",
+    "dashboard-authorization-enforcer",
     "dashboard-tls",
     "dashboard-backend",
     "dashboard-remote-backend",

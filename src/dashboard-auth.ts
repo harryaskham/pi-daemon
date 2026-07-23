@@ -185,15 +185,26 @@ export class DashboardBrowserAuth {
     };
   }
 
-  browserSession(session: DashboardAuthenticatedSession): DashboardBrowserSessionResource {
+  revalidate(session: DashboardAuthenticatedSession): DashboardAuthenticatedSession {
     const record = this.#activeRecord(session.sessionKey, this.#now().getTime());
     if (record === undefined) {
       throw new DashboardAuthError("unauthorized", "dashboard browser session is invalid");
     }
     return {
+      sessionKey: record.sessionKey,
+      principal: structuredClone(record.principal),
       clientId: record.clientId,
       workspaceId: record.workspaceId,
       expiresAt: new Date(record.expiresAtMs).toISOString(),
+    };
+  }
+
+  browserSession(session: DashboardAuthenticatedSession): DashboardBrowserSessionResource {
+    const record = this.revalidate(session);
+    return {
+      clientId: record.clientId,
+      workspaceId: record.workspaceId,
+      expiresAt: record.expiresAt,
       csrfToken: this.#csrfToken(record.sessionKey),
     };
   }

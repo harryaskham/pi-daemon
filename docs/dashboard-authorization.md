@@ -103,8 +103,8 @@ A policy is keyed by `{kind, opaque id}` and contains exactly:
 - zero or more identity grants;
 - policy revision and timestamps.
 
-Resource kinds are session, workspace, draft, activation ticket, export ticket,
-and schedule. Grant roles are ordered:
+Resource kinds are session, workspace, draft, draft-send ticket, activation
+ticket, export ticket, and schedule. Grant roles are ordered:
 
 | Role | Authority |
 |---|---|
@@ -166,17 +166,54 @@ but share v1's all-powerful browser backend.
   reconnect.
 
 Remote `DashboardBackend` and the neutral service API remain service-bearer
-surfaces. The dedicated BFF must apply the same browser authorizer as embedded
-mode before issuing those calls. Browser identity is not inserted into neutral
-service payloads, logs, or authorization headers.
+surfaces. The dedicated BFF applies the same browser authorizer as embedded mode
+before issuing protected resource operations. A bounded identity-free info read
+may resolve an opaque inventory alias before the decision, but its result is
+never returned on denial. Browser identity is not inserted into neutral service
+payloads, logs, or authorization headers.
+
+### Enforced browser boundary
+
+`DashboardAuthorizationEnforcer` is the browser-facing adapter shared by HTTP
+and the Rich/TUI stream router. It resolves inventory aliases, Pi session IDs,
+and managed session IDs to central `session` policies; backends never receive a
+principal. Direct resource lookups fetch the same bounded metadata before
+returning the same content-free `not_found` envelope for an absent or unauthorized
+session. Tickets, drafts, workspaces, and schedules consult policy before their
+backend lookup, so guessing an ID cannot probe the machine service.
+
+Inventory responses use bounded scan-ahead and random server-side cursors bound
+to the principal and query fingerprint. The browser never receives the
+underlying all-session cursor, skipped records, or a count of inaccessible
+records. A continuation is emitted only after scan-ahead has found at least one
+additional authorized record; an unauthorized-only horizon never becomes a
+cardinality oracle. Cursor storage, buffered authorized records, lifetime, and
+scans per request are hard bounded.
+Multi-user login ignores the untrusted requested workspace ID and uses a stable,
+opaque identity-derived workspace, preventing a login request from claiming or
+probing somebody else's workspace. The compatibility provider preserves its
+existing requested workspace exactly.
+
+Observer streams require session `read`; controller opens require `control`.
+Every command, control request, extension response, TUI input/resize, and emitted
+Rich/TUI event revalidates both the provider-backed browser session and current
+policy. Loss of authority closes the subscription and therefore releases its
+backend controller/lease instead of allowing revocation to wait for reconnect.
+The WebSocket handshake also requires workspace `read`.
+
+Settings reads and capability metadata contain no cross-user resource identity;
+settings mutation and aggregate scheduler status are global-administrator only.
+Schedule lists are filtered, schedule inspection requires `control`, and
+persistent schedule mutation requires resource/session `admin`.
 
 ## Delivery slices
 
 - `bd-07a348` — this threat model, principal/provider contract, identity-bound
   server session state, central fail-closed policy ledger, audit and package
   foundation. No multi-user runtime switch.
-- `bd-fce8f4` — enforce policy across HTTP/stream and embedded/dedicated backends
-  with bounded no-existence-leak inventory paging and compatibility migration.
+- `bd-fce8f4` — policy enforcement across HTTP/stream and embedded/dedicated
+  backends with bounded no-existence-leak inventory paging and compatibility
+  migration (implemented).
 - `bd-284b03` — grant/workspace administration, revocation, ownership and
   controller transfer with revisions, idempotency, audit and accessible UI.
 - `bd-9d9899` — credential-path configuration, migration/operations, full UI,
