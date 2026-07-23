@@ -605,6 +605,7 @@ function DashWorkspace({
         active={selectedPaneId === node.paneId && presentation === "rich"}
         fixtureMode={fixtureMode}
         tuiAvailable={fixtureMode || capabilities.presentations.tui.available}
+        treeNavigationAvailable={fixtureMode || capabilities.presentations.rich.commands.includes("navigate_tree")}
         demoState={demoState}
         streamText={streamText}
         vimEnabled={vimEnabled}
@@ -902,7 +903,7 @@ function liveFixtureCapabilities(): DashboardCapabilities {
     streamSubprotocol: DASH_STREAM_SUBPROTOCOL,
     sameBrowserProtocolAcrossDeployments: true,
     authentication: { browserSession: "http-only-cookie", csrf: "same-origin-header", daemonBearerExposed: false },
-    resources: { inventory: true, transcriptPreview: true, activation: true, export: true, workspaces: true, settings: true, schedules: scheduleStory, sessionDrafts: true },
+    resources: { inventory: true, transcriptPreview: true, activation: true, export: true, workspaces: true, settings: true, schedules: scheduleStory, sessionDrafts: true, treeNavigation: true },
     presentations: {
       rich: { available: true, replay: true, controller: true, commands: [] },
       tui: { available: true, replay: true, controller: true, commands: [] },

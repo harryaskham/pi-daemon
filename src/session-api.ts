@@ -313,6 +313,31 @@ export interface RpcControlFrame {
   reason?: string;
 }
 
+/** Pi Daemon framed extension; stock pi-rpc.v1 remains the exact upstream union. */
+export interface RpcTreeNavigateFrame {
+  kind: "tree_navigate";
+  correlationId: string;
+  request: {
+    entryId: string;
+    summarize?: boolean;
+    customInstructions?: string;
+    replaceInstructions?: boolean;
+    label?: string;
+  };
+}
+
+export interface RpcTreeNavigateResultFrame {
+  kind: "tree_navigate_result";
+  correlationId: string;
+  result?: {
+    cancelled: boolean;
+    aborted?: boolean;
+    editorText?: string;
+    summaryEntryId?: string;
+  };
+  error?: ApiErrorBody;
+}
+
 export type SessionRpcFrame =
   | RpcCommandFrame
   | RpcResponseFrame
@@ -320,7 +345,9 @@ export type SessionRpcFrame =
   | RpcEventFrame
   | RpcAttachReadyFrame
   | RpcReplayGapFrame
-  | RpcControlFrame;
+  | RpcControlFrame
+  | RpcTreeNavigateFrame
+  | RpcTreeNavigateResultFrame;
 
 export interface JsonRpcMessage extends JsonObject {
   jsonrpc: "2.0";

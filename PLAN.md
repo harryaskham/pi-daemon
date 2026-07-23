@@ -673,6 +673,9 @@ implementation order. This list is a human-readable crosswalk.
   - [x] `bd-470f81` — server-validated versioned declarative extension views:
     inert Rich primitives, scoped correlated actions/forms, TUI fallback,
     schema/fixtures/capability negotiation, and an upstream Pi seam proposal.
+  - [x] `bd-4b2415` — virtualized full Pi branch-tree navigation with filters,
+    active-leaf truth, comparison, edit/fork/clone, negotiated in-place
+    summarize/navigation, keyboard accessibility, and Rich/TUI handoff.
   - [x] `bd-1dc765` — P1 production interactivity hotfix: bounded single-pane
     transcript scrolling/composer containment, width-aware split repaint, and
     functional revisioned Settings category tabs.

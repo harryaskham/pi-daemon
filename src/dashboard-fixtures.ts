@@ -120,6 +120,7 @@ export function createDashboardCapabilitiesFixture(): DashboardCapabilities {
     "compact",
     "set_session_name",
     "get_tree",
+    "navigate_tree",
     "fork",
     "clone",
   ] as const;
@@ -141,6 +142,7 @@ export function createDashboardCapabilitiesFixture(): DashboardCapabilities {
       settings: true,
       schedules: false,
       sessionDrafts: false,
+      treeNavigation: true,
     },
     presentations: {
       rich: {
@@ -625,6 +627,7 @@ export function createDashboardContractFixtures(): DashboardContractFixtures {
       ownership: true,
       export: true,
       leases: true,
+      treeNavigation: true,
     },
     presentations: {
       rich: { available: true },

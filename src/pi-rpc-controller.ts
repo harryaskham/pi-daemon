@@ -84,6 +84,22 @@ export interface PiRpcSnapshot {
   leafId: string | null;
 }
 
+/** Dashboard-only framed control; intentionally not added to stock Pi RpcCommand. */
+export interface PiRpcTreeNavigationRequest {
+  entryId: string;
+  summarize?: boolean;
+  customInstructions?: string;
+  replaceInstructions?: boolean;
+  label?: string;
+}
+
+export interface PiRpcTreeNavigationResult {
+  cancelled: boolean;
+  aborted?: boolean;
+  editorText?: string;
+  summaryEntryId?: string;
+}
+
 export interface PiRpcControllerCapabilities {
   contract: typeof PI_RPC_HOST_CAPABILITIES;
   policy: { bash: boolean; exportHtml: boolean };
@@ -170,6 +186,38 @@ export class PiRpcController {
     this.#assertOpen();
     for (const pending of this.#pendingUi.values()) pending.cancel();
     this.#pendingUi.clear();
+  }
+
+  /**
+   * Navigate one existing branch in place without widening Pi's stock 31-command
+   * RPC union. Authenticated framed Dashboard transports own correlation and
+   * controller authority around this direct host method.
+   */
+  async navigateTree(value: unknown): Promise<PiRpcTreeNavigationResult> {
+    this.#assertOpen();
+    if (!isRecord(value)) throw new PiRpcValidationError("tree navigation must be an object");
+    const entryId = requiredBoundedString(value, "entryId", 256);
+    optionalBoolean(value, "summarize");
+    optionalBoolean(value, "replaceInstructions");
+    optionalBoundedString(value, "customInstructions", 65_536);
+    optionalBoundedString(value, "label", 512);
+    const session = this.#host.rpcSession();
+    const result = await this.#promptScheduler(() => session.navigateTree(entryId, {
+      ...(value.summarize === undefined ? {} : { summarize: value.summarize as boolean }),
+      ...(value.customInstructions === undefined ? {} : { customInstructions: value.customInstructions as string }),
+      ...(value.replaceInstructions === undefined ? {} : { replaceInstructions: value.replaceInstructions as boolean }),
+      ...(value.label === undefined ? {} : { label: value.label as string }),
+    }));
+    const editorText = result.editorText;
+    if (editorText !== undefined && (editorText.length > 262_144 || /\u0000/u.test(editorText))) {
+      throw new PiRpcValidationError("tree navigation editor text exceeds its bound");
+    }
+    return {
+      cancelled: result.cancelled,
+      ...(result.aborted === undefined ? {} : { aborted: result.aborted }),
+      ...(editorText === undefined ? {} : { editorText }),
+      ...(result.summaryEntry === undefined ? {} : { summaryEntryId: result.summaryEntry.id }),
+    };
   }
 
   /** Apply the daemon-wide turn scheduler without coupling this controller to a transport. */

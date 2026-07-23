@@ -59,6 +59,8 @@ test("session API fixtures validate against their published definitions", async 
     ["rpc.response.frame.json", "rpcResponseFrame"],
     ["rpc.extension-ui-response.frame.json", "rpcExtensionUiResponseFrame"],
     ["rpc.control.frame.json", "rpcControlFrame"],
+    ["rpc.tree-navigate.frame.json", "rpcTreeNavigateFrame"],
+    ["rpc.tree-navigate-result.frame.json", "rpcTreeNavigateResultFrame"],
     ["rpc.ready.frame.json", "rpcAttachReadyFrame"],
     ["rpc.event.frame.json", "rpcEventFrame"],
     ["rpc.replay-gap.frame.json", "rpcReplayGapFrame"],
@@ -136,6 +138,7 @@ test("Pi RPC compatibility inventory is exact and includes settled-era commands"
   assert.deepEqual(schema.$defs.piRpcCommand.properties.type.enum, [...PI_RPC_COMMAND_TYPES]);
   assert.deepEqual(capabilities.data.rpc.host.commandTypes, [...PI_RPC_COMMAND_TYPES]);
   assert.equal(PI_RPC_COMMAND_TYPES.length, 31);
+  assert.equal(PI_RPC_COMMAND_TYPES.includes("navigate_tree"), false, "framed Dashboard navigation must not widen stock Pi RPC");
   for (const command of ["get_entries", "get_tree", "set_thinking_level", "get_commands"]) {
     assert.equal(PI_RPC_COMMAND_TYPES.includes(command), true);
   }

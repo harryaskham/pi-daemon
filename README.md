@@ -38,7 +38,9 @@ or Cacophony credentials.
 > inventory/workspace/settings, preview-first hydration, multiplexed Rich/TUI
 > streams, correlated commands, replay recovery, liveness, extension UI, inert
 > server-validated declarative extension views with scoped actions/TUI fallback,
-> and a polished lazy New Session flow that performs no Pi runtime/model/tool
+> a virtualized full branch-tree navigator with compare/edit/fork/clone and
+> capability-gated in-place summarize/navigation, and a polished lazy New
+> Session flow that performs no Pi runtime/model/tool
 > work until its exactly-once first message.
 > Full credential-free install/CRUD/RPC/ACP/restart/security acceptance is green;
 > the repository is a release candidate, but no release tag is cut yet.
@@ -212,6 +214,7 @@ so subsequent `pi-daemon update` runs do not require a full system rebuild; see
 - [`docs/session-api.md`](docs/session-api.md) — additive session CRUD, Pi RPC attach, and `/apc` ACP contract
 - [`docs/tool-adapter-protocol.md`](docs/tool-adapter-protocol.md) — protocol-v2 host/session-bound fixed filesystem capability
 - [`docs/dashboard-protocol.md`](docs/dashboard-protocol.md) — Dash browser/backend contract, limits, identity, and performance budgets
+- [`docs/dashboard-session-tree.md`](docs/dashboard-session-tree.md) — virtual branch navigation, active-leaf truth, compare/edit/fork/clone, and framed summarize/navigation
 - [`docs/transcript-projection.md`](docs/transcript-projection.md) — preview-only Pi JSONL active-branch projection, cache, paging, and bounds
 - [`docs/dashboard-ownership.md`](docs/dashboard-ownership.md) — direct/fork ownership, leases, conflict guards, export, and release
 - [`docs/dashboard-session-drafts.md`](docs/dashboard-session-drafts.md) — lazy no-runtime session drafts and first-send crash semantics

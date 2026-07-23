@@ -110,6 +110,7 @@ export class DashboardNeutralApiController implements DashboardNeutralApi {
         leases: true,
         ...(this.#schedulesAvailable ? { schedules: true } : {}),
         ...(this.#drafts === undefined ? {} : { sessionDrafts: true }),
+        treeNavigation: true,
       },
       presentations: {
         rich: { available: true },

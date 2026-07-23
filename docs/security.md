@@ -62,6 +62,7 @@ project code or tools.
 - lazy Dash session drafts use a separate owner-private atomic store; create/get/cancel perform no runtime/model/tool work, private first-message content never enters browser resources, and prompt-submitting crash/cancel races become indeterminate rather than replayed
 - shadow-TUI frames come from a bounded in-process cell grid; raw ANSI, OSC 52 clipboard access, image/device payloads, unsafe links, terminal queries, and unsupported controls never reach the browser
 - declarative extension views are validated and normalized before replay/browser delivery; only inert allowlisted nodes, opaque authorized-blob image references, exact view-scoped actions, and bounded string/boolean form responses are accepted—never extension JavaScript, HTML, CSS, callbacks, ambient links, or arbitrary fetches
+- full session-tree reads are count/depth/text bounded and observer-safe; fork/clone/navigate/summarize require the exact channel controller and generation, while the private in-place navigation result is correlated, non-replayed, capacity-limited, and scheduled with other model work
 - a TUI view shares one resident runtime, extension instance, and JSONL writer; a child Pi/PTY is not a supported rendering path
 
 Prompts and terminal results are necessarily retained in the private durable

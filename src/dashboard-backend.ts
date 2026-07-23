@@ -794,6 +794,18 @@ class InProcessRichHub {
       }
     }
     const run = async (): Promise<DashboardCommandResult> => {
+      if (command.operation === "navigate_tree") {
+        try {
+          const data = boundedJsonValue(await this.#controller.navigateTree(command.payload ?? {}));
+          return {
+            correlationId: command.correlationId,
+            state: "completed",
+            ...(data === undefined ? {} : { data }),
+          };
+        } catch {
+          return rejected(command.correlationId, "tree_navigation_failed", "session tree navigation was rejected");
+        }
+      }
       const response = await this.#controller.handle({
         ...(command.payload ?? {}),
         type: command.operation,
@@ -1198,6 +1210,7 @@ function defaultCapabilities(
     "abort_retry",
     "set_session_name",
     "get_tree",
+    "navigate_tree",
     "fork",
     "clone",
   ];
@@ -1219,6 +1232,7 @@ function defaultCapabilities(
       settings: true,
       schedules: schedulesAvailable,
       sessionDrafts: draftsAvailable,
+      treeNavigation: true,
     },
     presentations: {
       rich: { available: true, replay: true, controller: true, commands },

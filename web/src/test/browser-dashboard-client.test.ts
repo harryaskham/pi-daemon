@@ -36,7 +36,7 @@ const capabilities: DashboardCapabilities = {
   streamSubprotocol: DASH_STREAM_SUBPROTOCOL,
   sameBrowserProtocolAcrossDeployments: true,
   authentication: { browserSession: "http-only-cookie", csrf: "same-origin-header", daemonBearerExposed: false },
-  resources: { inventory: true, transcriptPreview: true, activation: true, export: true, workspaces: true, settings: true, schedules: false, sessionDrafts: true },
+  resources: { inventory: true, transcriptPreview: true, activation: true, export: true, workspaces: true, settings: true, schedules: false, sessionDrafts: true, treeNavigation: false },
   presentations: {
     rich: { available: true, replay: true, controller: true, commands: ["prompt"] },
     tui: { available: false, replay: true, controller: true, commands: [], unavailableReason: "test" },

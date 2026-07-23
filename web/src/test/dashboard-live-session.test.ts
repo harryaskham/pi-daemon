@@ -129,6 +129,37 @@ describe("Dashboard live session controller", () => {
     await controller.stop();
   });
 
+  it("loads bounded branch truth, compares paths, and prefills edit-resubmit only after a successful fork", async () => {
+    const backend = new LiveFixtureDashboardBackend();
+    const session = backend.sessions[0]!;
+    const controller = new DashboardLiveSessionController(backend, session.inventoryId);
+    await controller.start();
+    await controller.loadTree();
+    expect(controller.state.treePhase).toBe("ready");
+    expect(controller.state.tree?.entries).toHaveLength(5);
+    expect(controller.state.tree?.activePathIds).toEqual(["tree-root", "tree-active", "tree-active-leaf"]);
+    controller.selectTreeEntry("tree-left");
+    controller.compareTreeEntry("tree-active-leaf");
+    expect(controller.state.treeSelectedEntryId).toBe("tree-left");
+    expect(controller.state.treeCompareEntryId).toBe("tree-active-leaf");
+    const navigated = await controller.navigateTreeEntry("tree-left", {
+      summarize: true,
+      customInstructions: "Summarize the abandoned experiment",
+      label: "experiment-summary",
+    });
+    expect(navigated).toMatchObject({ state: "completed", data: { summaryEntryId: "tree-summary-new" } });
+    expect(controller.state.treeEditorText).toBe("Try the abandoned approach");
+    controller.clearTreeEditorText();
+    const result = await controller.forkTreeEntry("tree-left", true);
+    expect(result.state).toBe("completed");
+    expect(controller.state.treeEditorText).toBe("Try the abandoned approach");
+    expect(controller.state.treePhase).toBe("ready");
+    controller.clearTreeEditorText();
+    expect(controller.state.treeEditorText).toBeUndefined();
+    expect((await controller.cloneTree()).state).toBe("completed");
+    await controller.stop();
+  });
+
   it("coalesces controller authority across panes and never replays control", async () => {
     const backend = new LiveFixtureDashboardBackend();
     const session = backend.sessions[0]!;

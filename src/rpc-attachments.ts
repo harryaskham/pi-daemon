@@ -25,6 +25,8 @@ import {
   type RpcAttachReadyFrame,
   type RpcEventFrame,
   type RpcReplayGapFrame,
+  type RpcTreeNavigateFrame,
+  type RpcTreeNavigateResultFrame,
   type SessionRpcSubprotocol,
 } from "./session-api.js";
 import { catalogRecordToSessionResource } from "./session-catalog.js";
@@ -470,7 +472,13 @@ class RpcAttachmentHub {
       return;
     }
     if (connection.inFlight >= this.#limits.maxInFlightCommandsPerConnection) {
-      this.#sendResponse(connection, overloadedResponse(value));
+      if (connection.protocol === "pi-daemon-rpc.v1" && isTreeNavigateFrame(value)) {
+        this.#sendTreeNavigateResult(connection, {
+          kind: "tree_navigate_result",
+          correlationId: value.correlationId,
+          error: { code: "rpc_in_flight_capacity", message: "RPC in-flight capacity is exhausted", retryable: true },
+        });
+      } else this.#sendResponse(connection, overloadedResponse(value));
       return;
     }
     if (connection.protocol === "pi-daemon-rpc.v1" && isControlFrame(value)) {
@@ -479,6 +487,10 @@ class RpcAttachmentHub {
     }
     if (connection.protocol === "pi-daemon-rpc.v1" && isExtensionUiResponseFrame(value)) {
       this.#handleExtensionUiResponse(connection, value.response);
+      return;
+    }
+    if (connection.protocol === "pi-daemon-rpc.v1" && isTreeNavigateFrame(value)) {
+      this.#handleTreeNavigate(connection, value);
       return;
     }
     const command =
@@ -508,6 +520,36 @@ class RpcAttachmentHub {
       .finally(() => {
         connection.inFlight -= 1;
       });
+  }
+
+  #handleTreeNavigate(connection: RpcConnection, frame: RpcTreeNavigateFrame): void {
+    if (connection.role !== "controller") {
+      this.#sendTreeNavigateResult(connection, {
+        kind: "tree_navigate_result",
+        correlationId: frame.correlationId,
+        error: { code: "controller_required", message: "controller role is required", retryable: true },
+      });
+      return;
+    }
+    connection.inFlight += 1;
+    void this.#controller.navigateTree(frame.request)
+      .then((result) => this.#sendTreeNavigateResult(connection, {
+        kind: "tree_navigate_result",
+        correlationId: frame.correlationId,
+        result,
+      }))
+      .catch(() => this.#sendTreeNavigateResult(connection, {
+        kind: "tree_navigate_result",
+        correlationId: frame.correlationId,
+        error: { code: "tree_navigation_failed", message: "session tree navigation was rejected", retryable: false },
+      }))
+      .finally(() => {
+        connection.inFlight -= 1;
+      });
+  }
+
+  #sendTreeNavigateResult(connection: RpcConnection, frame: RpcTreeNavigateResultFrame): void {
+    this.#send(connection, frame);
   }
 
   #handleControl(connection: RpcConnection, action: string): void {
@@ -697,6 +739,16 @@ function isExtensionUiResponseFrame(
   value: unknown,
 ): value is { kind: "extension_ui_response"; response: RpcExtensionUIResponse } {
   return isRecord(value) && value.kind === "extension_ui_response" && isExtensionUiResponse(value.response);
+}
+
+function isTreeNavigateFrame(value: unknown): value is RpcTreeNavigateFrame {
+  return (
+    isRecord(value) &&
+    value.kind === "tree_navigate" &&
+    typeof value.correlationId === "string" &&
+    /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/u.test(value.correlationId) &&
+    isRecord(value.request)
+  );
 }
 
 function isControlFrame(value: unknown): value is { kind: "control"; action: string } {

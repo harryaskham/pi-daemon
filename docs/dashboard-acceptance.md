@@ -79,6 +79,25 @@ managed checkout prefix; adapter socket acceptance therefore uses canonical
 fixture roots and the explicit `/tmp` test environment. Product socket path,
 owner, mode and symlink checks remain strict and were not weakened.
 
+## Post-v1 session-tree receipt
+
+The `bd-4b2415` follow-on adds the full branch navigator without changing the
+active-branch transcript contract. The checked-in visual receipt is
+[`../web/artifacts/nord-midnight-session-tree.png`](../web/artifacts/nord-midnight-session-tree.png):
+it shows the exact active path/leaf beside a selected abandoned branch,
+controller-gated fork/edit/navigate/summarize/clone actions, and side-by-side
+divergence from their common ancestor.
+
+The refreshed machine receipt records an 801–803 ms cold lazy-chunk + command +
+paint path for the representative tree and a 902 ms cold 10,000-entry tree path.
+Only 30 tree rows existed in the DOM for the 10,000-entry fixture. Pure bounded
+10,000-node validation/projection has a 250 ms unit budget, animation-frame p95
+was 9.2 ms against the 16 ms frame-work contract, and stream/workspace commit
+work remained 1.3 ms. Current follow-on gates are Node 379/379, Web unit 74/74,
+and Playwright 18/18. Focused Playwright acceptance covers keyboard
+Home/End/Left/Right selection, active-leaf ARIA truth, filtering, branch compare,
+edit-resubmit prefill, summarize/navigation, and O(visible) DOM behavior.
+
 ## Security and failure-state evidence
 
 Acceptance covers exact Host/Origin/CSRF checks, CSP and immutable hash assets,

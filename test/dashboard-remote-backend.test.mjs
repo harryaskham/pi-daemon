@@ -74,6 +74,7 @@ class FakeRemoteService {
   rpcEventDuringReady = undefined;
   rpcCommandCounts = new Map();
   rpcControlActions = [];
+  rpcTreeNavigations = [];
   rpcSequence = 0;
   heldTuiActions = false;
   tuiActionCounts = new Map();
@@ -278,6 +279,19 @@ class FakeRemoteService {
   }
 
   receiveRpc(socket, frame) {
+    if (frame.kind === "tree_navigate") {
+      this.rpcTreeNavigations.push(frame);
+      socket.frame({
+        kind: "tree_navigate_result",
+        correlationId: frame.correlationId,
+        result: {
+          cancelled: false,
+          editorText: "fixture branch text",
+          ...(frame.request.summarize === true ? { summaryEntryId: "summary-fixture" } : {}),
+        },
+      });
+      return;
+    }
     if (frame.kind === "command") {
       const type = frame.command.type;
       this.rpcCommandCounts.set(type, (this.rpcCommandCounts.get(type) ?? 0) + 1);
@@ -474,11 +488,15 @@ test("shared schedule conformance passes for the remote backend with server-side
   backend.dispose();
 });
 
-test("older remote daemons expose typed schedule capability absence", async () => {
+test("older remote daemons expose typed schedule and tree-navigation capability absence", async () => {
   const service = new FakeRemoteService();
   delete service.serviceCapabilities.resources.schedules;
+  delete service.serviceCapabilities.resources.treeNavigation;
   const backend = new RemoteDashboardBackend({ client: service });
-  assert.equal((await backend.capabilities()).resources.schedules, false);
+  const capabilities = await backend.capabilities();
+  assert.equal(capabilities.resources.schedules, false);
+  assert.equal(capabilities.resources.treeNavigation, false);
+  assert.equal(capabilities.presentations.rich.commands.includes("navigate_tree"), false);
   await assert.rejects(backend.listSchedules(), (error) => error instanceof RemoteDashboardBackendError && error.code === "schedules_unavailable");
   backend.dispose();
 });
@@ -666,6 +684,20 @@ test("remote Rich panes coalesce one attachment, enforce roles, correlate comman
     assert.equal(result.state, "completed", operation);
     assert.equal(service.rpcCommandCounts.get(operation), 1, operation);
   }
+  const navigation = await controller.command({
+    correlationId: "navigate-tree",
+    identity: controller.identity,
+    operation: "navigate_tree",
+    payload: { entryId: "entry-user-01", summarize: true, label: "abandoned" },
+  });
+  assert.deepEqual(navigation, {
+    correlationId: "navigate-tree",
+    state: "completed",
+    data: { cancelled: false, editorText: "fixture branch text", summaryEntryId: "summary-fixture" },
+  });
+  assert.equal(service.rpcTreeNavigations.length, 1);
+  assert.equal(service.rpcTreeNavigations[0].request.entryId, "entry-user-01");
+
   const command = {
     correlationId: "controller-prompt",
     idempotencyKey: "prompt-once",

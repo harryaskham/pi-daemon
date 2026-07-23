@@ -310,7 +310,9 @@ Frames are:
 - `event` — broadcast event plus monotonic sequence and opaque cursor;
 - `attach_ready` — host/session identity and atomic state snapshot;
 - `replay_gap` — requested history is no longer available; and
-- `control` — controller lease coordination.
+- `control` — controller lease coordination;
+- `tree_navigate` — controller-only Pi Daemon framed in-place branch request; and
+- `tree_navigate_result` — private non-replayed result or typed error.
 
 The full v1 command inventory matches Pi 0.80.6:
 
@@ -327,7 +329,11 @@ get_entries get_tree get_last_assistant_text set_session_name
 ```
 
 Protocol additions from a later Pi SDK require a fixture, compatibility test,
-and additive capability advertisement before the daemon accepts them.
+and additive capability advertisement before the daemon accepts them. The
+`tree_navigate` frame is deliberately not a stock command: it exists only on
+`pi-daemon-rpc.v1`, requires `resources.treeNavigation`, stays bound to the
+attachment generation/controller, and invokes public `AgentSession.navigateTree()`
+through the daemon-wide turn scheduler. See [Dash session-tree navigation](dashboard-session-tree).
 
 ### Multi-reader response routing
 

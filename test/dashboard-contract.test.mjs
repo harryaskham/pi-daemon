@@ -194,6 +194,8 @@ test("capability negotiation publishes both peer renderers, all bounds, and budg
   assert.equal(capabilities.extensionViews.version, "1.0");
   assert.deepEqual(capabilities.extensionViews.renderers, { rich: "native", tui: "fallback", rpc: "transport" });
   assert.equal(capabilities.extensionViews.browserCodeExecution, false);
+  assert.equal(capabilities.resources.treeNavigation, true);
+  assert.equal(capabilities.presentations.rich.commands.includes("navigate_tree"), true);
   assert.deepEqual(capabilities.limits, DASH_DEFAULT_LIMITS);
   assert.deepEqual(capabilities.performanceBudgets, DASH_PERFORMANCE_BUDGETS);
   assert.equal(

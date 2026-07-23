@@ -18,6 +18,7 @@ const TOKEN = "fixture-service-bearer-0123456789";
 class FakeController {
   listeners = new Set();
   uiResponses = [];
+  treeNavigations = [];
   cancelledUi = 0;
   calls = [];
 
@@ -56,6 +57,15 @@ class FakeController {
       success: true,
       ...(command.id === undefined ? {} : { id: command.id }),
       data: { source: command.source ?? null },
+    };
+  }
+
+  async navigateTree(request) {
+    this.treeNavigations.push(request);
+    return {
+      cancelled: false,
+      editorText: "edit this branch",
+      ...(request.summarize === true ? { summaryEntryId: "summary-1" } : {}),
     };
   }
 
@@ -565,6 +575,28 @@ test("controller ownership and extension UI use explicit first-controller semant
 
   const observer = await connectWebSocket(harness.address, { role: "observer" });
   await ready(observer);
+  observer.websocket.send({
+    kind: "tree_navigate",
+    correlationId: "tree-observer",
+    request: { entryId: "entry-1" },
+  });
+  assert.deepEqual(await observer.websocket.next(), {
+    kind: "tree_navigate_result",
+    correlationId: "tree-observer",
+    error: { code: "controller_required", message: "controller role is required", retryable: true },
+  });
+  second.websocket.send({
+    kind: "tree_navigate",
+    correlationId: "tree-controller",
+    request: { entryId: "entry-1", summarize: true, label: "abandoned" },
+  });
+  assert.deepEqual(await second.websocket.next(), {
+    kind: "tree_navigate_result",
+    correlationId: "tree-controller",
+    result: { cancelled: false, editorText: "edit this branch", summaryEntryId: "summary-1" },
+  });
+  assert.deepEqual(harness.controller.treeNavigations, [{ entryId: "entry-1", summarize: true, label: "abandoned" }]);
+
   harness.controller.emit({
     type: "extension_ui_request",
     id: "ui-1",

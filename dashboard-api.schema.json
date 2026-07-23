@@ -219,6 +219,10 @@
         "maxSearchQueryChars",
         "maxTranscriptPageRecords",
         "maxTranscriptRecordBytes",
+        "maxTreeNodes",
+        "maxTreeDepth",
+        "maxTreeTextBytes",
+        "maxTreeSnippetBytes",
         "maxProjectionSourceBytes",
         "maxProjectionLineBytes",
         "maxProjectionEntries",
@@ -316,6 +320,24 @@
           "maximum": 1000
         },
         "maxTranscriptRecordBytes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "maxTreeNodes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100000
+        },
+        "maxTreeDepth": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1024
+        },
+        "maxTreeTextBytes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "maxTreeSnippetBytes": {
           "type": "integer",
           "minimum": 1
         },
@@ -471,6 +493,7 @@
         "abort_retry",
         "set_session_name",
         "get_tree",
+        "navigate_tree",
         "fork",
         "clone"
       ]
@@ -561,7 +584,8 @@
             "workspaces",
             "settings",
             "schedules",
-            "sessionDrafts"
+            "sessionDrafts",
+            "treeNavigation"
           ],
           "properties": {
             "inventory": {
@@ -586,6 +610,9 @@
               "type": "boolean"
             },
             "sessionDrafts": {
+              "type": "boolean"
+            },
+            "treeNavigation": {
               "type": "boolean"
             }
           },
@@ -668,6 +695,9 @@
               "const": true
             },
             "sessionDrafts": {
+              "const": true
+            },
+            "treeNavigation": {
               "const": true
             }
           },

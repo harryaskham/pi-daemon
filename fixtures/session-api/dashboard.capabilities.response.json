@@ -12,7 +12,8 @@
       "activation": true,
       "ownership": true,
       "export": true,
-      "leases": true
+      "leases": true,
+      "treeNavigation": true
     },
     "presentations": {
       "rich": {
@@ -63,6 +64,10 @@
       "maxSearchQueryChars": 1024,
       "maxTranscriptPageRecords": 200,
       "maxTranscriptRecordBytes": 524288,
+      "maxTreeNodes": 10000,
+      "maxTreeDepth": 256,
+      "maxTreeTextBytes": 2097152,
+      "maxTreeSnippetBytes": 512,
       "maxProjectionSourceBytes": 268435456,
       "maxProjectionLineBytes": 1048576,
       "maxProjectionEntries": 100000,

@@ -250,6 +250,14 @@ replace the optimistic/live record rather than append a duplicate. Replay is
 idempotent. A transcript page names its active leaf and never flattens sibling
 branches into one false conversation.
 
+The optional branch navigator requests stock `get_tree`, validates a bounded
+10,000-node/depth-256 model, virtualizes rows, and keeps active-path and
+active-leaf truth separate from selection. Observers may filter, preview, and
+compare divergent paths. Controller-only fork/edit-resubmit/clone use stock Pi
+commands. Capability-gated in-place navigate/summarize uses a private,
+non-replayed `tree_navigate` result on `pi-daemon-rpc.v1`; raw `pi-rpc.v1`
+remains the exact upstream union. See [Dash session-tree navigation](dashboard-session-tree).
+
 Content blocks are bounded text/markdown/thinking/error, authorized image blob
 references, or numeric usage. Raw base64 images and executable renderers are not
 part of this contract. Unknown custom records remain visible through a bounded
@@ -373,6 +381,7 @@ and single-record limits.
 | image preview / authorized blob response | 256 KiB / 8 MiB |
 | extension view bytes / nodes / depth / text | 256 KiB / 256 / 16 / 128 KiB |
 | extension actions / fields / options / images | 32 / 32 / 128 / 16 |
+| browser tree nodes / depth / projected text | 10,000 / 256 / 2 MiB |
 | replay events / one event / bytes / retention | 512 / 512 KiB / 2 MiB / 5 min |
 | workspaces / one workspace / panes / depth / pinned sessions | 64 / 1 MiB / 32 / 16 / 8 |
 | TUI rows / columns / changed rows / delta | 200 / 320 / 200 / 512 KiB |

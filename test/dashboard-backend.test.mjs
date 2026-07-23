@@ -31,6 +31,7 @@ class FakeRpcController {
   listeners = new Set();
   handles = [];
   responses = [];
+  navigations = [];
   cancelPendingCalls = 0;
 
   snapshot() {
@@ -55,6 +56,15 @@ class FakeRpcController {
       return { id: command.id, type: "response", command: "get_entries", success: true, data: { entries: [], leafId: this.snapshot().leafId } };
     }
     return { id: command.id, type: "response", command: command.type, success: true };
+  }
+
+  async navigateTree(request) {
+    this.navigations.push(request);
+    return {
+      cancelled: false,
+      editorText: "fixture branch text",
+      ...(request.summarize === true ? { summaryEntryId: "summary-fixture" } : {}),
+    };
   }
 
   respondToExtensionUi(response) {
@@ -360,6 +370,19 @@ test("rich channels coalesce controller events, enforce roles, replay and durabl
   assert.equal(read.state, "completed");
   assert.equal(factory.controller.handles.at(-1).type, "get_state");
   assert.equal(factory.controller.handles.at(-1).id, "state-observer");
+
+  const navigated = await controller.command({
+    correlationId: "tree-navigate-controller",
+    identity: controller.identity,
+    operation: "navigate_tree",
+    payload: { entryId: "entry-user-01", summarize: true, label: "abandoned" },
+  });
+  assert.deepEqual(navigated, {
+    correlationId: "tree-navigate-controller",
+    state: "completed",
+    data: { cancelled: false, editorText: "fixture branch text", summaryEntryId: "summary-fixture" },
+  });
+  assert.deepEqual(factory.controller.navigations, [{ entryId: "entry-user-01", summarize: true, label: "abandoned" }]);
 
   const command = {
     correlationId: "prompt-controller",

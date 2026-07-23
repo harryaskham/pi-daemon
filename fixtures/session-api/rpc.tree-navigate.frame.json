@@ -1,0 +1,10 @@
+{
+  "kind": "tree_navigate",
+  "correlationId": "tree-navigation-01",
+  "request": {
+    "entryId": "entry-user-01",
+    "summarize": true,
+    "customInstructions": "Summarize the abandoned branch before navigating.",
+    "label": "abandoned-review"
+  }
+}

@@ -1377,7 +1377,11 @@ These lanes intentionally begin in parallel:
   strict server validator/schema/fixtures, host provenance, view-scoped correlated
   actions/forms, native Rich renderer, mandatory TUI fallback, and upstream Pi
   `renderView` proposal; browser extension code and ambient links remain forbidden.
-- [ ] `bd-4b2415` — full browser tree navigation/fork/clone experience.
+- [x] `bd-4b2415` — bounded 10k-node virtual session-tree navigator with exact
+  active-path/leaf truth, label/type/search filters, keyboard/a11y, branch
+  preview and side-by-side divergence, edit-resubmit/fork/clone, negotiated
+  controller-only in-place navigate/summarize frames, TUI handoff, and
+  embedded/remote compatibility acceptance.
 - [ ] `bd-b31a5d` — multi-user identity and per-session authorization epic.
 - [ ] `bd-e89a17` — optional native TLS and hardened remote browser deployment.
 

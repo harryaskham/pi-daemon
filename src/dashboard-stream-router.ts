@@ -27,7 +27,7 @@ const COMMANDS = new Set<DashboardCommandOperation>([
   "get_available_models", "prompt", "steer", "follow_up", "abort",
   "set_model", "set_thinking_level", "set_steering_mode", "set_follow_up_mode",
   "compact", "set_auto_compaction", "set_auto_retry", "abort_retry",
-  "set_session_name", "get_tree", "fork", "clone",
+  "set_session_name", "get_tree", "navigate_tree", "fork", "clone",
 ]);
 
 export interface DashboardStreamRouterOptions {

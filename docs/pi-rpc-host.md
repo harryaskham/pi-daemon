@@ -32,6 +32,10 @@ checks prevent an SDK upgrade from silently adding or removing commands/events.
   persisted before the command response returns.
 - import remains a supported runtime operation even though Pi 0.80.6 does not
   define an `import` member in its stock 31-command RPC union.
+- in-place branch navigation remains outside that stock union: the controller
+  exposes a bounded direct `navigateTree` method only to the authenticated
+  `pi-daemon-rpc.v1` tree-navigation frame used by Dash; summary generation
+  still passes through the daemon-wide turn scheduler.
 
 Commands are structurally validated before dispatch. Request IDs, strings,
 images, enum values, and the pending extension-UI map are bounded. One output

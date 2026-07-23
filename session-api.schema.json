@@ -871,6 +871,52 @@
       },
       "additionalProperties": false
     },
+    "rpcTreeNavigateFrame": {
+      "type": "object",
+      "required": ["kind", "correlationId", "request"],
+      "properties": {
+        "kind": { "const": "tree_navigate" },
+        "correlationId": { "$ref": "#/$defs/identifier" },
+        "request": {
+          "type": "object",
+          "required": ["entryId"],
+          "properties": {
+            "entryId": { "$ref": "#/$defs/identifier" },
+            "summarize": { "type": "boolean" },
+            "customInstructions": { "type": "string", "minLength": 1, "maxLength": 65536 },
+            "replaceInstructions": { "type": "boolean" },
+            "label": { "type": "string", "minLength": 1, "maxLength": 512 }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "rpcTreeNavigateResultFrame": {
+      "type": "object",
+      "required": ["kind", "correlationId"],
+      "properties": {
+        "kind": { "const": "tree_navigate_result" },
+        "correlationId": { "$ref": "#/$defs/identifier" },
+        "result": {
+          "type": "object",
+          "required": ["cancelled"],
+          "properties": {
+            "cancelled": { "type": "boolean" },
+            "aborted": { "type": "boolean" },
+            "editorText": { "type": "string", "maxLength": 262144 },
+            "summaryEntryId": { "$ref": "#/$defs/identifier" }
+          },
+          "additionalProperties": false
+        },
+        "error": { "$ref": "#/$defs/apiError" }
+      },
+      "oneOf": [
+        { "required": ["result"], "properties": { "result": {}, "error": false } },
+        { "required": ["error"], "properties": { "result": false, "error": {} } }
+      ],
+      "additionalProperties": false
+    },
     "sessionRpcFrame": {
       "oneOf": [
         { "$ref": "#/$defs/rpcCommandFrame" },
@@ -879,7 +925,9 @@
         { "$ref": "#/$defs/rpcEventFrame" },
         { "$ref": "#/$defs/rpcAttachReadyFrame" },
         { "$ref": "#/$defs/rpcReplayGapFrame" },
-        { "$ref": "#/$defs/rpcControlFrame" }
+        { "$ref": "#/$defs/rpcControlFrame" },
+        { "$ref": "#/$defs/rpcTreeNavigateFrame" },
+        { "$ref": "#/$defs/rpcTreeNavigateResultFrame" }
       ]
     },
     "jsonRpcMessage": {

@@ -1,0 +1,9 @@
+{
+  "kind": "tree_navigate_result",
+  "correlationId": "tree-navigation-01",
+  "result": {
+    "cancelled": false,
+    "editorText": "Revise this message before resubmitting.",
+    "summaryEntryId": "entry-summary-01"
+  }
+}

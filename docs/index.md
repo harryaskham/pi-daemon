@@ -26,6 +26,7 @@ remain neutral service surfaces—not Cacophony components.
 - [Session API](session-api) — additive CRUD, multi-reader Pi RPC attach, and `/apc` ACP contract
 - [Dash browser/backend protocol](dashboard-protocol) — preview-first resources, normalized transcripts, multiplexed Rich/TUI channels, replay, limits, and performance budgets
 - [Dash transcript projection](transcript-projection) — bounded no-hydration JSONL branch rendering, cache, paging, and fingerprints
+- [Dash session-tree navigation](dashboard-session-tree) — virtual branch graph, active-leaf truth, compare/edit/fork/clone/navigate/summarize semantics, and framed compatibility
 - [Dash session inventory](dashboard-inventory) — owner-safe persisted 10k-session index, keyed search, opaque paging, and measured bootstrap
 - [Dash shadow TUI](shadow-tui) — bounded in-process virtual terminal, control stripping, performance proof, and the minimal Pi view seam
 - [Declarative extension views](declarative-extension-views) — versioned code-free Rich views, server validation, action correlation, TUI fallback, and upstream Pi seam

@@ -28,6 +28,12 @@ import {
   transcriptStoreReducer,
   type TranscriptStoreState,
 } from "./transcript-store";
+import {
+  parseSessionTree,
+  type SessionTreeModel,
+} from "./session-tree";
+
+export type LiveSessionTreePhase = "idle" | "loading" | "ready" | "stale" | "mutating" | "error";
 
 export type LiveSessionPhase =
   | "preview-loading"
@@ -86,6 +92,12 @@ export interface DashboardLiveSessionState {
   extensionWidgets: Record<string, LiveExtensionWidget>;
   extensionTitle?: string;
   extensionEditorText?: string;
+  tree?: SessionTreeModel;
+  treePhase: LiveSessionTreePhase;
+  treeSelectedEntryId?: string;
+  treeCompareEntryId?: string;
+  treeEditorText?: string;
+  treeError?: { code: string; message: string; retryable: boolean };
   unread: boolean;
   error?: { code: string; message: string; retryable: boolean };
 }
@@ -101,10 +113,19 @@ export interface DashboardLiveSessionOptions {
 type Listener = (state: DashboardLiveSessionState) => void;
 type StatePatch = Omit<
   Partial<DashboardLiveSessionState>,
-  "error" | "selectedActivationMode"
+  | "error"
+  | "selectedActivationMode"
+  | "treeSelectedEntryId"
+  | "treeCompareEntryId"
+  | "treeEditorText"
+  | "treeError"
 > & {
   error?: DashboardLiveSessionState["error"] | undefined;
   selectedActivationMode?: ActivationMode | undefined;
+  treeSelectedEntryId?: string | undefined;
+  treeCompareEntryId?: string | undefined;
+  treeEditorText?: string | undefined;
+  treeError?: DashboardLiveSessionState["treeError"] | undefined;
 };
 
 export class DashboardLiveSessionController {
@@ -150,6 +171,7 @@ export class DashboardLiveSessionController {
       extensionNotifications: [],
       extensionStatuses: {},
       extensionWidgets: {},
+      treePhase: "idle",
       unread: false,
     };
   }
@@ -478,6 +500,146 @@ export class DashboardLiveSessionController {
     });
   }
 
+  async loadTree(): Promise<void> {
+    const channel = this.#channel;
+    if (channel === undefined) {
+      this.#patch({ treePhase: "error", treeError: { code: "channel_unavailable", message: "Live channel is unavailable", retryable: true } });
+      return;
+    }
+    const identity = channel.identity;
+    this.#patch({ treePhase: "loading", treeError: undefined });
+    try {
+      const result = await channel.command({
+        correlationId: `tree-load-${++this.#commandSequence}`,
+        identity,
+        operation: "get_tree",
+      });
+      if (channel !== this.#channel || !sameSessionIdentity(identity, channel.identity)) return;
+      if (result.state !== "completed" || !isJsonObject(result.data)) {
+        this.#patch({
+          treePhase: "error",
+          treeError: result.error ?? { code: "tree_load_failed", message: "Session tree could not be loaded", retryable: true },
+        });
+        return;
+      }
+      const tree = parseSessionTree(result.data);
+      const selected = this.#state.treeSelectedEntryId;
+      const compared = this.#state.treeCompareEntryId;
+      const nextSelected = selected !== undefined && tree.byId.has(selected)
+        ? selected
+        : tree.leafId ?? tree.rootIds[0];
+      this.#patch({
+        tree,
+        treePhase: "ready",
+        treeSelectedEntryId: nextSelected,
+        treeCompareEntryId: compared !== undefined && tree.byId.has(compared) && compared !== nextSelected
+          ? compared
+          : undefined,
+        treeError: undefined,
+      });
+    } catch (error) {
+      if (channel !== this.#channel) return;
+      this.#patch({
+        treePhase: "error",
+        treeError: {
+          code: "tree_invalid",
+          message: error instanceof Error ? error.message : "Session tree is invalid",
+          retryable: true,
+        },
+      });
+    }
+  }
+
+  selectTreeEntry(entryId: string): void {
+    if (this.#state.tree?.byId.has(entryId)) this.#patch({ treeSelectedEntryId: entryId });
+  }
+
+  compareTreeEntry(entryId: string | undefined): void {
+    if (entryId === undefined || this.#state.tree?.byId.has(entryId)) this.#patch({ treeCompareEntryId: entryId });
+  }
+
+  async forkTreeEntry(entryId: string, edit = false): Promise<DashboardCommandResult> {
+    if (!this.#state.tree?.byId.has(entryId)) {
+      return rejected(`tree-fork-${++this.#commandSequence}`, "tree_entry_not_found", "Tree entry does not exist", false);
+    }
+    this.#patch({ treePhase: "mutating", treeError: undefined });
+    const result = await this.command("fork", { entryId }, `tree-fork-${crypto.randomUUID()}`);
+    if (result.state === "completed") {
+      const data = isJsonObject(result.data) ? result.data : undefined;
+      const cancelled = data?.cancelled === true;
+      const text = typeof data?.text === "string" ? data.text : undefined;
+      if (!cancelled) {
+        this.#patch({
+          ...(edit && text !== undefined ? { treeEditorText: text } : {}),
+          treeCompareEntryId: undefined,
+        });
+        await this.loadTree();
+      } else this.#patch({ treePhase: "ready" });
+    } else {
+      this.#patch({
+        treePhase: "error",
+        treeError: result.error ?? { code: "tree_fork_failed", message: "Tree fork did not complete", retryable: true },
+      });
+    }
+    return result;
+  }
+
+  async navigateTreeEntry(
+    entryId: string,
+    options: { summarize?: boolean; customInstructions?: string; label?: string } = {},
+  ): Promise<DashboardCommandResult> {
+    if (!this.#state.tree?.byId.has(entryId)) {
+      return rejected(`tree-navigate-${++this.#commandSequence}`, "tree_entry_not_found", "Tree entry does not exist", false);
+    }
+    this.#patch({ treePhase: "mutating", treeError: undefined });
+    const result = await this.command("navigate_tree", {
+      entryId,
+      ...(options.summarize === undefined ? {} : { summarize: options.summarize }),
+      ...(options.customInstructions === undefined || options.customInstructions.trim().length === 0 ? {} : { customInstructions: options.customInstructions }),
+      ...(options.label === undefined || options.label.trim().length === 0 ? {} : { label: options.label }),
+    }, `tree-navigate-${crypto.randomUUID()}`);
+    if (result.state === "completed") {
+      const data = isJsonObject(result.data) ? result.data : undefined;
+      const cancelled = data?.cancelled === true;
+      const editorText = typeof data?.editorText === "string" ? data.editorText : undefined;
+      if (!cancelled) {
+        this.#patch({
+          ...(editorText === undefined ? {} : { treeEditorText: editorText }),
+          treeCompareEntryId: undefined,
+        });
+        await this.loadTree();
+      } else this.#patch({ treePhase: "ready" });
+    } else {
+      this.#patch({
+        treePhase: "error",
+        treeError: result.error ?? { code: "tree_navigation_failed", message: "Tree navigation did not complete", retryable: true },
+      });
+    }
+    return result;
+  }
+
+  async cloneTree(): Promise<DashboardCommandResult> {
+    this.#patch({ treePhase: "mutating", treeError: undefined });
+    const result = await this.command("clone", {}, `tree-clone-${crypto.randomUUID()}`);
+    if (result.state === "completed") {
+      const cancelled = isJsonObject(result.data) && result.data.cancelled === true;
+      if (!cancelled) {
+        this.#patch({ treeCompareEntryId: undefined });
+        await this.loadTree();
+      } else this.#patch({ treePhase: "ready" });
+    } else {
+      this.#patch({
+        treePhase: "error",
+        treeError: result.error ?? { code: "tree_clone_failed", message: "Tree clone did not complete", retryable: true },
+      });
+    }
+    return result;
+  }
+
+  clearTreeEditorText(): void {
+    this.#patch({ treeEditorText: undefined });
+  }
+
   markSeen(): void {
     const cursor = this.#state.transcript?.highWaterCursor;
     if (cursor !== undefined) this.options.onSeen(cursor);
@@ -686,6 +848,9 @@ export class DashboardLiveSessionController {
       });
     }
     const type = typeof event.type === "string" ? event.type : "";
+    if (this.#state.tree !== undefined && ["entry_appended", "session_forked", "session_switched"].includes(type)) {
+      this.#patch({ treePhase: "stale" });
+    }
     if (["agent_start", "message_update", "tool_execution_start", "tool_execution_update"].includes(type)) {
       this.#patch({ phase: "streaming" });
     } else if (["agent_end", "agent_settled", "tool_execution_end"].includes(type)) {
@@ -812,6 +977,10 @@ export class DashboardLiveSessionController {
 
 function isJsonObject(value: JsonValue | undefined): value is JsonObject {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function sameSessionIdentity(left: DashboardSessionIdentity, right: DashboardSessionIdentity): boolean {
+  return left.hostInstanceId === right.hostInstanceId && left.sessionId === right.sessionId && left.generation === right.generation;
 }
 
 function normalizedRecord(value: unknown): NormalizedTranscriptRecord | undefined {

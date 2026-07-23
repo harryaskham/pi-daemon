@@ -171,8 +171,22 @@ class FakeRpcSession {
     this.sessionName = name;
   }
   async waitForIdle() {}
-  async navigateTree() {
-    return { cancelled: false };
+  async navigateTree(targetId, options) {
+    this.calls.push(["navigate_tree", targetId, options]);
+    return {
+      cancelled: false,
+      editorText: targetId === "entry-1" ? "hello" : undefined,
+      ...(options?.summarize ? {
+        summaryEntry: {
+          type: "branch_summary",
+          id: "summary-entry",
+          parentId: targetId,
+          timestamp: "2026-07-22T12:00:00.000Z",
+          fromId: targetId,
+          summary: "bounded summary",
+        },
+      } : {}),
+    };
   }
   async reload() {}
 }
@@ -301,6 +315,22 @@ test("controller conforms to every pinned Pi RPC command without owning a proces
   );
   const commands = (await controller.handle({ type: "get_commands" })).data.commands;
   assert.deepEqual(commands.map((command) => command.source), ["extension", "prompt", "skill"]);
+  assert.deepEqual(await controller.navigateTree({
+    entryId: "entry-1",
+    summarize: true,
+    customInstructions: "Summarize abandoned work",
+    label: "abandoned",
+  }), {
+    cancelled: false,
+    editorText: "hello",
+    summaryEntryId: "summary-entry",
+  });
+  assert.deepEqual(host.session.calls.find(([kind]) => kind === "navigate_tree"), [
+    "navigate_tree",
+    "entry-1",
+    { summarize: true, customInstructions: "Summarize abandoned work", label: "abandoned" },
+  ]);
+  await assert.rejects(controller.navigateTree({ entryId: "x".repeat(300) }), /entryId/);
   controller.dispose();
 });
 

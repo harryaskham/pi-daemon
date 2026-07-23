@@ -18,6 +18,55 @@ test("renders a bounded Nord Midnight workspace from 10k fixtures", async ({ pag
   expect(transcriptRows).toBeLessThan(50);
 });
 
+test("virtual session tree preserves active-leaf truth, filters, compares, and prefills edit-resubmit", async ({ page }) => {
+  await page.goto("./?fixture=1&state=ready");
+  const pane = page.locator(".workspace-pane--selected");
+  await pane.getByRole("button", { name: "Open session branch tree" }).click();
+  const navigator = pane.getByRole("complementary", { name: "Session branch tree" });
+  await expect(navigator).toBeVisible();
+  const tree = navigator.getByRole("tree", { name: "Versioned conversation branches" });
+  await expect(tree).toBeVisible();
+  await expect(tree.getByRole("treeitem")).toHaveCount(5);
+  await expect(tree.locator('[role="treeitem"][aria-current="true"]')).toContainText("github-copilot/gpt-5.6");
+  await tree.focus();
+  await page.keyboard.press("Home");
+  await expect(tree.getByRole("treeitem", { selected: true })).toContainText("Start the implementation");
+  await page.keyboard.press("ArrowRight");
+  await expect(tree.getByRole("treeitem", { selected: true })).toContainText("experiment");
+
+  await navigator.getByPlaceholder("Filter label, type, or text").fill("experiment");
+  await expect(tree.getByRole("treeitem")).toHaveCount(3);
+  await tree.getByRole("treeitem", { name: /^experiment / }).click();
+  await navigator.getByRole("button", { name: "Compare with active" }).click();
+  await expect(navigator.getByRole("region", { name: "Side-by-side branch comparison" })).toContainText("tree-root");
+  await navigator.getByRole("button", { name: /Edit & resubmit/ }).click();
+  await navigator.getByRole("button", { name: "Close session tree" }).click();
+  await expect(pane.getByTestId("composer-editor")).toContainText("Try the abandoned approach");
+
+  await pane.getByRole("button", { name: "Open session branch tree" }).click();
+  await navigator.getByPlaceholder("Filter label, type, or text").fill("experiment");
+  await tree.getByRole("treeitem", { name: /^experiment / }).click();
+  await navigator.getByRole("button", { name: "Summarize & navigate" }).click();
+  await navigator.getByLabel("Summary label").fill("abandoned-review");
+  await navigator.getByLabel("Summary instructions").fill("Summarize the abandoned experiment");
+  await navigator.getByRole("button", { name: "Summarize abandoned branch" }).click();
+  await expect(navigator.locator(".session-tree__state")).toHaveCount(0);
+});
+
+test("10k branch tree remains virtualized without an O(total entries) DOM", async ({ page }) => {
+  await page.goto("./?fixture=1&state=ready&tree=large");
+  const pane = page.locator(".workspace-pane--selected");
+  const startedAt = performance.now();
+  await pane.getByRole("button", { name: "Open session branch tree" }).click();
+  const navigator = pane.getByRole("complementary", { name: "Session branch tree" });
+  await expect(navigator.getByRole("heading", { name: /10,000 entries/ })).toBeVisible();
+  const elapsed = performance.now() - startedAt;
+  expect(elapsed).toBeLessThan(3_000);
+  const rendered = await navigator.getByRole("treeitem").count();
+  expect(rendered).toBeGreaterThan(5);
+  expect(rendered).toBeLessThan(60);
+});
+
 test("search, deliberate states, settings, and directional swaps remain interactive", async ({ page }) => {
   await page.goto("./?fixture=1&state=ready");
   const search = page.getByTestId("session-search");

@@ -51,7 +51,7 @@ const COMMANDS: DashboardCommandOperation[] = [
   "get_state", "get_entries", "get_session_stats", "get_commands", "get_available_models",
   "prompt", "steer", "follow_up", "abort", "set_model", "set_thinking_level",
   "set_steering_mode", "set_follow_up_mode", "compact", "set_auto_compaction",
-  "set_auto_retry", "abort_retry", "set_session_name", "get_tree", "fork", "clone",
+  "set_auto_retry", "abort_retry", "set_session_name", "get_tree", "navigate_tree", "fork", "clone",
 ];
 const READ_ONLY = new Set<DashboardCommandOperation>([
   "get_state", "get_entries", "get_session_stats", "get_commands", "get_available_models", "get_tree",
@@ -79,7 +79,7 @@ export class LiveFixtureDashboardBackend extends LocalFixtureBackend implements 
       streamSubprotocol: DASH_STREAM_SUBPROTOCOL,
       sameBrowserProtocolAcrossDeployments: true,
       authentication: { browserSession: "http-only-cookie", csrf: "same-origin-header", daemonBearerExposed: false },
-      resources: { inventory: true, transcriptPreview: true, activation: true, export: true, workspaces: true, settings: true, schedules: false, sessionDrafts: true },
+      resources: { inventory: true, transcriptPreview: true, activation: true, export: true, workspaces: true, settings: true, schedules: false, sessionDrafts: true, treeNavigation: true },
       presentations: {
         rich: { available: true, replay: true, controller: true, commands: [...COMMANDS] },
         tui: { available: false, replay: true, controller: true, commands: [...COMMANDS], unavailableReason: "fixture-uses-local-tui-story" },
@@ -371,6 +371,20 @@ class FixtureRichHub {
     if (command.operation === "get_session_stats") return completed(command.correlationId, { contextPercent: this.session.contextPercent, messages: this.records.length });
     if (command.operation === "get_commands") return completed(command.correlationId, { commands: ["/model", "/thinking", "/compact", "/name", "/abort"] });
     if (command.operation === "get_available_models") return completed(command.correlationId, { models: ["gpt-5.6", "claude-opus-4.8", "gpt-5-mini"] });
+    if (command.operation === "get_tree") return completed(command.correlationId, fixtureSessionTree() as unknown as JsonValue);
+    if (command.operation === "navigate_tree") {
+      const entryId = typeof command.payload?.entryId === "string" ? command.payload.entryId : "";
+      return completed(command.correlationId, {
+        cancelled: false,
+        ...(entryId === "tree-left" ? { editorText: "Try the abandoned approach" } : {}),
+        ...(command.payload?.summarize === true ? { summaryEntryId: "tree-summary-new" } : {}),
+      });
+    }
+    if (command.operation === "fork") {
+      const entryId = typeof command.payload?.entryId === "string" ? command.payload.entryId : "";
+      return completed(command.correlationId, { text: entryId === "tree-left" ? "Try the abandoned approach" : "", cancelled: false });
+    }
+    if (command.operation === "clone") return completed(command.correlationId, { cancelled: false });
     if (command.operation === "prompt") {
       const text = typeof command.payload?.message === "string" ? command.payload.message : "Fixture prompt";
       this.#publish({ type: "agent_start" });
@@ -592,6 +606,54 @@ function replay(
     return [{ kind: "replay_gap", identity, reason: "cursor-expired", requestedCursor: cursor, highWaterCursor, ...(events[0] ? { oldestAvailableCursor: events[0].cursor } : {}), snapshotFollows: true }];
   }
   return events.filter((event) => event.sequence > sequence).map((event) => structuredClone(event.event));
+}
+
+function fixtureSessionTree(): JsonObject {
+  const at = (minute: number) => `2026-07-22T12:${String(minute).padStart(2, "0")}:00.000Z`;
+  const entry = (id: string, parentId: string | null, text: string, minute: number) => ({
+    type: "message",
+    id,
+    parentId,
+    timestamp: at(minute),
+    message: { role: "user", content: [{ type: "text", text }] },
+  });
+  if (typeof globalThis.location === "object" && new URLSearchParams(globalThis.location.search).get("tree") === "large") {
+    const children = Array.from({ length: 9_999 }, (_, index) => ({
+      entry: entry(`tree-large-${index}`, "tree-large-root", `Branch ${index}`, index % 60),
+      ...(index % 500 === 0 ? { label: `checkpoint-${index}`, labelTimestamp: at(index % 60) } : {}),
+      children: [],
+    }));
+    return {
+      leafId: "tree-large-9998",
+      tree: [{ entry: entry("tree-large-root", null, "Large tree root", 0), children }],
+    } as unknown as JsonObject;
+  }
+  return {
+    leafId: "tree-active-leaf",
+    tree: [{
+      entry: entry("tree-root", null, "Start the implementation", 0),
+      children: [
+        {
+          entry: entry("tree-left", "tree-root", "Try the abandoned approach", 1),
+          label: "experiment",
+          labelTimestamp: at(2),
+          children: [{
+            entry: { type: "branch_summary", id: "tree-left-summary", parentId: "tree-left", timestamp: at(3), fromId: "tree-left", summary: "The experimental branch was bounded but slower." },
+            children: [],
+          }],
+        },
+        {
+          entry: entry("tree-active", "tree-root", "Use the active approach", 4),
+          label: "active",
+          labelTimestamp: at(4),
+          children: [{
+            entry: { type: "model_change", id: "tree-active-leaf", parentId: "tree-active", timestamp: at(5), provider: "github-copilot", modelId: "gpt-5.6" },
+            children: [],
+          }],
+        },
+      ],
+    }],
+  } as unknown as JsonObject;
 }
 
 function resource(session: SessionFixture): SessionResource {

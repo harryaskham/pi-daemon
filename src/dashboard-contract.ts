@@ -97,6 +97,10 @@ export interface DashboardLimits {
   maxSearchQueryChars: number;
   maxTranscriptPageRecords: number;
   maxTranscriptRecordBytes: number;
+  maxTreeNodes: number;
+  maxTreeDepth: number;
+  maxTreeTextBytes: number;
+  maxTreeSnippetBytes: number;
   maxProjectionSourceBytes: number;
   maxProjectionLineBytes: number;
   maxProjectionEntries: number;
@@ -148,6 +152,10 @@ export const DASH_DEFAULT_LIMITS = {
   maxSearchQueryChars: 1_024,
   maxTranscriptPageRecords: 200,
   maxTranscriptRecordBytes: 524_288,
+  maxTreeNodes: 10_000,
+  maxTreeDepth: 256,
+  maxTreeTextBytes: 2_097_152,
+  maxTreeSnippetBytes: 512,
   maxProjectionSourceBytes: 268_435_456,
   maxProjectionLineBytes: 1_048_576,
   maxProjectionEntries: 100_000,
@@ -233,6 +241,7 @@ export type DashboardCommandOperation =
   | "abort_retry"
   | "set_session_name"
   | "get_tree"
+  | "navigate_tree"
   | "fork"
   | "clone";
 
@@ -258,6 +267,8 @@ export interface DashboardServiceCapabilities {
     schedules?: true;
     /** Absent on older compatible daemons. */
     sessionDrafts?: true;
+    /** Absent on older compatible daemons that lack framed in-place navigation. */
+    treeNavigation?: true;
   };
   presentations: {
     rich: { available: true };
@@ -302,6 +313,7 @@ export interface DashboardCapabilities {
     settings: true;
     schedules: boolean;
     sessionDrafts: boolean;
+    treeNavigation: boolean;
   };
   presentations: {
     rich: DashboardPresentationCapability;

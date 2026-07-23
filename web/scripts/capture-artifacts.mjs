@@ -86,6 +86,16 @@ const browserMetrics = await page.evaluate(() => ({
 }));
 await page.getByRole("button", { name: "ready" }).click();
 await page.screenshot({ path: new URL("nord-midnight-reference.png", artifactDir).pathname, fullPage: true });
+const treeStartedAt = performance.now();
+await page.locator('[data-pane-id="primary"]').getByRole("button", { name: "Open session branch tree" }).click();
+const treeNavigator = page.locator('[data-pane-id="primary"]').getByRole("complementary", { name: "Session branch tree" });
+await treeNavigator.getByRole("treeitem").first().waitFor();
+const treeLoadMs = performance.now() - treeStartedAt;
+const visibleTreeRows = await treeNavigator.getByRole("treeitem").count();
+await treeNavigator.getByRole("treeitem", { name: /^experiment / }).click();
+await treeNavigator.getByRole("button", { name: "Compare with active" }).click();
+await page.screenshot({ path: new URL("nord-midnight-session-tree.png", artifactDir).pathname, fullPage: true });
+await treeNavigator.getByRole("button", { name: "Close session tree" }).click();
 await page.getByText("Browse by state and source").click();
 await page.getByRole("button", { name: /Open information for/ }).first().focus();
 await page.getByRole("tooltip").waitFor();
@@ -104,6 +114,15 @@ await page.locator('[data-pane-id="primary"]').getByRole("button", { name: "Swit
 await page.locator('[data-pane-id="primary"] .tui-grid__row').first().waitFor();
 await page.waitForTimeout(120);
 await page.screenshot({ path: new URL("nord-midnight-tui-grid.png", artifactDir).pathname, fullPage: true });
+const largeTreePage = await browser.newPage({ viewport: { width: 1440, height: 960 }, colorScheme: "dark" });
+await largeTreePage.goto(`${url}?fixture=1&state=ready&tree=large`, { waitUntil: "networkidle" });
+const largeTreeStartedAt = performance.now();
+await largeTreePage.locator('[data-pane-id="primary"]').getByRole("button", { name: "Open session branch tree" }).click();
+const largeTreeNavigator = largeTreePage.locator('[data-pane-id="primary"]').getByRole("complementary", { name: "Session branch tree" });
+await largeTreeNavigator.getByRole("heading", { name: /10,000 entries/ }).waitFor();
+const largeTreeLoadMs = performance.now() - largeTreeStartedAt;
+const largeTreeVisibleRows = await largeTreeNavigator.getByRole("treeitem").count();
+await largeTreePage.close();
 await browser.close();
 await new Promise((resolveClose, reject) => {
   if (!staticServer) return resolveClose();
@@ -133,6 +152,10 @@ const report = {
     },
     harnessSearchMs: Number(harnessSearchMs.toFixed(2)),
     appSearchMs: browserMetrics.app?.lastSearchMs,
+    treeLoadMs: Number(treeLoadMs.toFixed(2)),
+    visibleTreeRows,
+    largeTreeLoadMs: Number(largeTreeLoadMs.toFixed(2)),
+    largeTreeVisibleRows,
     animationFrameCadenceP95Ms: Number(frameP95.toFixed(2)),
     animationFrameCadenceMaxMs: Number(Math.max(...frameIntervals).toFixed(2)),
     streamFrameWorkMaxMs: browserMetrics.app?.maxFrameWorkMs,

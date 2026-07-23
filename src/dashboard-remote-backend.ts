@@ -74,6 +74,7 @@ import type {
   RpcControlFrame,
   RpcEventFrame,
   RpcReplayGapFrame,
+  RpcTreeNavigateResultFrame,
   SessionResource,
 } from "./session-api.js";
 import {
@@ -1043,6 +1044,10 @@ class RemoteRichHub {
       this.#onResponse(frame.response);
       return;
     }
+    if (frame.kind === "tree_navigate_result") {
+      this.#onTreeNavigateResult(frame as unknown as RpcTreeNavigateResultFrame);
+      return;
+    }
     if (frame.kind === "control") {
       this.#onControl(frame as unknown as RpcControlFrame);
       return;
@@ -1071,6 +1076,31 @@ class RemoteRichHub {
       clearTimeout(pending.timer);
       pending.resolve(response);
     }
+  }
+
+  #onTreeNavigateResult(frame: RpcTreeNavigateResultFrame): void {
+    const pending = this.#commands.get(frame.correlationId);
+    if (pending === undefined || pending.operation !== "navigate_tree") return;
+    this.#commands.delete(frame.correlationId);
+    clearTimeout(pending.timer);
+    if (frame.error !== undefined) {
+      pending.resolve({
+        correlationId: pending.correlationId,
+        state: "rejected",
+        error: frame.error,
+      });
+      return;
+    }
+    if (frame.result === undefined) {
+      pending.resolve(rejected(pending.correlationId, "remote_protocol_error", "remote tree navigation result is missing"));
+      return;
+    }
+    const data = boundedJsonValue(frame.result);
+    pending.resolve({
+      correlationId: pending.correlationId,
+      state: "completed",
+      ...(data === undefined ? {} : { data }),
+    });
   }
 
   #onControl(frame: RpcControlFrame): void {
@@ -1200,14 +1230,20 @@ class RemoteRichHub {
       });
     });
     try {
-      this.#send({
-        kind: "command",
-        command: {
-          ...(command.payload ?? {}),
-          type: command.operation,
-          id,
-        },
-      });
+      this.#send(command.operation === "navigate_tree"
+        ? {
+            kind: "tree_navigate",
+            correlationId: id,
+            request: command.payload ?? {},
+          }
+        : {
+            kind: "command",
+            command: {
+              ...(command.payload ?? {}),
+              type: command.operation,
+              id,
+            },
+          });
     } catch (error) {
       const pending = this.#commands.get(id);
       if (pending !== undefined) clearTimeout(pending.timer);
@@ -2225,7 +2261,10 @@ function dashboardCapabilities(
       "remote Dashboard service is not compatible with this backend",
     );
   }
-  const commands = [...DASHBOARD_COMMANDS];
+  const commands: DashboardCommandOperation[] = [
+    ...DASHBOARD_COMMANDS,
+    ...(service.resources.treeNavigation === true ? ["navigate_tree" as const] : []),
+  ];
   return {
     apiVersion: DASH_API_VERSION,
     streamSubprotocol: DASH_STREAM_SUBPROTOCOL,
@@ -2244,6 +2283,7 @@ function dashboardCapabilities(
       settings: true,
       schedules: service.resources.schedules === true,
       sessionDrafts: service.resources.sessionDrafts === true,
+      treeNavigation: service.resources.treeNavigation === true,
     },
     presentations: {
       rich: { available: true, replay: true, controller: true, commands },

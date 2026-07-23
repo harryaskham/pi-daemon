@@ -148,6 +148,7 @@
         test -s "$out/dashboard-api.schema.json"
         test -s "$out/extension-view.schema.json"
         test -s "$out/declarative-extension-views/index.html"
+        test -s "$out/dashboard-session-tree/index.html"
         test -s "$out/dashboard-api.openapi.json"
         test -s "$out/dashboard-session-drafts/index.html"
         test -s "$out/dashboard-session-draft.schema.json"

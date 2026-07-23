@@ -1,9 +1,10 @@
-import { lazy, Suspense, useEffect, useMemo, useRef } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   AlertCircle,
   Bot,
   Clock3,
+  GitBranch,
   MoreHorizontal,
   Play,
   TerminalSquare,
@@ -15,12 +16,14 @@ import { LiveSessionControls } from "./LiveSessionControls";
 
 const Composer = lazy(() => import("./Composer"));
 const RichTranscriptRecord = lazy(() => import("./RichTranscriptRecord").then((module) => ({ default: module.RichTranscriptRecord })));
+const SessionTreeNavigator = lazy(() => import("./SessionTreeNavigator").then((module) => ({ default: module.SessionTreeNavigator })));
 
 interface ChatPaneProps {
   session: SessionFixture;
   records: TranscriptRecord[];
   fixtureMode: boolean;
   tuiAvailable: boolean;
+  treeNavigationAvailable: boolean;
   demoState: DemoState;
   streamText: string;
   vimEnabled: boolean;
@@ -179,6 +182,7 @@ export function ChatPane({
   records,
   fixtureMode,
   tuiAvailable,
+  treeNavigationAvailable,
   demoState,
   streamText,
   vimEnabled,
@@ -194,6 +198,7 @@ export function ChatPane({
 }: ChatPaneProps) {
   const paneRef = useRef<HTMLDivElement>(null);
   const scrollerRef = useRef<HTMLDivElement>(null);
+  const [treeOpen, setTreeOpen] = useState(false);
   const composer = liveComposerPresentation(
     liveState,
     fixtureMode && demoState === "error",
@@ -211,6 +216,12 @@ export function ChatPane({
     measureElement: (element) => element.getBoundingClientRect().height,
     overscan: 7,
   });
+
+  async function submitComposer(value: string): Promise<void | boolean> {
+    const accepted = await onSubmit(value);
+    if (accepted !== false) liveController.clearTreeEditorText();
+    return accepted;
+  }
 
   useEffect(() => {
     if (shownRecords.length === 0) return;
@@ -242,6 +253,7 @@ export function ChatPane({
           <div><p className="eyebrow">{session.project} · Rich</p><h2>{liveState.extensionTitle || session.title}</h2></div>
         </div>
         <div className="pane-actions">
+          <button type="button" className="tui-presentation-button" aria-label="Open session branch tree" aria-pressed={treeOpen} onClick={() => setTreeOpen((value) => !value)}><GitBranch size={13} /> Tree</button>
           <button type="button" className="tui-presentation-button" aria-label="Compact session" onClick={() => void liveController.command("compact")} disabled={liveState.role !== "controller"}>Compact</button>
           <button type="button" className="tui-presentation-button" aria-label="Abort active turn" onClick={() => void liveController.command("abort")} disabled={liveState.role !== "controller"}>Abort</button>
           {tuiAvailable ? <button type="button" className="tui-presentation-button" aria-label="Switch to TUI presentation" onClick={() => onPresentationChange("tui")}><TerminalSquare size={13} /> TUI</button> : null}
@@ -262,6 +274,19 @@ export function ChatPane({
       </div>
 
       <LiveSessionControls state={liveState} controller={liveController} />
+
+      {treeOpen ? (
+        <Suspense fallback={<div className="session-tree session-tree__state" role="status">Loading tree navigator…</div>}>
+          <SessionTreeNavigator
+            state={liveState}
+            controller={liveController}
+            tuiAvailable={tuiAvailable}
+            navigationAvailable={treeNavigationAvailable}
+            onClose={() => setTreeOpen(false)}
+            onPresentationChange={onPresentationChange}
+          />
+        </Suspense>
+      ) : null}
 
       {fixtureMode && demoState === "error" ? (
         <div className="state-panel state-panel--error" role="alert">
@@ -336,12 +361,16 @@ export function ChatPane({
             vimEnabled={vimEnabled}
             history={composerHistory}
             commands={commandNames(liveState.availableCommands)}
-            {...(liveState.extensionEditorText === undefined ? {} : { externalValue: liveState.extensionEditorText })}
+            {...(liveState.treeEditorText !== undefined
+              ? { externalValue: liveState.treeEditorText }
+              : liveState.extensionEditorText === undefined
+                ? {}
+                : { externalValue: liveState.extensionEditorText })}
             disabled={composer.disabled}
             submitLabel={composer.submitLabel}
             hint={composer.hint}
             onToggleVim={onToggleVim}
-            onSubmit={onSubmit}
+            onSubmit={submitComposer}
           />
         </Suspense>
         {Object.values(liveState.extensionWidgets).filter((widget) => widget.placement === "belowEditor").map((widget) => (

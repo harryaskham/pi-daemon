@@ -13,6 +13,7 @@ interface ConnectedChatPaneProps {
   active: boolean;
   fixtureMode: boolean;
   tuiAvailable: boolean;
+  treeNavigationAvailable: boolean;
   demoState: DemoState;
   streamText: string;
   vimEnabled: boolean;
@@ -33,6 +34,7 @@ export function ConnectedChatPane({
   active,
   fixtureMode,
   tuiAvailable,
+  treeNavigationAvailable,
   demoState,
   streamText,
   vimEnabled,
@@ -63,6 +65,7 @@ export function ConnectedChatPane({
       records={live.state.transcript?.records ?? fallbackRecords}
       fixtureMode={fixtureMode}
       tuiAvailable={tuiAvailable}
+      treeNavigationAvailable={treeNavigationAvailable}
       demoState={demoState}
       streamText={streamText}
       vimEnabled={vimEnabled}

@@ -22,7 +22,8 @@
       "workspaces": true,
       "settings": true,
       "schedules": false,
-      "sessionDrafts": false
+      "sessionDrafts": false,
+      "treeNavigation": true
     },
     "presentations": {
       "rich": {
@@ -44,6 +45,7 @@
           "compact",
           "set_session_name",
           "get_tree",
+          "navigate_tree",
           "fork",
           "clone"
         ]
@@ -67,6 +69,7 @@
           "compact",
           "set_session_name",
           "get_tree",
+          "navigate_tree",
           "fork",
           "clone"
         ],
@@ -112,6 +115,10 @@
       "maxSearchQueryChars": 1024,
       "maxTranscriptPageRecords": 200,
       "maxTranscriptRecordBytes": 524288,
+      "maxTreeNodes": 10000,
+      "maxTreeDepth": 256,
+      "maxTreeTextBytes": 2097152,
+      "maxTreeSnippetBytes": 512,
       "maxProjectionSourceBytes": 268435456,
       "maxProjectionLineBytes": 1048576,
       "maxProjectionEntries": 100000,

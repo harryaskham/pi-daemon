@@ -20,6 +20,7 @@ function previewState(
     extensionNotifications: [],
     extensionStatuses: {},
     extensionWidgets: {},
+    treePhase: "idle",
     unread: false,
     info: {
       inventoryId: "preview-layout",
@@ -82,6 +83,20 @@ describe("preview composer layout", () => {
     expect(source).not.toMatch(/\beval\s*\(|new Function|\bfetch\s*\(|<iframe|<script|<style|src=\{/);
     expect(source).toContain("createExtensionViewResponse");
     expect(source).toContain("authorized blob");
+  });
+
+  it("keeps branch navigation virtualized, keyboard-addressable, and explicit about active leaf truth", async () => {
+    const source = await readFile(
+      new URL("../components/SessionTreeNavigator.tsx", import.meta.url),
+      "utf8",
+    );
+    expect(source).toContain("useVirtualizer");
+    expect(source).toContain('role="tree"');
+    expect(source).toContain('role="treeitem"');
+    expect(source).toContain("aria-current");
+    expect(source).toContain('event.key === "ArrowLeft"');
+    expect(source).toContain('event.key === "ArrowRight"');
+    expect(source).not.toContain("dangerouslySetInnerHTML");
   });
 
   it("does not render the former transcript-blocking preview action card", async () => {
