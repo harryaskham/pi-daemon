@@ -1120,6 +1120,31 @@ matches `publicOrigin`. HTTPS public origins emit HSTS and use Secure `__Host-`
 cookies. The unauthenticated `GET|HEAD /dash/healthz` probe is content-free and
 still enforces Host/proxy authority.
 
+### 18.5 Multi-user identity and resource authority
+
+Multi-user mode is a separate central authorization system, not ACL properties
+added to inventory/workspace/session resources. A startup-loaded bounded
+credential provider resolves input-only high-entropy proof to a server-side
+principal; browser cookies retain only a random HMAC-signed lookup key. The
+dedicated service bearer remains an independent machine authority and is never
+replaced by, exposed to, or derived from browser identity.
+
+One owner-private revisioned ledger maps opaque session, workspace, draft,
+ticket and schedule references to one owner plus read/control/admin grants. It
+also retains bounded content-free grant/revocation/transfer audit facts. Missing,
+insecure or corrupt state fails closed; failed atomic publication rolls in-memory
+policy back. Existing v1 records carry no ACL fields and inaccessible resources
+are indistinguishable from absent resources.
+
+The default `single-owner` migration grants implicit legacy authority only to
+the deterministic `local-owner` administrator. `multi-user` defaults members to
+deny, lets global administrators adopt unowned legacy inventory, filters all
+inventory/paging before browser serialization, and enforces policy independently
+at HTTP and WebSocket command/control boundaries. The mode cannot be enabled
+until embedded/dedicated route enforcement, revocation, administration and
+acceptance all land. The complete threat model and role/resource matrix are in
+`docs/dashboard-authorization.md`.
+
 ## 19. Performance and resource budgets
 
 Initial local targets, measured with 10,000 indexed sessions and representative
@@ -1408,7 +1433,15 @@ These lanes intentionally begin in parallel:
 - [x] `bd-b07f4d` — activation recency persists independently from source mtime,
   reorders the hot inventory exactly once, refreshes current browser state, and
   preserves stable revision-bound paging.
-- [ ] `bd-b31a5d` — multi-user identity and per-session authorization epic.
+- [ ] `bd-b31a5d` — multi-user identity and per-session authorization epic;
+  detailed threat model and central-policy architecture in
+  `docs/dashboard-authorization.md`.
+  - [ ] `bd-07a348` — principal/provider, identity-bound browser session and
+    owner-private central policy/audit foundation.
+  - [ ] `bd-fce8f4` — no-leak HTTP/stream enforcement and single-owner migration.
+  - [ ] `bd-284b03` — grants, workspace sharing, revocation, transfer, audit/UI.
+  - [ ] `bd-9d9899` — final provider configuration, UX, migration and exhaustive
+    security/compatibility acceptance.
 - [x] `bd-e89a17` — optional native TLS and hardened remote browser deployment:
   file/fd material, atomic rotation, exact SNI/Host/Origin/public authority,
   loopback proxy verification, HSTS/secure cookies, remote health and

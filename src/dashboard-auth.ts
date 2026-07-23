@@ -13,6 +13,11 @@ import type {
   DashboardBrowserSessionResource,
   DashboardLoginRequest,
 } from "./dashboard-contract.js";
+import {
+  localOwnerIdentityProvider,
+  type DashboardIdentityProvider,
+  type DashboardPrincipal,
+} from "./dashboard-identity.js";
 
 export const DASH_BROWSER_COOKIE = "pi-daemon-dash" as const;
 export const DASH_BROWSER_SECURE_COOKIE = "__Host-pi-daemon-dash" as const;
@@ -37,7 +42,10 @@ export class DashboardAuthError extends Error {
 }
 
 export interface DashboardBrowserAuthOptions {
-  credential: string;
+  /** Existing one-operator compatibility input; mutually exclusive with identityProvider. */
+  credential?: string;
+  /** Startup-loaded provider; credentials and provider internals never enter browser session state. */
+  identityProvider?: DashboardIdentityProvider;
   sessionTtlMs: number;
   secureCookies?: boolean;
   maxSessions?: number;
@@ -48,6 +56,7 @@ export interface DashboardBrowserAuthOptions {
 
 export interface DashboardAuthenticatedSession {
   readonly sessionKey: string;
+  readonly principal: DashboardPrincipal;
   readonly clientId: string;
   readonly workspaceId: string;
   readonly expiresAt: string;
@@ -55,6 +64,7 @@ export interface DashboardAuthenticatedSession {
 
 interface BrowserSessionRecord {
   sessionKey: string;
+  principal: DashboardPrincipal;
   clientId: string;
   workspaceId: string;
   csrfDigest: Buffer;
@@ -67,16 +77,16 @@ export interface DashboardLoginResult {
 }
 
 /**
- * One operator-domain web credential exchanged for bounded, revocable browser
- * sessions. The configured credential and issued CSRF values are retained only
- * as one-way digests. Cookie payloads carry a random lookup key plus an HMAC;
- * identity and authorization state remain server-side.
+ * Provider-authenticated identity exchanged for bounded, revocable browser
+ * sessions. The compatibility credential and issued CSRF values are retained
+ * only as one-way digests. Cookie payloads carry a random lookup key plus an
+ * HMAC; principal and authorization state remain server-side.
  */
 export class DashboardBrowserAuth {
   readonly sessionTtlMs: number;
   readonly secureCookies: boolean;
   readonly maxSessions: number;
-  readonly #credentialDigest: Buffer;
+  readonly #identityProvider: DashboardIdentityProvider;
   readonly #signingKey: Buffer;
   readonly #now: () => Date;
   readonly #randomBytes: (size: number) => Uint8Array;
@@ -89,7 +99,11 @@ export class DashboardBrowserAuth {
     }
     this.secureCookies = options.secureCookies ?? false;
     this.maxSessions = positiveInteger(options.maxSessions ?? MAX_BROWSER_SESSIONS, "maxSessions");
-    this.#credentialDigest = digest(validateCredential(options.credential));
+    if ((options.credential === undefined) === (options.identityProvider === undefined)) {
+      throw new Error("configure exactly one dashboard credential or identity provider");
+    }
+    this.#identityProvider =
+      options.identityProvider ?? localOwnerIdentityProvider(validateCredential(options.credential!));
     this.#signingKey = Buffer.from(options.signingKey ?? randomBytes(32));
     if (this.#signingKey.length !== 32) throw new Error("dashboard signing key must be 32 bytes");
     this.#now = options.now ?? (() => new Date());
@@ -98,7 +112,7 @@ export class DashboardBrowserAuth {
 
   static async fromTokenFile(
     path: string,
-    options: Omit<DashboardBrowserAuthOptions, "credential">,
+    options: Omit<DashboardBrowserAuthOptions, "credential" | "identityProvider">,
   ): Promise<DashboardBrowserAuth> {
     return new DashboardBrowserAuth({
       ...options,
@@ -108,12 +122,8 @@ export class DashboardBrowserAuth {
 
   login(request: DashboardLoginRequest): DashboardLoginResult {
     validateLoginRequest(request);
-    const candidate = Buffer.from(request.credential, "utf8");
-    if (
-      candidate.length < MIN_DASH_CREDENTIAL_BYTES ||
-      candidate.length > MAX_DASH_CREDENTIAL_BYTES ||
-      !timingSafeEqual(this.#credentialDigest, digest(request.credential))
-    ) {
+    const principal = this.#identityProvider.authenticate(request.credential);
+    if (principal === undefined) {
       throw new DashboardAuthError("login_failed", "dashboard login failed");
     }
 
@@ -134,6 +144,7 @@ export class DashboardBrowserAuth {
     const expiresAtMs = now + this.sessionTtlMs;
     this.#sessions.set(sessionKey, {
       sessionKey,
+      principal,
       clientId: request.clientId,
       workspaceId,
       csrfDigest: digest(csrfToken),
@@ -161,14 +172,13 @@ export class DashboardBrowserAuth {
     if (sessionKey === undefined) {
       throw new DashboardAuthError("unauthorized", "dashboard browser session is invalid");
     }
-    const record = this.#sessions.get(sessionKey);
-    const now = this.#now().getTime();
-    if (record === undefined || record.expiresAtMs <= now) {
-      if (record !== undefined) this.#sessions.delete(sessionKey);
+    const record = this.#activeRecord(sessionKey, this.#now().getTime());
+    if (record === undefined) {
       throw new DashboardAuthError("unauthorized", "dashboard browser session is invalid");
     }
     return {
       sessionKey: record.sessionKey,
+      principal: structuredClone(record.principal),
       clientId: record.clientId,
       workspaceId: record.workspaceId,
       expiresAt: new Date(record.expiresAtMs).toISOString(),
@@ -176,10 +186,8 @@ export class DashboardBrowserAuth {
   }
 
   browserSession(session: DashboardAuthenticatedSession): DashboardBrowserSessionResource {
-    const record = this.#sessions.get(session.sessionKey);
-    const now = this.#now().getTime();
-    if (record === undefined || record.expiresAtMs <= now) {
-      if (record !== undefined) this.#sessions.delete(session.sessionKey);
+    const record = this.#activeRecord(session.sessionKey, this.#now().getTime());
+    if (record === undefined) {
       throw new DashboardAuthError("unauthorized", "dashboard browser session is invalid");
     }
     return {
@@ -207,6 +215,16 @@ export class DashboardBrowserAuth {
 
   revokeAll(): void {
     this.#sessions.clear();
+  }
+
+  revokeIdentity(identityId: string): number {
+    let revoked = 0;
+    for (const [key, session] of this.#sessions) {
+      if (session.principal.identityId !== identityId) continue;
+      this.#sessions.delete(key);
+      revoked += 1;
+    }
+    return revoked;
   }
 
   get activeSessions(): number {
@@ -253,10 +271,22 @@ export class DashboardBrowserAuth {
     ].join("; ");
   }
 
-  #prune(now: number): void {
-    for (const [key, session] of this.#sessions) {
-      if (session.expiresAtMs <= now) this.#sessions.delete(key);
+  #activeRecord(sessionKey: string, now: number): BrowserSessionRecord | undefined {
+    const record = this.#sessions.get(sessionKey);
+    if (record === undefined || record.expiresAtMs <= now) {
+      if (record !== undefined) this.#sessions.delete(sessionKey);
+      return undefined;
     }
+    const current = this.#identityProvider.principal(record.principal.identityId);
+    if (current === undefined || !samePrincipal(current, record.principal)) {
+      this.#sessions.delete(sessionKey);
+      return undefined;
+    }
+    return record;
+  }
+
+  #prune(now: number): void {
+    for (const key of this.#sessions.keys()) this.#activeRecord(key, now);
   }
 }
 
@@ -409,6 +439,14 @@ function stripOneLineEnding(value: string): string {
 
 function digest(value: string): Buffer {
   return createHash("sha256").update(value, "utf8").digest();
+}
+
+function samePrincipal(left: DashboardPrincipal, right: DashboardPrincipal): boolean {
+  return (
+    left.identityId === right.identityId &&
+    left.globalRole === right.globalRole &&
+    left.displayName === right.displayName
+  );
 }
 
 function token(bytes: Uint8Array): string {

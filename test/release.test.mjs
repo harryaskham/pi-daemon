@@ -35,7 +35,7 @@ test("Pages workflow uses the pinned Nix site build without Docker actions", asy
 });
 
 test("Pages publishes the Dash protocol, schema, and OpenAPI from the pinned site build", async () => {
-  const [workflow, flake, index, protocol, inventory, ownership, serviceApi, shadowTui] =
+  const [workflow, flake, index, protocol, inventory, ownership, serviceApi, shadowTui, authorization] =
     await Promise.all([
       readFile(join(repositoryRoot, ".github/workflows/pages.yml"), "utf8"),
       readFile(join(repositoryRoot, "flake.nix"), "utf8"),
@@ -45,6 +45,7 @@ test("Pages publishes the Dash protocol, schema, and OpenAPI from the pinned sit
       readFile(join(repositoryRoot, "docs/dashboard-ownership.md"), "utf8"),
       readFile(join(repositoryRoot, "docs/dashboard-service-api.md"), "utf8"),
       readFile(join(repositoryRoot, "docs/shadow-tui.md"), "utf8"),
+      readFile(join(repositoryRoot, "docs/dashboard-authorization.md"), "utf8"),
     ]);
   assert.match(workflow, /- "dashboard-api\.schema\.json"/);
   assert.match(workflow, /- "dashboard-api\.openapi\.json"/);
@@ -60,10 +61,12 @@ test("Pages publishes the Dash protocol, schema, and OpenAPI from the pinned sit
   assert.match(flake, /cp \$\{\.\/schedule\.schema\.json\} "\$out\/schedule\.schema\.json"/);
   assert.match(flake, /test -s "\$out\/schedules\/index\.html"/);
   assert.match(flake, /test -s "\$out\/dashboard-protocol\/index\.html"/);
+  assert.match(flake, /test -s "\$out\/dashboard-authorization\/index\.html"/);
   assert.match(flake, /test -s "\$out\/dashboard-ownership\/index\.html"/);
   assert.match(flake, /test -s "\$out\/dashboard-service-api\/index\.html"/);
   assert.match(flake, /test -s "\$out\/shadow-tui\/index\.html"/);
   assert.match(index, /\[Dash browser\/backend protocol\]\(dashboard-protocol\)/);
+  assert.match(index, /\[Dashboard identity and authorization\]\(dashboard-authorization\)/);
   assert.match(index, /\[Dash session inventory\]\(dashboard-inventory\)/);
   assert.match(index, /\[Dash session ownership\]\(dashboard-ownership\)/);
   assert.match(index, /\[Neutral Dash service API\]\(dashboard-service-api\)/);
@@ -80,6 +83,8 @@ test("Pages publishes the Dash protocol, schema, and OpenAPI from the pinned sit
   assert.match(shadowTui, /second\s+`pi` process/);
   assert.match(shadowTui, /InteractiveSessionView/);
   assert.match(shadowTui, /OSC 52/);
+  assert.match(authorization, /Existing v1 resources carry no ACL properties/);
+  assert.match(authorization, /There is no intermediate mode/);
 });
 
 test("Dash transcript projector is exported, documented, and included in clean builds", async () => {
@@ -122,6 +127,8 @@ test("clean package builds include the content-hashed Dash SPA and secure server
   for (const name of [
     "self-update",
     "dashboard-auth",
+    "dashboard-identity",
+    "dashboard-authorization",
     "dashboard-tls",
     "dashboard-backend",
     "dashboard-remote-backend",

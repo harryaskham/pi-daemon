@@ -5,6 +5,7 @@ semantic versioning once a release tag is cut.
 
 ## Unreleased
 
+- add the non-enabled multi-user Dashboard authorization foundation: validated principals, constant-time bounded static credential provider, identity-bound server sessions, exact `local-owner` compatibility, and a central owner-private revisioned read/control/admin policy plus content-free audit ledger
 - add optional native Dashboard HTTPS/WSS with bounded owner-controlled certificate/key file or inherited-fd sources, exact SNI/Host/Origin and loopback proxy evidence, atomic last-good rotation, HSTS/Secure cookies, content-free health, and secret-safe YAML/CLI/Home Manager deployment
 - reopen retained imported Dash sessions from their exact managed JSONL directory instead of replaying the original fork target or rejecting the managed path as outside logical state, including active-branch model/thinking recovery for legacy prepared records
 - add a versioned, server-validated declarative extension-view contract with inert Rich primitives, capability-scoped correlated actions/forms, mandatory TUI fallback, strict schema/fixtures/bounds, and no browser extension code or ambient network authority

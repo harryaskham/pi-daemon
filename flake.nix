@@ -142,6 +142,7 @@
         test -s "$out/tool-adapter.schema.json"
         test -s "$out/dashboard-protocol/index.html"
         test -s "$out/dashboard-transport-security/index.html"
+        test -s "$out/dashboard-authorization/index.html"
         test -s "$out/dashboard-inventory/index.html"
         test -s "$out/shadow-tui/index.html"
         test -s "$out/dashboard-ownership/index.html"

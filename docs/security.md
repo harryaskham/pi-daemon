@@ -53,7 +53,9 @@ project code or tools.
 - client bearer bytes exist only for the authenticated handshake and never enter URL, argv, stdout, stderr, or reconnect status
 - remote WebSocket use requires TLS or an operator-owned authenticated loopback proxy
 - Dash uses a separate owner-only web credential; the daemon service bearer is server-to-server and never enters browser state
-- Dash browser sessions are bounded, revocable, server-side records addressed by an HMAC-signed opaque `HttpOnly`, `SameSite=Strict` cookie
+- Dash browser sessions are bounded, revocable, server-side records addressed by an HMAC-signed opaque `HttpOnly`, `SameSite=Strict` cookie; their server-side record now binds a validated principal while the cookie remains identity-free
+- the multi-user foundation compares every bounded static credential digest, preserves `local-owner` compatibility, and persists resource roles only in one owner-private central policy/audit ledger that fails closed and rolls back memory on publication failure
+- multi-user configuration remains unavailable until every HTTP/stream route, filtered page, revocation and administration boundary enforces that ledger; authenticated identities are never exposed into the old all-powerful v1 backend
 - a cookie-authenticated same-origin bootstrap reproduces the session-bound HMAC CSRF token in a no-store response header, so an ordinary browser reload restores mutation authority without putting the owner credential, cookie, or CSRF token in browser storage
 - Dash private routes authenticate before route matching; mutations require exact Host, Origin, and per-session CSRF validation
 - Dash plaintext listeners are loopback-only; remote deployments use an operator-owned loopback TLS proxy or native HTTPS/WSS with bounded file/fd material and TLS 1.2 minimum

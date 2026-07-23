@@ -121,6 +121,14 @@ no-store transport probe. Certificate/key bytes never enter YAML, argv, Nix
 store values, status, or logs. See
 [Dashboard transport security](docs/dashboard-transport-security.md).
 
+The exported multi-user foundation now binds a validated principal to each
+server-side browser session and provides one owner-private central
+read/control/admin policy and audit ledger. Multi-user configuration is
+intentionally not exposed until every HTTP/stream, paging, revocation, sharing,
+and migration gate lands; existing deployments remain the exact `local-owner`
+single-operator mode. See
+[Dashboard identity and authorization](docs/dashboard-authorization.md).
+
 Both executables treat an `EPIPE` from stdout or stderr as a normal early-closing
 Unix pipeline consumer and exit quietly with status 0. Other stream errors remain
 fatal and are never hidden by the closed-pipe guard.

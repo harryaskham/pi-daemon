@@ -109,12 +109,18 @@ language-neutral browser-storable fixture. Capability negotiation states
 route matching, so they do not reveal whether an inventory, ticket, workspace,
 or managed session exists.
 
-The implemented exchange stores only a digest of the configured web credential
-and CSRF value. When no `web.auth.tokenFile` is configured, first launch
-atomically creates and reuses an owner-only credential at `STATE_DIR/web-token`;
-a configured path is held to the same owner/symlink/size checks. The browser
-cookie contains a random lookup key plus an HMAC;
-all client/workspace/expiry state stays server-side and is bounded and revocable.
+The implemented compatibility provider stores only a digest of the configured
+web credential and CSRF value. It resolves that proof to the deterministic
+`local-owner` administrator and binds the principal to server-side browser
+session state; neither cookie nor response carries identity authority. Provider
+removal or principal-role change invalidates subsequent cookie authentication.
+When no `web.auth.tokenFile` is configured, first launch atomically creates and
+reuses an owner-only credential at `STATE_DIR/web-token`; a configured path is
+held to the same owner/symlink/size checks. The browser cookie contains a random
+lookup key plus an HMAC; all principal/client/workspace/expiry state stays
+server-side and is bounded and revocable. Multi-user configuration remains
+unavailable until the central ledger is enforced on every HTTP/stream boundary;
+see [Dashboard identity and authorization](dashboard-authorization).
 On a cookie-authenticated `GET /dash/v1/bootstrap`, the server reproduces the
 session-bound, domain-separated HMAC CSRF token and returns it in the no-store
 `x-pi-daemon-csrf` response header. This restores mutation authority after an

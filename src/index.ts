@@ -5,6 +5,8 @@ export * from "./client.js";
 export * from "./config.js";
 export * from "./dashboard-contract.js";
 export * from "./dashboard-auth.js";
+export * from "./dashboard-identity.js";
+export * from "./dashboard-authorization.js";
 export * from "./dashboard-tls.js";
 export * from "./dashboard-backend.js";
 export * from "./dashboard-remote-backend.js";

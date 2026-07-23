@@ -491,6 +491,17 @@ process appears per wake.
   loopback proxy authority, atomic certificate rotation, HSTS/secure cookies,
   content-free health, secret-safe CLI/config/Home Manager sources, and
   downgrade/mixed-content/spoofed-forwarding acceptance.
+- [ ] `bd-b31a5d` Replace the single-operator Dash trust domain with the central
+  identity/per-resource authorization architecture in
+  `docs/dashboard-authorization.md`; never add ACL fields to v1 resources.
+  - [ ] `bd-07a348` Principal/provider, identity-bound browser session and
+    owner-private centralized policy/audit foundation.
+  - [ ] `bd-fce8f4` HTTP/stream enforcement, no-existence-leak inventory paging,
+    dedicated/embedded parity and exact single-owner migration.
+  - [ ] `bd-284b03` Revisioned grants, workspace sharing/revocation, ownership
+    transfer, explicit controller handoff, audit and UI.
+  - [ ] `bd-9d9899` Secret-path provider configuration, migration, UX,
+    exhaustive security/compatibility proof and release documentation.
 
 ## 18. Completed scaffold board (historical PD identifiers)
 
