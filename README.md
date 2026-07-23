@@ -105,9 +105,9 @@ pi-daemon-rpc --url http://127.0.0.1:7463 --session exact-id-or-name \
 With an enabled embedded `web` block, the same `serve` process starts the
 packaged browser BFF after its owner socket/API are ready. Open `/dash/` on the
 configured loopback web port (for example `http://127.0.0.1:7464/dash/`). Enter
-the owner-private `STATE_DIR/web-token` (or configured `web.auth.tokenFile`)
-credential in the login form; the SPA exchanges it once for an HttpOnly browser
-session and never stores it. A `web.mode: dedicated` configuration is instead
+the generated owner-private `STATE_DIR/web-token`, configured legacy
+`web.auth.tokenFile`, or your operator-issued identity credential. The SPA
+exchanges it once for an HttpOnly browser session and never stores it. A `web.mode: dedicated` configuration is instead
 served by `pi-daemon web`, which
 uses the service API on 7463 and defaults its independent browser listener to
 7465. Never put either service or web credentials in the URL.
@@ -130,10 +130,13 @@ unauthorized resources share one content-free denial; live streams revalidate
 policy and provider state before sensitive frames/events. Revisioned grant,
 workspace sharing/revocation, ownership transfer, content-free audit, and an
 explicit release-before-grant controller handoff are available through the BFF
-and accessible SPA administration dialog. The remote backend still receives
-only the machine bearer. Multi-user configuration remains intentionally
-unavailable until provider configuration, migration, and final acceptance land;
-existing deployments remain the exact `local-owner` single-operator mode. See
+and accessible SPA administration dialog. Multi-user activation is explicit:
+configure a bounded static identity provider in strict YAML or select a strict
+provider document with `--web-identity-provider-file`; identity credential bytes
+come only from owner-only files or inherited descriptors. Home Manager can emit
+provider metadata containing runtime secret paths, never bytes. With no provider,
+existing deployments remain the exact generated-token `local-owner` mode. The
+remote backend still receives only its separate machine bearer. See
 [Dashboard identity and authorization](docs/dashboard-authorization.md).
 
 Both executables treat an `EPIPE` from stdout or stderr as a normal early-closing

@@ -751,11 +751,19 @@ export interface DashboardSettingsPatchRequest {
   patch: DashboardUiSettingsPatch;
 }
 
+export interface DashboardBootstrapIdentity {
+  identityId: string;
+  globalRole: "administrator" | "member";
+  displayName?: string;
+}
+
 export interface DashboardBootstrapResource {
   capabilities: DashboardCapabilities;
   settings: DashboardSettingsResource;
   workspace: DashboardWorkspaceResource;
   inventory: SessionInventoryPage;
+  /** Informational current principal only; server-side session state remains authoritative. */
+  identity?: DashboardBootstrapIdentity;
 }
 
 /** Input-only web login credential; never include it in responses, logs, or durable state. */

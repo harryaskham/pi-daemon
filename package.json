@@ -93,6 +93,10 @@
       "types": "./dist/dashboard-identity.d.ts",
       "import": "./dist/dashboard-identity.js"
     },
+    "./dashboard-identity-config": {
+      "types": "./dist/dashboard-identity-config.d.ts",
+      "import": "./dist/dashboard-identity-config.js"
+    },
     "./dashboard-authorization": {
       "types": "./dist/dashboard-authorization.d.ts",
       "import": "./dist/dashboard-authorization.js"

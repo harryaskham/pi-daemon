@@ -135,6 +135,38 @@ accessible Access dialog exercises grants, revocation, owner transfer, workspace
 selection, active participant selection and audit without receiving credentials,
 canonical paths or the daemon bearer.
 
+## Multi-user activation and migration acceptance
+
+The final activation matrix runs the same configured static provider through
+embedded and dedicated server construction and through the dedicated CLI. Strict
+main YAML and provider-document parsers accept only bounded identity metadata and
+one unique credential file/inherited descriptor source per identity; literal
+credentials and unknown/duplicate/no-administrator/insecure sources fail startup.
+Provider mode creates no fallback `web-token`, browser logs contain neither the
+identity credentials nor the separate remote API bearer, login ignores a
+browser-supplied workspace, and bootstrap exposes only the authenticated
+principal's informational signed-in-as label.
+
+A restart migration begins in exact generated-token `local-owner` mode, persists
+a legacy workspace/policy, restarts against the same state with a configured
+administrator, rejects the old web token, and proves the administrator can list
+and transfer the retained legacy workspace. Removing the provider remains the
+explicit compatibility rollback. Existing provider-revalidation tests revoke or
+role-change a principal with an active cookie/channel; policy tests restart from
+retained grants/idempotency, fail closed on corrupt/insecure state, and roll
+memory back on publication failure.
+
+No-existence-leak acceptance compares the complete absent/unauthorized HTTP error
+shape and the bounded backend work shape, scans inventory through
+principal/query-bound opaque cursors without unauthorized-only continuation,
+and denies cross-session workspace, draft, ticket, export and schedule access.
+Controller tests record release-before-grant order and failed-grant no-restore.
+Storage, identities, policies, grants, audit, idempotency, browser sessions,
+connections, queues, frames and responses all retain explicit limits. Fixture,
+package and browser-source scans reject credential, bearer, prompt and canonical
+path material; both deployment modes preserve the machine-bearer/browser-identity
+separation.
+
 ## Lazy new-session integration acceptance
 
 Parent `bd-e9fce1` is complete on main through three independently landed and

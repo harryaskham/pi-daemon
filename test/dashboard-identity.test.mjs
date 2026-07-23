@@ -85,9 +85,12 @@ test("browser sessions bind the provider principal only in server-side state", (
   const auth = new DashboardBrowserAuth({
     identityProvider: provider,
     sessionTtlMs: 60_000,
+    workspaceIdForPrincipal: () => "identity-workspace",
   });
-  const login = auth.login(loginRequest(MEMBER_TOKEN));
-  assert.equal(JSON.stringify(login).includes("member"), false);
+  const login = auth.login({ ...loginRequest(MEMBER_TOKEN), workspaceId: "browser-choice" });
+  assert.equal(login.session.workspaceId, "identity-workspace");
+  assert.equal(JSON.stringify(login).includes("identityId"), false);
+  assert.equal(JSON.stringify(login).includes("globalRole"), false);
   assert.equal(JSON.stringify(login).includes(MEMBER_TOKEN), false);
   const authenticated = auth.authenticate(cookiePair(login.setCookie));
   assert.deepEqual(authenticated.principal, {

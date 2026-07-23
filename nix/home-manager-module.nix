@@ -11,6 +11,29 @@
   hasSupervisord = (options ? supervisord) && (options.supervisord ? programs);
   homeDirectory = config.home.homeDirectory;
   enabledInstances = lib.filterAttrs (_: instance: instance.enable) cfg.instances;
+  dashboardIdentityModule = {config, ...}: {
+    options = {
+      identityId = lib.mkOption {
+        type = lib.types.strMatching "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$";
+        description = "Stable Dashboard identity ID.";
+      };
+      globalRole = lib.mkOption {
+        type = lib.types.enum ["administrator" "member"];
+        default = "member";
+        description = "Global Dashboard role; resource roles remain in the owner-private policy ledger.";
+      };
+      displayName = lib.mkOption {
+        type = lib.types.nullOr lib.types.str;
+        default = null;
+        description = "Optional non-secret accessible display name.";
+      };
+      credentialFile = lib.mkOption {
+        type = lib.types.str;
+        example = lib.literalExpression "config.sops.secrets.pi-daemon-dash-alice.path";
+        description = "Owner-only runtime credential path. Credential bytes never enter Nix values, the store, argv, status, or logs.";
+      };
+    };
+  };
   runtimeExecutable =
     if cfg.mutableRuntime.enable
     then
@@ -72,6 +95,19 @@
         type = lib.types.attrsOf lib.types.str;
         default = {};
         description = "Non-secret process environment for this instance. Use file-backed provider/auth options for secrets.";
+      };
+      dashboardAuth = {
+        identityProviderFile = lib.mkOption {
+          type = lib.types.nullOr lib.types.str;
+          default = null;
+          example = "/run/pi-daemon/dashboard-identities.yaml";
+          description = "Strict non-secret static-provider YAML/JSON path. The document may contain only identity metadata and credential file paths/descriptors.";
+        };
+        identities = lib.mkOption {
+          type = lib.types.listOf (lib.types.submodule dashboardIdentityModule);
+          default = [];
+          description = "Static Dashboard identities. Home Manager emits only metadata and credential paths to the Nix store; credential bytes remain in owner-only runtime files.";
+        };
       };
       extraArgs = lib.mkOption {
         type = lib.types.listOf lib.types.str;
@@ -191,6 +227,26 @@
     };
   };
 
+  generatedDashboardIdentityProviderFile = name: instance:
+    if instance.dashboardAuth.identities == []
+    then null
+    else
+      pkgs.writeText "pi-daemon-dashboard-identities-${name}.json" (builtins.toJSON {
+        type = "static";
+        identities = map (identity:
+          {
+            inherit (identity) identityId globalRole credentialFile;
+          }
+          // lib.optionalAttrs (identity.displayName != null) {
+            inherit (identity) displayName;
+          })
+        instance.dashboardAuth.identities;
+      });
+  effectiveDashboardIdentityProviderFile = name: instance:
+    if instance.dashboardAuth.identityProviderFile != null
+    then instance.dashboardAuth.identityProviderFile
+    else generatedDashboardIdentityProviderFile name instance;
+
   instanceArgs = name: instance:
     [
       runtimeExecutable
@@ -213,6 +269,13 @@
     ++ lib.optionals (instance.authSeedFile != null) [
       "--auth-seed-file"
       instance.authSeedFile
+    ]
+    ++ lib.optionals (
+      !instance.dedicatedWeb.enable
+      && effectiveDashboardIdentityProviderFile name instance != null
+    ) [
+      "--web-identity-provider-file"
+      (effectiveDashboardIdentityProviderFile name instance)
     ]
     ++ lib.concatMap (root: ["--allow-root" root]) instance.allowedRoots
     ++ [
@@ -289,6 +352,10 @@
       "--public-origin"
       instance.dedicatedWeb.publicOrigin
     ]
+    ++ lib.optionals (effectiveDashboardIdentityProviderFile name instance != null) [
+      "--web-identity-provider-file"
+      (effectiveDashboardIdentityProviderFile name instance)
+    ]
     ++ lib.optionals (instance.dedicatedWeb.tls.certFile != null) [
       "--tls-cert-file"
       instance.dedicatedWeb.tls.certFile
@@ -355,6 +422,7 @@
     "--api-token-file"
     "--api-token-fd"
     "--api-allow-insecure-http"
+    "--web-identity-provider-file"
   ];
 in {
   options.services.pi-daemon = {
@@ -402,6 +470,30 @@ in {
         ++ (lib.mapAttrsToList (name: instance: {
             assertion = instance.allowedRoots != [];
             message = "services.pi-daemon.instances.${name}.allowedRoots must contain at least one explicit workload root";
+          })
+          enabledInstances)
+        ++ (lib.mapAttrsToList (name: instance: {
+            assertion =
+              instance.dashboardAuth.identityProviderFile == null
+              || instance.dashboardAuth.identities == [];
+            message = "services.pi-daemon.instances.${name}: dashboardAuth.identityProviderFile and identities are mutually exclusive";
+          })
+          enabledInstances)
+        ++ (lib.mapAttrsToList (name: instance: {
+            assertion = unique (map (identity: identity.identityId) instance.dashboardAuth.identities);
+            message = "services.pi-daemon.instances.${name}: dashboardAuth identity IDs must be unique";
+          })
+          enabledInstances)
+        ++ (lib.mapAttrsToList (name: instance: {
+            assertion = unique (map (identity: identity.credentialFile) instance.dashboardAuth.identities);
+            message = "services.pi-daemon.instances.${name}: dashboardAuth credentialFile paths must be unique";
+          })
+          enabledInstances)
+        ++ (lib.mapAttrsToList (name: instance: {
+            assertion =
+              instance.dashboardAuth.identities == []
+              || lib.any (identity: identity.globalRole == "administrator") instance.dashboardAuth.identities;
+            message = "services.pi-daemon.instances.${name}: dashboardAuth identities require at least one administrator";
           })
           enabledInstances)
         ++ (lib.mapAttrsToList (name: instance: {

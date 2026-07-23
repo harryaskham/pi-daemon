@@ -1444,14 +1444,14 @@ These lanes intentionally begin in parallel:
 - [x] `bd-57149a` — revisioned Enter-send default and multiline Cmd/Ctrl-Enter
   alternative across plain/Vim CodeMirror, settings, hints, keyboard help, IME,
   and Playwright acceptance.
-- [ ] `bd-b31a5d` — multi-user identity and per-session authorization epic;
+- [x] `bd-b31a5d` — multi-user identity and per-session authorization epic;
   detailed threat model and central-policy architecture in
   `docs/dashboard-authorization.md`.
   - [x] `bd-07a348` — principal/provider, identity-bound browser session and
     owner-private central policy/audit foundation.
   - [x] `bd-fce8f4` — no-leak HTTP/stream enforcement and single-owner migration.
   - [x] `bd-284b03` — grants, workspace sharing, revocation, transfer, audit/UI.
-  - [ ] `bd-9d9899` — final provider configuration, UX, migration and exhaustive
+  - [x] `bd-9d9899` — final provider configuration, UX, migration and exhaustive
     security/compatibility acceptance.
 - [x] `bd-e89a17` — optional native TLS and hardened remote browser deployment:
   file/fd material, atomic rotation, exact SNI/Host/Origin/public authority,

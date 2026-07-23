@@ -165,6 +165,44 @@ web:
   );
 });
 
+test("strict YAML accepts only identity metadata and credential sources", async (t) => {
+  const root = await fixture(t);
+  const path = await writeConfig(root, `instance: work
+web:
+  auth:
+    sessionTtlMs: 60000
+    identityProvider:
+      type: static
+      identities:
+        - identityId: owner
+          globalRole: administrator
+          displayName: Dashboard owner
+          credentialFile: ./owner.secret
+        - identityId: reader
+          globalRole: member
+          credentialFd: 9
+`);
+  const loaded = await loadPiDaemonConfig({
+    cliConfigPath: path,
+    cliInstance: "work",
+    homeDirectory: root,
+    environment: {},
+  });
+  assert.deepEqual(loaded.config.web.auth.identityProvider, {
+    type: "static",
+    identities: [
+      {
+        identityId: "owner",
+        globalRole: "administrator",
+        displayName: "Dashboard owner",
+        credentialFile: "./owner.secret",
+      },
+      { identityId: "reader", globalRole: "member", credentialFd: 9 },
+    ],
+  });
+  assert.doesNotMatch(JSON.stringify(loaded.config), /credential\s*:/i);
+});
+
 test("CLI config and instance selection override environment selection", async (t) => {
   const root = await fixture(t);
   const selected = await writeConfig(root, "instance: cli\n");
@@ -204,6 +242,10 @@ test("rejects missing explicit, mismatched, duplicate, aliased, unknown, secret 
     ["tls-fd", "web:\n  tls:\n    certFd: 2\n    keyFd: 4\n", "config_invalid"],
     ["tls-reload", "web:\n  tls:\n    reloadIntervalMs: 999\n", "config_invalid"],
     ["proxy-unknown", "web:\n  proxy:\n    trustAll: true\n", "config_unknown_field"],
+    ["identity-literal", "web:\n  auth:\n    identityProvider:\n      type: static\n      identities:\n        - identityId: owner\n          globalRole: administrator\n          credential: forbidden\n", "config_unknown_field"],
+    ["identity-source", "web:\n  auth:\n    identityProvider:\n      type: static\n      identities:\n        - identityId: owner\n          globalRole: administrator\n          credentialFile: ./one\n          credentialFd: 9\n", "config_invalid"],
+    ["identity-admin", "web:\n  auth:\n    identityProvider:\n      type: static\n      identities:\n        - identityId: member\n          globalRole: member\n          credentialFile: ./one\n", "config_invalid"],
+    ["identity-mutually-exclusive", "web:\n  auth:\n    tokenFile: ./legacy\n    identityProviderFile: ./identities.yaml\n", "config_invalid"],
   ];
   for (const [name, text, code] of cases) {
     const directory = join(root, name);

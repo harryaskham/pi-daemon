@@ -93,6 +93,10 @@ import {
   type LoadedPiDaemonConfig,
   type PiDaemonWebConfig,
 } from "./config.js";
+import {
+  createDashboardIdentityProvider,
+  loadDashboardIdentityProviderFile,
+} from "./dashboard-identity-config.js";
 import { HostMetrics } from "./observability.js";
 import { scheduleEtag } from "./dashboard-schedule-resources.js";
 import {
@@ -536,10 +540,11 @@ export class DashboardServer {
         if (this.authorization.authorization.mode === "multi-user") {
           const workspaceId = identityWorkspaceId(issued.principal.identityId);
           if (issued.workspaceId !== workspaceId) {
-            this.auth.revoke(issued);
-            result = this.auth.login({ ...(body as DashboardLoginRequest), workspaceId });
-            issued = tryAuthenticate(this.auth, result.setCookie);
-            if (issued === undefined) throw new Error("issued dashboard browser session is unavailable");
+            issued = this.auth.switchWorkspace(issued, workspaceId);
+            result = {
+              ...result,
+              session: { ...result.session, workspaceId },
+            };
           }
         }
         try {
@@ -877,7 +882,13 @@ export class DashboardServer {
         sendJson(
           response,
           200,
-          successEnvelopeFrom(context, { capabilities, settings, workspace, inventory }),
+          successEnvelopeFrom(context, {
+            capabilities,
+            settings,
+            workspace,
+            inventory,
+            identity: session.principal,
+          }),
           this.limits.dashboard.maxOutboundBytesPerConnection,
           { [DASH_CSRF_HEADER]: resumed.csrfToken },
         );
@@ -1646,13 +1657,43 @@ export async function createDashboardServerFromConfig(
       ...configuredWeb?.proxy,
       ...options.webOverrides?.proxy,
     },
+    auth: options.webOverrides?.auth?.identityProviderFile !== undefined
+      ? {
+          ...(configuredWeb?.auth?.sessionTtlMs === undefined
+            ? {}
+            : { sessionTtlMs: configuredWeb.auth.sessionTtlMs }),
+          ...options.webOverrides.auth,
+        }
+      : {
+          ...configuredWeb?.auth,
+          ...options.webOverrides?.auth,
+        },
   });
   if (web.enabled === false) throw new Error("dashboard web server is disabled");
-  const tokenPath =
-    web.auth.tokenFile === undefined
+  const authSourceCount = [
+    web.auth.tokenFile,
+    web.auth.identityProvider,
+    web.auth.identityProviderFile,
+  ].filter((source) => source !== undefined).length;
+  if (authSourceCount > 1) {
+    throw new Error("dashboard authentication sources are mutually exclusive");
+  }
+  const provider = web.auth.identityProviderFile !== undefined
+    ? await loadDashboardIdentityProviderFile(
+        options.loadedConfig.resolvePath(web.auth.identityProviderFile),
+      )
+    : web.auth.identityProvider === undefined
+      ? undefined
+      : await createDashboardIdentityProvider(
+          web.auth.identityProvider,
+          options.loadedConfig.resolvePath,
+        );
+  const tokenPath = provider !== undefined
+    ? undefined
+    : web.auth.tokenFile === undefined
       ? join(options.stateDir, "web-token")
       : options.loadedConfig.resolvePath(web.auth.tokenFile);
-  await ensureDashboardCredentialFile(tokenPath);
+  if (tokenPath !== undefined) await ensureDashboardCredentialFile(tokenPath);
   const publicOrigin = options.publicOrigin ?? web.publicOrigin;
   const tlsSource: DashboardTlsSourceConfig = {
     ...(web.tls.certFile === undefined
@@ -1668,10 +1709,17 @@ export async function createDashboardServerFromConfig(
       : { reloadIntervalMs: web.tls.reloadIntervalMs }),
   };
   const tls = await loadDashboardTls(tlsSource);
-  const auth = await DashboardBrowserAuth.fromTokenFile(tokenPath, {
+  const browserAuthOptions = {
     sessionTtlMs: web.auth.sessionTtlMs,
     secureCookies: publicOrigin?.startsWith("https://") ?? false,
-  });
+  };
+  const auth = provider === undefined
+    ? await DashboardBrowserAuth.fromTokenFile(tokenPath!, browserAuthOptions)
+    : new DashboardBrowserAuth({
+        ...browserAuthOptions,
+        identityProvider: provider,
+        workspaceIdForPrincipal: (principal) => identityWorkspaceId(principal.identityId),
+      });
   const dashboardLimits = {
     ...DASH_DEFAULT_LIMITS,
     maxIndexedSessions: web.inventory.maxSessions,
@@ -1690,12 +1738,9 @@ export async function createDashboardServerFromConfig(
     limits: dashboardLimits,
     configuredUi: web.ui,
   });
-  // Multi-user configuration remains intentionally unavailable. The local-owner
-  // compatibility provider and implicit policy migration are still enforced at
-  // every boundary so enabling a provider later cannot expose an old bypass.
   const authorizationService = new DashboardAuthorizationService({
     stateDir: options.stateDir,
-    mode: "single-owner",
+    mode: provider === undefined ? "single-owner" : "multi-user",
   });
   const authorization = new DashboardAuthorizationEnforcer({
     backend: options.backend,
@@ -1743,7 +1788,12 @@ function mergeWebConfig(config: PiDaemonWebConfig | undefined): {
   allowInsecureHttp: boolean;
   tls: DashboardTlsSourceConfig;
   proxy: { trustForwardedHeaders: boolean };
-  auth: { tokenFile?: string; sessionTtlMs: number };
+  auth: {
+    tokenFile?: string;
+    identityProvider?: import("./config.js").PiDaemonWebIdentityProviderConfig;
+    identityProviderFile?: string;
+    sessionTtlMs: number;
+  };
   inventory: { roots: string[]; reconcileIntervalMs: number; maxSessions: number };
   residency: { warmTtlMs: number; maxPinnedPerWorkspace: number };
   tui: { enabled: boolean; defaultPresentation: "rich" | "tui"; maxRows: number; maxColumns: number };
@@ -1772,6 +1822,12 @@ function mergeWebConfig(config: PiDaemonWebConfig | undefined): {
     },
     auth: {
       ...(config?.auth?.tokenFile === undefined ? {} : { tokenFile: config.auth.tokenFile }),
+      ...(config?.auth?.identityProvider === undefined
+        ? {}
+        : { identityProvider: config.auth.identityProvider }),
+      ...(config?.auth?.identityProviderFile === undefined
+        ? {}
+        : { identityProviderFile: config.auth.identityProviderFile }),
       sessionTtlMs: config?.auth?.sessionTtlMs ?? DEFAULT_PI_DAEMON_WEB_CONFIG.auth.sessionTtlMs,
     },
     inventory: {

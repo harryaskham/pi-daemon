@@ -188,6 +188,7 @@ interface DashWorkspaceProps {
   initialSessions: SessionFixture[];
   capabilities: DashboardCapabilities;
   fixtureMode: boolean;
+  identityLabel?: string;
   inventoryReconciling?: boolean;
 }
 
@@ -199,6 +200,7 @@ function DashWorkspace({
   initialSessions,
   capabilities,
   fixtureMode,
+  identityLabel,
   inventoryReconciling = false,
 }: DashWorkspaceProps) {
   const [sessions, setSessions] = useState<SessionFixture[]>(initialSessions);
@@ -723,6 +725,7 @@ function DashWorkspace({
         <div className="workspace-notice" aria-live="polite">
           <button type="button" className="mobile-menu-button" aria-label="Open session drawer" onClick={() => setSidebarOpen(true)}><Menu size={15} /></button>
           <i />{notice}
+          {identityLabel === undefined ? null : <span className="workspace-identity" aria-label={`Signed in as ${identityLabel}`}>{identityLabel}</span>}
           {authorizationClient === undefined ? null : <button type="button" className="keyboard-help-button" aria-label="Open access administration" onClick={() => setAccessOpen(true)}>Access</button>}
           <button type="button" className="keyboard-help-button" aria-label="Open keyboard guide" onClick={() => setKeyboardHelpOpen(true)}><CircleHelp size={13} /> Keys</button>
           <span>{workspace.syncState === "synced" ? `workspace r${workspace.resource.revision}` : `workspace ${workspace.syncState}`} · Ctrl-hjkl focus · Ctrl-Shift-hjkl swap</span>
@@ -894,9 +897,9 @@ function ProductionApp() {
           <div className="brand-mark" aria-hidden="true">π</div>
           <p className="eyebrow">Pi Daemon</p>
           <h1 id="dash-login-title">Sign in to Dash</h1>
-          <p>Exchange the owner-private web credential for an HttpOnly browser session. The credential stays input-only and is never stored by the SPA.</p>
+          <p id="dash-login-help">Use the identity credential supplied by your operator. Single-owner installations use the existing web credential. It stays input-only, and Dash stores neither the credential nor identity authority in browser state.</p>
           <form onSubmit={(event) => void submitLogin(event)}>
-            <label><span>Web credential</span><input type="password" value={credential} onChange={(event) => setCredential(event.target.value)} autoComplete="off" autoFocus /></label>
+            <label><span>Identity credential</span><input type="password" value={credential} onChange={(event) => setCredential(event.target.value)} autoComplete="off" aria-describedby="dash-login-help" autoFocus /></label>
             {error ? <div className="dash-login__error" role="alert">{error}</div> : null}
             <button type="submit" className="primary-button" disabled={submitting || credential.length === 0}>{submitting ? "Signing in…" : "Sign in"}</button>
           </form>
@@ -916,6 +919,9 @@ function ProductionApp() {
       initialSessions={bootstrap.inventory.sessions.map(displaySession)}
       capabilities={bootstrap.capabilities}
       fixtureMode={false}
+      {...(bootstrap.identity === undefined
+        ? {}
+        : { identityLabel: bootstrap.identity.displayName ?? bootstrap.identity.identityId })}
       inventoryReconciling={bootstrap.inventory.index.reconciling}
     />
   );

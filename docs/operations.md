@@ -419,7 +419,9 @@ values. The ms-mac developer instance uses socket
 embedded Dash endpoint `127.0.0.1:7474`, while the Home Manager primary remains
 on API port 7463. No token is placed in the script, argv, Git, browser URL, or
 output: service bootstrap creates `STATE_DIR/api-token`, and the DashboardServer
-factory creates `STATE_DIR/web-token` when its lifecycle is enabled.
+factory creates `STATE_DIR/web-token` only when its legacy single-owner lifecycle
+is enabled. An explicit identity provider reads separate owner-only credential
+sources and does not create a fallback web token.
 
 An enabled embedded `web` block starts the same packaged content-hashed SPA and
 browser BFF after the owner socket and authenticated API are ready. Open
@@ -473,12 +475,89 @@ must then exactly match `publicOrigin` and arrive from loopback. See
 [Dashboard transport security](dashboard-transport-security) for downgrade,
 SNI, HSTS, cookie, file-mode, and failure semantics.
 
-The SPA **Access** dialog and `/dash/v1/authorization/...` BFF routes are the
-only supported grant, revocation, ownership-transfer, workspace-selection and
-controller-handoff surfaces. They require exact CSRF and revision headers and
-never accept a service bearer. Multi-user provider configuration remains
-intentionally unavailable until the final migration/acceptance slice; current
-operators see the same `local-owner` workspace through these policy-safe paths.
+## Dashboard identities and single-owner migration
+
+The SPA **Access & controller** dialog and `/dash/v1/authorization/...` BFF
+routes are the only supported grant, revocation, ownership-transfer,
+workspace-selection and controller-handoff surfaces. They require exact CSRF and
+revision headers and never accept a service bearer.
+
+With no identity provider configured, Dash behaves exactly as before: it creates
+or reuses `STATE_DIR/web-token`, authenticates `local-owner`, and gives that
+principal the implicit administrator role. Multi-user activation is explicit
+and static. Identity metadata may be placed directly in the strict daemon YAML,
+but credentials may only be read from an owner-only regular file or an inherited
+descriptor:
+
+```yaml
+web:
+  auth:
+    sessionTtlMs: 43200000
+    identityProvider:
+      type: static
+      identities:
+        - identityId: operator
+          globalRole: administrator
+          displayName: Primary operator
+          credentialFile: /run/pi-daemon-secrets/dash-operator
+        - identityId: reviewer
+          globalRole: member
+          displayName: Reviewer
+          credentialFd: 9
+```
+
+The provider is bounded to 128 unique identities and requires at least one global
+administrator. Every identity requires exactly one unique `credentialFile` or
+`credentialFd`; credentials must be independent high-entropy tokens, not user
+passwords. Literal `credential`, `password`, token, bearer, or secret fields are
+unknown and fail startup. Credential files are bounded, owner-owned, mode 0600,
+regular, and non-symlink. Descriptors must be inherited descriptors numbered 3
+or higher and reference an owner-only regular file; they are consumed and closed
+at startup. Credential bytes are hashed at startup and never enter YAML, argv,
+Nix store values, status, logs, cookies, browser storage, or provider metadata.
+
+A strict non-secret provider document can instead be selected from YAML with
+`web.auth.identityProviderFile` or from either executable with:
+
+```console
+pi-daemon serve ... --web-identity-provider-file /etc/pi-daemon/identities.yaml
+pi-daemon web ... --web-identity-provider-file /etc/pi-daemon/identities.yaml
+```
+
+Relative credential paths in an inline provider are relative to the daemon
+config; paths in a provider document are relative to that document. The CLI
+argument contains only the provider-document path. Home Manager offers
+`instances.<name>.dashboardAuth.identityProviderFile` or a typed
+`dashboardAuth.identities` list. The latter emits only identity metadata and
+runtime credential paths to a generated Nix-store JSON document and passes its
+path to the embedded or dedicated process. For example:
+
+```nix
+services.pi-daemon.instances.work.dashboardAuth.identities = [
+  {
+    identityId = "operator";
+    globalRole = "administrator";
+    displayName = "Primary operator";
+    credentialFile = config.sops.secrets.pi-daemon-dash-operator.path;
+  }
+];
+```
+
+Do not also configure legacy `web.auth.tokenFile`; the three provider sources
+(`tokenFile`, inline provider, provider file) are mutually exclusive. The daemon
+service bearer remains an independent server-to-server credential and is never
+accepted at Dash login.
+
+To migrate an existing installation, stop Dash, back up its owner-private state,
+configure at least one administrator identity, and restart with the same Dash
+state directory. Restart revokes old browser cookies. The old `local-owner`
+workspace/policies remain durable; a configured global administrator can list
+and open them, then use **Access & controller** to transfer ownership and grant
+members. The old generated `web-token` is no longer accepted while the provider
+is enabled; retain it only for a deliberate rollback, then remove it after the
+migration window. Removing the provider and restarting restores exact
+single-owner behavior. Moving between embedded and dedicated mode is a separate
+offline state-directory migration—provider configuration does not copy state.
 
 ## Nix-on-Droid cache bootstrap
 

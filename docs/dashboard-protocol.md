@@ -96,9 +96,9 @@ privately; embedded Dash calls the same trusted services directly. Browser
 JavaScript never receives the service bearer and never stores it in a bundle,
 URL, workspace, IndexedDB, local storage, event frame, log, or error.
 
-`POST /dash/v1/login` accepts an input-only web credential and emits an opaque
-revocable browser session as `Set-Cookie`. The response body contains only
-client/workspace identity, expiry, and a CSRF token. Private HTTP routes and the
+`POST /dash/v1/login` accepts an input-only identity credential and emits an
+opaque revocable browser session as `Set-Cookie`. The response body contains
+only client/workspace correlation, expiry, and a CSRF token. Private HTTP routes and the
 WebSocket require the `HttpOnly`, same-site browser session. Mutations also
 require exact Origin/Host checks and the CSRF header. Loopback is not
 authentication.
@@ -109,18 +109,24 @@ language-neutral browser-storable fixture. Capability negotiation states
 route matching, so they do not reveal whether an inventory, ticket, workspace,
 or managed session exists.
 
-The implemented compatibility provider stores only a digest of the configured
-web credential and CSRF value. It resolves that proof to the deterministic
-`local-owner` administrator and binds the principal to server-side browser
-session state; neither cookie nor response carries identity authority. Provider
-removal or principal-role change invalidates subsequent cookie authentication.
-When no `web.auth.tokenFile` is configured, first launch atomically creates and
-reuses an owner-only credential at `STATE_DIR/web-token`; a configured path is
-held to the same owner/symlink/size checks. The browser cookie contains a random
-lookup key plus an HMAC; all principal/client/workspace/expiry state stays
-server-side and is bounded and revocable. Multi-user configuration remains
-unavailable until the central ledger is enforced on every HTTP/stream boundary;
-see [Dashboard identity and authorization](dashboard-authorization).
+The compatibility provider stores only a digest of the configured web
+credential and CSRF value. It resolves that proof to the deterministic
+`local-owner` administrator. When no provider or `web.auth.tokenFile` is
+configured, first launch atomically creates and reuses an owner-only credential
+at `STATE_DIR/web-token`; a configured path is held to the same
+owner/symlink/size checks. An explicit static provider accepts up to 128 bounded
+identities whose credential bytes are read only from owner-only files or
+inherited descriptors. Inline/provider-file/CLI/Home Manager configuration
+contains only metadata and source paths/descriptors. It atomically enables the
+central multi-user policy mode; no shared-authority intermediate mode exists.
+Provider removal or principal-role change invalidates subsequent cookie
+authentication.
+
+The browser cookie contains a random lookup key plus an HMAC; all principal,
+client, workspace, and expiry authority stays server-side and is bounded and
+revocable. Bootstrap may return the current principal ID/role/display name as an
+informational signed-in-as label, but requests cannot send it back as authority.
+See [Dashboard identity and authorization](dashboard-authorization).
 On a cookie-authenticated `GET /dash/v1/bootstrap`, the server reproduces the
 session-bound, domain-separated HMAC CSRF token and returns it in the no-store
 `x-pi-daemon-csrf` response header. This restores mutation authority after an

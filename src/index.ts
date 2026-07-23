@@ -6,6 +6,7 @@ export * from "./config.js";
 export * from "./dashboard-contract.js";
 export * from "./dashboard-auth.js";
 export * from "./dashboard-identity.js";
+export * from "./dashboard-identity-config.js";
 export * from "./dashboard-authorization.js";
 export {
   DashboardAuthorizationEnforcer,

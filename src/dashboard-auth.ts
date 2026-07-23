@@ -5,7 +5,7 @@ import {
   randomUUID,
   timingSafeEqual,
 } from "node:crypto";
-import { constants } from "node:fs";
+import { constants, fstatSync, readSync } from "node:fs";
 import { link, lstat, mkdir, open, rm } from "node:fs/promises";
 import { dirname } from "node:path";
 
@@ -52,6 +52,8 @@ export interface DashboardBrowserAuthOptions {
   now?: () => Date;
   signingKey?: Uint8Array;
   randomBytes?: (size: number) => Uint8Array;
+  /** Server-owned workspace derivation for multi-user providers. */
+  workspaceIdForPrincipal?: (principal: DashboardPrincipal) => string;
 }
 
 export interface DashboardAuthenticatedSession {
@@ -90,6 +92,7 @@ export class DashboardBrowserAuth {
   readonly #signingKey: Buffer;
   readonly #now: () => Date;
   readonly #randomBytes: (size: number) => Uint8Array;
+  readonly #workspaceIdForPrincipal: ((principal: DashboardPrincipal) => string) | undefined;
   readonly #sessions = new Map<string, BrowserSessionRecord>();
 
   constructor(options: DashboardBrowserAuthOptions) {
@@ -108,6 +111,7 @@ export class DashboardBrowserAuth {
     if (this.#signingKey.length !== 32) throw new Error("dashboard signing key must be 32 bytes");
     this.#now = options.now ?? (() => new Date());
     this.#randomBytes = options.randomBytes ?? randomBytes;
+    this.#workspaceIdForPrincipal = options.workspaceIdForPrincipal;
   }
 
   static async fromTokenFile(
@@ -139,7 +143,9 @@ export class DashboardBrowserAuth {
 
     const sessionKey = token(this.#randomBytes(32));
     const csrfToken = this.#csrfToken(sessionKey);
-    const workspaceId = request.workspaceId ?? `workspace-${token(this.#randomBytes(18))}`;
+    const workspaceId = this.#workspaceIdForPrincipal?.(principal)
+      ?? request.workspaceId
+      ?? `workspace-${token(this.#randomBytes(18))}`;
     validateOpaqueId(workspaceId, "workspaceId");
     const expiresAtMs = now + this.sessionTtlMs;
     this.#sessions.set(sessionKey, {
@@ -386,6 +392,35 @@ export async function ensureDashboardCredentialFile(path: string): Promise<boole
   }
   await readPrivateDashboardCredential(path);
   return created;
+}
+
+export function readPrivateDashboardCredentialFd(fd: number): string {
+  if (!Number.isSafeInteger(fd) || fd < 3) {
+    throw new Error("dashboard credential descriptor must be an inherited descriptor of at least 3");
+  }
+  const info = fstatSync(fd);
+  if (!info.isFile()) throw new Error("dashboard credential descriptor must reference a regular file");
+  const getuid = process.getuid;
+  if (getuid !== undefined && info.uid !== getuid()) {
+    throw new Error("dashboard credential descriptor file must be owned by the current user");
+  }
+  if ((info.mode & 0o077) !== 0) {
+    throw new Error("dashboard credential descriptor file must be owner-only");
+  }
+  if (info.size > MAX_RAW_CREDENTIAL_BYTES) {
+    throw new Error("dashboard credential descriptor exceeds its byte limit");
+  }
+  const buffer = Buffer.allocUnsafe(MAX_RAW_CREDENTIAL_BYTES + 1);
+  let offset = 0;
+  while (offset < buffer.length) {
+    const bytesRead = readSync(fd, buffer, offset, buffer.length - offset, null);
+    if (bytesRead === 0) break;
+    offset += bytesRead;
+  }
+  if (offset > MAX_RAW_CREDENTIAL_BYTES) {
+    throw new Error("dashboard credential descriptor exceeds its byte limit");
+  }
+  return validateCredential(stripOneLineEnding(buffer.subarray(0, offset).toString("utf8")));
 }
 
 export async function readPrivateDashboardCredential(path: string): Promise<string> {

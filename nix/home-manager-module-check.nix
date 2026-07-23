@@ -57,6 +57,19 @@
         authSeedFile = "/home/tester/.pi/agent/auth.json";
         allowedRoots = ["/srv/alpha" "/srv/shared"];
         allowAuthorityRootOverlap = true;
+        dashboardAuth.identities = [
+          {
+            identityId = "alpha-owner";
+            globalRole = "administrator";
+            displayName = "Alpha owner";
+            credentialFile = "/run/secrets/pi-alpha-owner";
+          }
+          {
+            identityId = "alpha-member";
+            globalRole = "member";
+            credentialFile = "/run/secrets/pi-alpha-member";
+          }
+        ];
         api = {
           enable = true;
           bind = "127.0.0.1";
@@ -211,6 +224,26 @@
       }
     ];
   };
+  evalDashboardIdentityInvalid = lib.evalModules {
+    specialArgs = {inherit pkgs;};
+    modules = [
+      baseStubs
+      self.homeManagerModules.pi-daemon
+      {
+        services.pi-daemon.package = testPackage;
+        services.pi-daemon.instances.one = {
+          allowedRoots = ["/srv/one"];
+          dashboardAuth.identities = [
+            {
+              identityId = "member-only";
+              globalRole = "member";
+              credentialFile = "/run/secrets/member-only";
+            }
+          ];
+        };
+      }
+    ];
+  };
   evalSupervisord = lib.evalModules {
     specialArgs = {inherit pkgs;};
     modules = [
@@ -226,6 +259,7 @@
   portCollisionDetected = !(builtins.all (entry: entry.assertion) evalPortCollision.config.assertions);
   tokenCollisionDetected = !(builtins.all (entry: entry.assertion) evalTokenCollision.config.assertions);
   webPortCollisionDetected = !(builtins.all (entry: entry.assertion) evalWebPortCollision.config.assertions);
+  dashboardIdentityInvalidDetected = !(builtins.all (entry: entry.assertion) evalDashboardIdentityInvalid.config.assertions);
   normalServices =
     if pkgs.stdenv.isDarwin
     then eval.config.launchd.agents
@@ -279,6 +313,7 @@ in
   assert portCollisionDetected;
   assert tokenCollisionDetected;
   assert webPortCollisionDetected;
+  assert dashboardIdentityInvalidDetected;
   assert builtins.isString normalAlphaExecutable;
     pkgs.runCommand "pi-daemon-home-manager-module-check" {} ''
       test ${lib.escapeShellArg (toString (builtins.length eval.config.home.packages))} = 1
@@ -312,6 +347,8 @@ in
       printf '%s\n' ${lib.escapeShellArg normalAlphaWebCommand} | grep -F -- 'http://127.0.0.1:17463'
       printf '%s\n' ${lib.escapeShellArg normalAlphaWebCommand} | grep -F -- '--api-token-file'
       printf '%s\n' ${lib.escapeShellArg normalAlphaWebCommand} | grep -F -- '/run/secrets/pi-alpha-token'
+      printf '%s\n' ${lib.escapeShellArg normalAlphaWebCommand} | grep -F -- '--web-identity-provider-file'
+      printf '%s\n' ${lib.escapeShellArg normalAlphaWebCommand} | grep -F -- 'pi-daemon-dashboard-identities-alpha.json'
       printf '%s\n' ${lib.escapeShellArg normalAlphaWebCommand} | grep -F -- '--web-port'
       printf '%s\n' ${lib.escapeShellArg normalAlphaWebCommand} | grep -F -- '17465'
       printf '%s\n' ${lib.escapeShellArg normalAlphaWebCommand} | grep -F -- '--public-origin'

@@ -547,6 +547,11 @@ test("bootstrap stays preview-only and backend resources use bounded typed query
   assert.equal(bootstrap.response.headers.get(DASH_CSRF_HEADER), session.json.data.csrfToken);
   assert.equal(bootstrap.json.data.capabilities.apiVersion, "1.0");
   assert.equal(bootstrap.json.data.capabilities.limits.browserSessionTtlMs, 60_000);
+  assert.deepEqual(bootstrap.json.data.identity, {
+    identityId: "local-owner",
+    globalRole: "administrator",
+    displayName: "Local owner",
+  });
   assert.equal(bootstrap.json.data.workspace.workspaceId, "workspace-fixture");
   assert.equal(bootstrap.json.data.settings.effective.theme.density, "compact");
   assert.deepEqual(calls.map((call) => Array.isArray(call) ? call[0] : call), ["capabilities", "listSessions"]);
@@ -1313,6 +1318,154 @@ test("instance YAML constructs the same secure server without exposing a daemon 
   assert.equal(settings.json.data.effective.editor.mode, "vim");
   assert.equal(settings.json.data.sources["editor.mode"], "config");
   assert.equal(JSON.stringify(settings.json).includes(CREDENTIAL), false);
+});
+
+test("embedded and dedicated config activate multi-user providers without creating a browser token", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "pi-daemon-dashboard-provider-"));
+  t.after(async () => rm(root, { recursive: true, force: true }));
+  const fixtures = createDashboardContractFixtures();
+  const backend = {
+    async capabilities() { return fixtures.capabilities; },
+    async listSessions() { return fixtures.inventory; },
+    async getSessionInfo() { return fixtures.sessionInfo; },
+    async getTranscript() { return fixtures.transcript; },
+    async activateSession() { return fixtures.activationTicket; },
+    async getActivation() { return fixtures.activationTicket; },
+    async exportSession() { return fixtures.exportTicket; },
+    async getExport() { return fixtures.exportTicket; },
+    async getManagedSession() { throw new Error("unused"); },
+    async openSessionChannel() { throw new Error("unused"); },
+    async openTuiChannel() { throw new Error("unused"); },
+  };
+  const ownerCredential = "configured-owner-credential-0123456789";
+  const memberCredential = "configured-member-credential-0123456789";
+  for (const mode of ["embedded", "dedicated"]) {
+    const directory = join(root, mode);
+    const stateDir = join(directory, "state");
+    await mkdir(directory, { recursive: true, mode: 0o700 });
+    await Promise.all([
+      writeFile(join(directory, "owner.secret"), `${ownerCredential}\n`, { mode: 0o600 }),
+      writeFile(join(directory, "member.secret"), `${memberCredential}\n`, { mode: 0o600 }),
+    ]);
+    const configPath = join(directory, "config.yaml");
+    await writeFile(configPath, `instance: ${mode}
+web:
+  enabled: true
+  mode: ${mode}
+  bind: 127.0.0.1
+  port: 0
+  auth:
+    identityProvider:
+      type: static
+      identities:
+        - identityId: owner
+          globalRole: administrator
+          displayName: Configured owner
+          credentialFile: ./owner.secret
+        - identityId: member
+          globalRole: member
+          credentialFile: ./member.secret
+`, { mode: 0o600 });
+    const loadedConfig = await loadPiDaemonConfig({ cliConfigPath: configPath, cliInstance: mode });
+    const server = await createDashboardServerFromConfig({
+      loadedConfig,
+      backend,
+      stateDir,
+      serverInstanceId: `dash-provider-${mode}`,
+    });
+    const { origin } = await server.start();
+    try {
+      assert.equal(server.authorization.authorization.mode, "multi-user");
+      const owner = await login(origin, { credential: ownerCredential, clientId: `${mode}-owner` });
+      const member = await login(origin, { credential: memberCredential, clientId: `${mode}-member` });
+      assert.equal(owner.response.status, 200);
+      assert.equal(member.response.status, 200);
+      assert.notEqual(owner.json.data.workspaceId, member.json.data.workspaceId);
+      assert.match(owner.json.data.workspaceId, /^workspace-[A-Za-z0-9_-]{32}$/);
+      await assert.rejects(readFile(join(stateDir, "web-token"), "utf8"), { code: "ENOENT" });
+    } finally {
+      await server.stop();
+    }
+  }
+});
+
+test("legacy local-owner state migrates explicitly to configured identities across restart", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "pi-daemon-dashboard-migration-"));
+  t.after(async () => rm(root, { recursive: true, force: true }));
+  const configPath = join(root, "config.yaml");
+  const stateDir = join(root, "state");
+  await writeFile(configPath, `instance: migration
+web:
+  enabled: true
+  mode: embedded
+  bind: 127.0.0.1
+  port: 0
+`, { mode: 0o600 });
+  const fixtures = createDashboardContractFixtures();
+  const backend = {
+    async capabilities() { return fixtures.capabilities; },
+    async listSessions() { return fixtures.inventory; },
+    async getSessionInfo() { return fixtures.sessionInfo; },
+    async getTranscript() { return fixtures.transcript; },
+    async activateSession() { return fixtures.activationTicket; },
+    async getActivation() { return fixtures.activationTicket; },
+    async exportSession() { return fixtures.exportTicket; },
+    async getExport() { return fixtures.exportTicket; },
+    async getManagedSession() { throw new Error("unused"); },
+    async openSessionChannel() { throw new Error("unused"); },
+    async openTuiChannel() { throw new Error("unused"); },
+  };
+  let loadedConfig = await loadPiDaemonConfig({ cliConfigPath: configPath, cliInstance: "migration" });
+  let server = await createDashboardServerFromConfig({ loadedConfig, backend, stateDir });
+  let address = await server.start();
+  const legacyCredential = (await readFile(join(stateDir, "web-token"), "utf8")).trim();
+  const legacy = await login(address.origin, {
+    credential: legacyCredential,
+    clientId: "legacy-client",
+    workspaceId: "legacy-workspace",
+  });
+  assert.equal(legacy.response.status, 200);
+  await server.stop();
+
+  const configuredCredential = "migration-admin-credential-0123456789";
+  await writeFile(join(root, "admin.secret"), `${configuredCredential}\n`, { mode: 0o600 });
+  await writeFile(configPath, `instance: migration
+web:
+  enabled: true
+  mode: embedded
+  bind: 127.0.0.1
+  port: 0
+  auth:
+    identityProvider:
+      type: static
+      identities:
+        - identityId: migrated-admin
+          globalRole: administrator
+          credentialFile: ./admin.secret
+`, { mode: 0o600 });
+  loadedConfig = await loadPiDaemonConfig({ cliConfigPath: configPath, cliInstance: "migration" });
+  server = await createDashboardServerFromConfig({ loadedConfig, backend, stateDir });
+  address = await server.start();
+  t.after(async () => server.stop());
+  const migrated = await login(address.origin, {
+    credential: configuredCredential,
+    clientId: "migrated-client",
+  });
+  assert.equal(migrated.response.status, 200);
+  assert.equal(server.authorization.authorization.mode, "multi-user");
+  const workspaces = await jsonResponse(await fetch(`${address.origin}/dash/v1/workspaces`, {
+    headers: privateHeaders(address.origin, migrated),
+  }));
+  assert.equal(workspaces.response.status, 200);
+  assert.equal(
+    workspaces.json.data.workspaces.some(({ workspace }) => workspace.workspaceId === "legacy-workspace"),
+    true,
+  );
+  const staleLegacyLogin = await login(address.origin, {
+    credential: legacyCredential,
+    clientId: "stale-legacy-client",
+  });
+  assert.equal(staleLegacyLogin.response.status, 401);
 });
 
 test("slow partial HTTP bodies are terminated by the whole-request deadline", async (t) => {

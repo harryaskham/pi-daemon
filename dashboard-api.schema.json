@@ -2468,6 +2468,16 @@
       },
       "additionalProperties": true
     },
+    "bootstrapIdentity": {
+      "type": "object",
+      "required": ["identityId", "globalRole"],
+      "properties": {
+        "identityId": { "$ref": "#/$defs/identifier" },
+        "globalRole": { "enum": ["administrator", "member"] },
+        "displayName": { "type": "string", "minLength": 1, "maxLength": 256 }
+      },
+      "additionalProperties": false
+    },
     "bootstrapResource": {
       "type": "object",
       "required": [
@@ -2488,6 +2498,9 @@
         },
         "inventory": {
           "$ref": "#/$defs/inventoryPage"
+        },
+        "identity": {
+          "$ref": "#/$defs/bootstrapIdentity"
         }
       },
       "additionalProperties": true

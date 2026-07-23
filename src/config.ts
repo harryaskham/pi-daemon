@@ -60,8 +60,28 @@ export interface PiDaemonApiConfig {
   allowInsecureHttp?: boolean;
 }
 
+export interface PiDaemonWebIdentityConfig {
+  identityId: string;
+  globalRole: "administrator" | "member";
+  displayName?: string;
+  /** Owner-only credential path; resolved relative to the containing configuration. */
+  credentialFile?: string;
+  /** Inherited credential descriptor; never a browser or daemon-service bearer. */
+  credentialFd?: number;
+}
+
+export interface PiDaemonWebIdentityProviderConfig {
+  type: "static";
+  identities: PiDaemonWebIdentityConfig[];
+}
+
 export interface PiDaemonWebAuthConfig {
+  /** Legacy exact single-owner credential source. Mutually exclusive with identityProvider*. */
   tokenFile?: string;
+  /** Strict non-secret provider metadata and credential source paths/descriptors. */
+  identityProvider?: PiDaemonWebIdentityProviderConfig;
+  /** Strict YAML/JSON provider document, resolved relative to the daemon config. */
+  identityProviderFile?: string;
   sessionTtlMs?: number;
 }
 
@@ -557,12 +577,100 @@ function parseWebProxy(value: unknown): PiDaemonWebProxyConfig {
 
 function parseWebAuth(value: unknown): PiDaemonWebAuthConfig {
   const object = objectValue(value, "web.auth");
-  assertKnownKeys(object, ["tokenFile", "sessionTtlMs"]);
+  assertKnownKeys(object, ["tokenFile", "identityProvider", "identityProviderFile", "sessionTtlMs"]);
   const result: PiDaemonWebAuthConfig = {};
   copyOptionalString(object, result, "tokenFile");
+  copyOptionalString(object, result, "identityProviderFile");
+  if (object.identityProvider !== undefined) {
+    result.identityProvider = parseDashboardIdentityProviderConfig(object.identityProvider);
+  }
+  const sources = [result.tokenFile, result.identityProvider, result.identityProviderFile]
+    .filter((source) => source !== undefined).length;
+  if (sources > 1) {
+    throw new PiDaemonConfigError(
+      "config_invalid",
+      "web.auth tokenFile, identityProvider, and identityProviderFile are mutually exclusive",
+    );
+  }
   const ttl = optionalInteger(object, "sessionTtlMs", 1);
   if (ttl !== undefined) result.sessionTtlMs = ttl;
   return result;
+}
+
+export function parseDashboardIdentityProviderConfig(
+  value: unknown,
+): PiDaemonWebIdentityProviderConfig {
+  const object = objectValue(value, "web.auth.identityProvider");
+  assertKnownKeys(object, ["type", "identities"]);
+  if (object.type !== "static") {
+    throw new PiDaemonConfigError(
+      "config_invalid",
+      "web.auth.identityProvider.type must be static",
+    );
+  }
+  if (!Array.isArray(object.identities) || object.identities.length < 1 || object.identities.length > 128) {
+    throw new PiDaemonConfigError(
+      "config_invalid",
+      "web.auth.identityProvider.identities must contain between 1 and 128 entries",
+    );
+  }
+  const identities: PiDaemonWebIdentityConfig[] = [];
+  const identityIds = new Set<string>();
+  const files = new Set<string>();
+  const fds = new Set<number>();
+  let administrators = 0;
+  for (const [index, raw] of object.identities.entries()) {
+    const identity = objectValue(raw, `web.auth.identityProvider.identities[${index}]`);
+    assertKnownKeys(identity, ["identityId", "globalRole", "displayName", "credentialFile", "credentialFd"]);
+    const identityId = optionalString(identity, "identityId", 128);
+    if (identityId === undefined || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u.test(identityId)) {
+      throw new PiDaemonConfigError("config_invalid", "dashboard identity ID is invalid");
+    }
+    if (identityIds.has(identityId)) {
+      throw new PiDaemonConfigError("config_invalid", "dashboard identity IDs must be unique");
+    }
+    identityIds.add(identityId);
+    const globalRole = optionalEnum(identity, "globalRole", ["administrator", "member"] as const);
+    if (globalRole === undefined) {
+      throw new PiDaemonConfigError("config_invalid", "dashboard identity globalRole is required");
+    }
+    if (globalRole === "administrator") administrators += 1;
+    const displayName = optionalString(identity, "displayName", 256);
+    if (displayName !== undefined && /[\r\n\0]/u.test(displayName)) {
+      throw new PiDaemonConfigError("config_invalid", "dashboard identity displayName is invalid");
+    }
+    const credentialFile = optionalString(identity, "credentialFile", 4096);
+    const credentialFd = optionalInteger(identity, "credentialFd", 3);
+    if ((credentialFile === undefined) === (credentialFd === undefined)) {
+      throw new PiDaemonConfigError(
+        "config_invalid",
+        "each dashboard identity requires exactly one credentialFile or credentialFd",
+      );
+    }
+    if (credentialFile !== undefined) {
+      if (files.has(credentialFile)) {
+        throw new PiDaemonConfigError("config_invalid", "dashboard identity credentialFile sources must be unique");
+      }
+      files.add(credentialFile);
+    }
+    if (credentialFd !== undefined) {
+      if (fds.has(credentialFd)) {
+        throw new PiDaemonConfigError("config_invalid", "dashboard identity credentialFd sources must be unique");
+      }
+      fds.add(credentialFd);
+    }
+    identities.push({
+      identityId,
+      globalRole,
+      ...(displayName === undefined ? {} : { displayName }),
+      ...(credentialFile === undefined ? {} : { credentialFile }),
+      ...(credentialFd === undefined ? {} : { credentialFd }),
+    });
+  }
+  if (administrators < 1) {
+    throw new PiDaemonConfigError("config_invalid", "dashboard identities require at least one administrator");
+  }
+  return { type: "static", identities };
 }
 
 function parseWebInventory(value: unknown): PiDaemonWebInventoryConfig {

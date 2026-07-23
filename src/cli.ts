@@ -253,6 +253,7 @@ async function runWeb(
       "web-port",
       "public-origin",
       "web-allow-insecure-http",
+      "web-identity-provider-file",
       "trust-proxy-headers",
       "tls-cert-file",
       "tls-cert-fd",
@@ -326,6 +327,15 @@ async function runWeb(
         port: webPort,
         ...(options.has("web-allow-insecure-http")
           ? { allowInsecureHttp: booleanSetting(options, "web-allow-insecure-http", undefined)! }
+          : {}),
+        ...(options.has("web-identity-provider-file")
+          ? {
+              auth: {
+                identityProviderFile: resolve(
+                  requiredOption(options, "web-identity-provider-file"),
+                ),
+              },
+            }
           : {}),
         ...(options.has("trust-proxy-headers")
           ? {
@@ -429,6 +439,7 @@ async function runServe(
       "api-allow-insecure-http",
       "public-origin",
       "web-allow-insecure-http",
+      "web-identity-provider-file",
       "trust-proxy-headers",
       "tls-cert-file",
       "tls-cert-fd",
@@ -453,10 +464,11 @@ async function runServe(
   const hasEmbeddedWebTransportOverride =
     options.has("public-origin") ||
     options.has("web-allow-insecure-http") ||
+    options.has("web-identity-provider-file") ||
     options.has("trust-proxy-headers") ||
     embeddedTlsOverrides !== undefined;
   if (!embeddedWebEnabled && hasEmbeddedWebTransportOverride) {
-    throw new CliUsageError("Dashboard transport options require embedded web to be enabled");
+    throw new CliUsageError("Dashboard web options require embedded web to be enabled");
   }
   const configuredPath = (cliName: string, value: string | undefined): string | undefined => {
     const cliValue = options.get(cliName);
@@ -705,6 +717,15 @@ async function runServe(
                     "web-allow-insecure-http",
                     undefined,
                   )!,
+                }
+              : {}),
+            ...(options.has("web-identity-provider-file")
+              ? {
+                  auth: {
+                    identityProviderFile: resolve(
+                      requiredOption(options, "web-identity-provider-file"),
+                    ),
+                  },
                 }
               : {}),
             ...(options.has("trust-proxy-headers")
@@ -1124,6 +1145,7 @@ Usage:
                   [--api-token-file PATH | --api-token-fd FD]
                   [--api-allow-insecure-http true|false]
                   [--public-origin URL] [--web-allow-insecure-http true|false]
+                  [--web-identity-provider-file PATH]
                   [--trust-proxy-headers true|false]
                   [--tls-cert-file PATH | --tls-cert-fd FD]
                   [--tls-key-file PATH | --tls-key-fd FD] [--tls-reload-ms N]
@@ -1131,6 +1153,7 @@ Usage:
                 [--api-url URL] [--api-token-file PATH | --api-token-fd FD]
                 [--web-state-dir PATH] [--web-bind HOST] [--web-port PORT]
                 [--public-origin URL] [--web-allow-insecure-http true|false]
+                [--web-identity-provider-file PATH]
                 [--trust-proxy-headers true|false]
                 [--tls-cert-file PATH | --tls-cert-fd FD]
                 [--tls-key-file PATH | --tls-key-fd FD] [--tls-reload-ms N]

@@ -7,7 +7,6 @@ import {
   mkdtemp,
   readFile,
   rm,
-  stat,
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -94,6 +93,16 @@ test("dedicated web CLI authenticates remotely and serves only browser credentia
   await mkdir(configDir, { recursive: true, mode: 0o700 });
   const apiTokenPath = join(configDir, "api-token");
   await writeFile(apiTokenPath, `${TOKEN}\n`, { mode: 0o600 });
+  const identityCredential = "dedicated-identity-credential-0123456789";
+  await writeFile(join(configDir, "identity.secret"), `${identityCredential}\n`, { mode: 0o600 });
+  const identityProviderPath = join(configDir, "identities.yaml");
+  await writeFile(identityProviderPath, `type: static
+identities:
+  - identityId: dedicated-owner
+    globalRole: administrator
+    displayName: Dedicated owner
+    credentialFile: ./identity.secret
+`, { mode: 0o644 });
   const { certFile: certPath, keyFile: keyPath } = await generateTlsPair(
     configDir,
     "dash",
@@ -120,7 +129,15 @@ web:
 
   const logs = [];
   const code = await runCli(
-    ["web", "--config", configPath, "--instance", "dedicated-test"],
+    [
+      "web",
+      "--config",
+      configPath,
+      "--instance",
+      "dedicated-test",
+      "--web-identity-provider-file",
+      identityProviderPath,
+    ],
     { stdout: () => {}, stderr: (line) => logs.push(line) },
     {
       waitForShutdown: async (shutdown) => {
@@ -130,13 +147,12 @@ web:
         assert.match(response.body, /<div id="root"><\/div>/);
         assert.equal(response.headers["strict-transport-security"], "max-age=31536000");
         const webTokenPath = join(root, "daemon-state", "dedicated-web", "web-token");
-        const webToken = (await readFile(webTokenPath, "utf8")).trimEnd();
-        assert.equal((await stat(webTokenPath)).mode & 0o777, 0o600);
+        await assert.rejects(readFile(webTokenPath, "utf8"), { code: "ENOENT" });
         const loginBody = JSON.stringify({
           requestId: "dedicated-login",
           clientId: "dedicated-client",
-          workspaceId: "dedicated-workspace",
-          credential: webToken,
+          workspaceId: "browser-supplied-workspace-is-ignored",
+          credential: identityCredential,
         });
         const login = await httpsCall({
           port: webPort,
@@ -153,7 +169,9 @@ web:
         assert.match(login.headers["set-cookie"][0], /HttpOnly; SameSite=Strict/);
         assert.match(login.headers["set-cookie"][0], /; Secure(?:;|$)/);
         assert.equal(logs.join("").includes(TOKEN), false);
-        assert.equal(logs.join("").includes(webToken), false);
+        assert.equal(logs.join("").includes(identityCredential), false);
+        const loginResource = JSON.parse(login.body).data;
+        assert.notEqual(loginResource.workspaceId, "browser-supplied-workspace-is-ignored");
         const ready = logs.map((line) => JSON.parse(line)).find((entry) => entry.event === "pi_daemon_web_ready");
         assert.equal(ready.port, webPort);
         assert.equal(ready.origin, origin);

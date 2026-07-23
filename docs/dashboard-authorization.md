@@ -5,17 +5,17 @@ title: Dashboard identity and authorization
 
 # Dashboard identity and authorization
 
-Dash v1 deliberately has one operator trust domain. Its generated web token is
-exchanged for an ephemeral HttpOnly browser session, but every authenticated
-browser has the same authority. Multi-user mode is therefore not an ACL field
+Dash v1 started with one operator trust domain: its generated web token was
+exchanged for an ephemeral HttpOnly browser session and every authenticated
+browser had the same authority. Multi-user mode is therefore not an ACL field
 added to inventory or workspace JSON. It is a separate authentication and
-central policy system whose enforcement must cover every HTTP, WebSocket,
-embedded, and dedicated boundary before the mode can be enabled.
+central policy system enforced at every HTTP, WebSocket, embedded, and dedicated
+boundary.
 
-This document is the threat model and architecture for `bd-b31a5d`. The first
-foundation slice exports the identity/provider and policy-ledger contracts but
-does **not** expose multi-user configuration. The existing single-owner runtime
-continues unchanged until the enforcement slice is complete.
+This document is the threat model and completed architecture for `bd-b31a5d`.
+Single-owner remains the exact default. Multi-user activation is explicit and
+requires a strict startup-loaded identity provider whose secret material comes
+only from bounded owner-only files or inherited descriptors.
 
 ## Trust boundaries
 
@@ -80,7 +80,13 @@ authentication code in the shared process.
 
 The existing `web.auth.tokenFile` is the compatibility provider. It resolves to
 the deterministic `local-owner` administrator, so old YAML, CLI, Home Manager,
-login UI, cookies, and restart behavior remain valid.
+login UI, cookies, and restart behavior remain valid. A static provider may be
+configured inline at `web.auth.identityProvider`, selected from a strict
+non-secret document at `web.auth.identityProviderFile`, or selected by
+`--web-identity-provider-file`. Metadata is bounded to 128 identities and exactly
+one credential file/descriptor source per identity. Literal secrets are rejected.
+Home Manager's `dashboardAuth.identities` writes metadata and runtime secret paths,
+never bytes, to the Nix store.
 
 ## Browser sessions
 
@@ -174,11 +180,15 @@ Migration has two explicit modes:
   may see/adopt unowned legacy inventory; all other resources require an
   explicit policy.
 
-The service must continue to refuse multi-user configuration until provider
-configuration, migration, and final exhaustive acceptance are available; route
-and stream enforcement, filtered paging, revocation, and administration are now
-implemented. There is no intermediate mode where several identities authenticate
-but share v1's all-powerful browser backend.
+A configured provider activates `multi-user` atomically at startup.
+There is no intermediate mode where several identities authenticate but share v1's
+all-powerful browser backend. With no provider, `single-owner` remains exact.
+Provider activation does not rewrite existing policy. Old `local-owner` resources
+remain durable and recoverable by a configured global administrator, who can
+transfer them through the normal revisioned administration API. Restart revokes
+all old browser cookies, and the legacy web token is not accepted while the
+provider is active. Removing the provider is an explicit rollback to exact
+single-owner semantics.
 
 ## Enforcement map
 
@@ -241,7 +251,7 @@ persistent schedule mutation requires resource/session `admin`.
 
 - `bd-07a348` — this threat model, principal/provider contract, identity-bound
   server session state, central fail-closed policy ledger, audit and package
-  foundation. No multi-user runtime switch.
+  foundation (implemented).
 - `bd-fce8f4` — policy enforcement across HTTP/stream and embedded/dedicated
   backends with bounded no-existence-leak inventory paging and compatibility
   migration (implemented).
@@ -249,4 +259,4 @@ persistent schedule mutation requires resource/session `admin`.
   controller transfer with revisions, idempotency, audit and accessible UI
   (implemented).
 - `bd-9d9899` — credential-path configuration, migration/operations, full UI,
-  restart/revocation/no-leak/security parity and release gates.
+  restart/revocation/no-leak/security parity and release gates (implemented).

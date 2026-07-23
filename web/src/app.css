@@ -100,6 +100,7 @@ kbd { border: 1px solid var(--dash-border-subtle); border-bottom-color: var(--da
 .workspace-notice { display: flex; align-items: center; gap: 7px; padding: 0 12px; border-bottom: 1px solid var(--dash-border-subtle); background: color-mix(in srgb, var(--dash-bg-deep) 76%, transparent); color: var(--dash-fg-dim); font-size: 10px; }
 .workspace-notice > i { width: 5px; height: 5px; border-radius: 50%; background: var(--dash-state-success); }
 .workspace-notice span { margin-left: auto; font-family: var(--dash-font-mono); }
+.workspace-notice .workspace-identity { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--dash-fg-muted); }
 .mobile-menu-button { display: none; place-items: center; width: 24px; height: 24px; margin-left: -5px; border-radius: var(--dash-radius-xs); background: transparent; color: var(--dash-fg-muted); cursor: pointer; }
 .keyboard-help-button { display: flex; align-items: center; gap: 4px; margin-left: auto; padding: 3px 5px; border-radius: var(--dash-radius-xs); background: transparent; color: var(--dash-fg-dim); font-size: 8px; cursor: pointer; }
 .keyboard-help-button:hover { background: var(--dash-bg-elevated); color: var(--dash-accent-primary); }
