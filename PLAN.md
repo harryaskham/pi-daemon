@@ -702,6 +702,8 @@ implementation order. This list is a human-readable crosswalk.
     path leakage or pre-send runtime work.
   - [x] `bd-57149a` — revisioned composer send-key policy: Enter sends by
     default, Shift-Enter newlines, and an alternate multiline Cmd/Ctrl-Enter mode.
+  - [x] `bd-331301` — canonical relative-path lazy-draft containment so
+    filesystem-root authority admits home cwd without weakening sibling denial.
   - [x] `bd-1dc765` — P1 production interactivity hotfix: bounded single-pane
     transcript scrolling/composer containment, width-aware split repaint, and
     functional revisioned Settings category tabs.

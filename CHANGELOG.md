@@ -17,6 +17,7 @@ semantic versioning once a release tag is cut.
 - persist separate activation recency so successful reuse/direct/fork sessions move to the top exactly once without rewriting source modification or fingerprint truth
 - add owner-configurable lazy New Session defaults for home cwd, bounded Pi provider/model/thinking settings, default tools, approved discovery, and runtime-policy-capped authority without pre-send Pi work or browser path leakage
 - default the revisioned composer to Enter-to-send with Shift-Enter newline, while preserving an optional multiline Enter plus Cmd/Ctrl-Enter send mode across plain/Vim editing and IME
+- fix lazy-session cwd containment for filesystem-root authority so `--allow-root /` correctly admits canonical home directories instead of testing a false `//` prefix
 
 ## 0.2.2 — 2026-07-22
 

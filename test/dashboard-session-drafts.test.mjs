@@ -113,6 +113,24 @@ test("allowed-root symlink aliases canonicalize once before cwd containment", { 
   assert.equal(created.spec.cwd, await realpath(work));
 });
 
+test("filesystem root authority admits a canonical home-like cwd without double-separator denial", { skip: process.platform === "win32" }, async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "pi-daemon-draft-filesystem-root-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const stateDir = join(root, "state");
+  const work = join(root, "home", "operator");
+  await Promise.all([mkdir(stateDir, { recursive: true, mode: 0o700 }), mkdir(work, { recursive: true, mode: 0o700 })]);
+  const service = new DashboardSessionDraftService({
+    store: new FileDashboardSessionDraftStore({ stateDir }),
+    allowedRoots: ["/"],
+  });
+  await service.recover();
+  const created = await service.create(createRequest(work, {
+    draftId: "draft-filesystem-root",
+    idempotencyKey: "draft-filesystem-root-key",
+  }));
+  assert.equal(created.spec.cwd, await realpath(work));
+});
+
 test("first-send admission retains immutable draft revision and transitions draft atomically", async (t) => {
   const h = await harness(t);
   const draft = await h.service.create(createRequest(h.work));

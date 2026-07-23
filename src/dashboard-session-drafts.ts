@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { rename } from "node:fs/promises";
-import { dirname, resolve, sep } from "node:path";
+import { dirname, isAbsolute, relative, resolve } from "node:path";
 import { realpath } from "node:fs/promises";
 
 import {
@@ -1301,5 +1301,6 @@ function notFound(code: string, message: string): DashboardSessionDraftError {
 }
 
 function isWithin(root: string, candidate: string): boolean {
-  return candidate === root || candidate.startsWith(`${root}${sep}`);
+  const child = relative(resolve(root), resolve(candidate));
+  return child === "" || (!child.startsWith("..") && !isAbsolute(child));
 }
