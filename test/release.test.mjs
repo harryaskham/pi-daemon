@@ -122,6 +122,7 @@ test("clean package builds include the content-hashed Dash SPA and secure server
   for (const name of [
     "self-update",
     "dashboard-auth",
+    "dashboard-tls",
     "dashboard-backend",
     "dashboard-remote-backend",
     "dashboard-store",
@@ -157,6 +158,10 @@ test("flake publishes the collision-safe multi-instance Home Manager service mod
   assert.match(module, /enabled Pi Daemon API and dedicated Dash services must use unique ports/);
   assert.match(module, /pi-daemon-web-/);
   assert.match(module, /dedicatedWeb\.port is required/);
+  assert.match(module, /native TLS requires both tls\.certFile and tls\.keyFile/);
+  assert.match(module, /native TLS requires an HTTPS publicOrigin/);
+  assert.match(module, /--tls-cert-file/);
+  assert.match(module, /--tls-key-file/);
   assert.match(module, /stateDir\/api-token on first launch/);
   assert.match(module, /--auth-seed-file/);
   assert.match(module, /mutableRuntime\.enable/);

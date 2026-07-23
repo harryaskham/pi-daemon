@@ -56,7 +56,12 @@ project code or tools.
 - Dash browser sessions are bounded, revocable, server-side records addressed by an HMAC-signed opaque `HttpOnly`, `SameSite=Strict` cookie
 - a cookie-authenticated same-origin bootstrap reproduces the session-bound HMAC CSRF token in a no-store response header, so an ordinary browser reload restores mutation authority without putting the owner credential, cookie, or CSRF token in browser storage
 - Dash private routes authenticate before route matching; mutations require exact Host, Origin, and per-session CSRF validation
-- the initial Dash HTTP listener is loopback-only; an HTTPS public origin sets a `Secure` `__Host-` cookie through a loopback TLS proxy
+- Dash plaintext listeners are loopback-only; remote deployments use an operator-owned loopback TLS proxy or native HTTPS/WSS with bounded file/fd material and TLS 1.2 minimum
+- native TLS requires an exact HTTPS public origin, rejects mismatched SNI/Host/Origin, atomically rotates only a fully valid certificate/key pair, and retains the last good context on reload failure
+- forwarded authority is never inferred: RFC `Forwarded` is rejected, and exact `X-Forwarded-Host`/`Proto`/`Port` evidence is accepted only from loopback after explicit trust
+- HTTPS public origins emit HSTS and use a `Secure` `__Host-` browser cookie; non-loopback HTTP origins require an explicit development override and still cannot enable a remote plaintext listener
+- certificate and private-key bytes are bounded, never enter YAML/argv/Nix store/status/logs, and file targets are owner-controlled with owner-only private-key mode
+- content-free `/dash/healthz` still enforces Host/proxy authority and reveals no session, credential, path, certificate, or backend state
 - packaged Dash assets are hash-named and regular/non-writable, with traversal/symlink rejection and a deny-by-default CSP
 - Dash workspace/settings files are owner-only, atomic, bounded, revision/ETag checked, and UI overlays cannot mutate service authority
 - lazy Dash session drafts use a separate owner-private atomic store; create/get/cancel perform no runtime/model/tool work, private first-message content never enters browser resources, and prompt-submitting crash/cancel races become indeterminate rather than replayed

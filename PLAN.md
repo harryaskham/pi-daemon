@@ -107,8 +107,9 @@ The completed product adds, without removing the existing NDJSON mode:
 ### Still deferred or downstream
 
 - Windows named-pipe transport.
-- Built-in TLS termination (non-loopback HTTP may use a documented TLS reverse
-  proxy; plaintext non-loopback binding must require an explicit insecure opt-in).
+- Built-in TLS termination for the neutral session API. Dash now has native
+  HTTPS/WSS plus the recommended loopback reverse-proxy mode; the core bearer
+  API still requires external TLS for non-loopback production exposure.
 - Strong isolation for arbitrary extensions inside the shared Node heap.
 - Cluster-wide host placement.
 - Cacophony deployment, agent lifecycle mapping, and its `pico-daemon` adapter.
@@ -486,6 +487,10 @@ process appears per wake.
 - [x] `bd-c39242` Add capability-gated, prompt-redacted schedule resources to
   `DashboardBackend`, remote delegation, and authenticated same-origin
   `/dash/v1/schedules` browser BFF routes.
+- [x] `bd-e89a17` Add optional native HTTPS/WSS, exact SNI/Host/Origin and
+  loopback proxy authority, atomic certificate rotation, HSTS/secure cookies,
+  content-free health, secret-safe CLI/config/Home Manager sources, and
+  downgrade/mixed-content/spoofed-forwarding acceptance.
 
 ## 18. Completed scaffold board (historical PD identifiers)
 
@@ -676,6 +681,9 @@ implementation order. This list is a human-readable crosswalk.
   - [x] `bd-4b2415` — virtualized full Pi branch-tree navigation with filters,
     active-leaf truth, comparison, edit/fork/clone, negotiated in-place
     summarize/navigation, keyboard accessibility, and Rich/TUI handoff.
+  - [x] `bd-e89a17` — optional native HTTPS/WSS and hardened remote browser
+    deployment with exact public authority, loopback reverse-proxy verification,
+    secret-safe file/fd inputs, atomic certificate rotation, and remote health.
   - [x] `bd-1dc765` — P1 production interactivity hotfix: bounded single-pane
     transcript scrolling/composer containment, width-aware split repaint, and
     functional revisioned Settings category tabs.

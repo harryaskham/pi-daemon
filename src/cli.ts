@@ -10,7 +10,11 @@ import { loadServiceBearer, SERVICE_BEARER_ENV } from "./api-auth.js";
 import { ApiServer } from "./api-server.js";
 import { bootstrapServicePaths } from "./bootstrap.js";
 import { PiDaemonClient, ProtocolResponseError } from "./client.js";
-import { loadPiDaemonConfig, PiDaemonConfigError } from "./config.js";
+import {
+  loadPiDaemonConfig,
+  PiDaemonConfigError,
+  type PiDaemonWebTlsConfig,
+} from "./config.js";
 import { RemoteDashboardBackend } from "./dashboard-remote-backend.js";
 import { createDashboardServerFromConfig, type DashboardServer } from "./dashboard-server.js";
 import { createDashboardStreamHandler } from "./dashboard-stream-router.js";
@@ -248,6 +252,13 @@ async function runWeb(
       "web-bind",
       "web-port",
       "public-origin",
+      "web-allow-insecure-http",
+      "trust-proxy-headers",
+      "tls-cert-file",
+      "tls-cert-fd",
+      "tls-key-file",
+      "tls-key-fd",
+      "tls-reload-ms",
     ]),
   );
   const cliConfigPath = options.get("config");
@@ -295,7 +306,8 @@ async function runWeb(
   const backend = new RemoteDashboardBackend({ client });
   const webBind = options.get("web-bind") ?? config.web?.bind ?? "127.0.0.1";
   const webPort = integerSetting(options, "web-port", config.web?.port, 0) ?? 7465;
-  const publicOrigin = options.get("public-origin");
+  const publicOrigin = options.get("public-origin") ?? config.web?.publicOrigin;
+  const tlsOverrides = dashboardTlsCliOverrides(options);
   const logger = new JsonLineLogger(io.stderr, { component: "pi-daemon-web" });
   const signalLatch = dependencies.waitForShutdown === undefined ? latchShutdownSignal() : undefined;
   let server: DashboardServer | undefined;
@@ -312,6 +324,21 @@ async function runWeb(
         mode: "dedicated",
         bind: webBind,
         port: webPort,
+        ...(options.has("web-allow-insecure-http")
+          ? { allowInsecureHttp: booleanSetting(options, "web-allow-insecure-http", undefined)! }
+          : {}),
+        ...(options.has("trust-proxy-headers")
+          ? {
+              proxy: {
+                trustForwardedHeaders: booleanSetting(
+                  options,
+                  "trust-proxy-headers",
+                  undefined,
+                )!,
+              },
+            }
+          : {}),
+        ...(tlsOverrides === undefined ? {} : { tls: tlsOverrides }),
       },
       ...(publicOrigin === undefined ? {} : { publicOrigin }),
     });
@@ -400,6 +427,14 @@ async function runServe(
       "api-token-file",
       "api-token-fd",
       "api-allow-insecure-http",
+      "public-origin",
+      "web-allow-insecure-http",
+      "trust-proxy-headers",
+      "tls-cert-file",
+      "tls-cert-fd",
+      "tls-key-file",
+      "tls-key-fd",
+      "tls-reload-ms",
     ]),
     new Set(["allow-root"]),
   );
@@ -414,6 +449,15 @@ async function runServe(
     config.web !== undefined &&
     config.web.enabled !== false &&
     (config.web.mode ?? "embedded") === "embedded";
+  const embeddedTlsOverrides = dashboardTlsCliOverrides(options);
+  const hasEmbeddedWebTransportOverride =
+    options.has("public-origin") ||
+    options.has("web-allow-insecure-http") ||
+    options.has("trust-proxy-headers") ||
+    embeddedTlsOverrides !== undefined;
+  if (!embeddedWebEnabled && hasEmbeddedWebTransportOverride) {
+    throw new CliUsageError("Dashboard transport options require embedded web to be enabled");
+  }
   const configuredPath = (cliName: string, value: string | undefined): string | undefined => {
     const cliValue = options.get(cliName);
     if (cliValue !== undefined) return resolve(cliValue);
@@ -650,6 +694,32 @@ async function runServe(
           backend: dashboardRuntime.backend,
           serverInstanceId: `embedded-${loadedConfig.instance}`,
           streamHandlerFactory: createDashboardStreamHandler,
+          ...(options.has("public-origin")
+            ? { publicOrigin: requiredOption(options, "public-origin") }
+            : {}),
+          webOverrides: {
+            ...(options.has("web-allow-insecure-http")
+              ? {
+                  allowInsecureHttp: booleanSetting(
+                    options,
+                    "web-allow-insecure-http",
+                    undefined,
+                  )!,
+                }
+              : {}),
+            ...(options.has("trust-proxy-headers")
+              ? {
+                  proxy: {
+                    trustForwardedHeaders: booleanSetting(
+                      options,
+                      "trust-proxy-headers",
+                      undefined,
+                    )!,
+                  },
+                }
+              : {}),
+            ...(embeddedTlsOverrides === undefined ? {} : { tls: embeddedTlsOverrides }),
+          },
         });
       }
     }
@@ -869,6 +939,32 @@ class CliUsageError extends Error {
   override readonly name = "CliUsageError";
 }
 
+function dashboardTlsCliOverrides(
+  options: Map<string, string>,
+): PiDaemonWebTlsConfig | undefined {
+  const certFile = options.get("tls-cert-file");
+  const keyFile = options.get("tls-key-file");
+  const certFd = integerSetting(options, "tls-cert-fd", undefined, 3);
+  const keyFd = integerSetting(options, "tls-key-fd", undefined, 3);
+  const reloadIntervalMs = integerSetting(options, "tls-reload-ms", undefined, 1_000);
+  if (
+    certFile === undefined &&
+    keyFile === undefined &&
+    certFd === undefined &&
+    keyFd === undefined &&
+    reloadIntervalMs === undefined
+  ) {
+    return undefined;
+  }
+  return {
+    ...(certFile === undefined ? {} : { certFile: resolve(certFile) }),
+    ...(certFd === undefined ? {} : { certFd }),
+    ...(keyFile === undefined ? {} : { keyFile: resolve(keyFile) }),
+    ...(keyFd === undefined ? {} : { keyFd }),
+    ...(reloadIntervalMs === undefined ? {} : { reloadIntervalMs }),
+  };
+}
+
 function parseOptions(
   args: string[],
   allowed: Set<string>,
@@ -1027,10 +1123,18 @@ Usage:
                   [--api-enabled true|false] [--api-port PORT] [--api-bind HOST]
                   [--api-token-file PATH | --api-token-fd FD]
                   [--api-allow-insecure-http true|false]
+                  [--public-origin URL] [--web-allow-insecure-http true|false]
+                  [--trust-proxy-headers true|false]
+                  [--tls-cert-file PATH | --tls-cert-fd FD]
+                  [--tls-key-file PATH | --tls-key-fd FD] [--tls-reload-ms N]
   pi-daemon web [--config PATH] [--instance NAME]
                 [--api-url URL] [--api-token-file PATH | --api-token-fd FD]
                 [--web-state-dir PATH] [--web-bind HOST] [--web-port PORT]
-                [--public-origin URL] [--api-allow-insecure-http true|false]
+                [--public-origin URL] [--web-allow-insecure-http true|false]
+                [--trust-proxy-headers true|false]
+                [--tls-cert-file PATH | --tls-cert-fd FD]
+                [--tls-key-file PATH | --tls-key-fd FD] [--tls-reload-ms N]
+                [--api-allow-insecure-http true|false]
   pi-daemon probe --socket PATH [--timeout-ms N]
   pi-daemon request --socket PATH --json REQUEST [--timeout-ms N]
   pi-daemon session list|show|create|update|delete [options]
@@ -1094,6 +1198,8 @@ Service configuration:
   security.allowAuthorityRootOverlap is a high-trust opt-in for workloads rooted above daemon state/credentials.
   An enabled web.mode=embedded block serves the packaged Dash at /dash/ on web.port.
   The web command uses web.mode=dedicated and defaults to API 7463 / Dash 7465.
+  Native TLS requires an exact HTTPS public origin plus one cert and key source.
+  Reverse proxies stay loopback-only; forwarded authority is verified only when explicitly trusted.
   Secrets are file/fd/environment references, never literal YAML values.
 
 Recovery limits:

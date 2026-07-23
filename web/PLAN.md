@@ -1097,6 +1097,29 @@ checks allowed roots and trusted default session policy. The SPA clearly marks
 preview-only sessions and never offers a send button that will inevitably fail
 or bypass policy.
 
+### 18.4 Remote transport authority
+
+Plaintext Dash listeners remain loopback-only. Production remote deployment may
+use the recommended operator-owned HTTPS reverse proxy or optional native
+HTTPS/WSS. Both modes use one exact browser-visible `publicOrigin`; Host and
+Origin must match it, native TLS SNI must match its hostname, and same-origin
+browser URLs prevent HTTPS-to-HTTP/WS mixed-content downgrade.
+
+Native TLS loads one bounded certificate and private-key source each from an
+owner-controlled file or inherited descriptor, requires TLS 1.2+, and permits a
+non-loopback bind only when an exact HTTPS public origin is configured.
+File-backed material rotates as one validated secure context; a partial,
+mismatched, unreadable, or invalid pair leaves the prior context active.
+Certificate/key bytes never enter YAML, argv, Nix store values, health, status,
+metrics, or logs.
+
+Forwarded authority is never inferred. RFC `Forwarded` is rejected.
+`X-Forwarded-Host`/`Proto`/`Port` are rejected by default and, after an explicit
+trust opt-in, are accepted only from loopback when each supplied value exactly
+matches `publicOrigin`. HTTPS public origins emit HSTS and use Secure `__Host-`
+cookies. The unauthenticated `GET|HEAD /dash/healthz` probe is content-free and
+still enforces Host/proxy authority.
+
 ## 19. Performance and resource budgets
 
 Initial local targets, measured with 10,000 indexed sessions and representative
@@ -1383,10 +1406,15 @@ These lanes intentionally begin in parallel:
   controller-only in-place navigate/summarize frames, TUI handoff, and
   embedded/remote compatibility acceptance.
 - [ ] `bd-b31a5d` — multi-user identity and per-session authorization epic.
-- [ ] `bd-e89a17` — optional native TLS and hardened remote browser deployment.
+- [x] `bd-e89a17` — optional native TLS and hardened remote browser deployment:
+  file/fd material, atomic rotation, exact SNI/Host/Origin/public authority,
+  loopback proxy verification, HSTS/secure cookies, remote health and
+  Home Manager secret paths.
 
-All four are dependency-blocked on `bd-7de9ec`. Root `PLAN.md` contains only a
-concise epic cross-reference; this file remains the detailed Dash architecture.
+The original four follow-ons depended on now-complete `bd-7de9ec`; declarative
+views and native TLS are landed while browser tree navigation and multi-user
+authorization remain open. Root `PLAN.md` contains only a concise epic
+cross-reference; this file remains the detailed Dash architecture.
 
 ## 25. V1 acceptance
 

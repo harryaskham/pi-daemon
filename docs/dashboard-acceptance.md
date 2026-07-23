@@ -153,6 +153,20 @@ Final parent validation on current main passed `npm test` 356/356 and the full
 installed binaries, and production web build. No acceptance condition was
 waived and no eager Session API create path was reused behind the browser.
 
+## Post-v1 native transport hardening
+
+Follow-on `bd-e89a17` adds native HTTPS/WSS without replacing the recommended
+loopback reverse-proxy deployment. Focused acceptance covers bounded owner-mode
+certificate/key files and inherited descriptors, TLS 1.2 minimum, exact SNI,
+Host and Origin, HSTS, Secure `__Host-` cookies, plaintext downgrade refusal,
+content-free remote health, default-rejected and exact loopback proxy headers,
+non-loopback plaintext refusal, and live atomic certificate rotation that keeps
+the listener available. Dedicated `pi-daemon web` acceptance loads relative
+instance-YAML secret paths and serves the packaged production SPA over HTTPS
+while retaining its server-only service bearer. See
+[Dashboard transport security](dashboard-transport-security) for the full
+configuration and failure contract.
+
 ## Wall-clock soak
 
 The initial acceptance harness deliberately performed a fresh credential

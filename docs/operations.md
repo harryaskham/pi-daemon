@@ -417,6 +417,33 @@ overrides. Home Manager `instances.<name>.dedicatedWeb` emits a second ordered
 systemd/launchd/supervisord service, validates API/Dash port and state/log
 collisions, and passes only token paths—not bytes—through argv.
 
+Production remote Dash can stay on loopback behind an HTTPS reverse proxy or
+use native HTTPS/WSS. Native mode requires an exact HTTPS `web.publicOrigin`
+and one certificate/private-key file or inherited descriptor source each:
+
+```yaml
+web:
+  mode: dedicated
+  bind: 0.0.0.0
+  port: 7465
+  publicOrigin: https://dash.example.test
+  tls:
+    certFile: /run/secrets/pi-daemon-dash-cert
+    keyFile: /run/secrets/pi-daemon-dash-key
+    reloadIntervalMs: 30000
+```
+
+Home Manager exposes the same paths at
+`dedicatedWeb.tls.certFile`/`keyFile`; use runtime secret-manager paths such as
+SOPS outputs, never PEM literals. Valid file-backed pairs rotate atomically and
+a failed/partial rotation retains the last working context. The content-free
+`GET|HEAD /dash/healthz` probe returns 204 only after exact Host and configured
+proxy-authority checks. Reverse proxies may set
+`dedicatedWeb.trustProxyHeaders = true`; supplied forwarded host/protocol/port
+must then exactly match `publicOrigin` and arrive from loopback. See
+[Dashboard transport security](dashboard-transport-security) for downgrade,
+SNI, HSTS, cookie, file-mode, and failure semantics.
+
 ## Nix-on-Droid cache bootstrap
 
 Pi Daemon remains a Node service even though the interactive Pi CLI can be

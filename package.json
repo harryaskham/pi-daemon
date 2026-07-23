@@ -89,6 +89,10 @@
       "types": "./dist/dashboard-auth.d.ts",
       "import": "./dist/dashboard-auth.js"
     },
+    "./dashboard-tls": {
+      "types": "./dist/dashboard-tls.d.ts",
+      "import": "./dist/dashboard-tls.js"
+    },
     "./dashboard-store": {
       "types": "./dist/dashboard-store.d.ts",
       "import": "./dist/dashboard-store.js"

@@ -1,7 +1,19 @@
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  mkdtemp,
+  mkdir,
+  open,
+  readFile,
+  rename,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { request as httpRequest } from "node:http";
+import { request as httpsRequest } from "node:https";
 import { connect } from "node:net";
+import { connect as tlsConnect } from "node:tls";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -14,6 +26,8 @@ import { createDashboardContractFixtures } from "../dist/dashboard-fixtures.js";
 import { loadPiDaemonConfig } from "../dist/config.js";
 import { DashboardServer, createDashboardServerFromConfig } from "../dist/dashboard-server.js";
 import { DashboardSettingsStore, DashboardWorkspaceStore } from "../dist/dashboard-store.js";
+import { loadDashboardTls } from "../dist/dashboard-tls.js";
+import { generateTlsPair } from "./tls-fixture.mjs";
 
 const CREDENTIAL = "dashboard-server-fixture-credential-012345";
 
@@ -33,6 +47,7 @@ async function fixture(t, overrides = {}) {
   const auth = new DashboardBrowserAuth({
     credential: CREDENTIAL,
     sessionTtlMs: 60_000,
+    secureCookies: overrides.secureCookies ?? false,
   });
   const calls = [];
   const fixtures = createDashboardContractFixtures();
@@ -81,10 +96,17 @@ async function fixture(t, overrides = {}) {
       configuredUi: { theme: { name: "nord-midnight", density: "compact" } },
     }),
     assetsDir,
-    host: "127.0.0.1",
+    host: overrides.host ?? "127.0.0.1",
     port: 0,
     serverInstanceId: "dash-server-fixture",
     ...(overrides.publicOrigin === undefined ? {} : { publicOrigin: overrides.publicOrigin }),
+    ...(overrides.allowInsecureHttp === undefined
+      ? {}
+      : { allowInsecureHttp: overrides.allowInsecureHttp }),
+    ...(overrides.trustForwardedHeaders === undefined
+      ? {}
+      : { trustForwardedHeaders: overrides.trustForwardedHeaders }),
+    ...(overrides.tls === undefined ? {} : { tls: overrides.tls }),
     limits,
     ...(overrides.streamHandler === undefined ? {} : { streamHandler: overrides.streamHandler }),
   });
@@ -127,6 +149,80 @@ function privateHeaders(origin, session, mutation = false) {
 
 async function jsonResponse(response) {
   return { response, json: await response.json() };
+}
+
+async function httpCall({ host, port, path, method = "GET", headers = {}, body }) {
+  return new Promise((resolve, reject) => {
+    const request = httpRequest(
+      { host, port, path, method, headers },
+      (response) => {
+        const chunks = [];
+        response.on("data", (chunk) => chunks.push(chunk));
+        response.once("end", () =>
+          resolve({
+            status: response.statusCode,
+            headers: response.headers,
+            body: Buffer.concat(chunks).toString("utf8"),
+          }),
+        );
+      },
+    );
+    request.once("error", reject);
+    if (body !== undefined) request.write(body);
+    request.end();
+  });
+}
+
+async function httpsCall({ host, port, path, method = "GET", headers = {}, body }) {
+  return new Promise((resolve, reject) => {
+    const request = httpsRequest(
+      {
+        host,
+        port,
+        path,
+        method,
+        servername: "dash.example.test",
+        rejectUnauthorized: false,
+        headers: { Host: "dash.example.test", ...headers },
+      },
+      (response) => {
+        const chunks = [];
+        response.on("data", (chunk) => chunks.push(chunk));
+        response.once("end", () =>
+          resolve({
+            status: response.statusCode,
+            headers: response.headers,
+            body: Buffer.concat(chunks).toString("utf8"),
+          }),
+        );
+      },
+    );
+    request.once("error", reject);
+    if (body !== undefined) request.write(body);
+    request.end();
+  });
+}
+
+async function peerSerial(host, port, servername = "dash.example.test") {
+  return new Promise((resolve, reject) => {
+    const socket = tlsConnect({ host, port, servername, rejectUnauthorized: false });
+    socket.once("secureConnect", () => {
+      const serial = socket.getPeerCertificate().serialNumber;
+      socket.end();
+      resolve(serial);
+    });
+    socket.once("error", reject);
+  });
+}
+
+async function eventually(check, timeoutMs = 3_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const result = await check();
+    if (result) return result;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  throw new Error("condition did not become true before timeout");
 }
 
 test("serves only local content-hashed assets with strict CSP and immutable caching", async (t) => {
@@ -178,6 +274,171 @@ test("serves only local content-hashed assets with strict CSP and immutable cach
   const latency = server.metrics.snapshot().summaries.dashboard_http_latency_ms;
   assert.ok(latency.count >= 6);
   assert.ok(latency.max >= latency.min);
+});
+
+test("loads bounded owner-controlled TLS file and descriptor sources", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "pi-daemon-dashboard-tls-material-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const { certFile, keyFile } = await generateTlsPair(root, "material");
+
+  const fileMaterial = await loadDashboardTls({ certFile, keyFile, reloadIntervalMs: 1_000 });
+  assert.ok(fileMaterial.cert.length > 0);
+  assert.ok(fileMaterial.key.length > 0);
+  assert.equal(typeof fileMaterial.reload, "function");
+
+  await chmod(keyFile, 0o644);
+  await assert.rejects(
+    loadDashboardTls({ certFile, keyFile }),
+    /private-key file must be owner-only/,
+  );
+  await chmod(keyFile, 0o600);
+
+  const certHandle = await open(certFile, "r");
+  const keyHandle = await open(keyFile, "r");
+  try {
+    const fdMaterial = await loadDashboardTls({ certFd: certHandle.fd, keyFd: keyHandle.fd });
+    assert.ok(fdMaterial.cert.equals(fileMaterial.cert));
+    assert.ok(fdMaterial.key.equals(fileMaterial.key));
+    assert.equal(fdMaterial.reload, undefined);
+  } finally {
+    await certHandle.close();
+    await keyHandle.close();
+  }
+});
+
+test("native HTTPS enforces SNI, HSTS, secure cookies, downgrade and proxy authority", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "pi-daemon-dashboard-native-tls-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const { certFile, keyFile } = await generateTlsPair(root, "native");
+  const tls = await loadDashboardTls({ certFile, keyFile });
+  const direct = await fixture(t, {
+    publicOrigin: "https://dash.example.test",
+    secureCookies: true,
+    tls,
+  });
+
+  const health = await httpsCall({ host: direct.host, port: direct.port, path: "/dash/healthz" });
+  assert.equal(health.status, 204);
+  assert.equal(health.headers["strict-transport-security"], "max-age=31536000");
+  assert.equal(health.headers["cache-control"], "no-store, max-age=0");
+  await assert.rejects(fetch(`http://${direct.host}:${direct.port}/dash/healthz`));
+  await assert.rejects(peerSerial(direct.host, direct.port, "wrong.example.test"));
+
+  const loginBody = JSON.stringify({
+    requestId: "native-tls-login",
+    clientId: "native-tls-client",
+    workspaceId: "native-tls-workspace",
+    credential: CREDENTIAL,
+  });
+  const loginResponse = await httpsCall({
+    host: direct.host,
+    port: direct.port,
+    path: "/dash/v1/login",
+    method: "POST",
+    headers: {
+      Origin: "https://dash.example.test",
+      "Content-Type": "application/json",
+      "Content-Length": String(Buffer.byteLength(loginBody)),
+    },
+    body: loginBody,
+  });
+  assert.equal(loginResponse.status, 200);
+  assert.match(loginResponse.headers["set-cookie"][0], /^__Host-pi-daemon-dash=/);
+  assert.match(loginResponse.headers["set-cookie"][0], /; Secure(?:;|$)/);
+
+  const untrustedForwarded = await httpsCall({
+    host: direct.host,
+    port: direct.port,
+    path: "/dash/healthz",
+    headers: { "X-Forwarded-Host": "dash.example.test" },
+  });
+  assert.equal(untrustedForwarded.status, 403);
+
+  const trusted = await fixture(t, {
+    publicOrigin: "https://dash.example.test",
+    secureCookies: true,
+    tls,
+    trustForwardedHeaders: true,
+  });
+  const exactForwarded = await httpsCall({
+    host: trusted.host,
+    port: trusted.port,
+    path: "/dash/healthz",
+    headers: {
+      "X-Forwarded-Host": "dash.example.test",
+      "X-Forwarded-Proto": "https",
+      "X-Forwarded-Port": "443",
+    },
+  });
+  assert.equal(exactForwarded.status, 204);
+  const spoofedForwarded = await httpsCall({
+    host: trusted.host,
+    port: trusted.port,
+    path: "/dash/healthz",
+    headers: { "X-Forwarded-Proto": "http" },
+  });
+  assert.equal(spoofedForwarded.status, 403);
+});
+
+test("loopback reverse proxy mode verifies forwarded authority without deriving it", async (t) => {
+  const proxy = await fixture(t, {
+    publicOrigin: "https://dash.example.test",
+    secureCookies: true,
+    trustForwardedHeaders: true,
+  });
+  const exact = await httpCall({
+    host: proxy.host,
+    port: proxy.port,
+    path: "/dash/healthz",
+    headers: {
+      Host: "dash.example.test",
+      "X-Forwarded-Host": "dash.example.test",
+      "X-Forwarded-Proto": "https",
+      "X-Forwarded-Port": "443",
+    },
+  });
+  assert.equal(exact.status, 204);
+  assert.equal(exact.headers["strict-transport-security"], "max-age=31536000");
+
+  const spoofed = await httpCall({
+    host: proxy.host,
+    port: proxy.port,
+    path: "/dash/healthz",
+    headers: {
+      Host: "dash.example.test",
+      "X-Forwarded-Host": "evil.example.test",
+      "X-Forwarded-Proto": "https",
+    },
+  });
+  assert.equal(spoofed.status, 403);
+});
+
+test("file-backed native TLS rotates atomically without dropping the listener", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "pi-daemon-dashboard-tls-rotation-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const { certFile, keyFile } = await generateTlsPair(root, "current");
+  const loaded = await loadDashboardTls({ certFile, keyFile, reloadIntervalMs: 1_000 });
+  const server = await fixture(t, {
+    publicOrigin: "https://dash.example.test",
+    secureCookies: true,
+    tls: { ...loaded, reloadIntervalMs: 25 },
+  });
+  const before = await peerSerial(server.host, server.port);
+
+  const { certFile: nextCert, keyFile: nextKey } = await generateTlsPair(root, "next");
+  await rename(nextCert, certFile);
+  await rename(nextKey, keyFile);
+
+  const after = await eventually(async () => {
+    const serial = await peerSerial(server.host, server.port);
+    return serial !== before ? serial : undefined;
+  });
+  assert.notEqual(after, before);
+  assert.ok(server.server.metrics.snapshot().counters.dashboard_tls_rotations >= 1);
+  assert.equal(
+    (await httpsCall({ host: server.host, port: server.port, path: "/dash/healthz" })).status,
+    204,
+  );
 });
 
 test("authenticates before route existence and enforces exact Origin plus CSRF on mutations", async (t) => {
@@ -623,6 +884,14 @@ test("slow partial HTTP bodies are terminated by the whole-request deadline", as
 });
 
 test("HTTP bodies, static output, WebSocket origin/protocol and frame bytes are bounded", async (t) => {
+  await assert.rejects(
+    fixture(t, { host: "0.0.0.0" }),
+    /plaintext Dashboard listener is loopback-only/,
+  );
+  await assert.rejects(
+    fixture(t, { publicOrigin: "http://dash.example.test" }),
+    /non-loopback Dashboard publicOrigin requires HTTPS/,
+  );
   await assert.rejects(
     fixture(t, { limits: { maxWebSocketFrameBytes: 2048, maxOutboundBytesPerConnection: 1024 } }),
     /cannot exceed/,

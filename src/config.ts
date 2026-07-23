@@ -65,6 +65,19 @@ export interface PiDaemonWebAuthConfig {
   sessionTtlMs?: number;
 }
 
+export interface PiDaemonWebTlsConfig {
+  certFile?: string;
+  certFd?: number;
+  keyFile?: string;
+  keyFd?: number;
+  reloadIntervalMs?: number;
+}
+
+export interface PiDaemonWebProxyConfig {
+  /** Verify, but never derive authority from, loopback proxy headers. */
+  trustForwardedHeaders?: boolean;
+}
+
 export interface PiDaemonWebInventoryConfig {
   roots?: string[];
   reconcileIntervalMs?: number;
@@ -103,6 +116,12 @@ export interface PiDaemonWebConfig {
   mode?: DashboardDeploymentMode;
   bind?: string;
   port?: number;
+  /** Exact browser-visible origin. Required for native TLS and remote exposure. */
+  publicOrigin?: string;
+  /** Explicit development escape hatch for a non-loopback HTTP public origin. */
+  allowInsecureHttp?: boolean;
+  tls?: PiDaemonWebTlsConfig;
+  proxy?: PiDaemonWebProxyConfig;
   auth?: PiDaemonWebAuthConfig;
   inventory?: PiDaemonWebInventoryConfig;
   residency?: PiDaemonWebResidencyConfig;
@@ -122,6 +141,8 @@ export const DEFAULT_PI_DAEMON_WEB_CONFIG = {
   mode: "embedded",
   bind: "127.0.0.1",
   port: 7464,
+  allowInsecureHttp: false,
+  proxy: { trustForwardedHeaders: false },
   auth: { sessionTtlMs: 12 * 60 * 60 * 1000 },
   inventory: { roots: [], reconcileIntervalMs: 30_000, maxSessions: 10_000 },
   residency: { warmTtlMs: 30 * 60 * 1000, maxPinnedPerWorkspace: 8 },
@@ -392,6 +413,10 @@ function parseWeb(value: unknown): PiDaemonWebConfig {
     "mode",
     "bind",
     "port",
+    "publicOrigin",
+    "allowInsecureHttp",
+    "tls",
+    "proxy",
     "auth",
     "inventory",
     "residency",
@@ -402,10 +427,14 @@ function parseWeb(value: unknown): PiDaemonWebConfig {
   const result: PiDaemonWebConfig = {};
   copyOptionalBoolean(object, result, "enabled");
   copyOptionalString(object, result, "bind");
+  copyOptionalString(object, result, "publicOrigin");
+  copyOptionalBoolean(object, result, "allowInsecureHttp");
   const mode = optionalEnum(object, "mode", ["embedded", "dedicated"] as const);
   if (mode !== undefined) result.mode = mode;
   const port = optionalInteger(object, "port", 0, 65_535);
   if (port !== undefined) result.port = port;
+  if (object.tls !== undefined) result.tls = parseWebTls(object.tls);
+  if (object.proxy !== undefined) result.proxy = parseWebProxy(object.proxy);
   if (object.auth !== undefined) result.auth = parseWebAuth(object.auth);
   if (object.inventory !== undefined) result.inventory = parseWebInventory(object.inventory);
   if (object.residency !== undefined) result.residency = parseWebResidency(object.residency);
@@ -465,6 +494,28 @@ function parseWebRuntimePolicy(value: unknown): PiDaemonWebRuntimePolicyConfig {
     }
     throw error;
   }
+}
+
+function parseWebTls(value: unknown): PiDaemonWebTlsConfig {
+  const object = objectValue(value, "web.tls");
+  assertKnownKeys(object, ["certFile", "certFd", "keyFile", "keyFd", "reloadIntervalMs"]);
+  const result: PiDaemonWebTlsConfig = {};
+  copyOptionalString(object, result, "certFile");
+  copyOptionalString(object, result, "keyFile");
+  const certFd = optionalInteger(object, "certFd", 3);
+  if (certFd !== undefined) result.certFd = certFd;
+  const keyFd = optionalInteger(object, "keyFd", 3);
+  if (keyFd !== undefined) result.keyFd = keyFd;
+  const reloadIntervalMs = optionalInteger(object, "reloadIntervalMs", 1_000);
+  if (reloadIntervalMs !== undefined) result.reloadIntervalMs = reloadIntervalMs;
+  return result;
+}
+
+function parseWebProxy(value: unknown): PiDaemonWebProxyConfig {
+  const object = objectValue(value, "web.proxy");
+  assertKnownKeys(object, ["trustForwardedHeaders"]);
+  const trustForwardedHeaders = optionalBoolean(object, "trustForwardedHeaders");
+  return trustForwardedHeaders === undefined ? {} : { trustForwardedHeaders };
 }
 
 function parseWebAuth(value: unknown): PiDaemonWebAuthConfig {

@@ -109,6 +109,17 @@ served by `pi-daemon web`, which
 uses the service API on 7463 and defaults its independent browser listener to
 7465. Never put either service or web credentials in the URL.
 
+Remote browser deployments may keep the listener on loopback behind an HTTPS
+reverse proxy (recommended), or configure native HTTPS/WSS with an exact
+`web.publicOrigin` plus bounded certificate/private-key file or inherited-fd
+sources. Native TLS is required for a non-loopback bind, enforces matching SNI,
+Host, Origin and optional loopback proxy evidence, emits HSTS with Secure
+`__Host-` cookies, and atomically reloads valid file-backed pairs while retaining
+the last good context on failure. `GET|HEAD /dash/healthz` is a content-free
+no-store transport probe. Certificate/key bytes never enter YAML, argv, Nix
+store values, status, or logs. See
+[Dashboard transport security](docs/dashboard-transport-security.md).
+
 Both executables treat an `EPIPE` from stdout or stderr as a normal early-closing
 Unix pipeline consumer and exit quietly with status 0. Other stream errors remain
 fatal and are never hidden by the closed-pipe guard.

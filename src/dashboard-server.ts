@@ -2,15 +2,17 @@ import { randomUUID } from "node:crypto";
 import { constants } from "node:fs";
 import { open } from "node:fs/promises";
 import {
-  createServer,
+  createServer as createHttpServer,
   type IncomingMessage,
-  type Server,
+  type Server as HttpServer,
   type ServerResponse,
 } from "node:http";
+import { createServer as createHttpsServer, type Server as HttpsServer } from "node:https";
 import { isIP } from "node:net";
 import { basename, extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Duplex } from "node:stream";
+import { createSecureContext, type SecureContext } from "node:tls";
 
 import { WebSocket, WebSocketServer, type RawData } from "ws";
 
@@ -66,6 +68,11 @@ import {
 } from "./config.js";
 import { HostMetrics } from "./observability.js";
 import { scheduleEtag } from "./dashboard-schedule-resources.js";
+import {
+  loadDashboardTls,
+  type DashboardTlsOptions,
+  type DashboardTlsSourceConfig,
+} from "./dashboard-tls.js";
 import { DEFAULT_SCHEDULE_LIMITS } from "./schedule-contract.js";
 import type { ApiErrorBody, JsonValue } from "./session-api.js";
 
@@ -106,6 +113,9 @@ export interface DashboardServerOptions {
   host?: string;
   port?: number;
   publicOrigin?: string;
+  allowInsecureHttp?: boolean;
+  trustForwardedHeaders?: boolean;
+  tls?: DashboardTlsOptions;
   serverInstanceId?: string;
   limits?: Partial<DashboardLimits> & {
     maxHeaderBytes?: number;
@@ -179,8 +189,14 @@ export class DashboardServer {
   readonly limits: DashboardServerLimits;
   readonly metrics: HostMetrics;
   readonly #configuredPublicOrigin: string | undefined;
+  readonly #securePublicOrigin: boolean;
+  readonly #trustForwardedHeaders: boolean;
+  readonly #tls: DashboardTlsOptions | undefined;
+  #tlsContext: SecureContext | undefined;
+  #tlsReloadTimer: NodeJS.Timeout | undefined;
+  #tlsReloadRunning = false;
   readonly #streamHandler: DashboardStreamHandler | undefined;
-  readonly #server: Server;
+  readonly #server: HttpServer | HttpsServer;
   readonly #webSocketServer: WebSocketServer;
   readonly #upgradeSockets = new Set<Duplex>();
   readonly #peers = new Set<DashboardWebSocketPeer>();
@@ -198,16 +214,37 @@ export class DashboardServer {
     if (this.assetsDir.length === 0) throw new Error("dashboard assetsDir must not be empty");
     this.host = options.host ?? "127.0.0.1";
     this.port = portNumber(options.port ?? DEFAULT_PI_DAEMON_WEB_CONFIG.port);
-    if (!isLoopbackBind(this.host)) {
-      throw new Error(
-        "DashboardServer initial HTTP listener is loopback-only; terminate TLS on a loopback reverse proxy",
-      );
-    }
     this.serverInstanceId = safeId(options.serverInstanceId ?? `dash-${randomUUID()}`, "serverInstanceId");
     this.#configuredPublicOrigin =
       options.publicOrigin === undefined ? undefined : validatePublicOrigin(options.publicOrigin);
-    const securePublicOrigin = this.#configuredPublicOrigin?.startsWith("https://") ?? false;
-    if (this.auth.secureCookies !== securePublicOrigin) {
+    this.#securePublicOrigin = this.#configuredPublicOrigin?.startsWith("https://") ?? false;
+    this.#trustForwardedHeaders = options.trustForwardedHeaders ?? false;
+    this.#tls = options.tls;
+    if (this.#tls !== undefined) {
+      if (!this.#securePublicOrigin || this.#configuredPublicOrigin === undefined) {
+        throw new Error("native Dashboard TLS requires an exact HTTPS publicOrigin");
+      }
+      this.#tlsContext = createSecureContext({
+        cert: this.#tls.cert,
+        key: this.#tls.key,
+        minVersion: "TLSv1.2",
+      });
+    } else if (!isLoopbackBind(this.host)) {
+      throw new Error(
+        "plaintext Dashboard listener is loopback-only; configure native TLS or a loopback reverse proxy",
+      );
+    }
+    if (
+      this.#configuredPublicOrigin !== undefined &&
+      !this.#securePublicOrigin &&
+      !isLoopbackOrigin(this.#configuredPublicOrigin) &&
+      options.allowInsecureHttp !== true
+    ) {
+      throw new Error(
+        "non-loopback Dashboard publicOrigin requires HTTPS unless allowInsecureHttp is explicitly enabled",
+      );
+    }
+    if (this.auth.secureCookies !== this.#securePublicOrigin) {
       throw new Error(
         "dashboard cookie security must match the configured HTTPS public origin",
       );
@@ -243,10 +280,28 @@ export class DashboardServer {
       throw new RangeError("maxWebSocketFrameBytes cannot exceed the outbound connection bound");
     }
     this.#streamHandler = options.streamHandler;
-    this.#server = createServer(
-      { maxHeaderSize: this.limits.maxHeaderBytes },
-      (request, response) => void this.#handleRequest(request, response),
-    );
+    const requestHandler = (request: IncomingMessage, response: ServerResponse): void => {
+      void this.#handleRequest(request, response);
+    };
+    this.#server =
+      this.#tls === undefined
+        ? createHttpServer({ maxHeaderSize: this.limits.maxHeaderBytes }, requestHandler)
+        : createHttpsServer(
+            {
+              cert: this.#tls.cert,
+              key: this.#tls.key,
+              minVersion: "TLSv1.2",
+              maxHeaderSize: this.limits.maxHeaderBytes,
+              SNICallback: (servername, callback) => {
+                if (!sniMatchesOrigin(servername, this.#configuredPublicOrigin!)) {
+                  callback(new Error("Dashboard TLS SNI rejected"));
+                  return;
+                }
+                callback(null, this.#tlsContext!);
+              },
+            },
+            requestHandler,
+          );
     this.#server.maxConnections = this.limits.dashboard.maxConnections;
     this.#server.requestTimeout = this.limits.requestTimeoutMs;
     this.#server.headersTimeout = this.limits.requestTimeoutMs;
@@ -301,13 +356,17 @@ export class DashboardServer {
     });
     const address = this.#server.address();
     if (address === null || typeof address === "string") throw new Error("dashboard listener has no TCP address");
+    const scheme = this.#tls === undefined ? "http" : "https";
     this.#origin =
-      this.#configuredPublicOrigin ?? `http://${formatHost(this.host)}:${address.port}`;
+      this.#configuredPublicOrigin ?? `${scheme}://${formatHost(this.host)}:${address.port}`;
     this.#started = true;
+    this.#startTlsReload();
     return this.address!;
   }
 
   async stop(): Promise<void> {
+    if (this.#tlsReloadTimer !== undefined) clearInterval(this.#tlsReloadTimer);
+    this.#tlsReloadTimer = undefined;
     this.auth.revokeAll();
     for (const timer of this.#peerExpiryTimers.values()) clearTimeout(timer);
     this.#peerExpiryTimers.clear();
@@ -324,9 +383,49 @@ export class DashboardServer {
     });
   }
 
+  #startTlsReload(): void {
+    if (
+      this.#tls?.reload === undefined ||
+      this.#tls.reloadIntervalMs === undefined ||
+      !("setSecureContext" in this.#server)
+    ) {
+      return;
+    }
+    this.#tlsReloadTimer = setInterval(() => {
+      if (this.#tlsReloadRunning) return;
+      this.#tlsReloadRunning = true;
+      void this.#tls!
+        .reload!()
+        .then((material) => {
+          if (material === undefined || !("setSecureContext" in this.#server)) return;
+          const context = createSecureContext({
+            cert: material.cert,
+            key: material.key,
+            minVersion: "TLSv1.2",
+          });
+          this.#server.setSecureContext({
+            cert: material.cert,
+            key: material.key,
+            minVersion: "TLSv1.2",
+          });
+          this.#tlsContext = context;
+          material.commit();
+          this.metrics.increment("dashboard_tls_rotations");
+        })
+        .catch(() => this.metrics.increment("dashboard_tls_rotation_failures"))
+        .finally(() => {
+          this.#tlsReloadRunning = false;
+        });
+    }, this.#tls.reloadIntervalMs);
+    this.#tlsReloadTimer.unref();
+  }
+
   async #handleRequest(request: IncomingMessage, response: ServerResponse): Promise<void> {
     const startedAt = performance.now();
     const requestId = requestIdFrom(request.headers["x-request-id"]);
+    if (this.#securePublicOrigin) {
+      response.setHeader("Strict-Transport-Security", "max-age=31536000");
+    }
     let timedOut = false;
     const deadline = setTimeout(() => {
       timedOut = true;
@@ -352,6 +451,14 @@ export class DashboardServer {
       this.#assertHost(request);
       const url = this.#requestUrl(request);
       if (request.method === "GET" || request.method === "HEAD") {
+        if (url.pathname === "/dash/healthz") {
+          response.writeHead(204, {
+            ...securityHeaders(),
+            "Cache-Control": "no-store, max-age=0",
+          });
+          response.end();
+          return;
+        }
         if (url.pathname === "/dash" || url.pathname === "/dash/") {
           await this.#serveStatic(response, "index.html", false, request.method === "HEAD");
           return;
@@ -809,6 +916,35 @@ export class DashboardServer {
     if (request.headers.host !== new URL(this.#origin).host) {
       throw new DashboardServerError(403, "host_rejected", "dashboard Host validation failed");
     }
+    this.#assertForwardedHeaders(request);
+  }
+
+  #assertForwardedHeaders(request: IncomingMessage): void {
+    const forwarded = request.headers.forwarded;
+    const forwardedHost = request.headers["x-forwarded-host"];
+    const forwardedProto = request.headers["x-forwarded-proto"];
+    const forwardedPort = request.headers["x-forwarded-port"];
+    const anyForwarded =
+      forwarded !== undefined ||
+      forwardedHost !== undefined ||
+      forwardedProto !== undefined ||
+      forwardedPort !== undefined;
+    if (!anyForwarded) return;
+    if (!this.#trustForwardedHeaders || forwarded !== undefined) {
+      throw new DashboardServerError(403, "proxy_headers_rejected", "dashboard proxy headers are not trusted");
+    }
+    if (!isLoopbackAddress(request.socket.remoteAddress)) {
+      throw new DashboardServerError(403, "proxy_headers_rejected", "dashboard proxy headers require a loopback peer");
+    }
+    const origin = new URL(this.#origin!);
+    const expectedPort = origin.port || (origin.protocol === "https:" ? "443" : "80");
+    if (
+      (forwardedHost !== undefined && singleHeader(forwardedHost) !== origin.host) ||
+      (forwardedProto !== undefined && singleHeader(forwardedProto) !== origin.protocol.slice(0, -1)) ||
+      (forwardedPort !== undefined && singleHeader(forwardedPort) !== expectedPort)
+    ) {
+      throw new DashboardServerError(403, "proxy_headers_rejected", "dashboard proxy headers do not match publicOrigin");
+    }
   }
 
   #assertMutationOrigin(request: IncomingMessage): void {
@@ -903,9 +1039,18 @@ export class DashboardWebSocketPeer {
 export async function createDashboardServerFromConfig(
   options: DashboardServerFromConfigOptions,
 ): Promise<DashboardServer> {
+  const configuredWeb = options.loadedConfig.config.web;
   const web = mergeWebConfig({
-    ...options.loadedConfig.config.web,
+    ...configuredWeb,
     ...options.webOverrides,
+    tls: {
+      ...configuredWeb?.tls,
+      ...options.webOverrides?.tls,
+    },
+    proxy: {
+      ...configuredWeb?.proxy,
+      ...options.webOverrides?.proxy,
+    },
   });
   if (web.enabled === false) throw new Error("dashboard web server is disabled");
   const tokenPath =
@@ -913,7 +1058,21 @@ export async function createDashboardServerFromConfig(
       ? join(options.stateDir, "web-token")
       : options.loadedConfig.resolvePath(web.auth.tokenFile);
   await ensureDashboardCredentialFile(tokenPath);
-  const publicOrigin = options.publicOrigin;
+  const publicOrigin = options.publicOrigin ?? web.publicOrigin;
+  const tlsSource: DashboardTlsSourceConfig = {
+    ...(web.tls.certFile === undefined
+      ? {}
+      : { certFile: options.loadedConfig.resolvePath(web.tls.certFile) }),
+    ...(web.tls.certFd === undefined ? {} : { certFd: web.tls.certFd }),
+    ...(web.tls.keyFile === undefined
+      ? {}
+      : { keyFile: options.loadedConfig.resolvePath(web.tls.keyFile) }),
+    ...(web.tls.keyFd === undefined ? {} : { keyFd: web.tls.keyFd }),
+    ...(web.tls.reloadIntervalMs === undefined
+      ? {}
+      : { reloadIntervalMs: web.tls.reloadIntervalMs }),
+  };
+  const tls = await loadDashboardTls(tlsSource);
   const auth = await DashboardBrowserAuth.fromTokenFile(tokenPath, {
     sessionTtlMs: web.auth.sessionTtlMs,
     secureCookies: publicOrigin?.startsWith("https://") ?? false,
@@ -954,6 +1113,9 @@ export async function createDashboardServerFromConfig(
     host: web.bind,
     port: web.port,
     ...(publicOrigin === undefined ? {} : { publicOrigin }),
+    allowInsecureHttp: web.allowInsecureHttp,
+    trustForwardedHeaders: web.proxy.trustForwardedHeaders,
+    ...(tls === undefined ? {} : { tls }),
     serverInstanceId,
     limits: dashboardLimits,
     ...(streamHandler === undefined ? {} : { streamHandler }),
@@ -964,6 +1126,10 @@ function mergeWebConfig(config: PiDaemonWebConfig | undefined): {
   enabled: boolean;
   bind: string;
   port: number;
+  publicOrigin?: string;
+  allowInsecureHttp: boolean;
+  tls: DashboardTlsSourceConfig;
+  proxy: { trustForwardedHeaders: boolean };
   auth: { tokenFile?: string; sessionTtlMs: number };
   inventory: { roots: string[]; reconcileIntervalMs: number; maxSessions: number };
   residency: { warmTtlMs: number; maxPinnedPerWorkspace: number };
@@ -974,6 +1140,23 @@ function mergeWebConfig(config: PiDaemonWebConfig | undefined): {
     enabled: config?.enabled ?? DEFAULT_PI_DAEMON_WEB_CONFIG.enabled,
     bind: config?.bind ?? DEFAULT_PI_DAEMON_WEB_CONFIG.bind,
     port: config?.port ?? DEFAULT_PI_DAEMON_WEB_CONFIG.port,
+    ...(config?.publicOrigin === undefined ? {} : { publicOrigin: config.publicOrigin }),
+    allowInsecureHttp:
+      config?.allowInsecureHttp ?? DEFAULT_PI_DAEMON_WEB_CONFIG.allowInsecureHttp,
+    tls: {
+      ...(config?.tls?.certFile === undefined ? {} : { certFile: config.tls.certFile }),
+      ...(config?.tls?.certFd === undefined ? {} : { certFd: config.tls.certFd }),
+      ...(config?.tls?.keyFile === undefined ? {} : { keyFile: config.tls.keyFile }),
+      ...(config?.tls?.keyFd === undefined ? {} : { keyFd: config.tls.keyFd }),
+      ...(config?.tls?.reloadIntervalMs === undefined
+        ? {}
+        : { reloadIntervalMs: config.tls.reloadIntervalMs }),
+    },
+    proxy: {
+      trustForwardedHeaders:
+        config?.proxy?.trustForwardedHeaders ??
+        DEFAULT_PI_DAEMON_WEB_CONFIG.proxy.trustForwardedHeaders,
+    },
     auth: {
       ...(config?.auth?.tokenFile === undefined ? {} : { tokenFile: config.auth.tokenFile }),
       sessionTtlMs: config?.auth?.sessionTtlMs ?? DEFAULT_PI_DAEMON_WEB_CONFIG.auth.sessionTtlMs,
@@ -1662,8 +1845,36 @@ function validatePublicOrigin(value: string): string {
   return url.origin;
 }
 
+function singleHeader(value: string | string[]): string {
+  if (
+    typeof value !== "string" ||
+    value.length === 0 ||
+    value.length > 1024 ||
+    value.includes(",") ||
+    value.trim() !== value
+  ) {
+    throw new DashboardServerError(403, "proxy_headers_rejected", "dashboard proxy header is invalid");
+  }
+  return value;
+}
+
+function sniMatchesOrigin(servername: string, publicOrigin: string): boolean {
+  const expected = new URL(publicOrigin).hostname.toLowerCase().replace(/\.$/u, "");
+  const actual = servername.toLowerCase().replace(/\.$/u, "");
+  return actual === expected;
+}
+
+function isLoopbackOrigin(origin: string): boolean {
+  return isLoopbackBind(new URL(origin).hostname);
+}
+
+function isLoopbackAddress(address: string | undefined): boolean {
+  if (address === undefined) return false;
+  return isLoopbackBind(address.startsWith("::ffff:") ? address.slice(7) : address);
+}
+
 function isLoopbackBind(host: string): boolean {
-  if (host === "localhost") return true;
+  if (host.toLowerCase() === "localhost") return true;
   if (host === "::1") return true;
   if (isIP(host) === 4) return host.startsWith("127.");
   return false;

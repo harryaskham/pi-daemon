@@ -83,6 +83,14 @@ web:
   enabled: true
   mode: embedded
   port: 7464
+  publicOrigin: https://dash.example.test
+  allowInsecureHttp: false
+  tls:
+    certFile: ./dash-cert.pem
+    keyFile: ./dash-key.pem
+    reloadIntervalMs: 30000
+  proxy:
+    trustForwardedHeaders: true
   auth:
     tokenFile: ./web-token
     sessionTtlMs: 60000
@@ -127,6 +135,14 @@ web:
   assert.equal(loaded.config.limits.maxSessions, 32);
   assert.equal(loaded.config.security.allowAuthorityRootOverlap, true);
   assert.equal(loaded.config.web.tui.defaultPresentation, "rich");
+  assert.equal(loaded.config.web.publicOrigin, "https://dash.example.test");
+  assert.equal(loaded.config.web.allowInsecureHttp, false);
+  assert.deepEqual(loaded.config.web.tls, {
+    certFile: "./dash-cert.pem",
+    keyFile: "./dash-key.pem",
+    reloadIntervalMs: 30000,
+  });
+  assert.deepEqual(loaded.config.web.proxy, { trustForwardedHeaders: true });
   assert.deepEqual(JSON.parse(JSON.stringify(loaded.config.web.runtimePolicy)), {
     model: {
       provider: "github-copilot",
@@ -185,6 +201,9 @@ test("rejects missing explicit, mismatched, duplicate, aliased, unknown, secret 
     ["runtime-secret", "web:\n  runtimePolicy:\n    settings:\n      apiKey: forbidden\n", "config_secret_value_forbidden"],
     ["runtime-relative-extension", "web:\n  runtimePolicy:\n    resources:\n      extensions: [./ambient.mjs]\n", "config_invalid"],
     ["runtime-settings-packages", "web:\n  runtimePolicy:\n    resources: { projectTrust: approve }\n    settings:\n      packages: [npm:ambient]\n", "config_invalid"],
+    ["tls-fd", "web:\n  tls:\n    certFd: 2\n    keyFd: 4\n", "config_invalid"],
+    ["tls-reload", "web:\n  tls:\n    reloadIntervalMs: 999\n", "config_invalid"],
+    ["proxy-unknown", "web:\n  proxy:\n    trustAll: true\n", "config_unknown_field"],
   ];
   for (const [name, text, code] of cases) {
     const directory = join(root, name);

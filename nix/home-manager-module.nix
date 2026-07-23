@@ -141,7 +141,36 @@
           type = lib.types.nullOr lib.types.str;
           default = null;
           example = "https://dash.example.test";
-          description = "Optional exact HTTPS public origin when a loopback reverse proxy terminates TLS.";
+          description = "Optional exact browser-visible origin. Required for native TLS; HTTPS is required for remote exposure unless allowInsecurePublicOrigin is explicitly enabled.";
+        };
+        allowInsecurePublicOrigin = lib.mkOption {
+          type = lib.types.bool;
+          default = false;
+          description = "Explicit development-only opt-in for a non-loopback plaintext browser origin.";
+        };
+        trustProxyHeaders = lib.mkOption {
+          type = lib.types.bool;
+          default = false;
+          description = "Verify exact X-Forwarded-Host/Proto/Port values from a loopback reverse proxy. Forwarded headers are rejected by default and never define authority.";
+        };
+        tls = {
+          certFile = lib.mkOption {
+            type = lib.types.nullOr lib.types.str;
+            default = null;
+            example = lib.literalExpression "config.sops.secrets.pi-daemon-dash-cert.path";
+            description = "Owner-controlled PEM certificate path for native HTTPS. Certificate bytes never enter argv, the Nix store, status, or logs.";
+          };
+          keyFile = lib.mkOption {
+            type = lib.types.nullOr lib.types.str;
+            default = null;
+            example = lib.literalExpression "config.sops.secrets.pi-daemon-dash-key.path";
+            description = "Owner-only PEM private-key path for native HTTPS. Key bytes never enter argv, the Nix store, status, or logs.";
+          };
+          reloadIntervalMs = lib.mkOption {
+            type = lib.types.ints.positive;
+            default = 30000;
+            description = "Polling interval for atomic native TLS certificate/key rotation.";
+          };
         };
         allowInsecureHttp = lib.mkOption {
           type = lib.types.bool;
@@ -251,10 +280,22 @@
       (toString instance.dedicatedWeb.port)
       "--api-allow-insecure-http"
       (if instance.dedicatedWeb.allowInsecureHttp then "true" else "false")
+      "--web-allow-insecure-http"
+      (if instance.dedicatedWeb.allowInsecurePublicOrigin then "true" else "false")
+      "--trust-proxy-headers"
+      (if instance.dedicatedWeb.trustProxyHeaders then "true" else "false")
     ]
     ++ lib.optionals (instance.dedicatedWeb.publicOrigin != null) [
       "--public-origin"
       instance.dedicatedWeb.publicOrigin
+    ]
+    ++ lib.optionals (instance.dedicatedWeb.tls.certFile != null) [
+      "--tls-cert-file"
+      instance.dedicatedWeb.tls.certFile
+      "--tls-key-file"
+      instance.dedicatedWeb.tls.keyFile
+      "--tls-reload-ms"
+      (toString instance.dedicatedWeb.tls.reloadIntervalMs)
     ];
   dedicatedWebCommand = name: instance:
     lib.concatStringsSep " " (map lib.escapeShellArg (dedicatedWebArgs name instance));
@@ -376,6 +417,23 @@ in {
         ++ (lib.mapAttrsToList (name: instance: {
             assertion = !instance.dedicatedWeb.enable || instance.dedicatedWeb.port != null;
             message = "services.pi-daemon.instances.${name}: dedicatedWeb.port is required when dedicatedWeb.enable is true";
+          })
+          enabledInstances)
+        ++ (lib.mapAttrsToList (name: instance: {
+            assertion =
+              (instance.dedicatedWeb.tls.certFile == null)
+              == (instance.dedicatedWeb.tls.keyFile == null);
+            message = "services.pi-daemon.instances.${name}: dedicatedWeb native TLS requires both tls.certFile and tls.keyFile";
+          })
+          enabledInstances)
+        ++ (lib.mapAttrsToList (name: instance: {
+            assertion =
+              instance.dedicatedWeb.tls.certFile == null
+              || (
+                instance.dedicatedWeb.publicOrigin != null
+                && lib.hasPrefix "https://" instance.dedicatedWeb.publicOrigin
+              );
+            message = "services.pi-daemon.instances.${name}: dedicatedWeb native TLS requires an HTTPS publicOrigin";
           })
           enabledInstances)
         ++ (lib.mapAttrsToList (name: instance: {

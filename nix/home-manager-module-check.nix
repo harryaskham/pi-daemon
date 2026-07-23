@@ -67,6 +67,13 @@
           enable = true;
           stateDir = "/home/tester/.state/pi-alpha-web";
           port = 17465;
+          publicOrigin = "https://dash.example.test";
+          trustProxyHeaders = true;
+          tls = {
+            certFile = "/run/secrets/pi-alpha-dash-cert";
+            keyFile = "/run/secrets/pi-alpha-dash-key";
+            reloadIntervalMs = 15000;
+          };
           stdoutLog = "/home/tester/.state/pi-alpha-web/stdout.log";
           stderrLog = "/home/tester/.state/pi-alpha-web/stderr.log";
         };
@@ -307,6 +314,14 @@ in
       printf '%s\n' ${lib.escapeShellArg normalAlphaWebCommand} | grep -F -- '/run/secrets/pi-alpha-token'
       printf '%s\n' ${lib.escapeShellArg normalAlphaWebCommand} | grep -F -- '--web-port'
       printf '%s\n' ${lib.escapeShellArg normalAlphaWebCommand} | grep -F -- '17465'
+      printf '%s\n' ${lib.escapeShellArg normalAlphaWebCommand} | grep -F -- '--public-origin'
+      printf '%s\n' ${lib.escapeShellArg normalAlphaWebCommand} | grep -F -- 'https://dash.example.test'
+      printf '%s\n' ${lib.escapeShellArg normalAlphaWebCommand} | grep -F -- '--trust-proxy-headers true'
+      printf '%s\n' ${lib.escapeShellArg normalAlphaWebCommand} | grep -F -- '--tls-cert-file'
+      printf '%s\n' ${lib.escapeShellArg normalAlphaWebCommand} | grep -F -- '/run/secrets/pi-alpha-dash-cert'
+      printf '%s\n' ${lib.escapeShellArg normalAlphaWebCommand} | grep -F -- '--tls-key-file'
+      printf '%s\n' ${lib.escapeShellArg normalAlphaWebCommand} | grep -F -- '/run/secrets/pi-alpha-dash-key'
+      printf '%s\n' ${lib.escapeShellArg normalAlphaWebCommand} | grep -F -- '--tls-reload-ms 15000'
       printf '%s\n' ${lib.escapeShellArg normalAlphaWebCommand} | grep -F -- '/home/tester/.state/pi-alpha-web'
       if printf '%s\n' ${lib.escapeShellArg normalBetaCommand} | grep -F -- '--api-token-file'; then
         echo 'default managed bearer must not enter argv' >&2

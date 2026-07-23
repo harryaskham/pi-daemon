@@ -30,7 +30,7 @@
         nodejs = pkgs.nodejs_24;
         npmDepsHash = "sha256-ciikGh+PxsYOcVOGUc2hVe09AxtRjHpeFi8CJ26hMeQ=";
         npmDepsFetcherVersion = 2;
-        nativeBuildInputs = [pkgs.makeWrapper];
+        nativeBuildInputs = [pkgs.makeWrapper pkgs.openssl];
 
         npmBuildScript = "build";
         # Nix-on-Droid cannot safely run npm, so aarch64-linux artifacts are
@@ -141,6 +141,7 @@
         test -s "$out/protocol-v2.schema.json"
         test -s "$out/tool-adapter.schema.json"
         test -s "$out/dashboard-protocol/index.html"
+        test -s "$out/dashboard-transport-security/index.html"
         test -s "$out/dashboard-inventory/index.html"
         test -s "$out/shadow-tui/index.html"
         test -s "$out/dashboard-ownership/index.html"
