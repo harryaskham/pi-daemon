@@ -227,6 +227,11 @@
                       "type": "string",
                       "minLength": 1,
                       "maxLength": 4096
+                    },
+                    "sessionDir": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 4096
                     }
                   }
                 },

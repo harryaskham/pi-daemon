@@ -46,7 +46,9 @@ test("v2 and tool-adapter language-neutral fixtures validate against public sche
   const validateV2 = ajv.compile(v2Schema);
 
   const open = await v2Open();
+  const configuredNoTools = await fixture("open-v2-configured-no-tools.command.json");
   assert.equal(validateV2(open), true, ajv.errorsText(validateV2.errors));
+  assert.equal(validateV2(configuredNoTools), true, ajv.errorsText(validateV2.errors));
   assert.equal(
     validateAdapter(descriptorFrom(open)),
     true,
@@ -63,11 +65,21 @@ test("v2 accepts a closed generation- and host-bound descriptor while v1 remains
   const parsed = parseProtocolV2Command(input, { expectedHostInstanceId: "host-019f" });
   assert.equal(parsed.operation, "open");
   assert.equal(parsed.protocolVersion, "2.0");
+  assert.equal(parsed.payload.agentDir, "/home/operator/.pi/agent");
+  assert.equal(
+    parsed.payload.session.sessionDir,
+    "/home/operator/.pi/agent/sessions/cacophony/agent-a",
+  );
   assert.deepEqual(
     parsed.payload.resources.tools.descriptor.operations,
     NEUTRAL_TOOL_OPERATIONS,
   );
   assert.equal(parseSupportedProtocolCommand(input).protocolVersion, "2.0");
+  const configuredNoTools = parseProtocolV2Command(
+    await fixture("open-v2-configured-no-tools.command.json"),
+  );
+  assert.equal(configuredNoTools.payload.resources.tools, "none");
+  assert.equal(configuredNoTools.payload.session.sessionDir.endsWith("/logical-agent-a"), true);
 
   const legacy = await fixture("open.command.json");
   assert.equal(parseSupportedProtocolCommand(legacy).protocolVersion, PROTOCOL_VERSION);
@@ -95,6 +107,12 @@ test("v2 descriptor rejects endpoint, capability, operation, limits, version and
       code,
     );
   }
+  const oversizedSessionDir = structuredClone(base);
+  oversizedSessionDir.payload.session.sessionDir = `/${"x".repeat(4096)}`;
+  assert.throws(
+    () => parseProtocolV2Command(oversizedSessionDir),
+    throwsCode("invalid_field"),
+  );
   const staleHost = structuredClone(base);
   assert.throws(
     () => parseProtocolV2Command(staleHost, { expectedHostInstanceId: "host-new" }),

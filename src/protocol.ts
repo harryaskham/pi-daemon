@@ -44,6 +44,8 @@ export interface ResourcePolicy {
 export interface SessionTarget {
   mode: SessionMode;
   path?: string;
+  /** Protocol v2 configured-open storage directory; ignored by legacy v1 opens. */
+  sessionDir?: string;
 }
 
 export interface OpenPayload {
@@ -342,6 +344,7 @@ export function parseCommand(value: unknown, limits: ParseLimits = {}): Protocol
         });
       }
       const path = stringField(session, "path", { max: 4096, optional: true });
+      stringField(session, "sessionDir", { max: 4096, optional: true });
       if (mode === "open" && path === undefined) {
         throw new ProtocolValidationError(
           "invalid_field",

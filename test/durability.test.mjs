@@ -513,10 +513,13 @@ test("protocol v2 no-tools recovery preserves the session event version", async 
   await first.recover();
   const command = persistentOpenCommand("v2-no-tools");
   command.protocolVersion = "2.0";
+  command.payload.agentDir = "/home/operator/.pi/agent";
+  command.payload.session.sessionDir = "/home/operator/.pi/agent/sessions/cacophony/v2-no-tools";
   await first.saveManifest(command, conversationIdentity("v2-no-tools"));
 
+  const factory = new ImmediateFactory();
   const mux = new Multiplexer({
-    factory: new ImmediateFactory(),
+    factory,
     durability: new FileDurabilityStore({ stateDir }),
   });
   const events = [];
@@ -524,6 +527,12 @@ test("protocol v2 no-tools recovery preserves the session event version", async 
   const report = await mux.recover();
   assert.deepEqual(report.opened, ["v2-no-tools"], JSON.stringify(report.failures));
   assert.equal(events.find((event) => event.event === "opened")?.protocolVersion, "2.0");
+  assert.equal(factory.requests[0].runtimeOptions.persistedSpec.agentDir, command.payload.agentDir);
+  assert.deepEqual(factory.requests[0].runtimeOptions.persistedSpec.target, {
+    mode: "open",
+    path: conversationIdentity("v2-no-tools").sessionFile,
+    sessionDir: "/state/pi",
+  });
 });
 
 test("restart requires adapter reprovisioning and never silently reopens no-tools", async () => {

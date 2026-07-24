@@ -175,6 +175,7 @@ export function sessionOpenPayloadFromSpec(
         ? "new"
         : (spec.target.mode as OpenPayload["session"]["mode"]),
     ...(spec.target.path === undefined ? {} : { path: spec.target.path }),
+    ...(spec.target.sessionDir === undefined ? {} : { sessionDir: spec.target.sessionDir }),
   };
   const resources: OpenPayload["resources"] = {
     extensions: "none",

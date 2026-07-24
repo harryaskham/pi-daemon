@@ -113,8 +113,14 @@ persisted credential, and it must not enter logs, errors, status, events,
 manifests, journals, tickets, or acknowledgements. Restart changes host identity
 and requires reprovisioning rather than replay. Per-invocation `abort` and
 best-effort generation/session `revoke` prevent one stuck tool from requiring a
-whole shared socket teardown. V1 and every v2 `tools: "none"` open retain the
-existing no-tools behavior.
+whole shared socket teardown. V2 configured opens may select a per-session
+`agentDir` and `sessionDir`, but only through the strict prepared-session path;
+private auth mode/ownership, allowed cwd roots, canonical
+`<agentDir>/sessions` confinement, and credential/state/workload overlap checks
+remain mandatory. The exact resolved Pi conversation identity is persisted and
+used for recovery instead of regex/name search. V1 and every v2 `tools: "none"`
+open retain no built-in or ambient project tools; configured storage does not
+widen tool authority.
 
 ## Separate inhabitants
 

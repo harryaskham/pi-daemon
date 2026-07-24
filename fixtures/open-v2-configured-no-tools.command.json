@@ -1,0 +1,23 @@
+{
+  "protocolVersion": "2.0",
+  "requestId": "req-open-v2-configured-1",
+  "operation": "open",
+  "sessionId": "logical-agent-a",
+  "generation": 1,
+  "payload": {
+    "cwd": "/workspace/logical-agent-a",
+    "agentDir": "/home/operator/.pi/agent",
+    "session": {
+      "mode": "new",
+      "sessionDir": "/home/operator/.pi/agent/sessions/cacophony/logical-agent-a"
+    },
+    "resources": {
+      "extensions": "none",
+      "skills": "none",
+      "promptTemplates": "none",
+      "themes": "none",
+      "contextFiles": "none",
+      "tools": "none"
+    }
+  }
+}

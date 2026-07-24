@@ -216,11 +216,19 @@ test("protocol v2 tool adapters are host/session/generation bound before factory
   const events = [];
   mux.subscribe((event) => events.push(event));
   const command = hostToolOpenCommand("bound");
+  command.payload.agentDir = "/home/operator/.pi/agent";
+  command.payload.session = {
+    mode: "new",
+    sessionDir: "/home/operator/.pi/agent/sessions/cacophony/bound",
+  };
 
   const opened = await mux.open(command);
   assert.equal(opened.created, true);
   assert.equal(factory.opens[0].hostInstanceId, "host-test");
   assert.deepEqual(factory.opens[0].hostToolAdapter, command.payload.resources.tools.descriptor);
+  assert.equal(factory.opens[0].runtimeOptions.persistedSpec.agentDir, command.payload.agentDir);
+  assert.deepEqual(factory.opens[0].runtimeOptions.persistedSpec.target, command.payload.session);
+  assert.deepEqual(Object.keys(factory.opens[0].runtimeOptions.environmentOverlay), []);
   assert.equal(events[0].protocolVersion, "2.0");
 
   for (const [field, descriptorOverrides] of [
@@ -242,6 +250,16 @@ test("protocol v2 tool adapters are host/session/generation bound before factory
     assert.equal(JSON.stringify(error).includes("fixture_capability_handle"), false);
     assert.equal(isolatedFactory.opens.length, 0);
   }
+});
+
+test("legacy v1 open remains unprepared and ignores additive sessionDir authority", async () => {
+  const factory = new ControlledFactory();
+  const mux = new Multiplexer({ factory });
+  await mux.open(openCommand("legacy-storage", 1, {
+    session: { mode: "new", sessionDir: "/untrusted/legacy/session-dir" },
+  }));
+  assert.equal(factory.opens[0].runtimeOptions, undefined);
+  assert.deepEqual(factory.opens[0].session, { mode: "new" });
 });
 
 test("concurrent duplicate opens create only one adapter", async () => {

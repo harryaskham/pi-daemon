@@ -62,6 +62,7 @@ test("retained imported sessions reopen the exact managed conversation without r
   assert.deepEqual(calls[0].command.payload.session, {
     mode: "open",
     path: dormant.conversation.sessionFile,
+    sessionDir: "/state/owned/dash-imported",
   });
   assert.deepEqual(calls[0].options.catalogSpec, dormant.spec);
 });

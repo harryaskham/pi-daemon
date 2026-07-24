@@ -8,7 +8,9 @@ title: Host tool-adapter protocol
 Protocol v2 adds one default-off way to give a logical session a small,
 product-neutral filesystem capability without loading project extensions or
 exposing a shell inside Pi Daemon. Protocol v1 is unchanged: every v1 resource
-field, including `tools`, must still be `"none"`.
+field, including `tools`, must still be `"none"`. Protocol v2 configured-open
+storage is independent of tool authority: `tools: "none"` may accompany an
+isolated `agentDir` and confined `sessionDir` without enabling an adapter.
 
 The public machine contracts are
 [`protocol-v2.schema.json`](protocol-v2.schema.json) for daemon records and
@@ -37,7 +39,11 @@ network, process, package, extension, remove, or arbitrary method field.
   "generation": 2,
   "payload": {
     "cwd": "/workspace/agent-a",
-    "session": { "mode": "new" },
+    "agentDir": "/home/operator/.pi/agent",
+    "session": {
+      "mode": "new",
+      "sessionDir": "/home/operator/.pi/agent/sessions/cacophony/agent-a"
+    },
     "resources": {
       "extensions": "none",
       "skills": "none",

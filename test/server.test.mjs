@@ -64,6 +64,19 @@ const hostToolOpenCommand = (sessionId, hostInstanceId = "host-test") => ({
   },
 });
 
+const configuredOpenCommand = (sessionId) => ({
+  ...openCommand(sessionId),
+  protocolVersion: "2.0",
+  payload: {
+    ...openCommand(sessionId).payload,
+    agentDir: "/home/operator/.pi/agent",
+    session: {
+      mode: "new",
+      sessionDir: `/home/operator/.pi/agent/sessions/cacophony/${sessionId}`,
+    },
+  },
+});
+
 const attachCommand = (sessionId, operation = "attach", generation = 1) => ({
   protocolVersion: "1.0",
   requestId: `${operation}-${sessionId}-${generation}`,
@@ -185,14 +198,30 @@ test("protocol v2 handshake/open responses echo version and never expose capabil
   assert.deepEqual(handshake.data.supportedProtocolVersions, ["1.0", "2.0"]);
   assert.equal(handshake.data.capabilities.hostToolAdapter, true);
   assert.equal(handshake.data.capabilities.hostToolOperationCount, 6);
+  assert.equal(handshake.data.capabilities.configuredOpen, true);
+  assert.equal(handshake.data.capabilities.sessionDir, true);
 
   const opened = await client.request(hostToolOpenCommand("v2-session"));
   assert.equal(opened.protocolVersion, "2.0");
   assert.equal(opened.data.created, true);
   assert.equal(harness.factory.requests[0].hostInstanceId, "host-test");
+  assert.equal(harness.factory.requests[0].runtimeOptions.persistedSpec.target.mode, "memory");
   assert.equal(
     harness.factory.requests[0].hostToolAdapter.binding.capabilityHandle,
     "fixture_capability_handle_0123456789",
+  );
+
+  const configured = configuredOpenCommand("v2-configured");
+  const configuredOpened = await client.request(configured);
+  assert.equal(configuredOpened.data.created, true);
+  assert.equal(harness.factory.requests[1].hostToolAdapter, undefined);
+  assert.equal(
+    harness.factory.requests[1].runtimeOptions.persistedSpec.agentDir,
+    configured.payload.agentDir,
+  );
+  assert.deepEqual(
+    harness.factory.requests[1].runtimeOptions.persistedSpec.target,
+    configured.payload.session,
   );
 
   const error = await client.request(hostToolOpenCommand("wrong-host", "stale-host")).then(

@@ -6,7 +6,11 @@
   "generation": 2,
   "payload": {
     "cwd": "/workspace/agent-a",
-    "session": { "mode": "new" },
+    "agentDir": "/home/operator/.pi/agent",
+    "session": {
+      "mode": "new",
+      "sessionDir": "/home/operator/.pi/agent/sessions/cacophony/agent-a"
+    },
     "resources": {
       "extensions": "none",
       "skills": "none",

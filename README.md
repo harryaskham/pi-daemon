@@ -179,7 +179,10 @@ The language-neutral v1 [`protocol.schema.json`](protocol.schema.json), additive
 v2 [`protocol-v2.schema.json`](protocol-v2.schema.json), scoped
 [`tool-adapter.schema.json`](tool-adapter.schema.json), checked fixtures under
 [`fixtures/`](fixtures/), and exported TypeScript protocol types are the
-compatibility contract. See the [protocol design](PLAN.md#6-protocol)
+compatibility contract. Protocol v2 additionally advertises strict configured
+open support for an isolated per-session `agentDir` and a deterministic
+`sessionDir` confined to its canonical Pi sessions subtree; v1 remains unchanged.
+See the [protocol design](PLAN.md#6-protocol)
 and, as implementation lands, the published [documentation site](https://a.skh.am/pi-daemon/).
 
 ## Safety defaults

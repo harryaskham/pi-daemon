@@ -34,6 +34,7 @@ import { eventEnvelope, type EventEnvelope } from "./protocol.js";
 import type { PiRpcController } from "./pi-rpc-controller.js";
 import {
   SessionConfigurationError,
+  parseSessionConfiguration,
   requireProvisionedEnvironment,
   type PreparedSessionRuntimeOptions,
 } from "./session-config.js";
@@ -744,7 +745,13 @@ export class Multiplexer {
       if (manifest.conversation?.sessionFile !== undefined) {
         payload = {
           ...manifest.payload,
-          session: { mode: "open", path: manifest.conversation.sessionFile },
+          session: {
+            mode: "open",
+            path: manifest.conversation.sessionFile,
+            ...(manifest.protocolVersion?.startsWith("2.")
+              ? { sessionDir: dirname(manifest.conversation.sessionFile) }
+              : {}),
+          },
         };
       } else if (manifest.payload.session.mode !== "open") {
         report.failures.push({
@@ -916,14 +923,18 @@ export class Multiplexer {
       this.#assertAdmitting("open");
       throwIfAborted(options.signal);
       const existing = this.#sessions.get(command.sessionId);
-      const policy = normalizeOpenPolicy(command.payload);
+      const configuredNeutralOpen = command.protocolVersion.startsWith("2.");
+      const protocolRuntimeOptions = configuredNeutralOpen
+        ? runtimeOptionsFromConfiguredOpen(command.payload)
+        : undefined;
+      const runtimeOptions = options.runtimeOptions ?? protocolRuntimeOptions;
+      const policy = normalizeOpenPolicy(command.payload, configuredNeutralOpen);
       const catalogSpec =
         options.catalogSpec ??
-        options.runtimeOptions?.persistedSpec ??
-        persistedSpecFromOpen(command.payload);
+        runtimeOptions?.persistedSpec ??
+        persistedSpecFromOpen(command.payload, configuredNeutralOpen);
       const catalogDigest = sessionSpecDigest(catalogSpec);
-      const policyKey =
-        options.runtimeOptions === undefined ? canonicalJson(policy) : catalogDigest;
+      const policyKey = runtimeOptions === undefined ? canonicalJson(policy) : catalogDigest;
       if (this.#catalog !== undefined) validateCatalogSessionId(command.sessionId);
       const retained = await this.#catalog?.get(command.sessionId);
 
@@ -988,6 +999,11 @@ export class Multiplexer {
         existing === undefined
           ? resolvedRuntimePolicy(policy, retained, command.generation)
           : policy;
+      const runtimeOptionsForOpen = runtimeOptionsForRetainedConversation(
+        runtimeOptions,
+        retained,
+        command.generation,
+      );
 
       if (existing !== undefined) {
         if (command.generation < existing.generation) {
@@ -1038,9 +1054,9 @@ export class Multiplexer {
         ...runtimePolicy,
         hostInstanceId: this.hostInstanceId,
         ...(hostToolAdapter === undefined ? {} : { hostToolAdapter }),
-        ...(options.runtimeOptions === undefined
+        ...(runtimeOptionsForOpen === undefined
           ? {}
-          : { runtimeOptions: options.runtimeOptions }),
+          : { runtimeOptions: runtimeOptionsForOpen }),
       };
       if (options.signal !== undefined) {
         Object.defineProperty(request, "signal", {
@@ -1065,7 +1081,7 @@ export class Multiplexer {
         throwIfAborted(options.signal);
         conversation = validateOpenedConversation(
           adapter.identity?.(),
-          options.runtimeOptions?.persistedSpec.target.mode ?? command.payload.session.mode,
+          runtimeOptionsForOpen?.persistedSpec.target.mode ?? command.payload.session.mode,
           this.#durability !== undefined || this.#catalog !== undefined,
         );
         if (this.#catalog !== undefined) {
@@ -1084,7 +1100,7 @@ export class Multiplexer {
                   ...(conversation === undefined ? {} : { conversation }),
                   policyDigest: catalogDigest,
                   configuration:
-                    options.runtimeOptions === undefined ? "legacy" : "prepared",
+                    runtimeOptions === undefined ? "legacy" : "prepared",
                 })
               : await this.#catalog.replace(command.sessionId, {
                   expectedGeneration: retained.generation,
@@ -1102,7 +1118,7 @@ export class Multiplexer {
                   ...(conversation === undefined ? {} : { conversation }),
                   policyDigest: catalogDigest,
                   configuration:
-                    options.runtimeOptions === undefined
+                    runtimeOptions === undefined
                       ? (retained.configuration ?? "legacy")
                       : "prepared",
                 });
@@ -2211,10 +2227,20 @@ function assertHostToolAdapterBinding(
   }
 }
 
-function normalizeOpenPolicy(payload: SupportedOpenPayload): NormalizedOpenPolicy {
+function normalizeOpenPolicy(
+  payload: SupportedOpenPayload,
+  configuredOpen = false,
+): NormalizedOpenPolicy {
+  const session: SessionTarget = {
+    mode: payload.session.mode,
+    ...(payload.session.path === undefined ? {} : { path: payload.session.path }),
+    ...(configuredOpen && payload.session.sessionDir !== undefined
+      ? { sessionDir: payload.session.sessionDir }
+      : {}),
+  };
   const policy: NormalizedOpenPolicy = {
     cwd: payload.cwd,
-    session: { ...payload.session },
+    session,
   };
   if (payload.agentDir !== undefined) policy.agentDir = payload.agentDir;
   if (payload.model !== undefined) policy.model = { ...payload.model };
@@ -2291,9 +2317,15 @@ function validateOpenedConversation(
   return structuredClone(identity);
 }
 
-function persistedSpecFromOpen(payload: SupportedOpenPayload): PersistedSessionSpec {
+function persistedSpecFromOpen(
+  payload: SupportedOpenPayload,
+  configuredOpen = false,
+): PersistedSessionSpec {
   const target: PersistedSessionSpec["target"] = { mode: payload.session.mode };
   if (payload.session.path !== undefined) target.path = payload.session.path;
+  if (configuredOpen && payload.session.sessionDir !== undefined) {
+    target.sessionDir = payload.session.sessionDir;
+  }
   const spec: PersistedSessionSpec = {
     cwd: payload.cwd,
     target,
@@ -2314,6 +2346,34 @@ function persistedSpecFromOpen(payload: SupportedOpenPayload): PersistedSessionS
   if (payload.agentDir !== undefined) spec.agentDir = payload.agentDir;
   if (payload.model !== undefined) spec.model = { ...payload.model };
   return spec;
+}
+
+function runtimeOptionsForRetainedConversation(
+  runtimeOptions: PreparedSessionRuntimeOptions | undefined,
+  retained: SessionCatalogRecord | undefined,
+  generation: number,
+): PreparedSessionRuntimeOptions | undefined {
+  const sessionFile = retained?.generation === generation
+    ? retained.conversation?.sessionFile
+    : undefined;
+  if (runtimeOptions === undefined || sessionFile === undefined) return runtimeOptions;
+  return {
+    ...runtimeOptions,
+    persistedSpec: {
+      ...runtimeOptions.persistedSpec,
+      target: {
+        mode: "open",
+        path: sessionFile,
+        sessionDir: dirname(sessionFile),
+      },
+    },
+  };
+}
+
+function runtimeOptionsFromConfiguredOpen(
+  payload: SupportedOpenPayload,
+): PreparedSessionRuntimeOptions {
+  return parseSessionConfiguration(persistedSpecFromOpen(payload, true)).runtimeOptions;
 }
 
 function snapshot(slot: SessionSlot, now: number): SessionSnapshot {

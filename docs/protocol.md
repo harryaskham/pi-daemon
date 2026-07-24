@@ -66,8 +66,17 @@ temporary failure.
 resource policy is all `none`; an optional explicit system prompt is the only
 loaded content resource. Protocol v2 retains those defaults but may carry one
 closed, generation- and host-bound `host-adapter` descriptor for the six fixed
-filesystem-neutral operations. It never enables shell, process, network,
-package, extension, remove, or arbitrary method authority.
+filesystem-neutral operations. It also advertises `configuredOpen: true` and
+`sessionDir: true`: a v2 `open` is converted through the same strict prepared
+session-spec boundary as the authenticated Session API, so an optional
+`agentDir` gets isolated auth/model services and an optional
+`session.sessionDir` selects exact storage. That directory still has to be an
+owner-controlled, non-symlink directory inside the selected
+`<agentDir>/sessions` subtree (or the daemon-owned logical-session state path);
+cwd/storage/credential overlap fails closed. V1 remains on its legacy no-tools
+path and does not gain session-directory authority. Protocol v2 never enables
+shell, process, network, package, extension, remove, or arbitrary method
+authority.
 
 Event delivery is explicit. `open`, `wake`, `status`, `abort`, successful
 commands, and failed commands never subscribe a connection implicitly. A client

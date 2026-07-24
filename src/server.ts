@@ -367,6 +367,8 @@ export class ProtocolServer {
               ? {
                   hostToolAdapter: true,
                   hostToolOperationCount: NEUTRAL_TOOL_OPERATIONS.length,
+                  configuredOpen: true,
+                  sessionDir: true,
                 }
               : {}),
           },
