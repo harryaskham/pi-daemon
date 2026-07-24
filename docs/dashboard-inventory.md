@@ -33,14 +33,17 @@ The owner-private state directory contains:
 
 ```text
 STATE_DIR/web/
-  inventory-v1.head.json          # newest 101 rows for immediate first-page paint
+  inventory-v1.head.snapshot      # newest 101 rows, Node-major binary hot path
+  inventory-v1.head.json          # portable hot-head fallback
   inventory-v1.snapshot           # full HMAC-authenticated Node-major snapshot
   inventory-v1.json               # canonical portable JSON recovery index
   inventory-search-key-v1.json    # private keyed-search/snapshot key
 ```
 
-Startup validates and loads only the hot head before becoming available. It then
-hydrates the full snapshot on the next event-loop turn. While this is in
+Startup validates and loads only the bounded binary hot head before becoming
+available, falling back to the portable JSON hot head after an absent,
+Node-major-incompatible, or quarantined snapshot. It then hydrates the full
+snapshot on the next event-loop turn. While this is in
 progress, pages truthfully report `index.reconciling: true` and `stale: true`.
 The snapshot is an optimization: it is authenticated with the private search
 key, bound to the Node major and inventory format, byte bounded, and discarded

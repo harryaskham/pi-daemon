@@ -67,6 +67,8 @@ export const SESSION_INVENTORY_SNAPSHOT_VERSION = 1 as const;
 
 const INVENTORY_SNAPSHOT_MAGIC = Buffer.from("PIDMINV1", "ascii");
 const INVENTORY_SNAPSHOT_HEADER_BYTES = 46;
+const INVENTORY_HEAD_SNAPSHOT_MAGIC = Buffer.from("PIDMHED1", "ascii");
+const INVENTORY_HEAD_SNAPSHOT_HEADER_BYTES = 14;
 
 export interface SessionInventoryLimits {
   maxRoots: number;
@@ -293,6 +295,7 @@ export class SessionInventory {
   readonly #webDir: string;
   readonly #indexPath: string;
   readonly #headPath: string;
+  readonly #headSnapshotPath: string;
   readonly #snapshotPath: string;
   readonly #searchKeyPath: string;
 
@@ -337,6 +340,7 @@ export class SessionInventory {
     this.#webDir = join(this.stateDir, "web");
     this.#indexPath = join(this.#webDir, "inventory-v1.json");
     this.#headPath = join(this.#webDir, "inventory-v1.head.json");
+    this.#headSnapshotPath = join(this.#webDir, "inventory-v1.head.snapshot");
     this.#snapshotPath = join(this.#webDir, "inventory-v1.snapshot");
     this.#searchKeyPath = join(this.#webDir, "inventory-search-key-v1.json");
   }
@@ -352,18 +356,29 @@ export class SessionInventory {
 
   async #runInitialize(): Promise<void> {
     let head: PersistedInventoryHead | undefined;
+    const maxHeadBytes =
+      this.limits.maxRecordBytes * (DASH_DEFAULT_LIMITS.maxInventoryPageItems + 2);
     try {
-      const value = readInventoryHeadSync(
-        this.#headPath,
-        this.limits.maxRecordBytes * (DASH_DEFAULT_LIMITS.maxInventoryPageItems + 2),
-      );
+      const value = readInventoryHeadSnapshotSync(this.#headSnapshotPath, maxHeadBytes);
       if (value !== undefined) {
         validateInventoryHead(value);
         head = value;
       }
     } catch {
-      await this.#quarantine(this.#headPath, "head-corrupt");
+      await this.#quarantine(this.#headSnapshotPath, "head-snapshot-corrupt");
       this.#lastErrorCode = "corrupt_inventory_head";
+    }
+    if (head === undefined) {
+      try {
+        const value = readInventoryHeadSync(this.#headPath, maxHeadBytes);
+        if (value !== undefined) {
+          validateInventoryHead(value);
+          head = value;
+        }
+      } catch {
+        await this.#quarantine(this.#headPath, "head-corrupt");
+        this.#lastErrorCode = "corrupt_inventory_head";
+      }
     }
     if (head === undefined) {
       await ensurePrivateDirectory(this.stateDir, "state directory");
@@ -632,6 +647,10 @@ export class SessionInventory {
     };
     await this.#writeSnapshot(index);
     await atomicWritePrivateJson(this.#indexPath, index);
+    await atomicWritePrivateBytes(
+      this.#headSnapshotPath,
+      encodeInventoryHeadSnapshot(head),
+    );
     await atomicWritePrivateJson(this.#headPath, head);
     this.#installRecords(orderedRecords, true);
     this.#revision = revision;
@@ -756,6 +775,10 @@ export class SessionInventory {
       };
       await this.#writeSnapshot(index);
       await atomicWritePrivateJson(this.#indexPath, index);
+      await atomicWritePrivateBytes(
+        this.#headSnapshotPath,
+        encodeInventoryHeadSnapshot(head),
+      );
       await atomicWritePrivateJson(this.#headPath, head);
       this.#installRecords(orderedRecords, true);
       this.#fullIndexLoaded = true;
@@ -1583,6 +1606,75 @@ function inventoryRevision(records: StoredInventoryRecord[]): string {
     hash.update("\n");
   }
   return hash.digest("base64url").slice(0, 32);
+}
+
+function encodeInventoryHeadSnapshot(head: PersistedInventoryHead): Buffer {
+  const payload = serialize(head);
+  const header = Buffer.alloc(INVENTORY_HEAD_SNAPSHOT_HEADER_BYTES);
+  INVENTORY_HEAD_SNAPSHOT_MAGIC.copy(header, 0);
+  header.writeUInt8(SESSION_INVENTORY_FORMAT_VERSION, 8);
+  header.writeUInt8(currentNodeMajor(), 9);
+  header.writeUInt32BE(payload.byteLength, 10);
+  return Buffer.concat([header, payload]);
+}
+
+function readInventoryHeadSnapshotSync(path: string, maxBytes: number): unknown | undefined {
+  let descriptor: number;
+  try {
+    descriptor = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+  } catch (error) {
+    if (isNodeError(error) && error.code === "ENOENT") return undefined;
+    throw error;
+  }
+  try {
+    const info = fstatSync(descriptor);
+    const getuid = process.getuid;
+    if (
+      !info.isFile() ||
+      (getuid !== undefined && info.uid !== getuid()) ||
+      (info.mode & 0o077) !== 0
+    ) {
+      throw new SessionInventoryError(
+        "insecure_inventory_head",
+        "inventory hot-head snapshot must be an owner-only regular file",
+      );
+    }
+    if (
+      info.size < INVENTORY_HEAD_SNAPSHOT_HEADER_BYTES ||
+      info.size > maxBytes + INVENTORY_HEAD_SNAPSHOT_HEADER_BYTES
+    ) {
+      throw new SessionInventoryError(
+        "inventory_head_too_large",
+        "inventory hot-head snapshot exceeds byte limit",
+      );
+    }
+    const encoded = readFileSync(descriptor);
+    if (
+      encoded.byteLength !== info.size ||
+      !encoded.subarray(0, 8).equals(INVENTORY_HEAD_SNAPSHOT_MAGIC) ||
+      encoded.readUInt8(8) !== SESSION_INVENTORY_FORMAT_VERSION
+    ) {
+      throw new SessionInventoryError(
+        "corrupt_inventory_head",
+        "inventory hot-head snapshot header is invalid",
+      );
+    }
+    if (encoded.readUInt8(9) !== currentNodeMajor()) return undefined;
+    const payloadBytes = encoded.readUInt32BE(10);
+    if (
+      payloadBytes < 1 ||
+      payloadBytes > maxBytes ||
+      payloadBytes !== encoded.byteLength - INVENTORY_HEAD_SNAPSHOT_HEADER_BYTES
+    ) {
+      throw new SessionInventoryError(
+        "corrupt_inventory_head",
+        "inventory hot-head snapshot length is invalid",
+      );
+    }
+    return deserialize(encoded.subarray(INVENTORY_HEAD_SNAPSHOT_HEADER_BYTES));
+  } finally {
+    closeSync(descriptor);
+  }
 }
 
 function readInventoryHeadSync(path: string, maxBytes: number): unknown | undefined {

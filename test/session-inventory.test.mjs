@@ -200,16 +200,26 @@ test("persisted inventory boots before reconcile and never stores full search te
 
   const indexPath = join(stateDir, "web", "inventory-v1.json");
   const indexText = await readFile(indexPath, "utf8");
-  const headText = await readFile(join(stateDir, "web", "inventory-v1.head.json"), "utf8");
+  const headPath = join(stateDir, "web", "inventory-v1.head.json");
+  const headSnapshotPath = join(stateDir, "web", "inventory-v1.head.snapshot");
+  const headText = await readFile(headPath, "utf8");
+  const headSnapshot = await readFile(headSnapshotPath);
   assert.equal(headText.includes("canonicalPath"), false);
+  assert.equal(headSnapshot.includes(Buffer.from("canonicalPath")), false);
   assert.equal(headText.includes("searchBloom"), false);
   assert.equal(headText.includes("/work/project"), false);
   assert.equal(indexText.includes("ultra secret nebula body"), false);
   assert.equal(indexText.includes("searchExcerpt"), false);
   assert.equal(indexText.includes("searchBloom"), true);
   assert.equal((await lstat(indexPath)).mode & 0o777, 0o600);
+  assert.equal((await lstat(headSnapshotPath)).mode & 0o777, 0o600);
   assert.equal((await lstat(join(stateDir, "web", "inventory-search-key-v1.json"))).mode & 0o777, 0o600);
 
+  // A snapshot produced by another Node major is an optimization miss, not
+  // corruption: startup must use the portable JSON hot-head without quarantine.
+  const incompatibleHeadSnapshot = Buffer.from(headSnapshot);
+  incompatibleHeadSnapshot.writeUInt8(255, 9);
+  await writeFile(headSnapshotPath, incompatibleHeadSnapshot, { mode: 0o600 });
   await rm(source);
   const restarted = new SessionInventory({
     stateDir,
@@ -217,8 +227,13 @@ test("persisted inventory boots before reconcile and never stores full search te
     roots: [sessionsRoot],
   });
   await restarted.initialize();
-  assert.equal((await restarted.list({ search: "nebula body" })).sessions.length, 1);
   assert.equal(restarted.status().records, 1);
+  assert.equal((await restarted.list({ limit: 1 })).sessions[0].title, "Named session");
+  assert.equal((await restarted.list({ search: "nebula body" })).sessions.length, 1);
+  assert.equal(
+    (await readdir(join(stateDir, "web"))).some((name) => name.includes("head.snapshot.quarantine")),
+    false,
+  );
 });
 
 test("activation recency is durable, sorts to the top, and preserves source modified truth", async (t) => {
@@ -476,6 +491,7 @@ test("root, source, index, and overlap failures are bounded and fail safe", asyn
   await Promise.all([
     writeFile(indexPath, "{bad-json", { mode: 0o600 }),
     writeFile(join(stateDir, "web", "inventory-v1.head.json"), "{bad-json", { mode: 0o600 }),
+    writeFile(join(stateDir, "web", "inventory-v1.head.snapshot"), "bad-head-snapshot", { mode: 0o600 }),
     writeFile(join(stateDir, "web", "inventory-v1.snapshot"), "bad-snapshot", { mode: 0o600 }),
   ]);
   const restarted = new SessionInventory({ stateDir, catalog: new FakeCatalog(), roots: [sessionsRoot] });

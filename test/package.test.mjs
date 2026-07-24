@@ -24,6 +24,11 @@ const packageVersion = JSON.parse(
   await readFile(join(repositoryRoot, "package.json"), "utf8"),
 ).version;
 const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
+// Cold Nix Linux builders pay two complete TypeScript/SPA builds plus isolated
+// pack/install I/O. Keep every child bounded at 120s, but bound the whole
+// multi-stage acceptance separately so aggregate cold-cache time is not mistaken
+// for a hung command.
+const cleanPackageAcceptanceTimeoutMs = process.platform === "linux" ? 300_000 : 180_000;
 
 const run = async (command, args, options = {}) =>
   execFileAsync(command, args, {
@@ -147,7 +152,7 @@ test("schema conformance uses the audited exact Ajv pin without $data", async ()
 
 test(
   "clean npm pack builds runtime files and the installed CLI executes through npm bin links",
-  { timeout: 180_000 },
+  { timeout: cleanPackageAcceptanceTimeoutMs },
   async (t) => {
     const temporaryRoot = await mkdtemp(join(tmpdir(), "pi-daemon-package-"));
     t.after(async () => rm(temporaryRoot, { recursive: true, force: true }));
