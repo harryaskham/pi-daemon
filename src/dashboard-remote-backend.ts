@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import WebSocket, { type RawData } from "ws";
 
+import type { DashboardDiagnosticsSnapshot } from "./dashboard-diagnostics.js";
 import {
   DASH_API_VERSION,
   DASH_DEFAULT_LIMITS,
@@ -118,6 +119,7 @@ const DASHBOARD_COMMANDS: readonly DashboardCommandOperation[] = [
 export interface RemoteDashboardBackendClient extends Pick<
   SessionApiClient,
   | "dashboardCapabilities"
+  | "dashboardDiagnostics"
   | "listDashboardSessions"
   | "getDashboardSession"
   | "getDashboardTranscript"
@@ -223,6 +225,15 @@ export class RemoteDashboardBackend implements DashboardBackend {
         throw remoteError(error);
       });
     return this.#capabilities.then((value) => structuredClone(value));
+  }
+
+  async diagnostics(): Promise<DashboardDiagnosticsSnapshot> {
+    this.#assertOpen();
+    const capabilities = await this.capabilities();
+    if (capabilities.resources.diagnostics !== true) {
+      throw new RemoteDashboardBackendError("diagnostics_unavailable", "remote dashboard diagnostics are unavailable");
+    }
+    return this.#call(() => this.#client.dashboardDiagnostics());
   }
 
   async listSessions(query: SessionInventoryQuery): Promise<SessionInventoryPage> {
@@ -2284,6 +2295,7 @@ function dashboardCapabilities(
       schedules: service.resources.schedules === true,
       sessionDrafts: service.resources.sessionDrafts === true,
       treeNavigation: service.resources.treeNavigation === true,
+      diagnostics: service.resources.diagnostics === true,
     },
     presentations: {
       rich: { available: true, replay: true, controller: true, commands },

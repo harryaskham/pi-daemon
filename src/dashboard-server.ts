@@ -480,6 +480,7 @@ export class DashboardServer {
   async #handleRequest(request: IncomingMessage, response: ServerResponse): Promise<void> {
     const startedAt = performance.now();
     const requestId = requestIdFrom(request.headers["x-request-id"]);
+    let diagnosticPath = "/";
     if (this.#securePublicOrigin) {
       response.setHeader("Strict-Transport-Security", "max-age=31536000");
     }
@@ -507,6 +508,7 @@ export class DashboardServer {
     try {
       this.#assertHost(request);
       const url = this.#requestUrl(request);
+      diagnosticPath = url.pathname;
       if (request.method === "GET" || request.method === "HEAD") {
         if (url.pathname === "/dash/healthz") {
           response.writeHead(204, {
@@ -1295,6 +1297,24 @@ export class DashboardServer {
         }
       }
 
+      if (url.pathname === `${DASH_API_BASE_PATH}/diagnostics`) {
+        if (request.method === "GET") {
+          requireGlobalAdministrator(session);
+          const capabilities = await this.backend.capabilities();
+          if (capabilities.resources.diagnostics !== true) {
+            throw new DashboardServerError(501, "diagnostics_unavailable", "dashboard diagnostics are unavailable");
+          }
+          sendJson(
+            response,
+            200,
+            successEnvelopeFrom(context, await this.backend.diagnostics()),
+            this.limits.dashboard.maxOutboundBytesPerConnection,
+            { "Cache-Control": "no-store" },
+          );
+          return;
+        }
+      }
+
       if (url.pathname === `${DASH_API_BASE_PATH}/settings`) {
         if (request.method === "GET") {
           const settings = await this.settingsStore.get();
@@ -1353,6 +1373,14 @@ export class DashboardServer {
       if (timedOut) return;
       const safe = safeHttpError(error);
       const session = tryAuthenticate(this.auth, request.headers.cookie);
+      if (session?.principal.globalRole === "administrator") {
+        this.backend.recordDiagnosticFailure?.({
+          method: request.method,
+          path: diagnosticPath,
+          status: safe.status,
+          code: safe.body.code,
+        });
+      }
       sendJson(
         response,
         safe.status,

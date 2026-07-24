@@ -23,7 +23,8 @@
       "settings": true,
       "schedules": false,
       "sessionDrafts": false,
-      "treeNavigation": true
+      "treeNavigation": true,
+      "diagnostics": true
     },
     "presentations": {
       "rich": {

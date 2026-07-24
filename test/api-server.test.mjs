@@ -844,6 +844,7 @@ test("authenticated neutral Dashboard API preserves resources, idempotency, path
       export: true,
       leases: true,
       sessionDrafts: true,
+      diagnostics: true,
     },
     presentations: {
       rich: { available: true },
@@ -859,6 +860,16 @@ test("authenticated neutral Dashboard API preserves resources, idempotency, path
     async capabilities() {
       return capabilities;
     },
+    async diagnostics() {
+      calls.push(["diagnostics"]);
+      return {
+        generatedAt: "2026-07-18T12:00:00.000Z",
+        status: { instance: "test", configLoaded: true, webConfigured: true, sessionDefaultsConfigured: true, runtimePolicyConfigured: true, installedPackagesConfigured: false, allowedRootCount: 1 },
+        events: [],
+        limits: { maxEvents: 128, rawLogsExposed: false },
+      };
+    },
+    recordApiFailure(failure) { calls.push(["api-failure", failure]); },
     async listSessions(query) {
       calls.push(["list", query]);
       return {
@@ -991,6 +1002,13 @@ test("authenticated neutral Dashboard API preserves resources, idempotency, path
     headers: authorization,
   });
   assert.deepEqual(dashCapabilities.value.data, capabilities);
+  const diagnostics = await requestJson(harness.address, {
+    path: "/v1/dashboard/diagnostics",
+    headers: authorization,
+  });
+  assert.equal(diagnostics.status, 200);
+  assert.equal(diagnostics.value.data.limits.rawLogsExposed, false);
+  assert.deepEqual(calls.at(-1), ["diagnostics"]);
 
   const list = await requestJson(harness.address, {
     path: "/v1/dashboard/inventory?limit=25&search=work&sourceKind=external,direct&unread=false",
@@ -1109,6 +1127,7 @@ test("authenticated neutral Dashboard API preserves resources, idempotency, path
     bearerToken: TOKEN,
   });
   assert.equal((await client.dashboardCapabilities()).data.authentication, "service-bearer");
+  assert.equal((await client.dashboardDiagnostics()).data.limits.rawLogsExposed, false);
   assert.equal((await client.listDashboardSessions({ limit: 5 })).data.sessions.length, 0);
   assert.equal(
     (
@@ -1154,6 +1173,18 @@ test("authenticated neutral Dashboard API preserves resources, idempotency, path
     client.connectDashboardTui("managed-private"),
     /Unexpected server response: 501/,
   );
+
+  const missingDashboardRoute = await requestJson(harness.address, {
+    path: "/v1/dashboard/private-value-that-must-not-be-logged",
+    headers: authorization,
+  });
+  assert.equal(missingDashboardRoute.status, 404);
+  assert.deepEqual(calls.at(-1), ["api-failure", {
+    method: "GET",
+    path: "/v1/dashboard/private-value-that-must-not-be-logged",
+    status: 404,
+    code: "route_not_found",
+  }]);
 
   const noProtocol = await rawUpgrade(
     harness.address,

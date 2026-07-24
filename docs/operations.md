@@ -610,6 +610,22 @@ API. Bearers remain file/fd/environment-only, mutations carry idempotency and
 stale generation/revision checks, and endpoint discovery never prints token
 values. See [Session management CLI](session-cli) for examples.
 
+## Dashboard diagnostics
+
+The sidebar exposes a discreet **Diagnostics** button immediately below
+**Settings** when `resources.diagnostics` is advertised. It is available only
+to a global Dash administrator and shows effective config/default/policy flags,
+allowed-root count, installed-package inheritance status, and the bounded recent
+service-failure ring. **Refresh** performs an authenticated no-store read;
+**Copy safe report** copies exactly the already-redacted snapshot.
+
+This is deliberately not a launch-log browser. If process startup fails before
+the diagnostics runtime exists, inspect the owner-only launchd/systemd stderr
+file locally. Never publish or paste that raw file without review. The browser
+endpoint cannot select paths or read files and never returns prompts, model
+output, identifiers from request paths, credentials, environment values, request
+bodies, or bearer material.
+
 ## Probe and status
 
 ```console

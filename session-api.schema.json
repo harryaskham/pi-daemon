@@ -9,6 +9,7 @@
     { "$ref": "#/$defs/sessionResource" },
     { "$ref": "#/$defs/ticketResource" },
     { "$ref": "#/$defs/dashboardServiceCapabilitiesEnvelope" },
+    { "$ref": "#/$defs/dashboardDiagnosticsEnvelope" },
     { "$ref": "#/$defs/dashboardInventoryEnvelope" },
     { "$ref": "#/$defs/dashboardSessionInfoEnvelope" },
     { "$ref": "#/$defs/dashboardTranscriptEnvelope" },
@@ -618,6 +619,19 @@
           "properties": {
             "ok": { "const": true },
             "data": { "$ref": "https://a.skh.am/pi-daemon/dashboard-api.schema.json#/$defs/dashboardServiceCapabilities" }
+          }
+        }
+      ]
+    },
+    "dashboardDiagnosticsEnvelope": {
+      "allOf": [
+        { "$ref": "#/$defs/apiEnvelopeBase" },
+        {
+          "type": "object",
+          "required": ["data"],
+          "properties": {
+            "ok": { "const": true },
+            "data": { "$ref": "https://a.skh.am/pi-daemon/dashboard-api.schema.json#/$defs/diagnostics" }
           }
         }
       ]

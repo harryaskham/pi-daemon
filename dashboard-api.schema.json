@@ -80,6 +80,9 @@
       "$ref": "#/$defs/settingsEnvelope"
     },
     {
+      "$ref": "#/$defs/diagnosticsEnvelope"
+    },
+    {
       "$ref": "#/$defs/streamClientFrame"
     },
     {
@@ -655,6 +658,9 @@
             },
             "treeNavigation": {
               "type": "boolean"
+            },
+            "diagnostics": {
+              "type": "boolean"
             }
           },
           "additionalProperties": true
@@ -742,6 +748,9 @@
               "const": true
             },
             "treeNavigation": {
+              "const": true
+            },
+            "diagnostics": {
               "const": true
             }
           },
@@ -2314,6 +2323,57 @@
       },
       "additionalProperties": true
     },
+    "diagnosticEvent": {
+      "type": "object",
+      "required": ["sequence", "timestamp", "level", "source", "code", "message"],
+      "properties": {
+        "sequence": { "type": "integer", "minimum": 1 },
+        "timestamp": { "$ref": "#/$defs/timestamp" },
+        "level": { "enum": ["info", "warning", "error"] },
+        "source": { "enum": ["daemon", "api", "web"] },
+        "code": { "type": "string", "pattern": "^[a-z][a-z0-9_]{0,63}$" },
+        "message": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "route": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "status": { "type": "integer", "minimum": 100, "maximum": 599 }
+      },
+      "additionalProperties": true
+    },
+    "diagnostics": {
+      "type": "object",
+      "required": ["generatedAt", "status", "events", "limits"],
+      "properties": {
+        "generatedAt": { "$ref": "#/$defs/timestamp" },
+        "status": {
+          "type": "object",
+          "required": ["instance", "configLoaded", "webConfigured", "sessionDefaultsConfigured", "runtimePolicyConfigured", "installedPackagesConfigured", "allowedRootCount"],
+          "properties": {
+            "instance": { "type": "string", "minLength": 1, "maxLength": 128 },
+            "configLoaded": { "type": "boolean" },
+            "webConfigured": { "type": "boolean" },
+            "sessionDefaultsConfigured": { "type": "boolean" },
+            "runtimePolicyConfigured": { "type": "boolean" },
+            "installedPackagesConfigured": { "type": "boolean" },
+            "allowedRootCount": { "type": "integer", "minimum": 1, "maximum": 1024 }
+          },
+          "additionalProperties": true
+        },
+        "events": {
+          "type": "array",
+          "maxItems": 128,
+          "items": { "$ref": "#/$defs/diagnosticEvent" }
+        },
+        "limits": {
+          "type": "object",
+          "required": ["maxEvents", "rawLogsExposed"],
+          "properties": {
+            "maxEvents": { "type": "integer", "minimum": 1, "maximum": 128 },
+            "rawLogsExposed": { "const": false }
+          },
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": true
+    },
     "settings": {
       "type": "object",
       "required": [
@@ -3216,6 +3276,21 @@
             "data": {
               "$ref": "#/$defs/settings"
             }
+          }
+        }
+      ]
+    },
+    "diagnosticsEnvelope": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/httpEnvelopeBase"
+        },
+        {
+          "type": "object",
+          "required": ["data"],
+          "properties": {
+            "ok": { "const": true },
+            "data": { "$ref": "#/$defs/diagnostics" }
           }
         }
       ]

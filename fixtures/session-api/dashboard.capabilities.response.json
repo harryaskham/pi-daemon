@@ -13,7 +13,8 @@
       "ownership": true,
       "export": true,
       "leases": true,
-      "treeNavigation": true
+      "treeNavigation": true,
+      "diagnostics": true
     },
     "presentations": {
       "rich": {

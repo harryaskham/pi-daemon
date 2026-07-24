@@ -17,6 +17,7 @@ import type {
   DashStreamSubscriptionReadyFrame,
   DashStreamTuiDeltaFrame,
   DashboardCapabilities,
+  DashboardDiagnosticsSnapshot,
   DashboardErrorEnvelope,
   DashboardLeaseResource,
   DashboardServiceCapabilities,
@@ -80,7 +81,9 @@ export interface DashboardContractFixtures {
   presenceScenarios: DashSessionPresence[];
   workspace: DashboardWorkspaceResource;
   settings: DashboardSettingsResource;
+  diagnostics: DashboardDiagnosticsSnapshot;
   capabilitiesEnvelope: DashboardSuccessEnvelope<DashboardCapabilities>;
+  diagnosticsEnvelope: DashboardSuccessEnvelope<DashboardDiagnosticsSnapshot>;
   inventoryEnvelope: DashboardSuccessEnvelope<SessionInventoryPage>;
   transcriptEnvelope: DashboardSuccessEnvelope<TranscriptPage>;
   errorEnvelope: DashboardErrorEnvelope;
@@ -96,6 +99,7 @@ export interface DashboardContractFixtures {
   serviceCapabilities: DashboardServiceCapabilities;
   lease: DashboardLeaseResource;
   serviceCapabilitiesEnvelope: ApiSuccessEnvelope<DashboardServiceCapabilities>;
+  serviceDiagnosticsEnvelope: ApiSuccessEnvelope<DashboardDiagnosticsSnapshot>;
   serviceInventoryEnvelope: ApiSuccessEnvelope<SessionInventoryPage>;
   serviceInfoEnvelope: ApiSuccessEnvelope<SessionInfoResource>;
   serviceTranscriptEnvelope: ApiSuccessEnvelope<TranscriptPage>;
@@ -164,6 +168,7 @@ export function createDashboardCapabilitiesFixture(): DashboardCapabilities {
       schedules: false,
       sessionDrafts: false,
       treeNavigation: true,
+      diagnostics: true,
     },
     presentations: {
       rich: {
@@ -501,6 +506,39 @@ export function createDashboardContractFixtures(): DashboardContractFixtures {
       "sidebar.initialLimit": "default",
     },
   };
+  const diagnostics: DashboardDiagnosticsSnapshot = {
+    generatedAt: FIXTURE_TIME,
+    status: {
+      instance: "daemon-main",
+      configLoaded: true,
+      webConfigured: true,
+      sessionDefaultsConfigured: true,
+      runtimePolicyConfigured: true,
+      installedPackagesConfigured: true,
+      allowedRootCount: 1,
+    },
+    events: [
+      {
+        sequence: 1,
+        timestamp: FIXTURE_TIME,
+        level: "info",
+        source: "daemon",
+        code: "dashboard_runtime_ready",
+        message: "Dashboard policy runtime is ready.",
+      },
+      {
+        sequence: 2,
+        timestamp: FIXTURE_TIME,
+        level: "warning",
+        source: "api",
+        code: "draft_cwd_not_allowed",
+        message: "The requested session working directory is outside the configured allowed roots.",
+        route: "POST /v1/dashboard/session-drafts",
+        status: 422,
+      },
+    ],
+    limits: { maxEvents: 128, rawLogsExposed: false },
+  };
   const snapshot = {
     identity: { hostInstanceId: FIXTURE_HOST, sessionId: FIXTURE_SESSION, generation: 3 },
     session: managedSessionFixture(),
@@ -652,6 +690,7 @@ export function createDashboardContractFixtures(): DashboardContractFixtures {
       export: true,
       leases: true,
       treeNavigation: true,
+      diagnostics: true,
     },
     presentations: {
       rich: { available: true },
@@ -704,7 +743,9 @@ export function createDashboardContractFixtures(): DashboardContractFixtures {
     presenceScenarios,
     workspace,
     settings,
+    diagnostics,
     capabilitiesEnvelope: successEnvelope("req-capabilities-01", capabilities),
+    diagnosticsEnvelope: successEnvelope("req-diagnostics-01", diagnostics),
     inventoryEnvelope: successEnvelope("req-inventory-01", inventory),
     transcriptEnvelope: successEnvelope("req-transcript-01", transcript),
     errorEnvelope,
@@ -726,6 +767,7 @@ export function createDashboardContractFixtures(): DashboardContractFixtures {
       "req-service-capabilities-01",
       serviceCapabilities,
     ),
+    serviceDiagnosticsEnvelope: serviceEnvelope("req-service-diagnostics-01", diagnostics),
     serviceInventoryEnvelope: serviceEnvelope("req-service-inventory-01", inventory),
     serviceInfoEnvelope: serviceEnvelope("req-service-info-01", sessionInfo),
     serviceTranscriptEnvelope: serviceEnvelope("req-service-transcript-01", transcript),

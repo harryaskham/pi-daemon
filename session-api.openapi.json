@@ -398,6 +398,21 @@
         }
       }
     },
+    "/dashboard/diagnostics": {
+      "get": {
+        "operationId": "getDashboardServiceDiagnostics",
+        "summary": "Read bounded allowlisted daemon policy and request-failure events",
+        "description": "Server-to-server endpoint for the Dash BFF. Raw logs, prompts, model output, paths, credentials, environment values, and bearer material are never returned.",
+        "responses": {
+          "200": {
+            "description": "Browser-safe diagnostics snapshot",
+            "content": { "application/json": { "schema": { "$ref": "./session-api.schema.json#/$defs/dashboardDiagnosticsEnvelope" } } }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "501": { "$ref": "#/components/responses/NotImplemented" }
+        }
+      }
+    },
     "/dashboard/inventory": {
       "get": {
         "operationId": "listDashboardInventory",

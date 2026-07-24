@@ -21,6 +21,7 @@ import type {
   DashboardControllerRole,
   DashboardCursor,
   DashboardErrorEnvelope,
+  DashboardDiagnosticsSnapshot,
   DashboardScheduleDeleteRequest,
   DashboardScheduleMutationRequest,
   DashboardScheduleResource,
@@ -196,6 +197,10 @@ export class BrowserDashboardClient implements DashboardBackend, DashboardPrefer
   async capabilities(): Promise<DashboardCapabilities> {
     if (this.#capabilities !== undefined) return this.#capabilities;
     return (await this.bootstrap()).capabilities;
+  }
+
+  diagnostics(): Promise<DashboardDiagnosticsSnapshot> {
+    return this.#request("GET", "/diagnostics");
   }
 
   async listSessions(query: SessionInventoryQuery): Promise<SessionInventoryPage> {

@@ -1,0 +1,44 @@
+{
+  "dashVersion": "1.0",
+  "requestId": "req-diagnostics-01",
+  "serverInstanceId": "dash-fixture-01",
+  "clientId": "client-fixture-01",
+  "workspaceId": "workspace-fixture-01",
+  "ok": true,
+  "data": {
+    "generatedAt": "2026-07-18T12:00:00.000Z",
+    "status": {
+      "instance": "daemon-main",
+      "configLoaded": true,
+      "webConfigured": true,
+      "sessionDefaultsConfigured": true,
+      "runtimePolicyConfigured": true,
+      "installedPackagesConfigured": true,
+      "allowedRootCount": 1
+    },
+    "events": [
+      {
+        "sequence": 1,
+        "timestamp": "2026-07-18T12:00:00.000Z",
+        "level": "info",
+        "source": "daemon",
+        "code": "dashboard_runtime_ready",
+        "message": "Dashboard policy runtime is ready."
+      },
+      {
+        "sequence": 2,
+        "timestamp": "2026-07-18T12:00:00.000Z",
+        "level": "warning",
+        "source": "api",
+        "code": "draft_cwd_not_allowed",
+        "message": "The requested session working directory is outside the configured allowed roots.",
+        "route": "POST /v1/dashboard/session-drafts",
+        "status": 422
+      }
+    ],
+    "limits": {
+      "maxEvents": 128,
+      "rawLogsExposed": false
+    }
+  }
+}

@@ -16,6 +16,11 @@ import {
   type TranscriptPage,
   type TranscriptQuery,
 } from "./dashboard-contract.js";
+import type {
+  DashboardApiFailure,
+  DashboardDiagnosticsService,
+  DashboardDiagnosticsSnapshot,
+} from "./dashboard-diagnostics.js";
 import type { SessionInventory } from "./session-inventory.js";
 import { EXTENSION_VIEW_CAPABILITY } from "./extension-view-contract.js";
 import {
@@ -43,6 +48,8 @@ import {
 
 export interface DashboardNeutralApi {
   capabilities(): Promise<DashboardServiceCapabilities>;
+  diagnostics(): Promise<DashboardDiagnosticsSnapshot>;
+  recordApiFailure?(failure: DashboardApiFailure): void;
   listSessions(query: SessionInventoryQuery): Promise<SessionInventoryPage>;
   getSessionInfo(inventoryId: string): Promise<SessionInfoResource>;
   getTranscript(
@@ -73,6 +80,7 @@ export interface DashboardNeutralApiControllerOptions {
   drafts?: Pick<DashboardSessionDraftService, "create" | "get" | "cancel">;
   draftExecution?: DashboardSessionDraftExecution;
   sessionDefaults?: DashboardSessionDefaultsResource;
+  diagnostics?: Pick<DashboardDiagnosticsService, "snapshot" | "recordApiFailure">;
 }
 
 /** Transport-neutral service API used by authenticated HTTP and remote backends. */
@@ -87,6 +95,7 @@ export class DashboardNeutralApiController implements DashboardNeutralApi {
   readonly #drafts: DashboardNeutralApiControllerOptions["drafts"];
   readonly #draftExecution: DashboardSessionDraftExecution | undefined;
   readonly #sessionDefaults: DashboardSessionDefaultsResource | undefined;
+  readonly #diagnostics: DashboardNeutralApiControllerOptions["diagnostics"];
 
   constructor(options: DashboardNeutralApiControllerOptions) {
     this.#inventory = options.inventory;
@@ -99,6 +108,7 @@ export class DashboardNeutralApiController implements DashboardNeutralApi {
     this.#drafts = options.drafts;
     this.#draftExecution = options.draftExecution;
     this.#sessionDefaults = options.sessionDefaults;
+    this.#diagnostics = options.diagnostics;
   }
 
   async capabilities(): Promise<DashboardServiceCapabilities> {
@@ -115,6 +125,7 @@ export class DashboardNeutralApiController implements DashboardNeutralApi {
         ...(this.#schedulesAvailable ? { schedules: true } : {}),
         ...(this.#drafts === undefined ? {} : { sessionDrafts: true }),
         treeNavigation: true,
+        ...(this.#diagnostics === undefined ? {} : { diagnostics: true }),
       },
       presentations: {
         rich: { available: true },
@@ -132,6 +143,17 @@ export class DashboardNeutralApiController implements DashboardNeutralApi {
         : { sessionDefaults: structuredClone(this.#sessionDefaults) }),
       limits: { ...this.#limits },
     };
+  }
+
+  async diagnostics(): Promise<DashboardDiagnosticsSnapshot> {
+    if (this.#diagnostics === undefined) {
+      throw new DashboardNeutralApiError(501, "diagnostics_unavailable", "dashboard diagnostics are unavailable");
+    }
+    return this.#diagnostics.snapshot();
+  }
+
+  recordApiFailure(failure: DashboardApiFailure): void {
+    this.#diagnostics?.recordApiFailure(failure);
   }
 
   listSessions(query: SessionInventoryQuery): Promise<SessionInventoryPage> {

@@ -24,6 +24,7 @@ const files = {
   "presence.scenarios.json": fixtures.presenceScenarios,
   "workspace.resource.json": fixtures.workspace,
   "settings.resource.json": fixtures.settings,
+  "diagnostics.response.json": fixtures.diagnosticsEnvelope,
   "error.response.json": fixtures.errorEnvelope,
   "stream.subscribe.json": fixtures.streamSubscribe,
   "stream.extension-ui-response.json": fixtures.streamExtensionUiResponse,
@@ -40,6 +41,7 @@ for (const [name, value] of Object.entries(files)) {
 }
 const serviceFiles = {
   "dashboard.capabilities.response.json": fixtures.serviceCapabilitiesEnvelope,
+  "dashboard.diagnostics.response.json": fixtures.serviceDiagnosticsEnvelope,
   "dashboard.inventory.response.json": fixtures.serviceInventoryEnvelope,
   "dashboard.info.response.json": fixtures.serviceInfoEnvelope,
   "dashboard.transcript.response.json": fixtures.serviceTranscriptEnvelope,

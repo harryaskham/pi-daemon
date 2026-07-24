@@ -1,3 +1,12 @@
+import type { DashboardApiFailure, DashboardDiagnosticsSnapshot } from "./dashboard-diagnostics.js";
+export type {
+  DashboardApiFailure,
+  DashboardDiagnosticEvent,
+  DashboardDiagnosticLevel,
+  DashboardDiagnosticSource,
+  DashboardDiagnosticStatus,
+  DashboardDiagnosticsSnapshot,
+} from "./dashboard-diagnostics.js";
 import type {
   DashboardSessionDraftCancelRequest,
   DashboardSessionDraftCreateRequest,
@@ -54,6 +63,7 @@ export const DASH_API_PATHS = {
   authorizationAudit: "/dash/v1/authorization/{kind}/{resourceId}/audit",
   authorizationController: "/dash/v1/authorization/{kind}/{resourceId}/controller",
   settings: "/dash/v1/settings",
+  diagnostics: "/dash/v1/diagnostics",
   schedules: "/dash/v1/schedules",
   schedule: "/dash/v1/schedules/{scheduleId}",
   scheduleStatus: "/dash/v1/schedules/status",
@@ -286,6 +296,8 @@ export interface DashboardServiceCapabilities {
     sessionDrafts?: true;
     /** Absent on older compatible daemons that lack framed in-place navigation. */
     treeNavigation?: true;
+    /** Absent on older compatible daemons that lack browser-safe diagnostics. */
+    diagnostics?: true;
   };
   presentations: {
     rich: { available: true };
@@ -333,6 +345,8 @@ export interface DashboardCapabilities {
     schedules: boolean;
     sessionDrafts: boolean;
     treeNavigation: boolean;
+    /** Additive browser-safe diagnostics; absent means unavailable. */
+    diagnostics?: boolean;
   };
   presentations: {
     rich: DashboardPresentationCapability;
@@ -973,6 +987,8 @@ export interface DashboardTuiChannel {
 /** Embedded and dedicated adapters implement this exact behaviorally-complete seam. */
 export interface DashboardBackend {
   capabilities(): Promise<DashboardCapabilities>;
+  diagnostics(): Promise<DashboardDiagnosticsSnapshot>;
+  recordDiagnosticFailure?(failure: DashboardApiFailure): void;
   listSessions(query: SessionInventoryQuery): Promise<SessionInventoryPage>;
   getSessionInfo(inventoryId: string): Promise<SessionInfoResource>;
   getTranscript(inventoryId: string, query: TranscriptQuery): Promise<TranscriptPage>;

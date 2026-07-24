@@ -36,7 +36,7 @@ const capabilities: DashboardCapabilities = {
   streamSubprotocol: DASH_STREAM_SUBPROTOCOL,
   sameBrowserProtocolAcrossDeployments: true,
   authentication: { browserSession: "http-only-cookie", csrf: "same-origin-header", daemonBearerExposed: false },
-  resources: { inventory: true, transcriptPreview: true, activation: true, export: true, workspaces: true, settings: true, schedules: false, sessionDrafts: true, treeNavigation: false },
+  resources: { inventory: true, transcriptPreview: true, activation: true, export: true, workspaces: true, settings: true, schedules: false, sessionDrafts: true, treeNavigation: false, diagnostics: true },
   presentations: {
     rich: { available: true, replay: true, controller: true, commands: ["prompt"] },
     tui: { available: false, replay: true, controller: true, commands: [], unavailableReason: "test" },
@@ -215,6 +215,27 @@ describe("same-origin browser dashboard client", () => {
     const loginBody = String(calls[0]?.init?.body);
     expect(loginBody).toContain("owner-private-credential");
     expect(calls[2]?.init?.headers).toMatchObject({ "x-pi-daemon-csrf": "csrf-test" });
+  });
+
+  it("reads browser-safe diagnostics through the cookie BFF without bearer or mutation headers", async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const snapshot = {
+      generatedAt: "2026-07-19T00:00:00.000Z",
+      status: { instance: "test", configLoaded: true, webConfigured: true, sessionDefaultsConfigured: true, runtimePolicyConfigured: true, installedPackagesConfigured: false, allowedRootCount: 1 },
+      events: [],
+      limits: { maxEvents: 128, rawLogsExposed: false as const },
+    };
+    const fetch = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      calls.push({ url: String(url), ...(init === undefined ? {} : { init }) });
+      if (String(url).endsWith("/login")) return new Response(JSON.stringify(envelope({ clientId: CLIENT, workspaceId: WORKSPACE, expiresAt: "2026-07-20T00:00:00.000Z", csrfToken: "csrf-test" })));
+      return new Response(JSON.stringify(envelope(snapshot)));
+    });
+    const client = new BrowserDashboardClient({ fetch: fetch as typeof globalThis.fetch });
+    await client.login("owner-private-credential");
+    await expect(client.diagnostics()).resolves.toEqual(snapshot);
+    expect(calls[1]?.url).toBe("/dash/v1/diagnostics");
+    expect(calls[1]?.init?.method).toBe("GET");
+    expect(JSON.stringify(calls[1]?.init?.headers)).not.toMatch(/authorization|bearer|csrf/i);
   });
 
   it("uses only cookie BFF schedule routes with CSRF, idempotency and exact revision ETags", async () => {

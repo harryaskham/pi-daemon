@@ -315,8 +315,10 @@ export class ApiServer {
       return;
     }
 
+    let requestPath = "/";
     try {
       const url = requestUrl(request);
+      requestPath = url.pathname;
       if (request.method === "GET" && url.pathname === "/v1/capabilities") {
         sendJson(response, 200, {
           apiVersion: SESSION_API_VERSION,
@@ -550,6 +552,12 @@ export class ApiServer {
       throw new ApiRequestError(404, "route_not_found", "API route not found");
     } catch (error) {
       const normalized = normalizeApiError(error);
+      this.#dashboardApi?.recordApiFailure?.({
+        method: request.method,
+        path: requestPath,
+        status: normalized.status,
+        code: normalized.body.code,
+      });
       sendJson(
         response,
         normalized.status,
@@ -679,6 +687,10 @@ export class ApiServer {
     try {
       if (request.method === "GET" && url.pathname === "/v1/dashboard/capabilities") {
         send(200, await api.capabilities());
+        return true;
+      }
+      if (request.method === "GET" && url.pathname === "/v1/dashboard/diagnostics") {
+        send(200, await api.diagnostics());
         return true;
       }
       if (request.method === "GET" && url.pathname === "/v1/dashboard/inventory") {

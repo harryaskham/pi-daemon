@@ -117,6 +117,10 @@ class FakeRemoteService {
     return this.result(this.serviceCapabilities);
   }
 
+  dashboardDiagnostics() {
+    return this.result(this.fixtures.diagnostics);
+  }
+
   listDashboardSessions(query) {
     this.lastListQuery = query;
     return this.result(this.fixtures.inventory);
@@ -459,6 +463,8 @@ test("remote backend delegates neutral resources with exact fingerprint and capa
   });
   const capabilities = await remote.capabilities();
   assert.equal(capabilities.presentations.tui.available, true);
+  assert.equal(capabilities.resources.diagnostics, true);
+  assert.deepEqual(await remote.diagnostics(), fixtures.diagnostics);
   assert.equal(service.transcriptFingerprints.at(-1), fixtures.sessionInfo.source.fingerprint.value);
 });
 
@@ -492,12 +498,15 @@ test("older remote daemons expose typed schedule and tree-navigation capability 
   const service = new FakeRemoteService();
   delete service.serviceCapabilities.resources.schedules;
   delete service.serviceCapabilities.resources.treeNavigation;
+  delete service.serviceCapabilities.resources.diagnostics;
   const backend = new RemoteDashboardBackend({ client: service });
   const capabilities = await backend.capabilities();
   assert.equal(capabilities.resources.schedules, false);
   assert.equal(capabilities.resources.treeNavigation, false);
+  assert.equal(capabilities.resources.diagnostics, false);
   assert.equal(capabilities.presentations.rich.commands.includes("navigate_tree"), false);
   await assert.rejects(backend.listSchedules(), (error) => error instanceof RemoteDashboardBackendError && error.code === "schedules_unavailable");
+  await assert.rejects(backend.diagnostics(), (error) => error instanceof RemoteDashboardBackendError && error.code === "diagnostics_unavailable");
   backend.dispose();
 });
 

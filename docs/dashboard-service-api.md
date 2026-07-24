@@ -27,7 +27,8 @@ same backend contract as embedded mode without importing in-process services.
 
 | Method/path | Purpose |
 | --- | --- |
-| `GET /v1/dashboard/capabilities` | neutral resources, effective limits, Rich availability, capability-gated TUI status, and optional schedule support for version negotiation |
+| `GET /v1/dashboard/capabilities` | neutral resources, effective limits, Rich availability, capability-gated TUI status, and optional schedule/diagnostics support for version negotiation |
+| `GET /v1/dashboard/diagnostics` | bounded browser-safe policy status and normalized recent request failures; no raw logs or sensitive content |
 | `GET /v1/dashboard/inventory` | bounded search/filter/page over public inventory rows |
 | `GET /v1/dashboard/inventory/{inventoryId}` | authenticated full info, including source path/ownership diagnostics |
 | `GET /v1/dashboard/inventory/{inventoryId}/transcript` | preview-only normalized projection with optional exact fingerprint precondition |
@@ -123,7 +124,7 @@ writer.
 
 `SessionApiClient` provides typed methods:
 
-- `dashboardCapabilities()`;
+- `dashboardCapabilities()` / `dashboardDiagnostics()`;
 - `listDashboardSessions()`;
 - `getDashboardSession()`;
 - `getDashboardTranscript()`;
@@ -148,3 +149,11 @@ response size, request timeout, service-bearer header, and safe error mapping.
 - `dashboard-session-draft.schema.json` publishes the browser-safe draft and
   first-send ticket contract.
 - `fixtures/session-api/dashboard.*.response.json` are language-neutral examples.
+
+Diagnostics are intentionally not an arbitrary log-file API. The service owns a
+128-event in-memory ring, normalizes identifier-bearing paths to route
+templates, replaces unknown error text with a fixed safe message, and publishes
+only booleans/counts about effective configuration. Raw launch logs, prompts,
+model output, filesystem paths, credentials, environment values, request bodies,
+and bearer material never enter the ring. Diagnostics reads are authenticated
+before route lookup and the browser BFF restricts them to global administrators.

@@ -56,6 +56,7 @@ import type {
 import { catalogRecordToSessionResource } from "./session-catalog.js";
 import { ensureSessionResident } from "./session-residency.js";
 import type { JsonObject, JsonValue, PiRpcEvent, SessionResource } from "./session-api.js";
+import type { DashboardDiagnosticsService, DashboardDiagnosticsSnapshot } from "./dashboard-diagnostics.js";
 import type {
   DashboardSessionDraftCancelRequest,
   DashboardSessionDraftCreateRequest,
@@ -157,6 +158,7 @@ export interface InProcessDashboardBackendOptions {
   tuiChannels?: InProcessDashboardTuiChannels;
   capabilities?: DashboardCapabilities;
   sessionDefaults?: DashboardSessionDefaultsResource;
+  diagnostics?: Pick<DashboardDiagnosticsService, "snapshot" | "recordApiFailure">;
   limits?: Partial<InProcessDashboardBackendLimits>;
 }
 
@@ -188,6 +190,7 @@ export class InProcessDashboardBackend implements DashboardBackend {
   readonly #draftExecution: DashboardSessionDraftExecution | undefined;
   readonly #tuiChannels: InProcessDashboardTuiChannels | undefined;
   readonly #capabilities: DashboardCapabilities;
+  readonly #diagnostics: InProcessDashboardBackendOptions["diagnostics"];
   readonly #limits: InProcessDashboardBackendLimits;
   readonly #richHubs = new Map<string, InProcessRichHub>();
   readonly #scheduleMutations = new Map<string, { fingerprint: string; result: Promise<DashboardScheduleResource | void> }>();
@@ -205,10 +208,12 @@ export class InProcessDashboardBackend implements DashboardBackend {
     this.#draftExecution = options.draftExecution;
     this.#tuiChannels = options.tuiChannels;
     this.#limits = resolveLimits(options.limits);
+    this.#diagnostics = options.diagnostics;
     this.#capabilities = options.capabilities ?? defaultCapabilities(
       options.tuiChannels !== undefined,
       options.schedules !== undefined,
       options.drafts !== undefined,
+      options.diagnostics !== undefined,
       this.#limits,
       options.sessionDefaults,
     );
@@ -240,6 +245,18 @@ export class InProcessDashboardBackend implements DashboardBackend {
   async capabilities(): Promise<DashboardCapabilities> {
     this.#assertOpen();
     return structuredClone(this.#capabilities);
+  }
+
+  async diagnostics(): Promise<DashboardDiagnosticsSnapshot> {
+    this.#assertOpen();
+    if (this.#diagnostics === undefined) {
+      throw new InProcessDashboardBackendError("diagnostics_unavailable", "dashboard diagnostics are unavailable");
+    }
+    return this.#diagnostics.snapshot();
+  }
+
+  recordDiagnosticFailure(failure: Parameters<DashboardDiagnosticsService["recordApiFailure"]>[0]): void {
+    this.#diagnostics?.recordApiFailure(failure);
   }
 
   /** Read-only ownership guard; controller authority remains inside each hub. */
@@ -1191,6 +1208,7 @@ function defaultCapabilities(
   tuiAvailable: boolean,
   schedulesAvailable: boolean,
   draftsAvailable: boolean,
+  diagnosticsAvailable: boolean,
   backendLimits: InProcessDashboardBackendLimits,
   sessionDefaults?: DashboardSessionDefaultsResource,
 ): DashboardCapabilities {
@@ -1237,6 +1255,7 @@ function defaultCapabilities(
       schedules: schedulesAvailable,
       sessionDrafts: draftsAvailable,
       treeNavigation: true,
+      diagnostics: diagnosticsAvailable,
     },
     presentations: {
       rich: { available: true, replay: true, controller: true, commands },

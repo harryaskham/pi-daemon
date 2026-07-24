@@ -243,6 +243,26 @@ test("settings hot-switch, source reporting, reset, and keyboard guide are revis
   await help.getByRole("button", { name: "Done" }).click();
 });
 
+test("discreet diagnostics button opens a bounded browser-safe daemon event panel", async ({ page }) => {
+  await page.goto("./?fixture=1&state=ready");
+  const diagnosticsButton = page.getByRole("button", { name: "Diagnostics" });
+  const settingsButton = page.getByRole("button", { name: "Settings" });
+  await expect(diagnosticsButton).toBeVisible();
+  await expect(diagnosticsButton).toBeEnabled();
+  const [settingsBox, diagnosticsBox] = await Promise.all([settingsButton.boundingBox(), diagnosticsButton.boundingBox()]);
+  expect(diagnosticsBox?.y).toBeGreaterThan(settingsBox?.y ?? Number.POSITIVE_INFINITY);
+  await diagnosticsButton.click();
+  const dialog = page.getByRole("dialog", { name: "Diagnostics" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText("Raw logs, prompts, model output, paths, credentials, and environment values are never exposed here.");
+  await expect(dialog.getByLabel("Daemon configuration status")).toContainText("configured");
+  await expect(dialog.getByLabel("Recent daemon events")).toContainText("draft_cwd_not_allowed");
+  await dialog.getByRole("button", { name: "Refresh" }).click();
+  await expect(dialog.getByText(/Updated/)).toBeVisible();
+  await dialog.getByRole("button", { name: "Done" }).click();
+  await expect(dialog).not.toBeVisible();
+});
+
 test("new session draft persists, cancels safely, and transitions one first send into live chat", async ({ page }) => {
   await page.goto("./?fixture=1&state=ready");
   await page.getByRole("button", { name: "Create new session draft" }).click();
@@ -591,7 +611,7 @@ test("production boot uses same-origin login and never paints fixture data", asy
 
   await page.goto("./");
   await expect(page.getByRole("heading", { name: "Sign in to Dash" })).toBeVisible();
-  await page.getByLabel("Web credential").fill("input-only-test-credential");
+  await page.getByLabel("Identity credential").fill("input-only-test-credential");
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page.getByRole("heading", { name: "Dash" })).toBeVisible();
   await expect(page.locator(".workspace-notice")).toContainText("Authenticated");

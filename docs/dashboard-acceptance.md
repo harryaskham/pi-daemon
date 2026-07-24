@@ -116,6 +116,20 @@ adapter, browser grid and component fixtures pass their frame, replay,
 controller, accessibility and performance gates and become available only when
 that public seam is injected.
 
+## Browser-safe diagnostics acceptance
+
+The diagnostics slice proves service-bearer authentication on
+`GET /v1/dashboard/diagnostics`, browser-cookie authentication plus global
+administrator authorization on `GET /dash/v1/diagnostics`, `Cache-Control:
+no-store`, capability gating, and endpoint parity in embedded/dedicated modes.
+A bounded-ring test overflows 128 events and confirms old entries are evicted;
+malicious identifiers/error strings are reduced to route templates, fixed
+messages, and safe codes. Contract fixtures assert `rawLogsExposed: false` and
+scan for credentials/private paths. Browser acceptance verifies the discreet
+button remains below Settings, opens an accessible modal, refreshes, reports
+policy/config status, renders recent failures, and closes without mutating
+service state.
+
 ## Multi-user authorization administration acceptance
 
 The administration slice proves that session/workspace policy reads require

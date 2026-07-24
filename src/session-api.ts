@@ -16,6 +16,7 @@ export const SESSION_API_PATHS = {
   scheduleEnable: "/v1/schedule/{scheduleId}/enable",
   scheduleDisable: "/v1/schedule/{scheduleId}/disable",
   dashboardCapabilities: "/v1/dashboard/capabilities",
+  dashboardDiagnostics: "/v1/dashboard/diagnostics",
   dashboardInventory: "/v1/dashboard/inventory",
   dashboardInventoryItem: "/v1/dashboard/inventory/{inventoryId}",
   dashboardTranscript: "/v1/dashboard/inventory/{inventoryId}/transcript",

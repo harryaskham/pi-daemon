@@ -1,7 +1,7 @@
 import { createPortal } from "react-dom";
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { AlertCircle, ChevronDown, Info, PanelLeftClose, Plus, Search, Settings2, Sparkles } from "../icons";
+import { Activity, AlertCircle, ChevronDown, Info, PanelLeftClose, Plus, Search, Settings2, Sparkles } from "../icons";
 import type { InventoryId, SessionFixture } from "../model";
 import { recordSearch } from "../performance";
 import { scheduleCountdown } from "../schedule";
@@ -21,11 +21,13 @@ interface SidebarProps {
   summaryLabel?: string;
   schedulesAvailable?: boolean;
   draftsAvailable?: boolean;
+  diagnosticsAvailable?: boolean;
   onQueryChange(query: string): void;
   onNewSession(): void;
   onOpenChat(session: SessionFixture): void;
   onOpenInfo(session: SessionFixture): void;
   onOpenSettings(): void;
+  onOpenDiagnostics(): void;
   onRequestClose(): void;
   onRetry?(): void;
 }
@@ -100,11 +102,13 @@ export function Sidebar({
   summaryLabel = "indexed sessions",
   schedulesAvailable = false,
   draftsAvailable = false,
+  diagnosticsAvailable = false,
   onQueryChange,
   onNewSession,
   onOpenChat,
   onOpenInfo,
   onOpenSettings,
+  onOpenDiagnostics,
   onRequestClose,
   onRetry,
 }: SidebarProps) {
@@ -306,6 +310,16 @@ export function Sidebar({
           <Settings2 size={16} />
           <span>Settings</span>
           <kbd>⌘,</kbd>
+        </button>
+        <button
+          type="button"
+          onClick={onOpenDiagnostics}
+          className="diagnostics-button"
+          disabled={!diagnosticsAvailable}
+          title={diagnosticsAvailable ? "View browser-safe daemon diagnostics" : "Diagnostics are unavailable on this daemon"}
+        >
+          <Activity size={14} />
+          <span>Diagnostics</span>
         </button>
         <div className="connection-state" role="status"><i /> {connectionLabel}</div>
       </footer>

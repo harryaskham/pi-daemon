@@ -69,6 +69,7 @@ test("session API fixtures validate against their published definitions", async 
     ["apc.initialize.json", "jsonRpcMessage"],
     ["error.response.json", "apiErrorEnvelope"],
     ["dashboard.capabilities.response.json", "dashboardServiceCapabilitiesEnvelope"],
+    ["dashboard.diagnostics.response.json", "dashboardDiagnosticsEnvelope"],
     ["dashboard.inventory.response.json", "dashboardInventoryEnvelope"],
     ["dashboard.info.response.json", "dashboardSessionInfoEnvelope"],
     ["dashboard.transcript.response.json", "dashboardTranscriptEnvelope"],

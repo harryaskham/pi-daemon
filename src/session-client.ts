@@ -18,6 +18,7 @@ import type {
   TranscriptPage,
   TranscriptQuery,
 } from "./dashboard-contract.js";
+import type { DashboardDiagnosticsSnapshot } from "./dashboard-diagnostics.js";
 import { dashboardSessionDraftEtag } from "./dashboard-session-draft-contract.js";
 import {
   type DashboardSessionDraftCancelRequest,
@@ -252,6 +253,10 @@ export class SessionApiClient {
 
   dashboardCapabilities(): Promise<SessionApiResult<DashboardServiceCapabilities>> {
     return this.request("GET", "/v1/dashboard/capabilities");
+  }
+
+  dashboardDiagnostics(): Promise<SessionApiResult<DashboardDiagnosticsSnapshot>> {
+    return this.request("GET", "/v1/dashboard/diagnostics");
   }
 
   listDashboardSessions(

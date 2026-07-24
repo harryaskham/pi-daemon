@@ -828,6 +828,28 @@
         }
       }
     },
+    "/diagnostics": {
+      "get": {
+        "operationId": "getDashboardDiagnostics",
+        "summary": "Read bounded browser-safe daemon configuration and failure events as a global administrator",
+        "description": "Returns normalized allowlisted metadata only. Raw log lines, prompts, model output, paths, credentials, environment values, and daemon bearer material are never exposed.",
+        "parameters": [
+          { "$ref": "#/components/parameters/RequestId" },
+          { "$ref": "#/components/parameters/ClientId" },
+          { "$ref": "#/components/parameters/WorkspaceId" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Bounded no-store diagnostics snapshot",
+            "headers": { "Cache-Control": { "schema": { "type": "string", "const": "no-store" } } },
+            "content": { "application/json": { "schema": { "$ref": "./dashboard-api.schema.json#/$defs/diagnosticsEnvelope" } } }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "501": { "$ref": "#/components/responses/Unsupported" }
+        }
+      }
+    },
     "/stream": {
       "get": {
         "operationId": "attachDashboardStream",

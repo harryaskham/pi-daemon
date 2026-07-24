@@ -42,7 +42,8 @@ or Cacophony credentials.
 > capability-gated in-place summarize/navigation, durable activation-recency
 > ordering independent of source mtime, owner-configurable home/Pi-settings/
 > trusted-policy New Session defaults, revisioned Enter-send/Shift-newline
-> composer behavior with a multiline alternative, and a polished lazy New
+> composer behavior with a multiline alternative, an administrator-only safe
+> Diagnostics panel with bounded normalized service events, and a polished lazy New
 > Session flow that performs no Pi runtime/model/tool
 > work until its exactly-once first message.
 > Full credential-free install/CRUD/RPC/ACP/restart/security acceptance is green;

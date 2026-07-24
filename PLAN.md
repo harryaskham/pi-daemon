@@ -706,6 +706,8 @@ implementation order. This list is a human-readable crosswalk.
     default, Shift-Enter newlines, and an alternate multiline Cmd/Ctrl-Enter mode.
   - [x] `bd-331301` — canonical relative-path lazy-draft containment so
     filesystem-root authority admits home cwd without weakening sibling denial.
+  - [x] `bd-8a9738` — discreet administrator diagnostics panel beneath Settings
+    with embedded/dedicated API parity and a bounded normalized safe-event ring.
   - [x] `bd-1dc765` — P1 production interactivity hotfix: bounded single-pane
     transcript scrolling/composer containment, width-aware split repaint, and
     functional revisioned Settings category tabs.

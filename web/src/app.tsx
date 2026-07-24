@@ -23,6 +23,7 @@ import { AuthorizationPanel } from "./components/AuthorizationPanel";
 import { ConnectedChatPane } from "./components/ConnectedChatPane";
 import { ConnectedInfoPane } from "./components/ConnectedInfoPane";
 import { ConnectedTuiPane } from "./components/ConnectedTuiPane";
+import { DiagnosticsModal } from "./components/DiagnosticsModal";
 import { EmptyPane } from "./components/EmptyPane";
 import { KeyboardHelp } from "./components/KeyboardHelp";
 import { NewSessionPane } from "./components/NewSessionPane";
@@ -226,6 +227,7 @@ function DashWorkspace({
   const tuiWorkStartedAt = useRef<number | undefined>(undefined);
   const workspaceWorkStartedAt = useRef<number | undefined>(undefined);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
   const [accessOpen, setAccessOpen] = useState(false);
   const [keyboardHelpOpen, setKeyboardHelpOpen] = useState(false);
   const authorizationClient = backend instanceof BrowserDashboardClient ? backend : undefined;
@@ -703,11 +705,13 @@ function DashWorkspace({
         summaryLabel={fixtureMode ? "indexed sessions" : "loaded sessions"}
         schedulesAvailable={capabilities.resources.schedules}
         draftsAvailable={capabilities.resources.sessionDrafts}
+        diagnosticsAvailable={capabilities.resources.diagnostics === true}
         onQueryChange={setQuery}
         onNewSession={openNewSession}
         onOpenChat={(session) => openTarget(session, "chat")}
         onOpenInfo={(session) => openTarget(session, "info")}
         onOpenSettings={() => setSettingsOpen(true)}
+        onOpenDiagnostics={() => setDiagnosticsOpen(true)}
         onRequestClose={() => setSidebarOpen(false)}
         onRetry={() => {
           setSidebarStatus("loading");
@@ -758,6 +762,12 @@ function DashWorkspace({
         {...(selectedInventoryId === undefined ? {} : { selectedInventoryId })}
         onClose={() => setAccessOpen(false)}
       />}
+      <DiagnosticsModal
+        open={diagnosticsOpen}
+        available={capabilities.resources.diagnostics === true}
+        loadDiagnostics={() => backend.diagnostics()}
+        onClose={() => setDiagnosticsOpen(false)}
+      />
       <SettingsModal
         open={settingsOpen}
         vimEnabled={vimEnabled}
@@ -934,7 +944,7 @@ function liveFixtureCapabilities(): DashboardCapabilities {
     streamSubprotocol: DASH_STREAM_SUBPROTOCOL,
     sameBrowserProtocolAcrossDeployments: true,
     authentication: { browserSession: "http-only-cookie", csrf: "same-origin-header", daemonBearerExposed: false },
-    resources: { inventory: true, transcriptPreview: true, activation: true, export: true, workspaces: true, settings: true, schedules: scheduleStory, sessionDrafts: true, treeNavigation: true },
+    resources: { inventory: true, transcriptPreview: true, activation: true, export: true, workspaces: true, settings: true, schedules: scheduleStory, sessionDrafts: true, treeNavigation: true, diagnostics: true },
     presentations: {
       rich: { available: true, replay: true, controller: true, commands: [] },
       tui: { available: true, replay: true, controller: true, commands: [] },

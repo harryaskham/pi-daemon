@@ -5,6 +5,7 @@ semantic versioning once a release tag is cut.
 
 ## Unreleased
 
+- add a discreet administrator-only Dash diagnostics panel beneath Settings, backed by authenticated embedded/dedicated parity and a bounded service-owned ring of normalized policy/failure events that never exposes raw logs, prompts, model output, paths, request bodies, credentials, environment, or bearer material
 - add explicit per-session inheritance of bounded global Pi package resources already installed by the Pi CLI, honoring manifests/filters while refusing missing installs and never installing, updating, spawning package commands, or using network
 - activate the completed Dashboard multi-user path through strict bounded YAML/provider-file/CLI/Home Manager static identity configuration whose credential bytes come only from owner-only files or inherited descriptors; preserve exact generated-token `local-owner` fallback, identity-derived workspaces, restart migration, dedicated/embedded parity, and machine-bearer separation
 - add bounded Dashboard authorization administration: durable-idempotent revisioned grants/revocation and ownership transfer, authorized workspace listing/selection with cookie revocation, content-free audit, an accessible SPA access dialog, and explicit controller handoff that releases the old backend controller before granting an authorized target

@@ -64,7 +64,9 @@ async function fixture(t, overrides = {}) {
   let draftTicket;
   const scheduleCapabilities = { contractVersion: "1.0", persistence: true, timerRuntime: false, cronSyntax: "posix-five-field", timezoneDatabase: "runtime-iana", optimisticConcurrency: "expected-revision", overlapPolicies: ["skip", "queue-one", "reject"], missedWakePolicies: ["skip", "run-once", "bounded-catch-up"], promptHandling: "owner-private-sensitive-content", terminalTicketSummary: "content-free", clock: "wall-clock-utc-instants", limits: { maxSchedules: 1024, maxSchedulesPerSession: 32, maxPromptBytes: 65536, maxRecordBytes: 131072, maxRecoveryBytes: 134217728, maxCatchUpRuns: 24, maxJitterMs: 86400000, maxAdmissionDelayMs: 86400000 } };
   const backend = {
-    async capabilities() { calls.push("capabilities"); return { ...fixtures.capabilities, resources: { ...fixtures.capabilities.resources, schedules: true, sessionDrafts: true } }; },
+    async capabilities() { calls.push("capabilities"); return { ...fixtures.capabilities, resources: { ...fixtures.capabilities.resources, schedules: true, sessionDrafts: true, diagnostics: true } }; },
+    async diagnostics() { calls.push("diagnostics"); return { generatedAt: "2026-07-18T12:00:00.000Z", status: { instance: "test", configLoaded: true, webConfigured: true, sessionDefaultsConfigured: true, runtimePolicyConfigured: true, installedPackagesConfigured: false, allowedRootCount: 1 }, events: [], limits: { maxEvents: 128, rawLogsExposed: false } }; },
+    recordDiagnosticFailure(failure) { calls.push(["diagnosticFailure", failure]); },
     async listSessions(query) { calls.push(["listSessions", query]); return fixtures.inventory; },
     async getSessionInfo(id) {
       calls.push(["getSessionInfo", id]);
@@ -475,7 +477,7 @@ test("file-backed native TLS rotates atomically without dropping the listener", 
 });
 
 test("authenticates before route existence and enforces exact Origin plus CSRF on mutations", async (t) => {
-  const { origin } = await fixture(t);
+  const { origin, calls } = await fixture(t);
   const first = await jsonResponse(await fetch(`${origin}/dash/v1/sessions/existing`, {
     headers: { "X-Request-ID": "request-unauthorized" },
   }));
@@ -503,6 +505,13 @@ test("authenticates before route existence and enforces exact Origin plus CSRF o
     headers: privateHeaders(origin, session),
   });
   assert.equal(privateGet.status, 200);
+  const diagnostics = await jsonResponse(await fetch(`${origin}/dash/v1/diagnostics`, {
+    headers: privateHeaders(origin, session),
+  }));
+  assert.equal(diagnostics.response.status, 200);
+  assert.equal(diagnostics.response.headers.get("cache-control"), "no-store");
+  assert.equal(diagnostics.json.data.limits.rawLogsExposed, false);
+  assert.equal(JSON.stringify(diagnostics.json).includes(CREDENTIAL), false);
   const missingCsrf = await fetch(`${origin}/dash/v1/settings`, {
     method: "PATCH",
     headers: {
@@ -514,6 +523,12 @@ test("authenticates before route existence and enforces exact Origin plus CSRF o
     body: JSON.stringify({ requestId: "request", idempotencyKey: "key", expectedRevision: 0, patch: {} }),
   });
   assert.equal(missingCsrf.status, 403);
+  assert.deepEqual(calls.at(-1), ["diagnosticFailure", {
+    method: "PATCH",
+    path: "/dash/v1/settings",
+    status: 403,
+    code: "csrf_failed",
+  }]);
   const wrongOrigin = await fetch(`${origin}/dash/v1/settings`, {
     method: "PATCH",
     headers: {

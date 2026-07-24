@@ -18,6 +18,7 @@ import type {
   DashboardCommandResult,
   DashboardControllerRole,
   DashboardCursor,
+  DashboardDiagnosticsSnapshot,
   DashboardScheduleDeleteRequest,
   DashboardScheduleMutationRequest,
   DashboardScheduleResource,
@@ -79,7 +80,7 @@ export class LiveFixtureDashboardBackend extends LocalFixtureBackend implements 
       streamSubprotocol: DASH_STREAM_SUBPROTOCOL,
       sameBrowserProtocolAcrossDeployments: true,
       authentication: { browserSession: "http-only-cookie", csrf: "same-origin-header", daemonBearerExposed: false },
-      resources: { inventory: true, transcriptPreview: true, activation: true, export: true, workspaces: true, settings: true, schedules: false, sessionDrafts: true, treeNavigation: true },
+      resources: { inventory: true, transcriptPreview: true, activation: true, export: true, workspaces: true, settings: true, schedules: false, sessionDrafts: true, treeNavigation: true, diagnostics: true },
       presentations: {
         rich: { available: true, replay: true, controller: true, commands: [...COMMANDS] },
         tui: { available: false, replay: true, controller: true, commands: [...COMMANDS], unavailableReason: "fixture-uses-local-tui-story" },
@@ -98,6 +99,27 @@ export class LiveFixtureDashboardBackend extends LocalFixtureBackend implements 
       },
       limits: { ...DASH_DEFAULT_LIMITS },
       performanceBudgets: { ...DASH_PERFORMANCE_BUDGETS },
+    };
+  }
+
+  async diagnostics(): Promise<DashboardDiagnosticsSnapshot> {
+    const now = new Date().toISOString();
+    return {
+      generatedAt: now,
+      status: {
+        instance: "fixture",
+        configLoaded: true,
+        webConfigured: true,
+        sessionDefaultsConfigured: true,
+        runtimePolicyConfigured: true,
+        installedPackagesConfigured: true,
+        allowedRootCount: 1,
+      },
+      events: [
+        { sequence: 1, timestamp: now, level: "info", source: "daemon", code: "dashboard_runtime_ready", message: "Dashboard policy runtime is ready." },
+        { sequence: 2, timestamp: now, level: "warning", source: "api", code: "draft_cwd_not_allowed", message: "The requested session working directory is outside the configured allowed roots.", route: "POST /v1/dashboard/session-drafts", status: 422 },
+      ],
+      limits: { maxEvents: 128, rawLogsExposed: false },
     };
   }
 

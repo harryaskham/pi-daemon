@@ -188,6 +188,7 @@ The provisional routes are fixed under `/dash/v1`:
 | `GET /authorization/{kind}/{id}/audit` | bounded content-free resource audit window |
 | `GET|POST /authorization/{kind}/{id}/controller` | bounded active participants and release-before-grant controller handoff with a separate controller ETag |
 | `GET|PATCH|DELETE /settings` | effective UI settings, allowlisted overlay, and reset |
+| `GET /diagnostics` | administrator-only, no-store snapshot of bounded safe daemon policy and normalized failure events |
 | `GET /schedules/capabilities` | effective cron/timezone and schedule validation limits |
 | `GET /schedules`, `GET /schedules/{scheduleId}`, `GET /schedules/status` | bounded prompt-redacted schedule metadata and content-free status |
 | `POST /schedules`, `PUT|DELETE /schedules/{scheduleId}` | CSRF-protected idempotent CRUD with exact ETag/revision preconditions; prompt is input-only |
@@ -215,7 +216,12 @@ update that omits it retains the existing owner-private value. Dedicated mode
 reads that value only over the server-side service-bearer connection. Older
 daemons that do not advertise `resources.schedules` produce the typed
 `schedules_unavailable` capability result rather than speculative requests.
-Likewise `resources.sessionDrafts` gates lazy creation. Draft resources never
+Likewise `resources.sessionDrafts` gates lazy creation and
+`resources.diagnostics` gates the discreet Diagnostics panel below Settings.
+The diagnostics snapshot is a bounded service-owned event ring, not raw log
+access: identifier-bearing paths are normalized, unknown messages are replaced,
+and prompts/model output/filesystem paths/credentials/environment/request
+bodies never cross the boundary. Draft resources never
 contain the private first message; the owner-private store exposes it only to
 the injected materializer. Cancellation before prompt submission is terminal,
 while a cancellation racing prompt submission is indeterminate and never

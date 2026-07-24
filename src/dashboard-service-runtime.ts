@@ -8,6 +8,7 @@ import {
   InProcessDashboardBackend,
   type InProcessDashboardTuiChannels,
 } from "./dashboard-backend.js";
+import { DashboardDiagnosticsService } from "./dashboard-diagnostics.js";
 import { DashboardNeutralApiController } from "./dashboard-neutral-api.js";
 import {
   assertDashboardSessionDraftWithinRuntimePolicy,
@@ -95,6 +96,7 @@ export class EmbeddedDashboardServiceRuntime {
   readonly ownership: SessionOwnershipService;
   readonly drafts: DashboardSessionDraftService;
   readonly draftMaterializer: DashboardSessionDraftMaterializer;
+  readonly diagnostics: DashboardDiagnosticsService;
   readonly backend: InProcessDashboardBackend;
   readonly neutralApi: DashboardNeutralApiController;
   readonly recovery: EmbeddedDashboardServiceRecovery;
@@ -107,6 +109,7 @@ export class EmbeddedDashboardServiceRuntime {
     ownership: SessionOwnershipService;
     drafts: DashboardSessionDraftService;
     draftMaterializer: DashboardSessionDraftMaterializer;
+    diagnostics: DashboardDiagnosticsService;
     backend: InProcessDashboardBackend;
     neutralApi: DashboardNeutralApiController;
     recovery: EmbeddedDashboardServiceRecovery;
@@ -116,6 +119,7 @@ export class EmbeddedDashboardServiceRuntime {
     this.ownership = options.ownership;
     this.drafts = options.drafts;
     this.draftMaterializer = options.draftMaterializer;
+    this.diagnostics = options.diagnostics;
     this.backend = options.backend;
     this.neutralApi = options.neutralApi;
     this.recovery = options.recovery;
@@ -136,6 +140,10 @@ export class EmbeddedDashboardServiceRuntime {
     const draftRuntimePolicy = options.loadedConfig.config.web?.sessionDefaults?.inheritRuntimePolicy === true
       ? runtimePolicy
       : undefined;
+    const diagnostics = new DashboardDiagnosticsService({
+      loadedConfig: options.loadedConfig,
+      allowedRootCount: options.allowedRoots.length,
+    });
 
     let ownership: SessionOwnershipService;
     const inventory = new SessionInventory({
@@ -200,6 +208,7 @@ export class EmbeddedDashboardServiceRuntime {
       ...(options.scheduler === undefined ? {} : { scheduler: options.scheduler }),
       ...(options.tuiChannels === undefined ? {} : { tuiChannels: options.tuiChannels }),
       ...(sessionDefaults === undefined ? {} : { sessionDefaults }),
+      diagnostics,
     });
     const neutralApi = new DashboardNeutralApiController({
       inventory,
@@ -210,6 +219,7 @@ export class EmbeddedDashboardServiceRuntime {
       tuiAvailable: options.tuiChannels !== undefined,
       schedulesAvailable: options.schedules !== undefined,
       ...(sessionDefaults === undefined ? {} : { sessionDefaults }),
+      diagnostics,
       ...(options.tuiChannels === undefined
         ? { tuiUnavailableReason: "server-side interactive view is unavailable" }
         : {}),
@@ -228,6 +238,7 @@ export class EmbeddedDashboardServiceRuntime {
         ownership,
         drafts,
         draftMaterializer,
+        diagnostics,
         backend,
         neutralApi,
         recovery: {
