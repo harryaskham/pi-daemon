@@ -912,10 +912,35 @@ function corrupt(message: string, path: string, line?: number): DurabilityError 
   });
 }
 
-export async function ensurePrivateDirectory(path: string, label: string): Promise<void> {
+/**
+ * Options for {@link ensurePrivateDirectory}.
+ */
+export interface EnsurePrivateDirectoryOptions {
+  /**
+   * Narrow an over-permissive mode on a directory we already own instead of
+   * refusing to start.
+   *
+   * Only pass this for directories that are shared by design with another
+   * writer whose umask we do not control -- notably the Pi agent directory and
+   * the Pi sessions roots, which plain `pi` also creates. Those are routinely
+   * produced `0755` under a default `umask 022`, and a hard refusal there is a
+   * fatal startup error that no operator action durably prevents.
+   *
+   * Leave it unset for the daemon's own state, socket, and daemon-sessions
+   * roots. Nothing else should be writing those, so an unexpected mode there
+   * is a signal worth failing on rather than silently repairing.
+   */
+  readonly repairOwnedMode?: boolean;
+}
+
+export async function ensurePrivateDirectory(
+  path: string,
+  label: string,
+  options: EnsurePrivateDirectoryOptions = {},
+): Promise<void> {
   try {
     await mkdir(path, { recursive: true, mode: 0o700 });
-    const info = await lstat(path);
+    let info = await lstat(path);
     if (info.isSymbolicLink() || !info.isDirectory()) {
       throw new DurabilityError("insecure_state_path", `${label} must be a real directory`, {
         path,
@@ -926,6 +951,26 @@ export async function ensurePrivateDirectory(path: string, label: string): Promi
       throw new DurabilityError("insecure_state_path", `${label} must be owned by current user`, {
         path,
       });
+    }
+    if ((info.mode & 0o077) !== 0 && options.repairOwnedMode === true) {
+      // The mode passed to mkdir only applies to directories this call
+      // creates; it never tightens one that already exists. Ownership is
+      // already proven above, so this only ever narrows a directory that is
+      // ours, and we re-stat so a chmod that does not take effect still fails
+      // rather than being assumed. Symlinks, non-directories, and
+      // foreign-owned directories were rejected before reaching this point.
+      await chmod(path, 0o700);
+      info = await lstat(path);
+      if (info.isSymbolicLink() || !info.isDirectory()) {
+        throw new DurabilityError("insecure_state_path", `${label} must be a real directory`, {
+          path,
+        });
+      }
+      if (getuid !== undefined && info.uid !== getuid()) {
+        throw new DurabilityError("insecure_state_path", `${label} must be owned by current user`, {
+          path,
+        });
+      }
     }
     if ((info.mode & 0o077) !== 0) {
       throw new DurabilityError("insecure_state_path", `${label} must be owner-only`, {

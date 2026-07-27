@@ -8,6 +8,7 @@ import {
   DurabilityError,
   FileDurabilityStore,
   encodedSessionId,
+  ensurePrivateDirectory,
   wakeTicketId,
 } from "../dist/durability.js";
 import { Multiplexer, MultiplexerError } from "../dist/multiplexer.js";
@@ -117,6 +118,41 @@ test("state storage refuses permissive directories and symlinked files", async (
   );
   await assert.rejects(
     store.beginRequest(wakeCommand("symlink")),
+    (error) => error instanceof DurabilityError && error.code === "insecure_state_path",
+  );
+});
+
+test("ensurePrivateDirectory repairs an owned permissive directory only when asked (bd-5d2cad)", async () => {
+  // Default: a pre-existing owned 0755 directory is still refused, so the
+  // daemon's own state/socket/dashboard roots keep failing closed.
+  const strict = await temporaryState();
+  await chmod(strict, 0o755);
+  await assert.rejects(
+    ensurePrivateDirectory(strict, "state directory"),
+    (error) => error instanceof DurabilityError && error.code === "insecure_state_path",
+  );
+  assert.equal((await stat(strict)).mode & 0o777, 0o755, "strict mode must not chmod");
+
+  // Opt-in: the Pi-shared roots narrow instead of refusing. This is the
+  // ms-dev-5 crash-loop shape -- plain `pi` creates <agentDir>/sessions at
+  // umask 022 and the host then refused to start, permanently.
+  const shared = await temporaryState();
+  await chmod(shared, 0o755);
+  await ensurePrivateDirectory(shared, "Pi sessions data root", { repairOwnedMode: true });
+  assert.equal((await stat(shared)).mode & 0o777, 0o700, "repair must narrow to owner-only");
+
+  // Repair is idempotent and leaves an already-correct directory alone.
+  await ensurePrivateDirectory(shared, "Pi sessions data root", { repairOwnedMode: true });
+  assert.equal((await stat(shared)).mode & 0o777, 0o700);
+
+  // Repair must not create a directory-shaped bypass: a symlink is still
+  // rejected before any chmod, even with the opt-in set.
+  const linkParent = await temporaryState();
+  const target = await temporaryState();
+  const link = join(linkParent, "link");
+  await symlink(target, link);
+  await assert.rejects(
+    ensurePrivateDirectory(link, "Pi sessions data root", { repairOwnedMode: true }),
     (error) => error instanceof DurabilityError && error.code === "insecure_state_path",
   );
 });

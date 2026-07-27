@@ -45,7 +45,8 @@ export async function bootstrapServicePaths(
 
   await ensurePrivateDirectory(stateDir, "state directory");
   await ensurePrivateDirectory(socketDirectory, "socket directory");
-  await ensurePrivateDirectory(agentDir, "Pi agent directory");
+  // Shared with plain `pi`, which creates it under the ambient umask.
+  await ensurePrivateDirectory(agentDir, "Pi agent directory", { repairOwnedMode: true });
 
   const [canonicalStateDir, canonicalAgentDir] = await Promise.all([
     realpath(stateDir),

@@ -834,13 +834,17 @@ export class SessionOwnershipService {
         "derived Pi session directory escapes the canonical sessions subtree",
       );
     }
-    await ensurePrivateDirectory(directory, "Pi project session directory");
+    await ensurePrivateDirectory(directory, "Pi project session directory", {
+      repairOwnedMode: true,
+    });
     return realpath(directory);
   }
 
   async #runInitialize(): Promise<void> {
     await ensurePrivateDirectory(this.stateDir, "state directory");
-    await ensurePrivateDirectory(this.piSessionsRoot, "Pi sessions data root");
+    await ensurePrivateDirectory(this.piSessionsRoot, "Pi sessions data root", {
+      repairOwnedMode: true,
+    });
     await ensurePrivateDirectory(this.daemonSessionsRoot, "daemon sessions data root");
     const canonicalState = await realpath(this.stateDir);
     this.#canonicalStateDir = canonicalState;

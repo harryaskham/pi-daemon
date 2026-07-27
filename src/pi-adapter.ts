@@ -170,7 +170,10 @@ export class PiSessionFactory implements SessionFactory {
         "legacy no-tools sessions cannot override the shared host agentDir",
       );
     }
-    await ensurePrivateDirectory(selectedAgentDir, "Pi agent directory");
+    // Shared with plain `pi`, which creates it under the ambient umask.
+    await ensurePrivateDirectory(selectedAgentDir, "Pi agent directory", {
+      repairOwnedMode: true,
+    });
     if (selectedAgentDir !== this.agentDir) {
       validatePrivateAuthFile(join(selectedAgentDir, "auth.json"));
     }
