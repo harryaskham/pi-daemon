@@ -504,8 +504,10 @@ process appears per wake.
     exhaustive security/compatibility proof and release documentation.
 - [x] `bd-5e5121` Explicitly inherit bounded global Pi package resources already
   installed by the Pi CLI, with no daemon installer/update/network authority.
-- [x] `bd-41f3d2` Fix cold Linux package acceptance timeout and retain the 10k
-  inventory bootstrap budget through a binary hot-head with portable fallback.
+- [x] `bd-41f3d2` Fix cold Linux package acceptance timeout, retain the 10k
+  inventory bootstrap budget through a binary hot-head with portable fallback,
+  and keep its load-sensitive percentile benchmark in explicit manual acceptance
+  rather than package, Nix, or installation gates.
 
 ## 18. Completed scaffold board (historical PD identifiers)
 

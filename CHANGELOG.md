@@ -5,6 +5,7 @@ semantic versioning once a release tag is cut.
 
 ## Unreleased
 
+- move the load-sensitive 10,000-session inventory percentile benchmark to an explicit manual acceptance command so package, Nix, and installation gates retain deterministic correctness coverage without depending on ambient host contention
 - add protocol-v2 configured opens for strictly prepared per-session `agentDir` and confined `sessionDir` selection, preserving legacy v1 behavior while enabling external orchestrators to keep ordinary logical sessions in daemon state and reviewed Pi-home sessions in deterministic per-agent storage
 - add a discreet administrator-only Dash diagnostics panel beneath Settings, backed by authenticated embedded/dedicated parity and a bounded service-owned ring of normalized policy/failure events that never exposes raw logs, prompts, model output, paths, request bodies, credentials, environment, or bearer material
 - add a bounded owner-only Node-major inventory hot-head snapshot with portable JSON fallback, keeping first-page bootstrap off the full 10k index on slow Linux stores

@@ -151,9 +151,18 @@ O(total sessions) sort.
 
 ## Measured 10k acceptance
 
-The test suite builds and persists 10,000 managed records, launches clean Node
-processes for cold bootstrap samples, and asserts the normative contract
-budgets. A representative development run measured:
+The opt-in manual performance acceptance builds and persists 10,000 managed
+records, launches clean Node processes for cold bootstrap samples, and asserts
+the normative contract budgets. Run it on an otherwise idle acceptance host:
+
+```console
+npm run test:manual:inventory-performance
+```
+
+It is intentionally excluded from `npm test`, package builds, Nix evaluation,
+and installation gates because host contention changes wall-clock percentiles.
+Deterministic inventory behavior and security invariants remain in the standard
+suite. A representative manual development run measured:
 
 | Measurement | p95 | Budget |
 | --- | ---: | ---: |
@@ -161,5 +170,6 @@ budgets. A representative development run measured:
 | hot in-memory first 100 rows | 0.58 ms | < 150 ms |
 | indexed search page | 23.65 ms | < 100 ms |
 
-The same test verifies the full index remains below 64 MiB. These timings are
-printed as test diagnostics so regressions are visible rather than inferred.
+The manual acceptance also verifies the full index remains below 64 MiB. These
+timings are printed as diagnostics so an operator can compare isolated runs
+without making installation success depend on ambient machine load.
