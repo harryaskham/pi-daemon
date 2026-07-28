@@ -28,7 +28,12 @@ The machine-readable and TypeScript contracts are:
 - `src/dashboard-remote-backend.ts` / package export
   `./dashboard-remote-backend` — service-bearer REST delegation plus coalesced
   framed-RPC/TUI channels, bounded reconnect, cursor/gap recovery, and
-  indeterminate accepted-command handling for dedicated mode;
+  indeterminate accepted-command handling for dedicated mode; its internal
+  transport is split across `src/dashboard-remote-transport.ts` (shared client,
+  limits, error taxonomy, and bounded frame decoding),
+  `src/dashboard-remote-rich-hub.ts` (framed-RPC attachment), and
+  `src/dashboard-remote-tui-hub.ts` (shadow-TUI attachment), which are internal
+  modules without their own package subpaths;
 - `src/dashboard-auth.ts`, `src/dashboard-store.ts`, and
   `src/dashboard-server.ts` / matching package subpaths — credential exchange,
   signed revocable browser sessions, static SPA serving, strict request

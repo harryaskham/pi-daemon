@@ -748,6 +748,9 @@ implementation order. This list is a human-readable crosswalk.
 - [x] `bd-f786ca` — redaction-safe shared CLI exit diagnostics so a failing
   `serve` acceptance reports allow-listed structured event/error codes instead
   of a bare exit-code mismatch or a raw log dump.
+- [x] `bd-ad9ef9` — remote Dashboard Rich and TUI attachment transports split
+  into focused internal modules over shared transport primitives, with
+  `RemoteDashboardBackend` retained as the public orchestration/export seam.
 - [ ] `bd-4e10da` — future neutral persisted per-session cron/prompt scheduler
   and durable wakes; detailed alongside Dash in `web/PLAN.md`.
   - [x] `bd-6d96bb` — v1 schedule resource/schema/fixtures, bounded owner-private
