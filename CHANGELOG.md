@@ -5,6 +5,7 @@ semantic versioning once a release tag is cut.
 
 ## Unreleased
 
+- extract neutral Dashboard HTTP route parsing/dispatch out of the core API server into `api-dashboard-routes.ts` behind a small router interface, with shared request-contract primitives in `api-request-contract.ts`, so admission still runs before routing and the server keeps sole ownership of bounded bodies, response envelopes, and WebSocket upgrades
 - make the recovery-deadline and first-launch socket acceptances load-proof: assert the per-open and aggregate recovery bounds as two deterministic cases (the second on an injected monotonic clock) instead of a 10ms race, and replace the fixed 10-second bootstrap socket wait with a generous hang bound that still fails a crashed daemon immediately
 - report redacted structured CLI diagnostics when a `runCli(... serve ...)` exit-code assertion fails, replacing bare `1 !== 0` and raw log dumps with an allow-listed event/error-code summary that never carries bearer values, temporary roots, prompts, ports, or raw messages
 - move the load-sensitive 10,000-session inventory percentile benchmark to an explicit manual acceptance command so package, Nix, and installation gates retain deterministic correctness coverage without depending on ambient host contention

@@ -23,6 +23,15 @@ accepts it through the optional `dashboardApi` service. `SessionApiClient`
 provides the authenticated transport and `RemoteDashboardBackend` implements the
 same backend contract as embedded mode without importing in-process services.
 
+Route parsing and dispatch live in `src/api-dashboard-routes.ts`
+(`routeDashboardRequest`), separate from `ApiServer`. That module never
+authenticates, never writes to a socket, and never reads an unbounded body: the
+caller supplies an already-bounded JSON reader and renders the returned status,
+data, headers, and optional response request id through the single shared
+envelope. `ApiServer` therefore remains the only owner of service-bearer
+admission, response bounds, and WebSocket upgrades, and the ordering guarantee
+above is structural rather than conventional.
+
 ## Routes
 
 | Method/path | Purpose |

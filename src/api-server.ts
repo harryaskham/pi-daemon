@@ -16,24 +16,28 @@ import {
 } from "./acp-adapter.js";
 import { ServiceBearerAuthenticator } from "./api-auth.js";
 import {
-  asDashboardCursor,
-  asDashboardFingerprint,
-  type ActivationRequest,
-  type DashboardLeaseRequest,
-  type SessionExportRequest,
-  type SessionInventoryQuery,
-  type TranscriptQuery,
-} from "./dashboard-contract.js";
-import { dashboardSessionDraftEtag } from "./dashboard-session-draft-contract.js";
+  ApiRequestError,
+  apiInteger,
+  apiOptionalString,
+  apiRecord,
+  apiString,
+  assertMatchingRequestId,
+  readBoundedJson,
+} from "./api-request-contract.js";
 import {
-  validateDashboardSessionDraftCancelRequest,
-  validateDashboardSessionDraftCreateRequest,
-  validateDashboardSessionDraftSendRequest,
-} from "./dashboard-session-drafts.js";
-import {
-  normalizeDashboardNeutralError,
-  type DashboardNeutralApi,
-} from "./dashboard-neutral-api.js";
+  dashboardPathRef,
+  dashboardRouteRequest,
+  isDashboardRoutePath,
+  routeDashboardRequest,
+} from "./api-dashboard-routes.js";
+import type { DashboardNeutralApi } from "./dashboard-neutral-api.js";
+
+/**
+ * Retained public re-export: `readBoundedJson` was part of this module's
+ * exported surface before the neutral Dash routing extraction (bd-23110a) moved
+ * it into the shared request contract.
+ */
+export { readBoundedJson } from "./api-request-contract.js";
 import {
   DashboardTuiAttachmentError,
   dashboardTuiUpgradeHeaders,
@@ -135,20 +139,6 @@ interface MutationSubmission {
 interface ReconciliationSubmission {
   resource: TicketResource;
   responseRequestId: string;
-}
-
-class ApiRequestError extends Error {
-  readonly status: number;
-  readonly code: string;
-  readonly retryable: boolean;
-
-  constructor(status: number, code: string, message: string, retryable = false) {
-    super(message);
-    this.name = "ApiRequestError";
-    this.status = status;
-    this.code = code;
-    this.retryable = retryable;
-  }
 }
 
 /**
@@ -658,224 +648,41 @@ export class ApiServer {
     return record.sessionId;
   }
 
+  /**
+   * Thin adapter over the extracted neutral Dashboard router (bd-23110a).
+   *
+   * Admission has already run in `#handleRequest`; this method only supplies the
+   * bounded body reader, then renders the router's result through the single
+   * shared response envelope. Returns false when the path is not a Dashboard
+   * route so the caller continues its own routing.
+   */
   async #handleDashboardRequest(
     request: IncomingMessage,
     response: ServerResponse,
     url: URL,
     requestId: string,
   ): Promise<boolean> {
-    if (!url.pathname.startsWith("/v1/dashboard/")) return false;
-    const api = this.#dashboardApi!;
-    const send = (
-      status: number,
-      data: unknown,
-      headers: Record<string, string> = {},
-      responseRequestId = requestId,
-    ): void =>
-      sendJson(
-        response,
-        status,
-        {
-          apiVersion: SESSION_API_VERSION,
-          requestId: responseRequestId,
-          hostInstanceId: this.#multiplexer.hostInstanceId,
-          ok: true,
-          data,
-        },
-        headers,
-      );
-    try {
-      if (request.method === "GET" && url.pathname === "/v1/dashboard/capabilities") {
-        send(200, await api.capabilities());
-        return true;
-      }
-      if (request.method === "GET" && url.pathname === "/v1/dashboard/diagnostics") {
-        send(200, await api.diagnostics());
-        return true;
-      }
-      if (request.method === "GET" && url.pathname === "/v1/dashboard/inventory") {
-        send(200, await api.listSessions(dashboardInventoryQuery(url)));
-        return true;
-      }
-      if (request.method === "GET") {
-        const transcriptRef = dashboardPathRef(
-          url.pathname,
-          "/v1/dashboard/inventory/",
-          "/transcript",
-        );
-        if (transcriptRef !== undefined) {
-          const query = dashboardTranscriptQuery(url);
-          const fingerprint = optionalFingerprint(url.searchParams.get("fingerprint"));
-          send(200, await api.getTranscript(transcriptRef, query, fingerprint));
-          return true;
-        }
-        const inventoryRef = dashboardPathRef(
-          url.pathname,
-          "/v1/dashboard/inventory/",
-        );
-        if (inventoryRef !== undefined) {
-          send(200, await api.getSessionInfo(inventoryRef));
-          return true;
-        }
-        const activationTicket = dashboardPathRef(
-          url.pathname,
-          "/v1/dashboard/activation/",
-        );
-        if (activationTicket !== undefined) {
-          send(200, await api.getActivation(activationTicket));
-          return true;
-        }
-        const exportTicket = dashboardPathRef(
-          url.pathname,
-          "/v1/dashboard/export/",
-        );
-        if (exportTicket !== undefined) {
-          send(200, await api.getExport(exportTicket));
-          return true;
-        }
-        const draftSendTicket = dashboardPathRef(
-          url.pathname,
-          "/v1/dashboard/session-draft-send/",
-        );
-        if (draftSendTicket !== undefined) {
-          send(200, await api.getSessionDraftSend(draftSendTicket));
-          return true;
-        }
-        const draftRef = dashboardPathRef(
-          url.pathname,
-          "/v1/dashboard/session-drafts/",
-        );
-        if (draftRef !== undefined) {
-          send(200, await api.getSessionDraft(draftRef));
-          return true;
-        }
-      }
-      if (request.method === "POST") {
-        if (url.pathname === "/v1/dashboard/session-drafts") {
-          const body = validateDashboardSessionDraftCreateRequest(
-            await readBoundedJson(request, this.limits.maxBodyBytes),
-          );
-          assertMatchingRequestId(request.headers["x-request-id"], body.requestId);
-          assertDashboardIdempotency(request, body.idempotencyKey);
-          const draft = await api.createSessionDraft(body);
-          send(201, draft, {
-            Location: `/v1/dashboard/session-drafts/${encodeURIComponent(draft.draftId)}`,
-            ETag: dashboardSessionDraftEtag(draft.draftId, draft.revision),
-          }, body.requestId);
-          return true;
-        }
-        const draftSendRef = dashboardPathRef(
-          url.pathname,
-          "/v1/dashboard/session-drafts/",
-          "/send",
-        );
-        if (draftSendRef !== undefined) {
-          const body = validateDashboardSessionDraftSendRequest(
-            await readBoundedJson(request, this.limits.maxBodyBytes),
-          );
-          assertMatchingRequestId(request.headers["x-request-id"], body.requestId);
-          assertDashboardIdempotency(request, body.idempotencyKey);
-          assertDashboardDraftIfMatch(
-            request.headers["if-match"],
-            draftSendRef,
-            body.expectedRevision,
-          );
-          const ticket = await api.sendSessionDraft(draftSendRef, body);
-          send(202, ticket, {
-            Location: `/v1/dashboard/session-draft-send/${encodeURIComponent(ticket.ticketId)}`,
-          }, body.requestId);
-          return true;
-        }
-        const activateRef = dashboardPathRef(
-          url.pathname,
-          "/v1/dashboard/inventory/",
-          "/activate",
-        );
-        if (activateRef !== undefined) {
-          const body = parseDashboardActivation(
-            await readBoundedJson(request, this.limits.maxBodyBytes),
-          );
-          assertMatchingRequestId(request.headers["x-request-id"], body.requestId);
-          assertDashboardIdempotency(request, body.idempotencyKey);
-          const ticket = await api.activateSession(activateRef, body);
-          send(
-            202,
-            ticket,
-            {
-              Location: `/v1/dashboard/activation/${encodeURIComponent(ticket.ticketId)}`,
-            },
-            body.requestId,
-          );
-          return true;
-        }
-        const exportRef = dashboardPathRef(
-          url.pathname,
-          "/v1/dashboard/session/",
-          "/export",
-        );
-        if (exportRef !== undefined) {
-          const body = parseDashboardExport(
-            await readBoundedJson(request, this.limits.maxBodyBytes),
-          );
-          assertMatchingRequestId(request.headers["x-request-id"], body.requestId);
-          assertDashboardIdempotency(request, body.idempotencyKey);
-          const ticket = await api.exportSession(exportRef, body);
-          send(
-            202,
-            ticket,
-            {
-              Location: `/v1/dashboard/export/${encodeURIComponent(ticket.ticketId)}`,
-            },
-            body.requestId,
-          );
-          return true;
-        }
-        const leaseRef = dashboardPathRef(
-          url.pathname,
-          "/v1/dashboard/session/",
-          "/lease",
-        );
-        if (leaseRef !== undefined) {
-          const body = parseDashboardLease(
-            await readBoundedJson(request, this.limits.maxBodyBytes),
-          );
-          assertMatchingRequestId(request.headers["x-request-id"], body.requestId);
-          send(200, await api.renewLease(leaseRef, body.leaseId), {}, body.requestId);
-          return true;
-        }
-      }
-      if (request.method === "DELETE") {
-        const draftRef = dashboardPathRef(
-          url.pathname,
-          "/v1/dashboard/session-drafts/",
-        );
-        if (draftRef !== undefined) {
-          const body = validateDashboardSessionDraftCancelRequest(
-            await readBoundedJson(request, this.limits.maxBodyBytes),
-          );
-          assertMatchingRequestId(request.headers["x-request-id"], body.requestId);
-          assertDashboardIdempotency(request, body.idempotencyKey);
-          assertDashboardDraftIfMatch(
-            request.headers["if-match"],
-            draftRef,
-            body.expectedRevision,
-          );
-          const draft = await api.cancelSessionDraft(draftRef, body);
-          send(200, draft, { ETag: dashboardSessionDraftEtag(draft.draftId, draft.revision) }, body.requestId);
-          return true;
-        }
-      }
-      return false;
-    } catch (error) {
-      if (error instanceof ApiRequestError) throw error;
-      const normalized = normalizeDashboardNeutralError(error);
-      throw new ApiRequestError(
-        normalized.status,
-        normalized.code,
-        normalized.message,
-        normalized.retryable,
-      );
-    }
+    if (!isDashboardRoutePath(url.pathname)) return false;
+    const result = await routeDashboardRequest(
+      this.#dashboardApi!,
+      dashboardRouteRequest(request, url, () =>
+        readBoundedJson(request, this.limits.maxBodyBytes),
+      ),
+    );
+    if (result === undefined) return false;
+    sendJson(
+      response,
+      result.status,
+      {
+        apiVersion: SESSION_API_VERSION,
+        requestId: result.requestId ?? requestId,
+        hostInstanceId: this.#multiplexer.hostInstanceId,
+        ok: true,
+        data: result.data,
+      },
+      result.headers ?? {},
+    );
+    return true;
   }
 
   async #ticketForResponse(
@@ -1381,232 +1188,12 @@ export class ApiServer {
   }
 }
 
-export async function readBoundedJson(
-  request: IncomingMessage,
-  maxBodyBytes: number,
-): Promise<unknown> {
-  const declaredLength = request.headers["content-length"];
-  if (declaredLength !== undefined) {
-    const parsedLength = /^\d+$/.test(declaredLength) ? Number(declaredLength) : Number.NaN;
-    if (!Number.isSafeInteger(parsedLength) || parsedLength < 0) {
-      throw new ApiRequestError(400, "invalid_content_length", "Content-Length is invalid");
-    }
-    if (parsedLength > maxBodyBytes) {
-      throw new ApiRequestError(413, "body_too_large", "JSON request body exceeds byte limit");
-    }
-  }
-  let bytes = 0;
-  const chunks: Buffer[] = [];
-  for await (const value of request) {
-    const chunk = Buffer.isBuffer(value) ? value : Buffer.from(value as Uint8Array);
-    bytes += chunk.length;
-    if (bytes > maxBodyBytes) {
-      throw new ApiRequestError(413, "body_too_large", "JSON request body exceeds byte limit");
-    }
-    chunks.push(chunk);
-  }
-  if (bytes === 0) throw new ApiRequestError(400, "invalid_json", "JSON request body is required");
-  try {
-    return JSON.parse(Buffer.concat(chunks, bytes).toString("utf8")) as unknown;
-  } catch {
-    throw new ApiRequestError(400, "invalid_json", "request body is not valid JSON");
-  }
-}
-
 function requestUrl(request: IncomingMessage): URL {
   try {
     return new URL(request.url ?? "", "http://pi-daemon.invalid");
   } catch {
     throw new ApiRequestError(400, "invalid_request_target", "request target is invalid");
   }
-}
-
-function dashboardPathRef(
-  pathname: string,
-  prefix: string,
-  suffix = "",
-): string | undefined {
-  if (!pathname.startsWith(prefix) || (suffix !== "" && !pathname.endsWith(suffix))) {
-    return undefined;
-  }
-  const end = suffix === "" ? pathname.length : pathname.length - suffix.length;
-  const encoded = pathname.slice(prefix.length, end);
-  if (encoded.length === 0 || encoded.includes("/")) return undefined;
-  try {
-    const value = decodeURIComponent(encoded);
-    if (value.length === 0 || value.length > 256 || value.includes("\u0000")) {
-      throw new Error("invalid dashboard reference");
-    }
-    return value;
-  } catch {
-    throw new ApiRequestError(
-      400,
-      "invalid_dashboard_reference",
-      "dashboard resource reference is invalid",
-    );
-  }
-}
-
-function dashboardInventoryQuery(url: URL): SessionInventoryQuery {
-  const limit = optionalBoundedInteger(url.searchParams.get("limit"), 1, 100);
-  const cursor = optionalCursor(url.searchParams.get("cursor"));
-  const search = optionalQueryString(url.searchParams.get("search"), 1024);
-  const sourceKinds = optionalCsv(url.searchParams.get("sourceKind"));
-  const runtime = optionalCsv(url.searchParams.get("runtime"));
-  const unread = optionalBooleanQuery(url.searchParams.get("unread"));
-  const modifiedAfter = optionalQueryString(url.searchParams.get("modifiedAfter"), 64);
-  return {
-    ...(limit === undefined ? {} : { limit }),
-    ...(cursor === undefined ? {} : { cursor }),
-    ...(search === undefined ? {} : { search }),
-    ...(sourceKinds === undefined
-      ? {}
-      : {
-          sourceKinds: sourceKinds as NonNullable<SessionInventoryQuery["sourceKinds"]>,
-        }),
-    ...(runtime === undefined
-      ? {}
-      : { runtime: runtime as NonNullable<SessionInventoryQuery["runtime"]> }),
-    ...(unread === undefined ? {} : { unread }),
-    ...(modifiedAfter === undefined ? {} : { modifiedAfter }),
-  };
-}
-
-function dashboardTranscriptQuery(url: URL): TranscriptQuery {
-  const limit = optionalBoundedInteger(url.searchParams.get("limit"), 1, 200);
-  const cursor = optionalCursor(url.searchParams.get("cursor"));
-  const direction = url.searchParams.get("direction");
-  if (direction !== null && direction !== "older" && direction !== "newer") {
-    throw new ApiRequestError(400, "invalid_transcript_query", "transcript direction is invalid");
-  }
-  const leafId = optionalQueryString(url.searchParams.get("leafId"), 256);
-  return {
-    ...(limit === undefined ? {} : { limit }),
-    ...(cursor === undefined ? {} : { cursor }),
-    ...(direction === null ? {} : { direction }),
-    ...(leafId === undefined ? {} : { leafId }),
-  };
-}
-
-function parseDashboardActivation(value: unknown): ActivationRequest {
-  const body = apiRecord(value, "dashboard activation request");
-  const mode = apiString(body.mode, "mode", 32);
-  if (!["reuse", "direct", "fork", "preview-only"].includes(mode)) {
-    throw new ApiRequestError(400, "invalid_activation_mode", "activation mode is invalid");
-  }
-  return {
-    requestId: apiString(body.requestId, "requestId", 128),
-    idempotencyKey: apiString(body.idempotencyKey, "idempotencyKey", 512),
-    mode: mode as ActivationRequest["mode"],
-    ...(body.expectedFingerprint === undefined
-      ? {}
-      : {
-          expectedFingerprint: asDashboardFingerprint(
-            apiString(body.expectedFingerprint, "expectedFingerprint", 512),
-          ),
-        }),
-    ...(body.desiredSessionName === undefined
-      ? {}
-      : { desiredSessionName: apiString(body.desiredSessionName, "desiredSessionName", 128) }),
-    ...(body.policyRef === undefined
-      ? {}
-      : { policyRef: apiString(body.policyRef, "policyRef", 256) }),
-  };
-}
-
-function parseDashboardExport(value: unknown): SessionExportRequest {
-  const body = apiRecord(value, "dashboard export request");
-  const mode = apiString(body.mode, "mode", 32);
-  if (mode !== "as-new" && mode !== "append-to-origin") {
-    throw new ApiRequestError(400, "invalid_export_mode", "export mode is invalid");
-  }
-  if (body.releaseAfterExport !== undefined && typeof body.releaseAfterExport !== "boolean") {
-    throw new ApiRequestError(400, "invalid_export_request", "releaseAfterExport is invalid");
-  }
-  return {
-    requestId: apiString(body.requestId, "requestId", 128),
-    idempotencyKey: apiString(body.idempotencyKey, "idempotencyKey", 512),
-    mode,
-    ...(body.expectedSourceFingerprint === undefined
-      ? {}
-      : {
-          expectedSourceFingerprint: asDashboardFingerprint(
-            apiString(body.expectedSourceFingerprint, "expectedSourceFingerprint", 512),
-          ),
-        }),
-    ...(body.releaseAfterExport === undefined
-      ? {}
-      : { releaseAfterExport: body.releaseAfterExport }),
-  };
-}
-
-function parseDashboardLease(value: unknown): DashboardLeaseRequest {
-  const body = apiRecord(value, "dashboard lease request");
-  return {
-    requestId: apiString(body.requestId, "requestId", 128),
-    leaseId: apiString(body.leaseId, "leaseId", 256),
-  };
-}
-
-function assertDashboardIdempotency(
-  request: IncomingMessage,
-  bodyKey: string,
-): void {
-  const header = requiredIdempotencyKey(request.headers["idempotency-key"]);
-  if (header !== bodyKey) {
-    throw new ApiRequestError(
-      400,
-      "idempotency_key_mismatch",
-      "Idempotency-Key must match the request body",
-    );
-  }
-}
-
-function optionalCursor(value: string | null) {
-  return value === null ? undefined : asDashboardCursor(apiString(value, "cursor", 1024));
-}
-
-function optionalFingerprint(value: string | null) {
-  return value === null
-    ? undefined
-    : asDashboardFingerprint(apiString(value, "fingerprint", 512));
-}
-
-function optionalQueryString(value: string | null, max: number): string | undefined {
-  return value === null ? undefined : apiString(value, "query", max, true);
-}
-
-function optionalCsv(value: string | null): string[] | undefined {
-  if (value === null) return undefined;
-  const values = value.split(",");
-  if (
-    values.length === 0 ||
-    values.length > 16 ||
-    values.some((entry) => entry.length === 0 || entry.length > 64)
-  ) {
-    throw new ApiRequestError(400, "invalid_dashboard_filter", "dashboard filter is invalid");
-  }
-  return values;
-}
-
-function optionalBooleanQuery(value: string | null): boolean | undefined {
-  if (value === null) return undefined;
-  if (value === "true") return true;
-  if (value === "false") return false;
-  throw new ApiRequestError(400, "invalid_dashboard_filter", "boolean filter is invalid");
-}
-
-function optionalBoundedInteger(
-  value: string | null,
-  minimum: number,
-  maximum: number,
-): number | undefined {
-  if (value === null) return undefined;
-  const parsed = /^\d+$/.test(value) ? Number(value) : Number.NaN;
-  if (!Number.isSafeInteger(parsed) || parsed < minimum || parsed > maximum) {
-    throw new ApiRequestError(400, "invalid_dashboard_limit", "dashboard limit is invalid");
-  }
-  return parsed;
 }
 
 function ticketEnvelope(
@@ -1758,19 +1345,6 @@ function requiredIdempotencyKey(value: string | string[] | undefined): string {
   return value;
 }
 
-function assertMatchingRequestId(
-  header: string | string[] | undefined,
-  bodyRequestId: string,
-): void {
-  if (header !== undefined && (typeof header !== "string" || header !== bodyRequestId)) {
-    throw new ApiRequestError(
-      400,
-      "request_id_mismatch",
-      "X-Request-Id must match the mutation body requestId",
-    );
-  }
-}
-
 function assertIfMatch(
   value: string | string[] | undefined,
   sessionId: string,
@@ -1852,62 +1426,8 @@ function openCommandFromTicket(
   };
 }
 
-function apiRecord(value: unknown, field: string): Record<string, unknown> {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new ApiRequestError(400, "invalid_session_spec", `${field} must be an object`);
-  }
-  return value as Record<string, unknown>;
-}
-
-function apiString(
-  value: unknown,
-  field: string,
-  max: number,
-  allowEmpty = false,
-): string {
-  if (
-    typeof value !== "string" ||
-    (!allowEmpty && value.length === 0) ||
-    value.length > max ||
-    /[\u0000]/.test(value)
-  ) {
-    throw new ApiRequestError(400, "invalid_session_spec", `${field} is invalid`);
-  }
-  return value;
-}
-
-function apiOptionalString(
-  value: unknown,
-  field: string,
-  max: number,
-  allowEmpty = false,
-): string | undefined {
-  return value === undefined ? undefined : apiString(value, field, max, allowEmpty);
-}
-
-function apiInteger(value: unknown, field: string, minimum: number): number {
-  if (!Number.isSafeInteger(value) || (value as number) < minimum) {
-    throw new ApiRequestError(400, "invalid_session_spec", `${field} is invalid`);
-  }
-  return value as number;
-}
-
 function sessionEtag(sessionId: string, revision: number): string {
   return `"${Buffer.from(sessionId, "utf8").toString("base64url")}:${revision}"`;
-}
-
-function assertDashboardDraftIfMatch(
-  value: string | string[] | undefined,
-  draftId: string,
-  revision: number,
-): void {
-  if (typeof value !== "string" || value !== dashboardSessionDraftEtag(draftId, revision)) {
-    throw new ApiRequestError(
-      412,
-      "draft_revision_conflict",
-      "If-Match does not match the current draft revision",
-    );
-  }
 }
 
 function scheduleEtag(scheduleId: string, revision: number): string {

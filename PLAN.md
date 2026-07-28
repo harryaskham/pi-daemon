@@ -739,6 +739,9 @@ implementation order. This list is a human-readable crosswalk.
   API bearer, and non-overwriting per-instance Pi auth seeding.
 - [x] `bd-df5f19` — prebuild/cache aarch64-linux packages off-device so
   Nix-on-Droid never falls back to its native npm double-free path.
+- [x] `bd-23110a` — neutral Dash HTTP routing extracted from the core API server
+  behind a small router interface, preserving auth-before-routing, shared
+  response bounds, and WebSocket admission.
 - [x] `bd-79902f` — load-proof recovery-deadline and first-launch socket waits:
   deterministic per-open and aggregate recovery cases plus a generous bootstrap
   hang bound that still fails a crashed daemon immediately.
