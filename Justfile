@@ -37,3 +37,12 @@ test-daemon-attach:
 # `just dash-e2e --grep 'dormant preview'`.
 dash-e2e *ARGS:
     nix develop .#e2e --command npm run e2e:nix --workspace @harryaskham/pi-daemon-dash -- {{ARGS}}
+
+# Refresh the pinned Nix npm dependency hash after a package-lock.json change.
+# An automated dependency bump cannot do this, so run it before landing one.
+npm-deps-hash:
+    npm run nix:deps-hash
+
+# Verify the pinned Nix npm dependency hash without changing it.
+npm-deps-hash-check:
+    npm run nix:deps-hash:check

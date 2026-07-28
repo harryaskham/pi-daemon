@@ -28,6 +28,10 @@ jobs:
           node-version: ${{ matrix.node }}
           cache: npm
       - run: npm ci --ignore-scripts
+      # Cheap and Nix-free: an automated dependency bump cannot refresh the
+      # pinned flake npmDepsHash, so say so here in seconds instead of letting
+      # every Nix job fail later with a bare fixed-output mismatch.
+      - run: npm run nix:deps-hash:fast
       - run: npm test
       - run: npm run pack:check
 

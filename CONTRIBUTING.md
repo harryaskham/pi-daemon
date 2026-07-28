@@ -38,6 +38,31 @@ add a bare wall-clock assertion to the standard suite; report it through
 `test/performance-budget.mjs`, `web/src/test/performance-budget.ts`, or
 `web/e2e/performance-budget.ts` instead.
 
+## Dependency updates and the pinned Nix hash
+
+`flake.nix` pins `npmDepsHash`, a fixed-output hash over the npm dependency
+cache that `package-lock.json` determines. Any lock change invalidates it, and
+an automated dependency bump cannot refresh it on its own, so refresh it in the
+same change:
+
+```bash
+just npm-deps-hash          # or: npm run nix:deps-hash
+```
+
+This computes the exact hash with the flake's own pinned nixpkgs and rewrites
+`flake.nix`. Verify without changing anything with `just npm-deps-hash-check`.
+
+CI keeps a stale pin from becoming a mystery. The Node jobs run
+`npm run nix:deps-hash:fast`, which needs neither Nix nor network: it compares
+`package-lock.json` against the `npm-deps-lock` marker recorded beside the pin
+and fails in seconds naming the refresh command. The `npm-deps-hash` flake check
+then fetches only the dependency cache, so a genuine mismatch reports the exact
+replacement hash without waiting for a full build. The marker is a staleness
+signal only; `npmDepsHash` remains the value Nix actually verifies.
+
+When a grouped dependency pull request goes red on that fast check, pull the
+branch, run the refresh command, and push the updated `flake.nix`.
+
 Changes should be narrow, tested, and documented. Protocol changes require a
 versioning assessment, fixtures, and compatibility coverage. Security-sensitive
 changes require adversarial tests.

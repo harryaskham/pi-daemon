@@ -23,7 +23,9 @@ explicit operator action.
 2. Move the matching changelog entry from “unreleased” to the ISO release date.
 3. Run `npm run release:check -- --tag vMAJOR.MINOR.PATCH`. The same preflight
    runs before the release workflow builds or publishes anything.
-4. Run `npm ci --ignore-scripts`, `npm test`, and `npm run pack:check`.
+4. Run `npm ci --ignore-scripts`, `npm run nix:deps-hash:check`, `npm test`, and
+   `npm run pack:check`. The hash check keeps a release from shipping a
+   `flake.nix` that pins a dependency cache the lock file no longer describes.
 5. Run the optional credentialed acceptance harness when model/provider behavior changed.
 6. Confirm Linux and macOS Nix checks and `nix run .#pi-daemon -- version` are green.
 7. Confirm `nix build .#pages` succeeds, the Docker-free Pages workflow deploys,

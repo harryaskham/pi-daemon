@@ -16,6 +16,13 @@
       "x86_64-linux"
     ];
     forAllSystems = nixpkgs.lib.genAttrs systems;
+
+    # Single source of truth for the pinned npm dependency cache. Refresh this
+    # block with `npm run nix:deps-hash` after any package-lock.json change; the
+    # `npm-deps-lock` marker is a plain staleness signal that lets CI flag a
+    # stale pin without needing Nix on the runner.
+    # npm-deps-lock: sha256-P+LEb/9aB+BGPa6kttU6AWM+dkp0CtrbVR6pDjZb2vc=
+    npmDepsHash = "sha256-fWetJxlUuDU84IwesGnTG28rzbv7LT7nLYwau/fqQ4w=";
   in {
     homeManagerModules.pi-daemon = import ./nix/home-manager-module.nix {inherit self;};
     homeManagerModules.default = self.homeManagerModules.pi-daemon;
@@ -28,7 +35,7 @@
         src = ./.;
 
         nodejs = pkgs.nodejs_24;
-        npmDepsHash = "sha256-fWetJxlUuDU84IwesGnTG28rzbv7LT7nLYwau/fqQ4w=";
+        inherit npmDepsHash;
         npmDepsFetcherVersion = 2;
         nativeBuildInputs = [pkgs.makeWrapper pkgs.openssl];
 
@@ -184,6 +191,13 @@
     in {
       package = self.packages.${system}.default;
       pages = self.packages.${system}.pages;
+      # Fails fast, and prints the exact replacement hash, when package-lock.json
+      # moved without `npm run nix:deps-hash`. Fetching the dependency cache is
+      # far cheaper than discovering the same mismatch through a full build.
+      npm-deps-hash = import ./nix/npm-deps.nix {
+        inherit pkgs;
+        hash = npmDepsHash;
+      };
       home-manager-module = import ./nix/home-manager-module-check.nix {
         inherit self pkgs;
       };

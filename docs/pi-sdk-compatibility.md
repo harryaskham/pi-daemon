@@ -75,8 +75,9 @@ entries; downgrading the fetcher makes `npm ci` request uncached Pi tarballs.
    mapping, protocol thinking levels, and compatibility assertions together.
    Review every union difference; never weaken the exact assertion merely to
    make compilation pass.
-6. Keep `npmDepsFetcherVersion = 2`, refresh `flake.nix` `npmDepsHash` from the
-   fixed-output mismatch, and run the focused SDK compatibility test. The
+6. Keep `npmDepsFetcherVersion = 2` and refresh the pinned Nix dependency hash
+   with `npm run nix:deps-hash` rather than transcribing a fixed-output
+   mismatch by hand, then run the focused SDK compatibility test. The
    repository's final queue/CI then owns the complete Node and Nix gates.
 7. When provider/session behavior changed, run the optional credentialed live
    multiplex acceptance and preserve the zero-Pi-child-process assertion.

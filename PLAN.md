@@ -755,6 +755,9 @@ implementation order. This list is a human-readable crosswalk.
   the transcript, anchored on settled distance from the bottom, with the
   browser acceptance rewritten to measure a settled anchor instead of two
   pre-hydration zeros.
+- [x] `bd-acf2d3` — supported maintenance path for the pinned Nix npm
+  dependency hash, plus a Nix-free fast staleness check and a dedicated flake
+  check so grouped dependency updates fail actionably instead of red.
 - [ ] `bd-4e10da` — future neutral persisted per-session cron/prompt scheduler
   and durable wakes; detailed alongside Dash in `web/PLAN.md`.
   - [x] `bd-6d96bb` — v1 schedule resource/schema/fixtures, bounded owner-private
