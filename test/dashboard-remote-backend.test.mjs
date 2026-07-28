@@ -15,6 +15,7 @@ import {
   assertDashboardRichChannelConformance,
   assertDashboardScheduleConformance,
 } from "./dashboard-backend-conformance.mjs";
+import { reportPerformanceBudget } from "./performance-budget.mjs";
 
 const immediate = () => new Promise((resolve) => setImmediate(resolve));
 
@@ -615,8 +616,7 @@ test("remote Rich panes coalesce one attachment, enforce roles, correlate comman
   }
   samples.sort((a, b) => a - b);
   const p95 = samples[Math.floor(samples.length * 0.95)];
-  t.diagnostic(`remote Rich fixture p95=${p95.toFixed(2)}ms`);
-  assert.ok(p95 < 50);
+  reportPerformanceBudget(t, "remote Rich fixture p95", p95, 50);
   assert.equal(controllerEvents.length, 80);
   assert.equal(observerEvents.length, 80);
   service.emitRpc({

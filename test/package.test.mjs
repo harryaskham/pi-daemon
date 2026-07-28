@@ -24,15 +24,23 @@ const packageVersion = JSON.parse(
   await readFile(join(repositoryRoot, "package.json"), "utf8"),
 ).version;
 const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
-// Cold Nix Linux builders pay two complete TypeScript/SPA builds plus isolated
-// pack/install I/O. Keep every child bounded at 120s, but bound the whole
-// multi-stage acceptance separately so aggregate cold-cache time is not mistaken
-// for a hung command.
-const cleanPackageAcceptanceTimeoutMs = process.platform === "linux" ? 300_000 : 180_000;
+// The clean-pack acceptance deliberately performs a second complete
+// TypeScript/SPA/postbuild run inside `npm pack`, then an isolated install and
+// two bin executions. The dominant variable is host load, not platform: on a
+// busy shared machine any one of those stages can take minutes even though the
+// work is finite and healthy. Deadlines are therefore per stage, with the
+// build-bearing stages given explicit headroom, so a genuinely hung command
+// still fails fast and is attributed to the stage that hung. The aggregate
+// bound sits above the realistic worst case but below the sum of the stage
+// bounds, so it can never be the first thing to fire.
+const CHILD_TIMEOUT_MS = 120_000;
+const BUILD_CHILD_TIMEOUT_MS = 600_000;
+const INSTALL_CHILD_TIMEOUT_MS = 300_000;
+const CLEAN_PACKAGE_ACCEPTANCE_TIMEOUT_MS = 900_000;
 
 const run = async (command, args, options = {}) =>
   execFileAsync(command, args, {
-    timeout: 120_000,
+    timeout: CHILD_TIMEOUT_MS,
     maxBuffer: 10 * 1024 * 1024,
     ...options,
   });
@@ -152,7 +160,7 @@ test("schema conformance uses the audited exact Ajv pin without $data", async ()
 
 test(
   "clean npm pack builds runtime files and the installed CLI executes through npm bin links",
-  { timeout: cleanPackageAcceptanceTimeoutMs },
+  { timeout: CLEAN_PACKAGE_ACCEPTANCE_TIMEOUT_MS },
   async (t) => {
     const temporaryRoot = await mkdtemp(join(tmpdir(), "pi-daemon-package-"));
     t.after(async () => rm(temporaryRoot, { recursive: true, force: true }));
@@ -176,7 +184,7 @@ test(
     const packed = await run(
       npmCommand,
       ["pack", "--json", "--silent", "--pack-destination", tarballs],
-      { cwd: source, env: npmEnvironment },
+      { cwd: source, env: npmEnvironment, timeout: BUILD_CHILD_TIMEOUT_MS },
     );
     const metadata = JSON.parse(packed.stdout);
     assert.equal(metadata.length, 1);
@@ -312,7 +320,7 @@ test(
           "--no-save",
           tarball,
         ],
-        { cwd: consumer, env: npmEnvironment },
+        { cwd: consumer, env: npmEnvironment, timeout: INSTALL_CHILD_TIMEOUT_MS },
       );
     } else {
       // buildNpmPackage exposes a read-only content cache without registry

@@ -15,6 +15,17 @@ import { parseHostToolAdapterMessage } from "../dist/tool-adapter-protocol.js";
 
 const capabilityHandle = "A".repeat(43);
 
+// The adapter endpoint is a Unix domain socket, so its path must fit both the
+// platform `sun_path` limit (104 bytes on macOS, 108 on Linux) and the
+// protocol's own 100-byte `endpoint.path` bound. A developer `TMPDIR` is
+// routinely long enough to break both — macOS uses a per-user
+// `/var/folders/...` root — which surfaces as `listen EINVAL` and says nothing
+// about the code under test. Bind from a short root so this fixture exercises
+// the contract instead of the ambient environment; the rest of the fixture
+// stays in the ordinary temporary directory.
+const SHORT_SOCKET_ROOT = process.platform === "win32" ? tmpdir() : "/tmp";
+const MAX_ADAPTER_ENDPOINT_PATH_BYTES = 100;
+
 function descriptor(socketPath, overrides = {}) {
   const limits = {
     maxRequestBytes: 16 * 1024,
@@ -66,11 +77,15 @@ async function harness(t, options = {}) {
     await mkdtemp(join(tmpdir(), "pi-daemon-tool-adapter-")),
   );
   const cwd = join(root, "cwd");
-  const socketDir = join(root, "socket");
-  const socketPath = join(socketDir, "adapter.sock");
+  const socketDir = await realpath(await mkdtemp(join(SHORT_SOCKET_ROOT, "pidm-ta-")));
+  const socketPath = join(socketDir, "a.sock");
+  assert.ok(
+    Buffer.byteLength(socketPath, "utf8") <= MAX_ADAPTER_ENDPOINT_PATH_BYTES,
+    `adapter socket fixture path must stay within the protocol bound: ${socketPath}`,
+  );
   await Promise.all([
     mkdir(cwd, { mode: 0o700 }),
-    mkdir(socketDir, { mode: 0o700 }),
+    chmod(socketDir, 0o700),
   ]);
   const input = descriptor(socketPath, options.descriptor);
   const frames = [];
@@ -133,6 +148,7 @@ async function harness(t, options = {}) {
     for (const socket of sockets) socket.destroy();
     await new Promise((resolvePromise) => server.close(() => resolvePromise()));
     await rm(root, { recursive: true, force: true });
+    await rm(socketDir, { recursive: true, force: true });
   });
   return { root, cwd, socketDir, socketPath, input, frames, send, server };
 }

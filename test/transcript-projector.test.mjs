@@ -6,6 +6,8 @@ import { join } from "node:path";
 import { performance } from "node:perf_hooks";
 import test from "node:test";
 
+import { reportPerformanceBudget } from "./performance-budget.mjs";
+
 import { DASH_PERFORMANCE_BUDGETS } from "../dist/dashboard-contract.js";
 import {
   TranscriptProjectionError,
@@ -497,7 +499,12 @@ test("cold and cached 10k-entry useful viewports remain within contract budgets"
   const cold = await projector.project({ inventoryId: "inventory-10k", path });
   const coldMs = performance.now() - coldStarted;
   assert.equal(cold.records.length, 200);
-  assert.ok(coldMs < DASH_PERFORMANCE_BUDGETS.coldTranscriptViewportP95Ms, `cold=${coldMs.toFixed(1)}ms`);
+  reportPerformanceBudget(
+    t,
+    "cold 10k viewport",
+    coldMs,
+    DASH_PERFORMANCE_BUDGETS.coldTranscriptViewportP95Ms,
+  );
 
   const cachedStarted = performance.now();
   const cached = await projector.project({
@@ -507,5 +514,10 @@ test("cold and cached 10k-entry useful viewports remain within contract budgets"
   });
   const cachedMs = performance.now() - cachedStarted;
   assert.equal(cached.projection.cached, true);
-  assert.ok(cachedMs < DASH_PERFORMANCE_BUDGETS.cachedTranscriptViewportP95Ms, `cached=${cachedMs.toFixed(1)}ms`);
+  reportPerformanceBudget(
+    t,
+    "cached 10k viewport",
+    cachedMs,
+    DASH_PERFORMANCE_BUDGETS.cachedTranscriptViewportP95Ms,
+  );
 });

@@ -116,6 +116,31 @@ adapter, browser grid and component fixtures pass their frame, replay,
 controller, accessibility and performance gates and become available only when
 that public seam is injected.
 
+## Wall-clock performance budgets are opt-in
+
+Every millisecond budget in this document is verified by explicit manual
+acceptance, never by the standard suite, package build, Nix evaluation, or
+installation gate. Percentile bounds are meaningful only on a quiet reference
+machine; on a shared or Nix builder host a correct implementation can miss them
+purely through scheduling contention, which produces a red gate that says
+nothing about the code and has already blocked a release pin once.
+
+The measurements still run in the standard suite and print as diagnostics, so
+regressions stay visible, and the exercised code paths keep their full
+correctness coverage. Only the assertion is deferred. Enforce budgets on an idle
+host with:
+
+```console
+npm run test:manual:performance
+npm run test:manual:inventory-performance
+```
+
+The first sets `PI_DAEMON_PERFORMANCE_BUDGETS=1`, which turns the shared
+`reportPerformanceBudget` helper from a diagnostic into a hard assertion for
+transcript projection, remote Rich streaming, the Shadow TUI host, and the
+virtual terminal. The second runs the 10,000-session inventory percentile
+acceptance. A failure in either is a real regression signal.
+
 ## Browser-safe diagnostics acceptance
 
 The diagnostics slice proves service-bearer authentication on

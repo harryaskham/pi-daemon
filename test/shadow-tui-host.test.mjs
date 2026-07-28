@@ -4,6 +4,7 @@ import { performance } from "node:perf_hooks";
 
 import { asDashboardCursor } from "../dist/dashboard-contract.js";
 import { ShadowTuiHost, ShadowTuiHostError } from "../dist/shadow-tui-host.js";
+import { reportPerformanceBudget } from "./performance-budget.mjs";
 
 const identity = {
   hostInstanceId: "host-shadow-01",
@@ -235,8 +236,8 @@ test("rapid render and resize publication remains coalesced under 50ms", async (
   }
   samples.sort((first, second) => first - second);
   const p95 = samples[Math.floor(samples.length * 0.95)] ?? Infinity;
-  t.diagnostic(`shadow host p95=${p95.toFixed(2)}ms events=${events.length}`);
-  assert.ok(p95 < 50, `shadow host p95 ${p95.toFixed(2)}ms`);
+  t.diagnostic(`shadow host events=${events.length}`);
+  reportPerformanceBudget(t, "shadow host p95", p95, 50);
   assert.ok(events.length <= 80);
   assert.ok(events.every((event, index) => event.sequence === index + 1));
   await channel.close();

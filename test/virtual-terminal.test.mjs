@@ -24,6 +24,7 @@ import {
   DEFAULT_VIRTUAL_TERMINAL_LIMITS,
   VirtualTerminal,
 } from "../dist/virtual-terminal.js";
+import { reportPerformanceBudget } from "./performance-budget.mjs";
 
 const pinnedPiRoot = dirname(dirname(fileURLToPath(import.meta.resolve("@earendil-works/pi-coding-agent"))));
 
@@ -330,8 +331,8 @@ test("representative Pi TUI full and delta frame work stays within Dash budgets"
 
   const frameP95 = percentile(frameWork, 0.95);
   const deltaP95 = percentile(endToEnd, 0.95);
-  assert.ok(frameP95 < 16, `headless frame p95 ${frameP95.toFixed(2)}ms must stay below 16ms`);
-  assert.ok(deltaP95 < 50, `TUI delta p95 ${deltaP95.toFixed(2)}ms must stay below 50ms`);
+  reportPerformanceBudget(t, "headless frame p95", frameP95, 16);
+  reportPerformanceBudget(t, "TUI delta p95", deltaP95, 50);
   assert.ok(maximumChangedRows <= 1, `incremental updates changed ${maximumChangedRows} rows`);
 
   const resizeDurations = [];
@@ -344,9 +345,6 @@ test("representative Pi TUI full and delta frame work stays within Dash budgets"
     resizeDurations.push(performance.now() - start);
   }
   const resizeP95 = percentile(resizeDurations, 0.95);
-  t.diagnostic(
-    `shadow TUI p95: frame=${frameP95.toFixed(2)}ms, delta=${deltaP95.toFixed(2)}ms, resize=${resizeP95.toFixed(2)}ms`,
-  );
-  assert.ok(resizeP95 < 50, `rapid resize p95 ${resizeP95.toFixed(2)}ms must stay below 50ms`);
+  reportPerformanceBudget(t, "rapid resize p95", resizeP95, 50);
   tui.stop();
 });

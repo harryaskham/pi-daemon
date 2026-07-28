@@ -508,6 +508,13 @@ process appears per wake.
   inventory bootstrap budget through a binary hot-head with portable fallback,
   and keep its load-sensitive percentile benchmark in explicit manual acceptance
   rather than package, Nix, or installation gates.
+- [x] `bd-62ea39` Bound the clean package acceptance per stage rather than per
+  platform so host load cannot fail a healthy packaging gate, while a hung child
+  still fails fast and is attributed to the stage that hung. Move every residual
+  wall-clock budget to opt-in manual acceptance, retaining the measurements and
+  diagnostics in the standard suite. Bind the tool-adapter fixture socket from a
+  short root so a long ambient `TMPDIR` cannot break the platform `sun_path`
+  limit.
 
 ## 18. Completed scaffold board (historical PD identifiers)
 
