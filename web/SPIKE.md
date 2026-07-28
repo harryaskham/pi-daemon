@@ -36,7 +36,7 @@ The spike is production structure, not a disposable mock:
 | CodeMirror packages | exact `6.x` pins | MIT | IME-safe multiline editor, lazy Markdown support, accessible contenteditable surface. |
 | `@replit/codemirror-vim` | `6.3.0` | MIT | Real modal Vim behavior instead of a partial custom emulation. |
 | `lucide-react` | `1.24.0` | ISC | Tree-shaken, consistent accessible icon geometry; no font or network asset. |
-| `@playwright/test` | `1.61.1` | Apache-2.0 | Production-build keyboard, state, virtualization, responsive visual, and timing evidence. |
+| `@playwright/test` | `1.60.0` | Apache-2.0 | Production-build keyboard, state, virtualization, responsive visual, and timing evidence. Pinned to the nixpkgs `playwright-driver` version so `nix develop .#e2e` supplies runnable audited browsers. |
 | `vitest` | `4.1.10` | MIT | Fast pure split-tree and contract-fixture checks. |
 
 All direct npm dependencies are exact, lockfile-pinned, and local. There is no runtime CDN, fetched font, inline script, `eval`, or arbitrary extension code.

@@ -36,6 +36,7 @@ remain neutral service surfaces—not Cacophony components.
 - [Dash lazy session drafts](dashboard-session-drafts) — no-runtime create/cancel persistence and exact-once first-send crash checkpoints
 - [Neutral Dash service API](dashboard-service-api) — service-bearer inventory, preview, activation/export/lease routes and TUI negotiation for remote backends
 - [Dash v1 acceptance](dashboard-acceptance) — live embedded/dedicated receipts, browser/security/performance gates, and wall-clock soak status
+- [Dash browser acceptance](dash-e2e) — the Nix shell that supplies audited Playwright browsers, version-drift preflight, and opt-in wall-clock budgets
 - [Session configuration](session-configuration) — Pi CLI mapping, environment handling, resources, tools, and honest isolation limits
 - [Schedule contract](schedules) — versioned cron/timezone/prompt resources, durable bounded timers, recovery, clock and DST semantics
 - [Scheduler acceptance](scheduler-acceptance) — measured all-IANA DST, restart, overlap, secrecy, and accelerated-soak release gate

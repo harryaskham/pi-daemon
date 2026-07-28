@@ -28,7 +28,7 @@
         src = ./.;
 
         nodejs = pkgs.nodejs_24;
-        npmDepsHash = "sha256-ciikGh+PxsYOcVOGUc2hVe09AxtRjHpeFi8CJ26hMeQ=";
+        npmDepsHash = "sha256-fWetJxlUuDU84IwesGnTG28rzbv7LT7nLYwau/fqQ4w=";
         npmDepsFetcherVersion = 2;
         nativeBuildInputs = [pkgs.makeWrapper pkgs.openssl];
 
@@ -147,6 +147,7 @@
         test -s "$out/shadow-tui/index.html"
         test -s "$out/dashboard-ownership/index.html"
         test -s "$out/dashboard-service-api/index.html"
+        test -s "$out/dash-e2e/index.html"
         test -s "$out/dashboard-api.schema.json"
         test -s "$out/extension-view.schema.json"
         test -s "$out/declarative-extension-views/index.html"
@@ -190,17 +191,33 @@
 
     devShells = forAllSystems (system: let
       pkgs = import nixpkgs {inherit system;};
+      playwright = pkgs.playwright-driver;
+      commonPackages = [
+        pkgs.nodejs_24
+        pkgs.git
+        pkgs.jq
+        pkgs.just
+        pkgs.tmux
+      ];
     in {
       default = pkgs.mkShell {
-        packages = [
-          pkgs.nodejs_24
-          pkgs.git
-          pkgs.jq
-          pkgs.just
-          pkgs.tmux
-        ];
+        packages = commonPackages;
         shellHook = ''
           echo "pi-daemon dev shell: Node $(node --version), npm $(npm --version)"
+        '';
+      };
+      # Dash browser acceptance. The npm-downloaded Chromium cannot start on
+      # NixOS or other library-strict hosts, so this shell supplies the audited
+      # nixpkgs browser bundle instead of ad-hoc host packages. The npm
+      # @playwright/test pin must equal playwright.version; `npm run e2e:nix`
+      # verifies that before launching anything.
+      e2e = pkgs.mkShell {
+        packages = commonPackages;
+        PLAYWRIGHT_BROWSERS_PATH = "${playwright.browsers}";
+        PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = "1";
+        PI_DAEMON_PLAYWRIGHT_DRIVER_VERSION = playwright.version;
+        shellHook = ''
+          echo "pi-daemon dash e2e shell: Node $(node --version), Nix playwright-driver ${playwright.version}"
         '';
       };
     });

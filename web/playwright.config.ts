@@ -1,6 +1,10 @@
 import { defineConfig } from "@playwright/test";
 
 const port = Number(process.env.DASH_TEST_PORT ?? 4174);
+// The web server command type-checks and builds the SPA before serving it, so a
+// cold checkout needs far more than Playwright's short default. Keep it bounded
+// and overridable for slower or busier hosts (bd-185516).
+const webServerTimeout = Number(process.env.DASH_TEST_WEBSERVER_TIMEOUT_MS ?? 180_000);
 
 export default defineConfig({
   testDir: "./e2e",
@@ -16,6 +20,6 @@ export default defineConfig({
     command: `npm run build && npm run preview -- --host 127.0.0.1 --port ${port}`,
     url: `http://127.0.0.1:${port}/dash/`,
     reuseExistingServer: false,
-    timeout: 30_000,
+    timeout: webServerTimeout,
   },
 });

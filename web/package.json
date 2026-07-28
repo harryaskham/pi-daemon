@@ -12,6 +12,8 @@
     "build": "tsc --noEmit -p tsconfig.json && vite build --logLevel error",
     "test": "vitest run src/test",
     "e2e": "playwright test",
+    "e2e:nix": "node scripts/check-playwright-browsers.mjs && playwright test",
+    "e2e:check": "node scripts/check-playwright-browsers.mjs",
     "bundle:report": "node scripts/bundle-report.mjs",
     "capture": "node scripts/capture-artifacts.mjs"
   },
@@ -28,7 +30,7 @@
     "react-dom": "19.2.7"
   },
   "devDependencies": {
-    "@playwright/test": "1.61.1",
+    "@playwright/test": "1.60.0",
     "@types/react": "19.2.17",
     "@types/react-dom": "19.2.3",
     "@vitejs/plugin-react": "6.0.3",

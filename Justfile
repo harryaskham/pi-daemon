@@ -31,3 +31,9 @@ test-daemon-logs:
 
 test-daemon-attach:
     {{test-helper}} attach
+
+# Dash browser acceptance inside the Nix shell that supplies audited Playwright
+# browsers. Pass Playwright arguments through, e.g.
+# `just dash-e2e --grep 'dormant preview'`.
+dash-e2e *ARGS:
+    nix develop .#e2e --command npm run e2e:nix --workspace @harryaskham/pi-daemon-dash -- {{ARGS}}

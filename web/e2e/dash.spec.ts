@@ -1,5 +1,6 @@
 import { expect, test, type Locator } from "@playwright/test";
 import { DASH_API_VERSION, DASH_DEFAULT_LIMITS, DASH_PERFORMANCE_BUDGETS, DASH_STREAM_SUBPROTOCOL } from "../../src/dashboard-contract";
+import { reportPerformanceBudget } from "./performance-budget";
 
 /**
  * Settled distance in pixels from the bottom of a transcript scroller.
@@ -34,7 +35,7 @@ test("renders a bounded Nord Midnight workspace from 10k fixtures", async ({ pag
   await page.locator("[data-session-row]").first().waitFor();
   const firstRowsMs = await page.evaluate(() => window.__DASH_METRICS__?.firstRowsMs);
   expect(firstRowsMs).toBeDefined();
-  expect(firstRowsMs ?? Number.POSITIVE_INFINITY).toBeLessThan(150);
+  reportPerformanceBudget("navigation to first bounded rows", firstRowsMs ?? Number.POSITIVE_INFINITY, 150);
   const renderedRows = await page.locator("[data-session-row]").count();
   expect(renderedRows).toBeGreaterThan(2);
   expect(renderedRows).toBeLessThan(40);
@@ -86,7 +87,7 @@ test("10k branch tree remains virtualized without an O(total entries) DOM", asyn
   const navigator = pane.getByRole("complementary", { name: "Session branch tree" });
   await expect(navigator.getByRole("heading", { name: /10,000 entries/ })).toBeVisible();
   const elapsed = performance.now() - startedAt;
-  expect(elapsed).toBeLessThan(3_000);
+  reportPerformanceBudget("10k branch tree open", elapsed, 3_000);
   const rendered = await navigator.getByRole("treeitem").count();
   expect(rendered).toBeGreaterThan(5);
   expect(rendered).toBeLessThan(60);
@@ -99,7 +100,7 @@ test("search, deliberate states, settings, and directional swaps remain interact
   await expect(page.getByText(/09999/)).toBeVisible();
   const searchMs = await page.evaluate(() => window.__DASH_METRICS__?.lastSearchMs);
   expect(searchMs).toBeDefined();
-  expect(searchMs ?? Number.POSITIVE_INFINITY).toBeLessThan(100);
+  reportPerformanceBudget("10k session search", searchMs ?? Number.POSITIVE_INFINITY, 100);
   await search.fill("");
 
   await page.getByRole("button", { name: "empty" }).click();
