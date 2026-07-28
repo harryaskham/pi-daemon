@@ -12,6 +12,7 @@ import { DASH_DEFAULT_LIMITS } from "../dist/dashboard-contract.js";
 import { DASHBOARD_TUI_SUBPROTOCOL } from "../dist/session-api.js";
 import { runCli } from "../dist/cli.js";
 import { PiDaemonClient } from "../dist/client.js";
+import { assertCliExitCode } from "./cli-exit-diagnostics.mjs";
 import { FileDurabilityStore, wakeTicketId } from "../dist/durability.js";
 import { Multiplexer } from "../dist/multiplexer.js";
 import { FileSessionCatalog } from "../dist/session-catalog.js";
@@ -762,7 +763,7 @@ test("serve CLI enables an ephemeral loopback API without logging the bearer", a
       },
     },
   );
-  assert.equal(code, 0);
+  assertCliExitCode(code, 0, errors, "serve ephemeral loopback API");
   assert.deepEqual(output, []);
   assert.equal(errors.join("").includes(TOKEN), false);
   assert.equal(errors.join("").includes(temporaryRoot), false);
@@ -819,7 +820,7 @@ test("serve CLI generates and uses a stable default bearer when no external sour
       },
     },
   );
-  assert.equal(code, 0);
+  assertCliExitCode(code, 0, errors, "serve generated default bearer");
   assert.ok(generatedToken.length >= 16);
   assert.equal(errors.join("").includes(generatedToken), false);
   assert.equal(errors.join("").includes(temporaryRoot), false);

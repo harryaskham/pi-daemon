@@ -9,8 +9,14 @@ import { PiDaemonClient } from "../dist/client.js";
 
 const delay = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
+// A generous hang bound, not a performance budget: the daemon normally binds in
+// well under a second, but a loaded builder can deschedule a correct process for
+// many seconds. A genuinely hung or crashed daemon still fails fast through the
+// early `child.exitCode` check below rather than waiting for this bound.
+const SOCKET_HANG_BOUND_MS = 120_000;
+
 async function waitForSocket(path, child) {
-  const deadline = Date.now() + 10_000;
+  const deadline = Date.now() + SOCKET_HANG_BOUND_MS;
   while (Date.now() < deadline) {
     if (child.exitCode !== null) throw new Error(`daemon exited before listening: ${child.exitCode}`);
     try {
@@ -20,7 +26,9 @@ async function waitForSocket(path, child) {
     }
     await delay(20);
   }
-  throw new Error("daemon did not create its socket within 10 seconds");
+  throw new Error(
+    `daemon did not create its socket within ${SOCKET_HANG_BOUND_MS / 1_000} seconds`,
+  );
 }
 
 test("serve bootstraps an empty standalone instance before constructing the Pi factory", async (t) => {

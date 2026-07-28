@@ -625,7 +625,7 @@ test("restart requires adapter reprovisioning and never silently reopens no-tool
   );
 });
 
-test("session recovery open is deadline bounded and records degraded health", async () => {
+test("session recovery open is per-open deadline bounded and records degraded health", async () => {
   const stateDir = await temporaryState();
   const first = new FileDurabilityStore({ stateDir });
   await first.recover();
@@ -634,9 +634,9 @@ test("session recovery open is deadline bounded and records degraded health", as
     factory: new HangingOpenFactory(),
     durability: new FileDurabilityStore({ stateDir }),
   });
-  const started = Date.now();
-  const report = await mux.recover({ openTimeoutMs: 10, totalOpenTimeoutMs: 20 });
-  assert.ok(Date.now() - started < 500);
+  // The total deadline is deliberately 500x the per-open timeout so ambient host
+  // load cannot make the aggregate bound pre-empt the per-open bound under test.
+  const report = await mux.recover({ openTimeoutMs: 10, totalOpenTimeoutMs: 5_000 });
   assert.ok(
     report.failures.some((failure) => failure.code === "recovery_open_timeout"),
     JSON.stringify(report.failures),
@@ -648,6 +648,29 @@ test("session recovery open is deadline bounded and records degraded health", as
     (error) =>
       error instanceof MultiplexerError && error.code === "recovery_open_timeout",
   );
+});
+
+test("session recovery honors its total deadline before starting another runtime open", async () => {
+  const stateDir = await temporaryState();
+  const first = new FileDurabilityStore({ stateDir });
+  await first.recover();
+  await first.saveManifest(persistentOpenCommand(), conversationIdentity());
+  // An injected monotonic clock makes the aggregate deadline deterministic instead
+  // of racing a wall-clock window that host contention can widen arbitrarily.
+  let clock = 1_000_000;
+  const mux = new Multiplexer({
+    factory: new HangingOpenFactory(),
+    durability: new FileDurabilityStore({ stateDir }),
+    now: () => (clock += 1),
+  });
+  const report = await mux.recover({ openTimeoutMs: 30_000, totalOpenTimeoutMs: 1 });
+  assert.ok(
+    report.failures.some((failure) => failure.code === "recovery_deadline_exceeded"),
+    JSON.stringify(report.failures),
+  );
+  assert.equal(report.opened.length, 0);
+  assert.equal(mux.status().recovery.phase, "degraded");
+  assert.equal(mux.status().ready, false);
 });
 
 test("background recovery listens without waiting for queued model completion and reports truthful health", async () => {

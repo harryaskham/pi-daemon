@@ -14,6 +14,7 @@ import {
   loadPiDaemonConfig,
 } from "../dist/config.js";
 import { PiDaemonClient } from "../dist/client.js";
+import { assertCliExitCode } from "./cli-exit-diagnostics.mjs";
 
 class EmptyFactory {
   async open() {
@@ -333,6 +334,6 @@ api:
       },
     },
   );
-  assert.equal(code, 0);
+  assertCliExitCode(code, 0, logs, "serve configured instance");
   assert.equal(logs.join("").includes(root), false);
 });

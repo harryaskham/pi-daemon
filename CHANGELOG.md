@@ -5,6 +5,8 @@ semantic versioning once a release tag is cut.
 
 ## Unreleased
 
+- make the recovery-deadline and first-launch socket acceptances load-proof: assert the per-open and aggregate recovery bounds as two deterministic cases (the second on an injected monotonic clock) instead of a 10ms race, and replace the fixed 10-second bootstrap socket wait with a generous hang bound that still fails a crashed daemon immediately
+- report redacted structured CLI diagnostics when a `runCli(... serve ...)` exit-code assertion fails, replacing bare `1 !== 0` and raw log dumps with an allow-listed event/error-code summary that never carries bearer values, temporary roots, prompts, ports, or raw messages
 - move the load-sensitive 10,000-session inventory percentile benchmark to an explicit manual acceptance command so package, Nix, and installation gates retain deterministic correctness coverage without depending on ambient host contention
 - add protocol-v2 configured opens for strictly prepared per-session `agentDir` and confined `sessionDir` selection, preserving legacy v1 behavior while enabling external orchestrators to keep ordinary logical sessions in daemon state and reviewed Pi-home sessions in deterministic per-agent storage
 - add a discreet administrator-only Dash diagnostics panel beneath Settings, backed by authenticated embedded/dedicated parity and a bounded service-owned ring of normalized policy/failure events that never exposes raw logs, prompts, model output, paths, request bodies, credentials, environment, or bearer material

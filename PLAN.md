@@ -739,6 +739,12 @@ implementation order. This list is a human-readable crosswalk.
   API bearer, and non-overwriting per-instance Pi auth seeding.
 - [x] `bd-df5f19` — prebuild/cache aarch64-linux packages off-device so
   Nix-on-Droid never falls back to its native npm double-free path.
+- [x] `bd-79902f` — load-proof recovery-deadline and first-launch socket waits:
+  deterministic per-open and aggregate recovery cases plus a generous bootstrap
+  hang bound that still fails a crashed daemon immediately.
+- [x] `bd-f786ca` — redaction-safe shared CLI exit diagnostics so a failing
+  `serve` acceptance reports allow-listed structured event/error codes instead
+  of a bare exit-code mismatch or a raw log dump.
 - [ ] `bd-4e10da` — future neutral persisted per-session cron/prompt scheduler
   and durable wakes; detailed alongside Dash in `web/PLAN.md`.
   - [x] `bd-6d96bb` — v1 schedule resource/schema/fixtures, bounded owner-private

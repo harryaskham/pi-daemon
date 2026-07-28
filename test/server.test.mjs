@@ -11,6 +11,7 @@ import { FileDurabilityStore } from "../dist/durability.js";
 import { Multiplexer } from "../dist/multiplexer.js";
 import { ProtocolServer } from "../dist/server.js";
 import { PI_DAEMON_VERSION } from "../dist/version.js";
+import { assertCliExitCode } from "./cli-exit-diagnostics.mjs";
 
 const openCommand = (sessionId) => ({
   protocolVersion: "1.0",
@@ -637,7 +638,7 @@ test("serve shutdown honors one whole deadline when adapter disposal hangs", asy
       },
     },
   );
-  assert.equal(code, 0);
+  assertCliExitCode(code, 0, errors, "serve bounded shutdown");
   assert.ok(Date.now() - started < 1_000);
   assert.ok(
     errors.some((line) =>

@@ -6,6 +6,7 @@ import { join } from "node:path";
 import test from "node:test";
 
 import { runCli } from "../dist/cli.js";
+import { assertCliExitCode } from "./cli-exit-diagnostics.mjs";
 
 class EmptyFactory {
   opens = 0;
@@ -209,7 +210,7 @@ web:
       },
     },
   );
-  assert.equal(code, 0, logs.join(""));
+  assertCliExitCode(code, 0, logs, "serve embedded dashboard lifecycle");
   if (callbackError !== undefined) throw callbackError;
   await assert.rejects(fetch(`http://127.0.0.1:${webPort}/dash/`));
   await assert.rejects(fetch(`http://127.0.0.1:${apiPort}/v1/capabilities`));

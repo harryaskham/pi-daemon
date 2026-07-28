@@ -14,6 +14,7 @@ import { join } from "node:path";
 import test from "node:test";
 
 import { runCli } from "../dist/cli.js";
+import { assertCliExitCode } from "./cli-exit-diagnostics.mjs";
 import { generateTlsPair } from "./tls-fixture.mjs";
 
 const TOKEN = "dedicated-api-token-fixture-0123456789";
@@ -180,7 +181,7 @@ web:
       },
     },
   );
-  assert.equal(code, 0, logs.join(""));
+  assertCliExitCode(code, 0, logs, "dash serve dedicated");
   assert.equal(authenticatedRequests, 1);
   await assert.rejects(fetch(`http://127.0.0.1:${webPort}/dash/`));
 });
