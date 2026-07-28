@@ -30,6 +30,19 @@ Pi Daemon may use two session storage policies:
 - `daemon-owned` stores each managed conversation below a path-safe encoded
   session directory inside daemon state.
 
+The cwd-encoded project directory name (`--<encoded cwd>--`) is stock Pi
+behavior. Pi 0.80.6 implements it as `getDefaultSessionDir()` inside its
+internal `core/session-manager` module, which the package root does not
+re-export and the package `exports` map does not expose; the upstream helper
+also creates the directory with ambient permissions. Pi Daemon therefore owns
+one side-effect-free reproduction, `piDefaultSessionDirectoryName()` /
+`piDefaultSessionDirectory()` in `pi-sdk-contract`, and still creates every
+directory owner-private itself. `test/pi-sdk-compatibility.test.mjs` pins that
+reproduction against the real pinned SDK through its public API and fails when
+the encoding drifts or when a release starts exporting the helper, which is the
+signal to consume the upstream export (and the reason to prefer an upstream
+re-export of a path-only helper).
+
 Workload cwd remains independently constrained to configured allowed roots.
 Inventory sources must be owner-owned regular non-symlink files under explicit
 private source roots and may not overlap daemon state.

@@ -32,6 +32,7 @@ import {
   MultiplexerError,
   type OpenResult,
 } from "./multiplexer.js";
+import { piDefaultSessionDirectoryName } from "./pi-sdk-contract.js";
 import type { ProtocolCommand } from "./protocol.js";
 import { catalogRecordToSessionResource } from "./session-catalog.js";
 import {
@@ -827,7 +828,7 @@ export class SessionOwnershipService {
 
   async #piSessionDirForCwd(cwd: string): Promise<string> {
     const resolvedRoot = await realpath(this.piSessionsRoot);
-    const directory = join(resolvedRoot, piProjectDirectoryName(cwd));
+    const directory = join(resolvedRoot, piDefaultSessionDirectoryName(cwd));
     if (!isWithin(resolvedRoot, directory)) {
       throw new SessionOwnershipError(
         "session_storage_outside_pi_root",
@@ -1268,11 +1269,6 @@ async function assertPathAbsent(path: string): Promise<void> {
     throw error;
   }
   throw new SessionOwnershipError("export_collision", "export target already exists");
-}
-
-function piProjectDirectoryName(cwd: string): string {
-  const canonical = resolve(cwd);
-  return `--${canonical.replace(/^[/\\]/, "").replace(/[/\\:]/g, "-")}--`;
 }
 
 function deterministicManagedSessionId(

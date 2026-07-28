@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { mkdir, mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
+import * as piSdk from "@earendil-works/pi-coding-agent";
 import {
   AuthStorage,
   ModelRegistry,
@@ -12,11 +14,17 @@ import {
   createAgentSessionFromServices,
   createAgentSessionRuntime,
   createAgentSessionServices,
+  getAgentDir,
 } from "@earendil-works/pi-coding-agent";
 
 import {
   PI_SDK_COMPATIBILITY_VERSION,
+  PI_SDK_EXPORTS_DEFAULT_SESSION_DIR,
   PI_SESSION_EVENT_TYPES,
+  PI_SESSIONS_DIRECTORY_NAME,
+  piDefaultSessionDirectory,
+  piDefaultSessionDirectoryName,
+  piSdkDefaultSessionDirHelper,
 } from "../dist/pi-sdk-contract.js";
 import { PI_RPC_COMMAND_TYPES } from "../dist/session-api.js";
 
@@ -113,6 +121,80 @@ test("Pi AgentSessionRuntime replaces an in-memory session and rebinds the host"
   assert.notEqual(runtime.session.sessionId, firstSessionId);
   assert.equal(reboundSession, runtime.session);
   assert.equal(runtime.session.isIdle, true);
+});
+
+test("pinned Pi SDK derives the daemon's reproduced default session directory", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "pi-daemon-session-dir-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const agentDir = join(directory, "agent");
+  await mkdir(agentDir, { recursive: true });
+
+  const previousAgentDir = process.env.PI_CODING_AGENT_DIR;
+  process.env.PI_CODING_AGENT_DIR = agentDir;
+  t.after(() => {
+    if (previousAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
+    else process.env.PI_CODING_AGENT_DIR = previousAgentDir;
+  });
+  assert.equal(
+    getAgentDir(),
+    agentDir,
+    "pinned Pi must keep resolving its agent directory from PI_CODING_AGENT_DIR",
+  );
+
+  const workingDirectories = [
+    join(directory, "work"),
+    join(directory, "work", "nested project"),
+    join(directory, "dash-work.d"),
+  ];
+  for (const cwd of workingDirectories) {
+    await mkdir(cwd, { recursive: true });
+    // Stock Pi creates <agentDir>/sessions/--<encoded cwd>-- through its own
+    // internal helper; the public constructor is the only supported probe.
+    SessionManager.create(cwd);
+    const derived = piDefaultSessionDirectory(cwd, agentDir);
+    assert.equal(
+      derived,
+      join(agentDir, PI_SESSIONS_DIRECTORY_NAME, piDefaultSessionDirectoryName(cwd)),
+      "the exported helpers must agree on one encoding",
+    );
+    assert.ok(existsSync(derived), `pinned Pi did not create ${derived}`);
+  }
+
+  const created = (await readdir(join(agentDir, PI_SESSIONS_DIRECTORY_NAME))).sort();
+  assert.deepEqual(
+    created,
+    workingDirectories.map((cwd) => piDefaultSessionDirectoryName(cwd)).sort(),
+    "pinned Pi created session directories the daemon reproduction does not name",
+  );
+  assert.ok(created.every((name) => name.startsWith("--") && name.endsWith("--")));
+});
+
+test("default session directory adoption tracks the pinned Pi export surface", async (t) => {
+  const helper = piSdkDefaultSessionDirHelper(piSdk);
+  assert.equal(
+    helper !== undefined,
+    PI_SDK_EXPORTS_DEFAULT_SESSION_DIR,
+    "Pi's exported surface drifted: update PI_SDK_EXPORTS_DEFAULT_SESSION_DIR and consume the upstream helper in src/pi-sdk-contract.ts",
+  );
+  assert.equal(
+    piSdkDefaultSessionDirHelper({ getDefaultSessionDir: (cwd) => `probe:${cwd}` })?.("/tmp/x"),
+    "probe:/tmp/x",
+    "the adoption seam must recognize an exported helper",
+  );
+  assert.equal(piSdkDefaultSessionDirHelper(undefined), undefined);
+  assert.equal(piSdkDefaultSessionDirHelper({ getDefaultSessionDir: "not-callable" }), undefined);
+  if (helper === undefined) return;
+
+  const directory = await mkdtemp(join(tmpdir(), "pi-daemon-session-dir-export-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const agentDir = join(directory, "agent");
+  const cwd = join(directory, "work");
+  await Promise.all([mkdir(agentDir), mkdir(cwd)]);
+  assert.equal(
+    helper(cwd, agentDir),
+    piDefaultSessionDirectory(cwd, agentDir),
+    "the upstream helper disagrees with the daemon reproduction",
+  );
 });
 
 test("Pi npm shrinkwrap dependencies retain integrity for Nix prefetch", async () => {
