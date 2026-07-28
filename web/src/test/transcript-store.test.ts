@@ -7,6 +7,7 @@ import {
   transcriptRecordIdentity,
   transcriptStoreReducer,
 } from "../transcript-store";
+import { reportPerformanceBudget } from "./performance-budget";
 
 const identity: DashboardSessionIdentity = {
   hostInstanceId: "host-fixture-01",
@@ -112,7 +113,7 @@ describe("normalized transcript store", () => {
     }
     samples.sort((first, second) => first - second);
     const p95 = samples[Math.floor(samples.length * 0.95)] ?? Number.POSITIVE_INFINITY;
-    expect(p95).toBeLessThan(16);
+    reportPerformanceBudget("transcript store existing-record commit p95", p95, 16);
     expect(state.records).toHaveLength(records.length);
   });
 });

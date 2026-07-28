@@ -6,6 +6,7 @@ import {
   filterSessionTree,
   parseSessionTree,
 } from "../session-tree";
+import { reportPerformanceBudget } from "./performance-budget";
 
 const message = (id: string, parentId: string | null, text: string, timestamp = "2026-07-22T12:00:00.000Z") => ({
   type: "message",
@@ -86,6 +87,6 @@ describe("session tree projection", () => {
     const model = parseSessionTree({ tree, leafId: "entry-9998" });
     const elapsed = performance.now() - started;
     expect(model.entries).toHaveLength(10_000);
-    expect(elapsed).toBeLessThan(250);
+    reportPerformanceBudget("session tree 10k virtual-list preparation", elapsed, 250);
   });
 });

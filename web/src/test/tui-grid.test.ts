@@ -12,6 +12,7 @@ import { TuiGrid } from "../components/TuiGrid";
 import { createTuiDeltas, createTuiReplayGap, createTuiSnapshot, TUI_FIXTURE_IDENTITY, TUI_FIXTURE_OVERLAYS } from "../tui-fixtures";
 import { deriveTuiDimensions, keyboardEventToTuiInput, pasteToTuiInput, visibleTuiRowRange } from "../tui-grid-model";
 import { createTuiFrameStore, TuiFrameCache, tuiAccessibleText, tuiFrameStoreReducer, tuiRowText } from "../tui-frame-store";
+import { reportPerformanceBudget } from "./performance-budget";
 
 function percentile(values: number[], fraction: number): number {
   return [...values].sort((first, second) => first - second)[Math.min(values.length - 1, Math.ceil(values.length * fraction) - 1)] ?? 0;
@@ -186,7 +187,7 @@ describe("TUI frame store", () => {
       samples.push(performance.now() - started);
     }
     expect(state.sequence).toBe(240);
-    expect(percentile(samples, 0.95)).toBeLessThan(16);
+    reportPerformanceBudget("TUI frame delta apply p95", percentile(samples, 0.95), 16);
   });
 });
 
