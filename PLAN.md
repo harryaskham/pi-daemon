@@ -751,6 +751,10 @@ implementation order. This list is a human-readable crosswalk.
 - [x] `bd-ad9ef9` — remote Dashboard Rich and TUI attachment transports split
   into focused internal modules over shared transport primitives, with
   `RemoteDashboardBackend` retained as the public orchestration/export seam.
+- [x] `bd-94d7df` — Rich/TUI presentation switches keep the reader's place in
+  the transcript, anchored on settled distance from the bottom, with the
+  browser acceptance rewritten to measure a settled anchor instead of two
+  pre-hydration zeros.
 - [ ] `bd-4e10da` — future neutral persisted per-session cron/prompt scheduler
   and durable wakes; detailed alongside Dash in `web/PLAN.md`.
   - [x] `bd-6d96bb` — v1 schedule resource/schema/fixtures, bounded owner-private

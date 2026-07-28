@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   AlertCircle,
@@ -38,6 +38,9 @@ interface ChatPaneProps {
   onToggleVim(): void;
   onSubmit(value: string): void | boolean | Promise<void | boolean>;
 }
+
+/** Frames to keep re-applying the reading anchor after the Rich layer is shown. */
+const RESTORE_FRAMES = 4;
 
 function SkeletonTranscript() {
   return <div className="transcript-skeleton" aria-label="Loading transcript"><i /><i /><i /><i /><i /></div>;
@@ -171,6 +174,57 @@ export function commandNames(value: DashboardLiveSessionState["availableCommands
   return [...new Set(names)];
 }
 
+/**
+ * Distance in pixels between the bottom of the rendered transcript and the
+ * bottom of its viewport. This is the stable reading anchor across a
+ * presentation switch: absolute `scrollTop` is not comparable, because dynamic
+ * virtualizer measurement changes the total size for the same reading position.
+ */
+export function transcriptDistanceFromBottom(
+  scrollHeight: number,
+  scrollTop: number,
+  clientHeight: number,
+): number {
+  const distance = scrollHeight - scrollTop - clientHeight;
+  return Number.isFinite(distance) && distance > 0 ? distance : 0;
+}
+
+/**
+ * `scrollTop` that restores a recorded reading anchor in the current layout.
+ * Clamped into the scrollable range so a shrunken transcript lands on the
+ * latest record rather than at a negative or unreachable offset.
+ */
+export function restoredTranscriptScrollTop(
+  scrollHeight: number,
+  clientHeight: number,
+  distanceFromBottom: number,
+): number {
+  const maxScrollTop = scrollHeight - clientHeight;
+  if (!Number.isFinite(maxScrollTop) || maxScrollTop <= 0) return 0;
+  const anchored = maxScrollTop - Math.max(0, distanceFromBottom);
+  return Math.min(maxScrollTop, Math.max(0, anchored));
+}
+
+/**
+ * Height to record for one transcript row.
+ *
+ * The Rich presentation layer is hidden, not unmounted, when a pane switches to
+ * TUI. Hiding it collapses every observed row to zero height, and the
+ * virtualizer's element observer would otherwise cache those zeros, shrink the
+ * total size, and displace the reading position on the way back. A non-positive
+ * measurement therefore means "not currently laid out" and keeps the last known
+ * size instead of overwriting it.
+ */
+export function measuredRecordHeight(
+  measured: number,
+  cached: number | undefined,
+  estimated: number,
+): number {
+  if (Number.isFinite(measured) && measured > 0) return measured;
+  if (cached !== undefined && Number.isFinite(cached) && cached > 0) return cached;
+  return estimated;
+}
+
 export function modelLabel(value: unknown): string {
   if (typeof value === "string") return value;
   if (typeof value !== "object" || value === null || Array.isArray(value)) return "unknown";
@@ -203,6 +257,10 @@ export function ChatPane({
 }: ChatPaneProps) {
   const paneRef = useRef<HTMLDivElement>(null);
   const scrollerRef = useRef<HTMLDivElement>(null);
+  const readingAnchorRef = useRef(0);
+  const laidOutRef = useRef(false);
+  const restoringRef = useRef(false);
+  const lastLayoutRef = useRef<{ width: number; height: number }>(undefined);
   const [treeOpen, setTreeOpen] = useState(false);
   const composer = liveComposerPresentation(
     liveState,
@@ -215,11 +273,25 @@ export function ChatPane({
       (liveState.info?.managed === undefined || mode === "reuse"),
   );
   const shownRecords = useMemo(() => fixtureMode && demoState === "empty" ? [] : records, [demoState, fixtureMode, records]);
+  const estimateRecordSize = useCallback(
+    (index: number) => shownRecords[index]?.kind === "tool" ? 126 : shownRecords[index]?.kind === "timeline" ? 56 : 132,
+    [shownRecords],
+  );
   const virtualizer = useVirtualizer({
     count: shownRecords.length,
     getScrollElement: () => scrollerRef.current,
-    estimateSize: (index) => shownRecords[index]?.kind === "tool" ? 126 : shownRecords[index]?.kind === "timeline" ? 56 : 132,
-    measureElement: (element) => element.getBoundingClientRect().height,
+    estimateSize: estimateRecordSize,
+    measureElement: (element, _entry, instance) => {
+      const index = instance.indexFromElement(element);
+      const cached = index < 0
+        ? undefined
+        : instance.itemSizeCache.get(instance.options.getItemKey(index));
+      return measuredRecordHeight(
+        element.getBoundingClientRect().height,
+        cached,
+        index < 0 ? 132 : estimateRecordSize(index),
+      );
+    },
     overscan: 7,
   });
 
@@ -234,15 +306,76 @@ export function ChatPane({
     requestAnimationFrame(() => virtualizer.scrollToIndex(shownRecords.length - 1, { align: "end" }));
   }, [session.inventoryId, shownRecords.length]);
 
+  // Track the reading anchor while the Rich layer is laid out, so switching to
+  // TUI and back returns the reader to the same place in the transcript.
+  useEffect(() => {
+    const scroller = scrollerRef.current;
+    if (scroller === null) return;
+    const record = (): void => {
+      if (restoringRef.current || scroller.clientHeight === 0) return;
+      readingAnchorRef.current = transcriptDistanceFromBottom(
+        scroller.scrollHeight,
+        scroller.scrollTop,
+        scroller.clientHeight,
+      );
+    };
+    scroller.addEventListener("scroll", record, { passive: true });
+    return () => scroller.removeEventListener("scroll", record);
+  }, []);
+
   useEffect(() => {
     const pane = paneRef.current;
     if (!pane || typeof ResizeObserver === "undefined") return;
     let frame = 0;
     const observer = new ResizeObserver(() => {
       const bounds = pane.getBoundingClientRect();
-      if (bounds.width === 0 || bounds.height === 0 || pane.hidden) return;
+      if (bounds.width === 0 || bounds.height === 0 || pane.hidden) {
+        // Switching to TUI hides this layer, which collapses the scroller and
+        // makes the browser replay a scroll event on the way back. Freeze the
+        // reading anchor until the restore below has finished.
+        laidOutRef.current = false;
+        restoringRef.current = true;
+        return;
+      }
+      const resized = laidOutRef.current === false
+        ? lastLayoutRef.current !== undefined &&
+          (Math.abs(lastLayoutRef.current.width - bounds.width) > 1 ||
+            Math.abs(lastLayoutRef.current.height - bounds.height) > 1)
+        : true;
+      const restoring = !laidOutRef.current;
+      laidOutRef.current = true;
+      lastLayoutRef.current = { width: bounds.width, height: bounds.height };
       cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(() => virtualizer.measure());
+      // Re-anchor across a few frames: rows that were only estimated while the
+      // layer was hidden report their real height as they come back into view,
+      // which keeps moving the transcript's total size for a short while.
+      const reanchor = (remaining: number): void => {
+        const scroller = scrollerRef.current;
+        if (scroller === null || scroller.clientHeight === 0) {
+          restoringRef.current = false;
+          return;
+        }
+        const target = restoredTranscriptScrollTop(
+          scroller.scrollHeight,
+          scroller.clientHeight,
+          readingAnchorRef.current,
+        );
+        if (Math.abs(scroller.scrollTop - target) > 1) scroller.scrollTop = target;
+        if (remaining > 0) {
+          frame = requestAnimationFrame(() => reanchor(remaining - 1));
+          return;
+        }
+        restoringRef.current = false;
+      };
+      frame = requestAnimationFrame(() => {
+        // `measure()` clears every measured row height, so calling it when the
+        // pane merely reappeared at its previous size would replace real
+        // heights with estimates and move the transcript out from under the
+        // reader. Only remeasure when the pane genuinely changed size.
+        if (resized) virtualizer.measure();
+        if (!restoring) return;
+        frame = requestAnimationFrame(() => reanchor(RESTORE_FRAMES));
+      });
     });
     observer.observe(pane);
     return () => {

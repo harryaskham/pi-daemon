@@ -1,7 +1,12 @@
 import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 
-import { liveComposerPresentation } from "../components/ChatPane";
+import {
+  liveComposerPresentation,
+  measuredRecordHeight,
+  restoredTranscriptScrollTop,
+  transcriptDistanceFromBottom,
+} from "../components/ChatPane";
 import type { DashboardLiveSessionState } from "../dashboard-live-session";
 
 function previewState(
@@ -117,5 +122,46 @@ describe("preview composer layout", () => {
     );
     expect(source).not.toContain("live-state-card");
     expect(source).not.toContain('aria-label="Session action required"');
+  });
+});
+
+describe("transcript reading anchor across a presentation switch", () => {
+  it("measures the anchor as distance from the bottom, never negative", () => {
+    expect(transcriptDistanceFromBottom(24_329, 21_000, 800)).toBe(2_529);
+    expect(transcriptDistanceFromBottom(24_329, 23_529, 800)).toBe(0);
+    // Overscrolled or mid-relayout values must not produce a negative anchor.
+    expect(transcriptDistanceFromBottom(1_000, 900, 200)).toBe(0);
+    expect(transcriptDistanceFromBottom(Number.NaN, 0, 800)).toBe(0);
+  });
+
+  it("restores the same reading anchor after the total size is remeasured", () => {
+    // Same "111px from the bottom" reading position, two different total sizes.
+    expect(restoredTranscriptScrollTop(24_329, 800, 111)).toBe(23_418);
+    expect(restoredTranscriptScrollTop(22_658, 800, 111)).toBe(21_747);
+    expect(
+      transcriptDistanceFromBottom(22_658, restoredTranscriptScrollTop(22_658, 800, 111), 800),
+    ).toBe(111);
+  });
+
+  it("clamps a restored anchor into the current scroll range", () => {
+    // Anchor deeper than the transcript is now tall: land on the latest record.
+    expect(restoredTranscriptScrollTop(1_200, 800, 5_000)).toBe(0);
+    // Nothing to scroll at all.
+    expect(restoredTranscriptScrollTop(800, 800, 111)).toBe(0);
+    expect(restoredTranscriptScrollTop(600, 800, 111)).toBe(0);
+    // Pinned to the bottom stays pinned to the bottom.
+    expect(restoredTranscriptScrollTop(24_329, 800, 0)).toBe(23_529);
+  });
+
+  it("never caches the zero heights a hidden Rich layer reports", () => {
+    // Laid out: trust the live measurement.
+    expect(measuredRecordHeight(148, 132, 132)).toBe(148);
+    // Hidden by the presentation switch: keep the last known size.
+    expect(measuredRecordHeight(0, 148, 132)).toBe(148);
+    // Hidden before it was ever measured: fall back to the estimate.
+    expect(measuredRecordHeight(0, undefined, 126)).toBe(126);
+    expect(measuredRecordHeight(0, 0, 126)).toBe(126);
+    expect(measuredRecordHeight(Number.NaN, undefined, 132)).toBe(132);
+    expect(measuredRecordHeight(-4, 132, 126)).toBe(132);
   });
 });

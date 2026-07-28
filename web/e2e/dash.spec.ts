@@ -1,5 +1,30 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Locator } from "@playwright/test";
 import { DASH_API_VERSION, DASH_DEFAULT_LIMITS, DASH_PERFORMANCE_BUDGETS, DASH_STREAM_SUBPROTOCOL } from "../../src/dashboard-contract";
+
+/**
+ * Settled distance in pixels from the bottom of a transcript scroller.
+ *
+ * Reading `scrollTop` straight after navigation or a presentation switch races
+ * the autoscroll and the virtualizer's dynamic measurement, so an unsettled
+ * read compares pre-hydration zeros and proves nothing. Distance from the
+ * bottom is also the only quantity comparable across a switch: dynamic
+ * measurement changes the total size for the same reading position.
+ */
+async function settledDistanceFromBottom(scroller: Locator): Promise<number> {
+  await scroller.locator("[data-transcript-row]").first().waitFor();
+  let stable = 0;
+  let previous = Number.NaN;
+  for (let attempt = 0; attempt < 40 && stable < 3; attempt += 1) {
+    const sample = await scroller.evaluate(
+      (element) => element.scrollHeight - element.scrollTop - element.clientHeight,
+    );
+    stable = Math.abs(sample - previous) <= 1 ? stable + 1 : 0;
+    previous = sample;
+    if (stable < 3) await scroller.page().waitForTimeout(50);
+  }
+  expect(stable, "transcript scroll position never settled").toBeGreaterThanOrEqual(3);
+  return Math.max(0, previous);
+}
 
 test("renders a bounded Nord Midnight workspace from 10k fixtures", async ({ page }) => {
   await page.goto("./?fixture=1");
@@ -509,7 +534,13 @@ test("TUI presentation streams one canonical controller grid to read-only pane m
   await page.goto("./?fixture=1&state=ready");
   const primary = page.locator('[data-pane-id="primary"]');
   const richScroller = primary.locator(".transcript");
-  const richScrollTop = await richScroller.evaluate((element) => element.scrollTop);
+  // Contract: the Rich layer is hidden, not unmounted, so returning from TUI
+  // restores the reader's place in the transcript rather than jumping.
+  await richScroller.evaluate((element) => {
+    element.scrollTop = Math.max(0, element.scrollHeight - element.clientHeight - 900);
+  });
+  const readingAnchor = await settledDistanceFromBottom(richScroller);
+  expect(readingAnchor).toBeGreaterThan(100);
   await primary.getByRole("button", { name: "Switch to TUI presentation" }).click();
   await expect(primary.locator(".tui-grid")).toHaveAttribute("data-role", "controller");
   await expect(primary.locator(".tui-grid__row").first()).toContainText("Pi Daemon Dash");
@@ -527,8 +558,8 @@ test("TUI presentation streams one canonical controller grid to read-only pane m
   await expect(primary.locator(".tui-grid__row").filter({ hasText: "terminal input · paste bounded paste" })).toHaveCount(1);
   await primary.getByRole("button", { name: "Rich" }).click();
   await expect(primary.locator(".transcript")).toBeVisible();
-  const restoredScrollTop = await primary.locator(".transcript").evaluate((element) => element.scrollTop);
-  expect(Math.abs(restoredScrollTop - richScrollTop)).toBeLessThan(200);
+  const restoredAnchor = await settledDistanceFromBottom(primary.locator(".transcript"));
+  expect(Math.abs(restoredAnchor - readingAnchor)).toBeLessThan(32);
   await primary.getByRole("button", { name: "Switch to TUI presentation" }).click();
 
   await primary.getByRole("button", { name: "Split pane horizontally" }).click();

@@ -5,6 +5,7 @@ semantic versioning once a release tag is cut.
 
 ## Unreleased
 
+- preserve the Dash transcript reading position across a Rich/TUI presentation switch: anchor on settled distance from the bottom instead of an unstable `scrollTop`, stop discarding measured row heights when the hidden layer reappears at an unchanged size, and never cache the zero heights a hidden layer reports
 - split the remote Dashboard backend transport into focused internal modules: shared client/limits/error/frame primitives in `dashboard-remote-transport.ts`, the framed-RPC hub in `dashboard-remote-rich-hub.ts`, and the shadow-TUI hub in `dashboard-remote-tui-hub.ts`, leaving `dashboard-remote-backend.ts` as the published orchestration and re-export seam with unchanged package behavior
 - track stock Pi's default session-directory encoding through one exported, side-effect-free `pi-sdk-contract` helper instead of a private copy inside session ownership, and pin it against the real SDK: the compatibility test proves the pinned release creates exactly the directories the daemon derives and fails when either the encoding or the still-absent `getDefaultSessionDir` root export drifts
 - extract neutral Dashboard HTTP route parsing/dispatch out of the core API server into `api-dashboard-routes.ts` behind a small router interface, with shared request-contract primitives in `api-request-contract.ts`, so admission still runs before routing and the server keeps sole ownership of bounded bodies, response envelopes, and WebSocket upgrades

@@ -380,6 +380,36 @@ countdown regardless of pane focus; an unseen completion adds, rather than
 replaces it with, the white unread ring. Older compatible daemons receive no
 placeholder schedule controls or inferred timers.
 
+## Presentation switching preserves the reading position
+
+A workspace pane can show one logical session as either the Rich transcript or
+the canonical TUI. Switching between them hides the inactive presentation layer
+rather than unmounting it, so composer text, tree state, and channel identity
+survive the switch. The transcript's **reading position** is part of that
+preserved state: returning from TUI puts the reader back where they were, it
+does not jump to the latest record.
+
+Two rules make that contract hold under a dynamically measured virtual list:
+
+- the reading anchor is **distance from the bottom**, not `scrollTop`. Absolute
+  offsets are not comparable across a remeasure, because dynamic row
+  measurement changes the transcript's total size for the same reading
+  position; and
+- reappearing at an unchanged pane size must not discard measured row heights.
+  A full remeasure replaces real heights with estimates, which moves the
+  transcript out from under the reader even though nothing was resized. Row
+  heights are also never overwritten with the zero heights a hidden layer
+  reports.
+
+A genuine pane resize still remeasures, and then re-anchors the reader to the
+same distance from the bottom over the following frames while newly visible
+rows report their real heights.
+
+Acceptance for this contract must compare **settled** measurements: a
+`scrollTop` read taken immediately after navigation or a switch races the
+autoscroll and the first measurement pass, so it can compare two pre-hydration
+zeros and prove nothing.
+
 ## Workspace and settings
 
 The server-authoritative workspace is a revisioned binary split tree of leaf
