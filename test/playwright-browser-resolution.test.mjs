@@ -133,8 +133,24 @@ test("the repository wires one documented Nix path for Dash browser acceptance",
   assert.match(flake, /PI_DAEMON_PLAYWRIGHT_DRIVER_VERSION = playwright\.version/);
 
   const scripts = JSON.parse(webPackage).scripts;
-  assert.equal(scripts["e2e:nix"], "node scripts/check-playwright-browsers.mjs && playwright test");
-  assert.equal(scripts["e2e:check"], "node scripts/check-playwright-browsers.mjs");
+  // Assert the properties that matter, not the literal command line. Adding a
+  // preflight step to this pipeline is a legitimate change and must not fail a
+  // test named for whether the path is wired at all (bd-228b91).
+  const e2eNix = scripts["e2e:nix"];
+  const stages = e2eNix.split("&&").map((stage) => stage.trim());
+  // The browsers preflight runs first, so a version mismatch is reported before
+  // a build or a browser launch is attempted.
+  assert.equal(stages[0], "node scripts/check-playwright-browsers.mjs");
+  // The run ends by invoking Playwright.
+  assert.match(stages[stages.length - 1], /^playwright test\b/);
+  // Chained with && throughout, so a failed preflight stops the run rather than
+  // letting the suite start against a broken environment.
+  assert.ok(stages.length >= 2, `expected a chained pipeline, got: ${e2eNix}`);
+  assert.ok(
+    stages.every((stage) => stage.length > 0),
+    `every stage must be non-empty, got: ${e2eNix}`,
+  );
+  assert.match(scripts["e2e:check"], /^node scripts\/check-playwright-browsers\.mjs\b/);
 
   assert.match(justfile, /^dash-e2e \*ARGS:$/m);
   assert.match(justfile, /nix develop \.#e2e --command npm run e2e:nix/);
