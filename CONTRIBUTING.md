@@ -79,6 +79,13 @@ signal only; `npmDepsHash` remains the value Nix actually verifies.
 When a grouped dependency pull request goes red on that fast check, pull the
 branch, run the refresh command, and push the updated `flake.nix`.
 
+`npm test` needs an `openssl` binary: `test/tls-fixture.mjs` issues a real
+certificate pair for the TLS and credential fail-closed cases, and `node:crypto`
+cannot do that — its `X509Certificate` is parse-only. Both dev shells provide it,
+and `OPENSSL_BIN` points the fixture at a specific binary if yours is elsewhere.
+Those cases must never be skipped when it is absent; they are the security
+coverage, and a skip would turn the gate green while it silently disappears.
+
 ## Nix formatting
 
 `flake.nix` declares `alejandra` as the repository formatter and the Nix sources

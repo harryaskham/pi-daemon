@@ -11,11 +11,15 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import test from "node:test";
+import test, { before } from "node:test";
 
 import { runCli } from "../dist/cli.js";
 import { assertCliExitCode } from "./cli-exit-diagnostics.mjs";
-import { generateTlsPair } from "./tls-fixture.mjs";
+import { assertOpensslAvailable, generateTlsPair } from "./tls-fixture.mjs";
+
+// Name the missing dependency once, up front, rather than letting the TLS case
+// fail with a bare spawn ENOENT that reads like a product fault.
+before(assertOpensslAvailable);
 
 const TOKEN = "dedicated-api-token-fixture-0123456789";
 

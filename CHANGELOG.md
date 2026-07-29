@@ -5,8 +5,8 @@ semantic versioning once a release tag is cut.
 
 ## Unreleased
 
+- make the test suite's environmental dependencies explicit instead of accidental: `test/tls-fixture.mjs` now fails with a message naming `openssl`, the `OPENSSL_BIN` override, and the lane that lacks it rather than a bare spawn `ENOENT`, both dev shells and the plain Node CI lane provide the binary from the pinned nixpkgs, and the two permission fixtures that a restrictive umask silently turned owner-only now state their mode explicitly so the fail-closed assertions cannot pass vacuously
 - keep the bounded-shutdown acceptance semantic rather than wall-clock: the `adapter_dispose_timeout`/`host_shutdown_timeout` event remains the proof that shutdown is bounded, while the elapsed-time check becomes a generous hang bound so host load cannot fail the gate on unchanged code
-
 - fail the Dash browser suite fast and self-describingly when the audited browser cannot start: a launch preflight runs the exact shared launch options before the suite and reports the browser's own diagnostics plus browsers path, launch arguments, uid, `/dev/shm` capacity, and user-namespace availability, instead of Playwright's causeless `Target page, context or browser has been closed` repeated once per scenario minutes into a run
 - add a source-only build path for focused test loops: `npm run build:src` compiles `src/**` and reuses the already-built Dash SPA instead of rerunning a production Vite build, `npm run test:src -- <file>` drives a single Node test through it (about 17 seconds instead of 46), and `npm test`, packaging, Nix, and release paths keep running the full build so nothing ships without the SPA
 - converge the Nix sources on the `alejandra` formatter the flake already declared and gate them on it, so a narrow Nix change no longer inherits unrelated reformatting churn; `just nix-fmt` formats and CI verifies before the long flake check

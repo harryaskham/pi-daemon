@@ -770,6 +770,9 @@ implementation order. This list is a human-readable crosswalk.
   and gated on it, landed as a separate inert reformat plus its check.
 - [x] `bd-acd227` — source-only compile plus a focused Node test loop, with the
   full build retained as the authoritative packaging, Nix, and release gate.
+- [x] `bd-7cba4b` — the Node CI lane's undeclared `openssl` dependency declared
+  and provided, with a self-describing failure, plus the umask-dependent
+  permission fixtures that were failing the same lane for an unrelated reason.
 - [ ] `bd-4e10da` — future neutral persisted per-session cron/prompt scheduler
   and durable wakes; detailed alongside Dash in `web/PLAN.md`.
   - [x] `bd-6d96bb` — v1 schedule resource/schema/fixtures, bounded owner-private

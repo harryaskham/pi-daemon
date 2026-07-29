@@ -100,6 +100,12 @@ identities:
 
   const secretPath = join(root, "owner.secret");
   await writeFile(secretPath, `${OWNER_TOKEN}\n`, { mode: 0o644 });
+  // The point of this case is a group/world-readable credential, so set the
+  // mode explicitly: `writeFile` masks its mode with the ambient umask, and a
+  // restrictive one silently produces an owner-only file with nothing to
+  // reject. That is how this assertion failed on a CI runner while passing
+  // locally.
+  await chmod(secretPath, 0o644);
   const providerPath = join(root, "provider.yaml");
   await writeFile(providerPath, `type: static
 identities:

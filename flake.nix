@@ -213,6 +213,9 @@
         pkgs.jq
         pkgs.just
         pkgs.tmux
+        # test/tls-fixture.mjs issues a certificate pair with it; node:crypto
+        # cannot, so `npm test` needs it on PATH.
+        pkgs.openssl
       ];
     in {
       default = pkgs.mkShell {

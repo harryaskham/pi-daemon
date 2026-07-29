@@ -16,7 +16,7 @@ import { connect } from "node:net";
 import { connect as tlsConnect } from "node:tls";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import test from "node:test";
+import test, { before } from "node:test";
 
 import WebSocket from "ws";
 
@@ -30,7 +30,11 @@ import { loadPiDaemonConfig } from "../dist/config.js";
 import { DashboardServer, createDashboardServerFromConfig } from "../dist/dashboard-server.js";
 import { DashboardSettingsStore, DashboardWorkspaceStore } from "../dist/dashboard-store.js";
 import { loadDashboardTls } from "../dist/dashboard-tls.js";
-import { generateTlsPair } from "./tls-fixture.mjs";
+import { assertOpensslAvailable, generateTlsPair } from "./tls-fixture.mjs";
+
+// Name the missing dependency once, up front, rather than letting each TLS case
+// fail with a bare spawn ENOENT that reads like a product fault.
+before(assertOpensslAvailable);
 
 const CREDENTIAL = "dashboard-server-fixture-credential-012345";
 const ADMIN_CREDENTIAL = "dashboard-server-admin-credential-012345";

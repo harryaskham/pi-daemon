@@ -18,6 +18,13 @@ test("the flake declares a formatter and CI gates the tree on it", async () => {
   assert.notEqual(check, -1, "CI must verify Nix formatting");
   // Cheap and decisive, so it must not sit behind the long flake check.
   assert.equal(check < ci.indexOf("nix flake check"), true);
+  // Formatting is a property of the repository text, so one platform settles
+  // it. The second copy only cost a from-source formatter build on macOS.
+  assert.match(
+    ci.slice(check - 200, check),
+    /if: matrix\.name == 'Linux x86_64'/,
+    "the format check should run on one platform",
+  );
 });
 
 test("the formatter is reachable through the same Justfile surface as the other gates", async () => {

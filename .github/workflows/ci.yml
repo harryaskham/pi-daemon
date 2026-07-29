@@ -32,6 +32,17 @@ jobs:
       # pinned flake npmDepsHash, so say so here in seconds instead of letting
       # every Nix job fail later with a bare fixed-output mismatch.
       - run: npm run nix:deps-hash:fast
+      # test/tls-fixture.mjs issues a real certificate pair, which node:crypto
+      # cannot do — X509Certificate is parse-only — so openssl is a genuine
+      # dependency of the suite. The Nix lanes get it from flake.nix; this lane
+      # used to rely on whatever the runner image happened to provide, and when
+      # that was nothing the TLS and credential fail-closed cases failed with a
+      # bare spawn ENOENT that read like a product fault.
+      - name: Provide the TLS fixture's openssl dependency
+        run: |
+          openssl_out="$(nix build --no-link --print-out-paths --inputs-from . 'nixpkgs#openssl.bin')"
+          echo "OPENSSL_BIN=$openssl_out/bin/openssl" >> "$GITHUB_ENV"
+        timeout-minutes: 10
       - run: npm test
       - run: npm run pack:check
 
@@ -55,8 +66,13 @@ jobs:
       # Cheap and decisive, so it runs before the long check: the tree must stay
       # converged on the formatter the flake itself declares, otherwise the next
       # narrow change inherits everyone else's reformatting churn.
-      - run: nix fmt -- --check flake.nix nix/
-        timeout-minutes: 5
+      #
+      # Formatting is a property of the repository text, so one platform settles
+      # it. Running it on macOS too only bought a second copy of the same answer,
+      # and cost a from-source alejandra build that timed out the step.
+      - if: matrix.name == 'Linux x86_64'
+        run: nix fmt -- --check flake.nix nix/
+        timeout-minutes: 10
       - run: nix flake check --print-build-logs
         timeout-minutes: 25
       - run: nix run .#pi-daemon -- version
