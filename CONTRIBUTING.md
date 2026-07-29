@@ -52,7 +52,15 @@ PI_DAEMON_PERFORMANCE_BUDGETS=1 just dash-e2e   # Dash browser budgets
 A budget missed on a busy shared host says nothing about the code, so do not
 add a bare wall-clock assertion to the standard suite; report it through
 `test/performance-budget.mjs`, `web/src/test/performance-budget.ts`, or
-`web/e2e/performance-budget.ts` instead.
+`web/e2e/performance-budget.ts` instead. `test/deterministic-gate.test.mjs`
+enforces this across all three suites, so a new bare bound fails the gate rather
+than waiting for a busy host to expose it.
+
+A **hang bound** is different from a budget and is allowed: a generous limit
+proving an operation did not hang, orders of magnitude above the timeout it
+exercises. Compare against a named constant rather than a bare literal, so it
+reads as "did not hang" rather than as a latency assertion — see
+`DISPOSE_HANG_BOUND_MS` in `test/multiplexer.test.mjs`.
 
 ## Editing the CI workflow
 

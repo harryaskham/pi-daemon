@@ -482,6 +482,12 @@ test("bounded drain aborts active turns after its deadline", async () => {
 });
 
 test("hung adapter disposal is bounded during idle sweep and shutdown", async () => {
+  // A hang bound, not a performance budget: the adapter never resolves, and the
+  // configured dispose timeouts are 10ms and 20ms, so anything approaching this
+  // means the bound was not enforced at all. Named rather than a bare literal so
+  // it reads as "did not hang" and not as a latency assertion that host load
+  // could fail (bd-71317d).
+  const DISPOSE_HANG_BOUND_MS = 500;
   const adapter = {
     async prompt() {
       return { text: "unused" };
@@ -498,14 +504,14 @@ test("hung adapter disposal is bounded during idle sweep and shutdown", async ()
   await mux.open(openCommand("hung-dispose"));
   const sweepStarted = Date.now();
   assert.deepEqual(await mux.sweepIdleSessions(Date.now() + 10), []);
-  assert.ok(Date.now() - sweepStarted < 500);
+  assert.ok(Date.now() - sweepStarted < DISPOSE_HANG_BOUND_MS);
   assert.equal(mux.status("hung-dispose").state, "failed");
   assert.equal(mux.status("hung-dispose").lastErrorCode, "adapter_dispose_timeout");
   assert.equal(mux.status().metrics.counters.idle_sweep_failures, 1);
 
   const disposeStarted = Date.now();
   await mux.dispose(20);
-  assert.ok(Date.now() - disposeStarted < 500);
+  assert.ok(Date.now() - disposeStarted < DISPOSE_HANG_BOUND_MS);
   assert.equal(mux.status().sessions.length, 0);
   assert.equal(mux.status().metrics.counters.adapter_dispose_timeouts, 1);
 });
