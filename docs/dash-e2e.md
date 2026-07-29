@@ -93,7 +93,9 @@ nix develop .#e2e --command npm run e2e:check-launch --workspace @harryaskham/pi
 ```
 
 If it fails, re-run with `DEBUG=pw:browser` to see the browser's own stderr,
-which normally names the cause outright.
+which normally names the cause outright. That is how the runner failure was
+diagnosed: the preflight reported the environment, and the browser channel
+reported the zygote's `fork` returning `child_pid -1`.
 
 ## Version alignment is load-bearing
 
