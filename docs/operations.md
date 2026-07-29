@@ -631,6 +631,9 @@ bodies, or bearer material.
 ```console
 pi-daemon probe --socket "$XDG_RUNTIME_DIR/pi-daemon.sock" --timeout-ms 5000
 
+# Pin one version to inspect exactly what a peer speaking it would be told.
+pi-daemon probe --socket "$XDG_RUNTIME_DIR/pi-daemon.sock" --protocol-version 1.0
+
 pi-daemon request --socket "$XDG_RUNTIME_DIR/pi-daemon.sock" --json \
   '{"protocolVersion":"1.0","requestId":"status-1","operation":"status","payload":{}}'
 
@@ -641,7 +644,18 @@ pi-daemon request --socket "$XDG_RUNTIME_DIR/pi-daemon.sock" --json \
 Readiness distinguishes protocol availability from Pi model/auth and recovery
 availability. Probe exits `0` only for `host.ready: true`, `75` for a successful
 but recovering/degraded handshake, and nonzero for transport/protocol failure.
-Both connect and handshake are deadline bounded. Status retains safe recovery
+Both connect and handshake are deadline bounded.
+
+Probe negotiates the highest supported protocol version by default and reports
+the version it asked for as `requestedProtocolVersion`. This matters for
+integration: a host advertises `configuredOpen`, `sessionDir`,
+`hostToolAdapter`, `hostToolOperationCount`, and `supportedProtocolVersions`
+only when the request declares a 2.x version, so a v1 probe cannot distinguish a
+v1-only host from a fully v2-capable one. Use `--protocol-version` to pin one
+version when you need to see exactly what a peer speaking it would be told. A
+host that cannot answer a 2.x handshake still yields a truthful v1 result.
+
+Status retains safe recovery
 phase, pending replay/mutation counts, indeterminate counts, failure-code counts,
 metrics, memory, resident/retained sessions, turns, and draining state; it
 excludes prompts, results, credentials, error text, and private paths.

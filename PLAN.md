@@ -515,6 +515,14 @@ process appears per wake.
   diagnostics in the standard suite. Bind the tool-adapter fixture socket from a
   short root so a long ambient `TMPDIR` cannot break the platform `sun_path`
   limit.
+- [x] `bd-985309` Keep the bounded-shutdown acceptance semantic rather than
+  wall-clock, so host load cannot fail it on unchanged code while a genuinely
+  unbounded shutdown still fails.
+- [x] `bd-600238` Negotiate the highest supported protocol version in
+  `pi-daemon probe`, so protocol-v2 readiness (`configuredOpen`, `sessionDir`,
+  `hostToolAdapter`) is verifiable with the shipped CLI rather than hand-crafted
+  NDJSON, with `--protocol-version` to pin one explicitly and unchanged v1 wire
+  behavior for existing `handshake()` callers.
 
 ## 18. Completed scaffold board (historical PD identifiers)
 

@@ -162,6 +162,22 @@ test("Unix client/server handshake open wake and status round trip", async (t) =
   assert.equal("supportedProtocolVersions" in handshake.data, false);
   assert.equal("hostToolAdapter" in handshake.data.capabilities, false);
 
+  // bd-600238: the default handshake stays exactly v1 on the wire, so existing
+  // callers keep their advertisement; negotiation is opt-in below.
+  const negotiated = await client.negotiateHandshake("hello-negotiated");
+  assert.equal(negotiated.requestedProtocolVersion, "2.0");
+  assert.deepEqual(negotiated.response.data.supportedProtocolVersions, ["1.0", "2.0"]);
+  assert.equal(negotiated.response.data.capabilities.hostToolAdapter, true);
+  assert.equal(negotiated.response.data.capabilities.configuredOpen, true);
+  assert.equal(negotiated.response.data.capabilities.sessionDir, true);
+  assert.equal(negotiated.response.data.host.hostInstanceId, "host-test");
+
+  // An explicitly pinned v1 request must still hide the v2 advertisement, so a
+  // caller can inspect exactly what a v1-only peer would have seen.
+  const pinnedV1 = await client.handshake("hello-v1", "1.0");
+  assert.equal("supportedProtocolVersions" in pinnedV1.data, false);
+  assert.equal("configuredOpen" in pinnedV1.data.capabilities, false);
+
   const opened = await client.request(openCommand("a"));
   assert.equal(opened.data.created, true);
   const attached = await client.request(attachCommand("a"));
@@ -639,7 +655,17 @@ test("serve shutdown honors one whole deadline when adapter disposal hangs", asy
     },
   );
   assertCliExitCode(code, 0, errors, "serve bounded shutdown");
-  assert.ok(Date.now() - started < 1_000);
+  // bd-985309: the semantic proof that shutdown is bounded is the timeout event
+  // asserted below, not this elapsed time. The measurement spans CLI startup,
+  // socket bind, a client connect, an open request, and process teardown, so a
+  // tight millisecond bound here measures host scheduling rather than the
+  // shutdown deadline and fails on unchanged code under load. Keep a generous
+  // hang bound that still fails a genuinely unbounded shutdown, matching the
+  // bootstrap-wait treatment in bd-79902f.
+  assert.ok(
+    Date.now() - started < 60_000,
+    "shutdown must stay bounded when adapter disposal hangs",
+  );
   assert.ok(
     errors.some((line) =>
       ["adapter_dispose_timeout", "host_shutdown_timeout"].includes(

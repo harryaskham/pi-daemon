@@ -24,6 +24,7 @@ import { Multiplexer, type SessionFactory } from "./multiplexer.js";
 import { JsonLineLogger } from "./observability.js";
 import { PiSessionFactory } from "./pi-adapter.js";
 import { installProcessStdioErrorHandlers } from "./process-stdio.js";
+import { SUPPORTED_PROTOCOL_VERSIONS } from "./protocol.js";
 import { parseSupportedProtocolCommand } from "./protocol-v2.js";
 import { RpcAttachmentManager } from "./rpc-attachments.js";
 import { loadClientBearer } from "./rpc-stdio-cli.js";
@@ -187,19 +188,37 @@ async function runSelfUpdate(
 }
 
 async function runProbe(args: string[], io: CliIo): Promise<number> {
-  const options = parseOptions(args, new Set(["socket", "timeout-ms"]));
+  const options = parseOptions(args, new Set(["socket", "timeout-ms", "protocol-version"]));
   const socketPath = requiredOption(options, "socket");
   const timeoutMs = options.has("timeout-ms")
     ? integerOption(options, "timeout-ms", 1)
     : 5_000;
+  const requestedVersion = options.get("protocol-version");
+  if (requestedVersion !== undefined && !SUPPORTED_PROTOCOL_VERSIONS.includes(requestedVersion as never)) {
+    throw new CliUsageError(
+      `--protocol-version must be one of ${SUPPORTED_PROTOCOL_VERSIONS.join(", ")}`,
+    );
+  }
   const client = await PiDaemonClient.connect({
     socketPath,
     connectTimeoutMs: timeoutMs,
     requestTimeoutMs: timeoutMs,
   });
   try {
-    const response = await client.handshake(`probe-${process.pid}`);
-    io.stdout(`${JSON.stringify(response.data, null, 2)}\n`);
+    // Negotiate by default: a host only advertises configuredOpen/sessionDir/
+    // hostToolAdapter when the request declares a 2.x version, so probing at
+    // v1 cannot answer "is this host ready for configured opens?".
+    const requestId = `probe-${process.pid}`;
+    const { response, requestedProtocolVersion } =
+      requestedVersion === undefined
+        ? await client.negotiateHandshake(requestId)
+        : {
+            response: await client.handshake(requestId, requestedVersion),
+            requestedProtocolVersion: requestedVersion,
+          };
+    io.stdout(
+      `${JSON.stringify({ requestedProtocolVersion, ...(response.data as object) }, null, 2)}\n`,
+    );
     return probeDataReady(response.data) ? 0 : 75;
   } finally {
     client.close();
@@ -1158,7 +1177,7 @@ Usage:
                 [--tls-cert-file PATH | --tls-cert-fd FD]
                 [--tls-key-file PATH | --tls-key-fd FD] [--tls-reload-ms N]
                 [--api-allow-insecure-http true|false]
-  pi-daemon probe --socket PATH [--timeout-ms N]
+  pi-daemon probe --socket PATH [--timeout-ms N] [--protocol-version 1.0|2.0]
   pi-daemon request --socket PATH --json REQUEST [--timeout-ms N]
   pi-daemon session list|show|create|update|delete [options]
   pi-daemon ticket get|wait|reconcile [options]
@@ -1175,7 +1194,10 @@ Usage:
 Commands:
   serve    Start the owner-local Unix-socket service and optional embedded Dash.
   web      Start a dedicated Dash over the authenticated remote backend.
-  probe    Perform a version/capability handshake.
+  probe    Perform a version/capability handshake. Negotiates the highest
+           supported protocol version by default, so v2 capabilities such as
+           configuredOpen and sessionDir are visible; pin one with
+           --protocol-version to inspect a specific version's advertisement.
   request  Send one low-level protocol command and print its response.
   session  Manage retained sessions with high-level JSON commands.
   ticket   Inspect, wait for, or reconcile durable tickets.

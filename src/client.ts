@@ -3,6 +3,8 @@ import { createConnection, type Socket } from "node:net";
 import {
   DEFAULT_MAX_LINE_BYTES,
   NdjsonDecoder,
+  PROTOCOL_V2_VERSION,
+  PROTOCOL_VERSION,
   encodeLine,
   type EventEnvelope,
   type ProtocolErrorBody,
@@ -152,13 +154,56 @@ export class PiDaemonClient {
     return promise;
   }
 
-  async handshake(requestId = "handshake"): Promise<ResponseEnvelope> {
+  /**
+   * Perform one handshake at an explicit protocol version.
+   *
+   * The version is significant: a host only advertises its v2 capability set
+   * (`configuredOpen`, `sessionDir`, `hostToolAdapter`,
+   * `hostToolOperationCount`, `supportedProtocolVersions`) when the REQUEST
+   * declares a 2.x version. Asking at "1.0" therefore cannot distinguish a
+   * v1-only host from a fully v2-capable one, which is the exact distinction an
+   * external orchestrator needs before it relies on configured opens.
+   *
+   * Defaults to v1 so existing callers keep their exact wire behavior; use
+   * {@link negotiateHandshake} to discover the best version a host supports.
+   */
+  async handshake(
+    requestId = "handshake",
+    protocolVersion: string = PROTOCOL_VERSION,
+  ): Promise<ResponseEnvelope> {
     return this.request({
-      protocolVersion: "1.0",
+      protocolVersion,
       requestId,
       operation: "handshake",
       payload: {},
     });
+  }
+
+  /**
+   * Handshake at the highest version this client understands, falling back to
+   * v1 when the host cannot answer a 2.x request.
+   *
+   * Fallback is deliberately conservative: it triggers only when the v2 attempt
+   * fails outright, never when the host answers successfully. A v1-only host
+   * that rejects the 2.x request still yields a truthful v1 result rather than
+   * a hard error, so this is safe to use against any host generation.
+   */
+  async negotiateHandshake(
+    requestId = "handshake",
+  ): Promise<{ response: ResponseEnvelope; requestedProtocolVersion: string }> {
+    try {
+      const response = await this.handshake(requestId, PROTOCOL_V2_VERSION);
+      if (response.ok !== false) {
+        return { response, requestedProtocolVersion: PROTOCOL_V2_VERSION };
+      }
+    } catch {
+      // Fall through to the v1 attempt below; a host that cannot parse or
+      // accept a 2.x handshake must still be probeable.
+    }
+    return {
+      response: await this.handshake(requestId, PROTOCOL_VERSION),
+      requestedProtocolVersion: PROTOCOL_VERSION,
+    };
   }
 
   close(): void {
