@@ -64,6 +64,20 @@ signal only; `npmDepsHash` remains the value Nix actually verifies.
 When a grouped dependency pull request goes red on that fast check, pull the
 branch, run the refresh command, and push the updated `flake.nix`.
 
+## Nix formatting
+
+`flake.nix` declares `alejandra` as the repository formatter and the Nix sources
+are converged on it, so a narrow change stays a narrow diff:
+
+```bash
+just nix-fmt          # format flake.nix and nix/
+just nix-fmt-check    # verify without changing anything; CI runs this
+```
+
+Run it before landing a Nix change. Keeping the tree converged is what stops the
+formatter from becoming unusable: on a divergent tree the first person to run it
+inherits everyone else's churn, so they revert it, and the divergence grows.
+
 Changes should be narrow, tested, and documented. Protocol changes require a
 versioning assessment, fixtures, and compatibility coverage. Security-sensitive
 changes require adversarial tests.

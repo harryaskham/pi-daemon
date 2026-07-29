@@ -52,6 +52,11 @@ jobs:
       - uses: cachix/install-nix-action@v31
         with:
           github_access_token: ${{ secrets.GITHUB_TOKEN }}
+      # Cheap and decisive, so it runs before the long check: the tree must stay
+      # converged on the formatter the flake itself declares, otherwise the next
+      # narrow change inherits everyone else's reformatting churn.
+      - run: nix fmt -- --check flake.nix nix/
+        timeout-minutes: 5
       - run: nix flake check --print-build-logs
         timeout-minutes: 25
       - run: nix run .#pi-daemon -- version

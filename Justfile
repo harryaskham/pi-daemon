@@ -47,6 +47,14 @@ npm-deps-hash:
 npm-deps-hash-check:
     npm run nix:deps-hash:check
 
+# Format the Nix sources with the formatter flake.nix declares.
+nix-fmt:
+    nix fmt -- flake.nix nix/
+
+# Verify Nix formatting without changing anything; CI runs the same check.
+nix-fmt-check:
+    nix fmt -- --check flake.nix nix/
+
 # The bounded `@smoke` subset that CI runs on every push and pull request.
 # Proves the SPA builds, boots, and stays browser-clean without gating on the
 # full suite's runtime or its load-sensitive scenarios.

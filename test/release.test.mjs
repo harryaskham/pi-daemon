@@ -28,7 +28,9 @@ test("Pages workflow uses the pinned Nix site build without Docker actions", asy
   assert.match(workflow, /- "flake\.nix"/);
   assert.match(workflow, /actions\/upload-pages-artifact@v3/);
   assert.match(workflow, /runs-on: \[self-hosted, nix, x86_64-linux\]/);
-  assert.match(flake, /pages = pkgs\.runCommand "pi-daemon-pages"/);
+  // Formatting-insensitive: the `pages` attribute must build with pandoc, but
+  // its exact line layout belongs to the repository formatter, not this test.
+  assert.match(flake, /pages =\s*\n?\s*pkgs\.runCommand "pi-daemon-pages"/);
   assert.match(flake, /nativeBuildInputs = \[pkgs\.pandoc\]/);
   assert.match(flake, /link\.target = "\.\.\/" \.\. target/);
   assert.match(flake, /pages = self\.packages\.\$\{system\}\.pages/);
