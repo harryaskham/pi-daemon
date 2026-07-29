@@ -1,14 +1,27 @@
 #!/usr/bin/env node
-import { chmod, copyFile, cp, mkdir } from "node:fs/promises";
+import { chmod, copyFile, cp, mkdir, stat } from "node:fs/promises";
 const root = new URL("..", import.meta.url);
 await mkdir(new URL("../dist", import.meta.url), { recursive: true });
 for (const bin of ["cli.js", "rpc-stdio-cli.js"]) {
   await chmod(new URL(`../dist/${bin}`, import.meta.url), 0o755).catch(() => {});
 }
-await cp(new URL("../web/dist", import.meta.url), new URL("../dist/dashboard", import.meta.url), {
-  recursive: true,
-  force: true,
-});
+// `build:src` compiles the server without rebuilding the Dash SPA, so the
+// compiled SPA may legitimately be absent. Say so plainly instead of failing
+// with a bare ENOENT: anything that serves `/dash/` needs the full `npm run
+// build`, and a missing SPA otherwise surfaces much later as a 404.
+const webDist = new URL("../web/dist", import.meta.url);
+const hasWebDist = await stat(webDist).then((entry) => entry.isDirectory(), () => false);
+if (hasWebDist) {
+  await cp(webDist, new URL("../dist/dashboard", import.meta.url), {
+    recursive: true,
+    force: true,
+  });
+} else {
+  process.stdout.write(
+    "postbuild: web/dist is absent, so dist/dashboard was not written. " +
+      "Run `npm run build` before anything that serves or asserts the packaged Dash SPA.\n",
+  );
+}
 for (const contract of [
   "protocol.schema.json",
   "protocol-v2.schema.json",

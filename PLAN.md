@@ -760,6 +760,8 @@ implementation order. This list is a human-readable crosswalk.
   check so grouped dependency updates fail actionably instead of red.
 - [x] `bd-d79ef1` — Nix sources converged on the declared alejandra formatter
   and gated on it, landed as a separate inert reformat plus its check.
+- [x] `bd-acd227` — source-only compile plus a focused Node test loop, with the
+  full build retained as the authoritative packaging, Nix, and release gate.
 - [ ] `bd-4e10da` — future neutral persisted per-session cron/prompt scheduler
   and durable wakes; detailed alongside Dash in `web/PLAN.md`.
   - [x] `bd-6d96bb` — v1 schedule resource/schema/fixtures, bounded owner-private

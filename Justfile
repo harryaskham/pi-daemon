@@ -55,6 +55,11 @@ nix-fmt:
 nix-fmt-check:
     nix fmt -- --check flake.nix nix/
 
+# Focused Node test loop: compiles src/ only and reuses the existing Dash SPA.
+# e.g. `just test-src test/session-api.test.mjs`. Use `npm test` as the gate.
+test-src *ARGS:
+    npm run test:src -- {{ARGS}}
+
 # The bounded `@smoke` subset that CI runs on every push and pull request.
 # Proves the SPA builds, boots, and stays browser-clean without gating on the
 # full suite's runtime or its load-sensitive scenarios.

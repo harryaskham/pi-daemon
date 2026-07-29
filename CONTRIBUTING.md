@@ -11,6 +11,21 @@ npm test
 nix flake check
 ```
 
+`npm test` rebuilds everything, including a production build of the Dash SPA,
+which a test touching only `src/**` does not need. For a focused loop, compile
+the server alone and reuse the SPA that is already built:
+
+```bash
+npm run test:src -- test/session-api.test.mjs   # or: just test-src test/session-api.test.mjs
+npm run build:src                               # compile src/ without the SPA
+```
+
+On this repository that is roughly 17 seconds instead of 46. `npm test` remains
+the authoritative gate, and packaging, Nix, and release paths always run the
+full build, so nothing ships without the SPA. If `web/dist` has never been
+built, `build:src` says so and leaves `dist/dashboard` absent; run the full
+`npm run build` before anything that serves or asserts the packaged SPA.
+
 Dash browser acceptance runs from its own shell, which supplies audited
 Playwright browsers instead of an unrunnable download:
 
