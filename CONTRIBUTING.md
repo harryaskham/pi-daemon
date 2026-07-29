@@ -156,7 +156,15 @@ So demonstrate that the assertion can fail. In order of preference:
    fail, restore it, and name the mutation in the commit message, so the next
    editor can tell it was done. The `bd-228b91` commit names the four ways its
    pipeline could break and records that each was rejected — the weakest form
-   doing its limited job.
+   doing its limited job. Restoring is where this form goes wrong, in both
+   directions: `git checkout` on an already-staged file restores from the index
+   and reverts nothing, and `git checkout HEAD --` on a file with uncommitted
+   work discards the work along with the mutation. Both happened in one night.
+   Take a copy before mutating and restore from that, and check the status of
+   the command being verified rather than a pipeline's last stage — in
+   `bd-b225fa` the mutation shipped as the change, because the revert was a
+   no-op and `nix build | tail` reported `tail`'s exit status. The negative
+   control became the defect.
 
 The two checked forms answer different questions and neither implies the other:
 a precondition proves the setup still establishes the situation the assertion
@@ -183,6 +191,22 @@ needs a store path is ordinary. Observation is also
 only free in a lane that can perform it — evaluating a devShell attribute needs
 Nix, and the Node gate deliberately has none — so preferring the stronger form
 sometimes means moving an assertion between lanes rather than rewriting it.
+
+A guard that verifies something true of every value *except* the one it was
+pointed at is a different failure, and worth naming separately: it fails in the
+safe direction, going red immediately rather than staying green for a night. The
+remedy differs too. A vacuous assertion needs a negative case; a misaimed one
+needed its exemption to live where the guard could see it rather than in a
+comment beside it.
+
+The same error occurs in measurements, not only in assertions. Counting outcomes
+tells you the distribution of what happened, not whether the thing you are
+counting is capable of happening. Three of the findings above are that at
+different scales: a fixture reported a mode nobody checked was the mode
+requested; forty-one ownership guards had a perfect pass rate because none could
+fire; and a CI job's six-successes-in-thirty record was counted without asking
+whether a runner carrying its labels existed at all. Before reading a rate, ask
+what a failure would have required.
 
 This matters most for fail-closed and permission assertions, where a vacuous
 pass is a silent loss of security coverage rather than a missing test.

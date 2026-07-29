@@ -92,6 +92,11 @@ test("the convention is written down, in the order review settled on", async () 
   // And the two costs of preferring direct observation, which are not obvious.
   assert.match(section, /build inputs|closure/);
   assert.match(section, /lane/);
+
+  // The measurement form of the same error, and the hazard in performing the
+  // manual mutation — both learned by committing them.
+  assert.match(section, /capable of happening/);
+  assert.match(section, /HEAD/);
 });
 
 test("every repository path the convention cites is really there", async () => {
