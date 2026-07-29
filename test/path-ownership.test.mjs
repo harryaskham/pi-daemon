@@ -330,8 +330,12 @@ test("every mode mask in the source is accounted for by exposure policy", async 
   assert.deepEqual(
     observed,
     EXPOSURE_CENSUS,
-    "a mode mask was added, removed, or changed: update the census and say why. " +
-      "A secret path widening from 0o077 to 0o022 is a change of policy, not of formatting.",
+    "an exposure decision was added, removed, or changed: update the census and say why. " +
+      "Since adoption most sites name their policy rather than writing a mask, so the change that " +
+      "fires this is usually a \"private\" becoming \"no-foreign-writers\" (or the reverse), not an " +
+      "octal literal — chasing 0o077 in the diff will find nothing. Either direction is a change of " +
+      "policy: widening exposes material the site was protecting, narrowing breaks session state " +
+      "that is deliberately readable.",
   );
 });
 
