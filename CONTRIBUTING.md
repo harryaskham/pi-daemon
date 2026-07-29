@@ -62,6 +62,12 @@ exercises. Compare against a named constant rather than a bare literal, so it
 reads as "did not hang" rather than as a latency assertion — see
 `DISPOSE_HANG_BOUND_MS` in `test/multiplexer.test.mjs`.
 
+The `@smoke` browser subset is stricter still, because it gates every push: it
+may bound only quantities the fixture determines, such as how many rows a
+virtualized list rendered. Times, pixel geometry, and scroll offsets are out,
+since a red gate everyone waits on is the worst place to discover that a bound
+tracks host load. The same test enforces it.
+
 ## Editing the CI workflow
 
 Two settings in `.github/workflows/ci.yml` are deliberate and easy to undo by

@@ -35,6 +35,11 @@ export const BUDGET_REPORTER = /\breportPerformanceBudget\b/;
 /**
  * Expressions whose value is a duration or a percentile of durations.
  *
+ * Matched anywhere in the expression rather than at a word boundary: an earlier
+ * draft required a non-letter before the word and so missed every camelCase
+ * name, which is most of them — `restoredAnchor` and `totalDuration` both
+ * slipped through until the smoke predicate's negative cases caught it.
+ *
  * Name-based, so it is evadable by naming a duration `t`. That is acceptable:
  * the rule exists to stop the accidental reintroduction of a bound, not a
  * deliberate one, and a deliberate one is visible in review. Counts and lengths
@@ -42,7 +47,7 @@ export const BUDGET_REPORTER = /\breportPerformanceBudget\b/;
  * duration.
  */
 const TIMING_EXPRESSION =
-  /(?:^|[^A-Za-z])(?:elapsed|duration|latency|took|percentile|p9\d)|[a-z]Ms\b|\bms\b/i;
+  /elapsed|duration|latency|took|percentile|p9\d|[a-z]Ms\b|\bms\b/i;
 
 const CARDINALITY_EXPRESSION = /\.(?:count|length|size)\s*$/;
 
@@ -106,4 +111,53 @@ export function describeWallClockViolations(violations) {
       return `${path}:${line} [${kind}] ${text}\n    ${remedy}`;
     })
     .join("\n");
+}
+
+
+/**
+ * Quantities that vary with host conditions rather than with the fixture.
+ *
+ * Counts of rendered rows are deterministic given a fixture and bounding them
+ * is the point of the smoke subset. Times, pixel geometry, and scroll offsets
+ * are not: they move with load, font metrics, and measurement timing, which is
+ * exactly what the subset must not depend on.
+ */
+const VARYING_QUANTITY =
+  /elapsed|duration|latency|took|percentile|p9\d|scrolltop|scrollheight|clientheight|boundingbox|offsettop|offsetheight|anchor|distance|[a-z]Ms\b|\bms\b|\bpx\b/i;
+
+/** Title marker for the bounded subset CI runs on every push. */
+export const SMOKE_TAG = "@smoke";
+
+/**
+ * Report numeric tolerances inside `@smoke` scenarios.
+ *
+ * The subset gates every push, so its defining property is that host contention
+ * cannot turn it red: it asserts structure, and bounds only quantities the
+ * fixture determines. A tolerance on a varying quantity would reintroduce the
+ * flake class the subset exists to avoid, in the one place where a red gate
+ * blocks everyone.
+ *
+ * @param {string} path Repository-relative path, for the report.
+ * @param {string} source Spec file contents.
+ */
+export function findSmokeToleranceViolations(path, source) {
+  const violations = [];
+  const lines = source.split("\n");
+  let inSmokeScenario = false;
+  lines.forEach((line, index) => {
+    const scenario = /^test\(\s*"([^"]*)"/.exec(line);
+    if (scenario !== null) inSmokeScenario = scenario[1].includes(SMOKE_TAG);
+    if (!inSmokeScenario) return;
+    if (line.trimStart().startsWith("//")) return;
+    if (BUDGET_REPORTER.test(line)) return;
+    for (const pattern of [MATCHER_BOUND, ASSERT_BOUND]) {
+      const match = pattern.exec(line);
+      if (match === null) continue;
+      const measured = match[1] ?? "";
+      if (CARDINALITY_EXPRESSION.test(measured)) continue;
+      if (!VARYING_QUANTITY.test(measured) && !ANY_CLOCK_READ.test(measured)) continue;
+      violations.push({ path, kind: "smoke-tolerance", line: index + 1, text: line.trim() });
+    }
+  });
+  return violations;
 }

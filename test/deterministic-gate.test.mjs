@@ -5,7 +5,9 @@ import { fileURLToPath } from "node:url";
 import test from "node:test";
 
 import {
+  SMOKE_TAG,
   describeWallClockViolations,
+  findSmokeToleranceViolations,
   findWallClockViolations,
 } from "./deterministic-gate.mjs";
 
@@ -160,4 +162,60 @@ test("an allow-listed path exempts only the clock read, never a bare bound", () 
     ["bare-bound"],
     "allow-listing a file must not licence a bare bound inside it",
   );
+});
+
+test("the CI smoke subset bounds nothing that host conditions can move", async () => {
+  const path = "web/e2e/dash.spec.ts";
+  const source = await readFile(join(repositoryRoot, path), "utf8");
+  const tagged = (source.match(/^test\("[^"]*@smoke"/gm) ?? []).length;
+  assert.ok(tagged >= 3, `expected the tagged subset, found ${tagged} scenarios`);
+
+  const violations = findSmokeToleranceViolations(path, source);
+  assert.deepEqual(
+    violations,
+    [],
+    "a smoke scenario bounds a varying quantity, which is how the gate everyone waits on becomes flaky:\n" +
+      describeWallClockViolations(violations),
+  );
+});
+
+test("the smoke predicate separates fixture-determined counts from varying quantities", () => {
+  const smoke = (body) => `test("scenario ${SMOKE_TAG}", async ({ page }) => {\n${body}\n});\n`;
+  const plain = (body) => `test("scenario", async ({ page }) => {\n${body}\n});\n`;
+
+  for (const body of [
+    "  expect(elapsed).toBeLessThan(250);",
+    "  expect(Math.abs(restoredAnchor - readingAnchor)).toBeLessThan(32);",
+    "  expect(box.scrollTop).toBeLessThan(100);",
+    "  assert.ok(Date.now() - started < 500);",
+  ]) {
+    assert.equal(
+      findSmokeToleranceViolations("spec.ts", smoke(body)).length,
+      1,
+      `smoke predicate accepted a varying bound: ${body.trim()}`,
+    );
+  }
+
+  for (const body of [
+    // Counts the fixture determines: bounding these is the subset's purpose.
+    "  expect(renderedRows).toBeLessThan(40);",
+    "  expect(transcriptRows).toBeGreaterThan(2);",
+    "  await expect(page.locator('script[data-unsafe]')).toHaveCount(0);",
+    // A reported measurement is not an assertion.
+    "  reportPerformanceBudget('navigation to first bounded rows', firstRowsMs, 150);",
+  ]) {
+    assert.deepEqual(
+      findSmokeToleranceViolations("spec.ts", smoke(body)),
+      [],
+      `smoke predicate rejected an acceptable assertion: ${body.trim()}`,
+    );
+  }
+
+  // The rule is scoped to the subset: the full suite may bound whatever it
+  // likes, because it is not what gates a push.
+  assert.deepEqual(findSmokeToleranceViolations("spec.ts", plain("  expect(elapsed).toBeLessThan(250);")), []);
+
+  // Scenario scoping must end at the next test, not run to end of file.
+  const mixed = smoke("  expect(renderedRows).toBeLessThan(40);") + plain("  expect(elapsed).toBeLessThan(250);");
+  assert.deepEqual(findSmokeToleranceViolations("spec.ts", mixed), []);
 });
