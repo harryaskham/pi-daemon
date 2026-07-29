@@ -19,13 +19,18 @@
   webPackage,
   justfile,
 }: let
-  # Every value handed to the derivation must be free of string context.
+  # Values that must never carry string context.
   #
   # A value carrying context is a store-path reference, and placing one in this
-  # derivation's environment adds that closure to its build inputs - which for
-  # the browsers bundle means ~2.1 GiB fetched on every `nix flake check`. The
-  # caveat is easy to state and easy to forget, so it fails here at evaluation
-  # with the cause named, rather than silently as a slow check later.
+  # derivation's environment adds that closure to its build inputs. The caveat
+  # is easy to state and easy to forget, so it fails here at evaluation with the
+  # cause named, rather than silently as a slow check later.
+  #
+  # This deliberately does NOT wrap the browsers path. That value is a store
+  # path by nature, so its context must be discarded explicitly below - and
+  # guarding a discarded value is vacuous, because the discard guarantees the
+  # guard can never fire while making it look protective. The guard is only
+  # meaningful on values that should have had no context in the first place.
   noContext = name: value:
     if builtins.hasContext value
     then
@@ -33,12 +38,17 @@
         e2e-shell-check: ${name} carries a store-path reference.
         Placing it in the check's environment would pull that closure into every
         `nix flake check`. Discard the context with
-        builtins.unsafeDiscardStringContext, or assert an attribute that carries
-        no store path.
+        builtins.unsafeDiscardStringContext if the value is a store path by
+        nature, or assert an attribute that carries no store path.
       ''
     else value;
 
-  browsersPath = noContext "PLAYWRIGHT_BROWSERS_PATH" shell.PLAYWRIGHT_BROWSERS_PATH;
+  # The documented exception: this is a store path, so the ~2.1 GiB Playwright
+  # closure is kept out of the check's build inputs by discarding the context
+  # rather than by refusing the value. Nothing is lost by exempting it from the
+  # guard - `validate` still asserts its shape against
+  # /nix/store/*playwright-browsers*.
+  browsersPath = builtins.unsafeDiscardStringContext shell.PLAYWRIGHT_BROWSERS_PATH;
   skipDownload = noContext "PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD" shell.PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD;
   driverVersion = noContext "PI_DAEMON_PLAYWRIGHT_DRIVER_VERSION" shell.PI_DAEMON_PLAYWRIGHT_DRIVER_VERSION;
   pinnedPlaywright = noContext "@playwright/test pin" webPackage.devDependencies."@playwright/test";
