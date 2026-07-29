@@ -238,9 +238,10 @@ test("the CI browser smoke subset is wired end to end and never selects an empty
     readFile(join(repositoryRoot, "web/e2e/dash.spec.ts"), "utf8"),
     readFile(join(repositoryRoot, "Justfile"), "utf8"),
   ]);
-  assert.equal(
+  assert.match(
     webManifest.scripts["e2e:smoke"],
-    "node scripts/check-playwright-browsers.mjs && playwright test --grep @smoke",
+    /playwright test --grep @smoke$/,
+    "the smoke script must select the tagged subset",
   );
   assert.equal(
     rootManifest.scripts["web:e2e:smoke"],
@@ -254,10 +255,25 @@ test("the CI browser smoke subset is wired end to end and never selects an empty
   );
   // Relaxing the browser sandbox must stay opt-in per environment: a developer
   // machine keeps it, and only an explicit variable turns it off (bd-df1c84).
-  const playwrightConfig = await readFile(join(repositoryRoot, "web/playwright.config.ts"), "utf8");
-  assert.match(playwrightConfig, /process\.env\.PI_DAEMON_E2E_NO_SANDBOX === "1"/);
-  const sandboxFlags = playwrightConfig.match(/"--no-sandbox"/g) ?? [];
-  assert.equal(sandboxFlags.length, 1, "the sandbox flag must appear only on the opt-in branch");
+  // Asserted against the exported behaviour rather than config source text, so
+  // formatting the config can never be a behavioural change.
+  const { NO_SANDBOX_ENV, NO_SANDBOX_ARGS, browserLaunchOptions } = await import(
+    new URL("../web/playwright-launch.mjs", import.meta.url)
+  );
+  assert.equal(NO_SANDBOX_ENV, "PI_DAEMON_E2E_NO_SANDBOX");
+  assert.deepEqual(NO_SANDBOX_ARGS, ["--no-sandbox", "--disable-dev-shm-usage"]);
+  assert.deepEqual(browserLaunchOptions({}), {});
+  assert.deepEqual(browserLaunchOptions({ [NO_SANDBOX_ENV]: "0" }), {});
+  assert.deepEqual(browserLaunchOptions({ [NO_SANDBOX_ENV]: "1" }), { args: NO_SANDBOX_ARGS });
+  // The suite must prove the browser can launch before spending minutes
+  // failing every scenario with Playwright's causeless closed-target message.
+  for (const script of ["e2e:nix", "e2e:smoke"]) {
+    assert.match(
+      webManifest.scripts[script],
+      /check-browser-launch\.mjs/,
+      `${script} must run the browser launch preflight`,
+    );
+  }
 });
 
 test("release invariants reject metadata, tag, changelog, and artifact drift", async (t) => {

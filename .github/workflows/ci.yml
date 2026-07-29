@@ -81,8 +81,13 @@ jobs:
         timeout-minutes: 10
         env:
           # The runner's Chromium sandbox cannot open user namespaces; see
-          # web/playwright.config.ts and docs/dash-e2e.md (bd-df1c84).
+          # web/playwright-launch.mjs and docs/dash-e2e.md (bd-df1c84).
           PI_DAEMON_E2E_NO_SANDBOX: "1"
+          # Playwright swallows the browser's own stderr, so a launch failure
+          # reports only "Target page, context or browser has been closed" and
+          # names no cause. Keep the browser channel enabled until the runner
+          # launch failure is understood and the gate is green.
+          DEBUG: pw:browser
       - uses: actions/upload-artifact@v4
         if: failure()
         with:

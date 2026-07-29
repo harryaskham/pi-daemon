@@ -45,16 +45,39 @@ levels of `npm run`; use the workspace form above when you need `--grep`.
 ## Sandboxing on CI runners
 
 Chromium's sandbox needs user namespaces and a normally-sized `/dev/shm`. A
-hardened self-hosted runner supplies neither, and the browser then exits during
-launch, so every scenario fails with `Target page, context or browser has been
-closed` before any assertion runs (`bd-df1c84`).
+hardened self-hosted runner may supply neither, and the browser then exits
+during launch, so every scenario fails with `Target page, context or browser has
+been closed` before any assertion runs (`bd-df1c84`).
 
 The `Dash browser smoke` job therefore sets `PI_DAEMON_E2E_NO_SANDBOX=1`, which
 adds `--no-sandbox --disable-dev-shm-usage` to the browser launch. That is
 acceptable only because the browser loads nothing but our own build over
 loopback, on a runner that is already an isolated environment. It is opt-in per
 environment and never the default: a developer machine keeps the sandbox, and
-nothing in the repository turns it off implicitly.
+nothing in the repository turns it off implicitly. The options live in
+`web/playwright-launch.mjs` so the config and the launch preflight cannot
+disagree.
+
+## When the browser will not start
+
+`e2e:nix` and `e2e:smoke` run `web/scripts/check-browser-launch.mjs` before the
+suite. It starts the audited browser with the exact options the suite will use
+and, on failure, prints the browser's own diagnostics plus the environment facts
+that decide whether a launch is possible: browsers path, launch arguments, uid,
+`/dev/shm` size and free space, and whether the kernel exposes unprivileged user
+namespaces. It runs in well under a second.
+
+This exists because Playwright reports a browser that dies during startup as
+`Target page, context or browser has been closed`, once per scenario, minutes
+into the run, with the browser's own stderr swallowed. That symptom names
+neither the cause nor the environment. Run it directly with:
+
+```bash
+nix develop .#e2e --command npm run e2e:check-launch --workspace @harryaskham/pi-daemon-dash
+```
+
+If it fails, re-run with `DEBUG=pw:browser` to see the browser's own stderr,
+which normally names the cause outright.
 
 ## Version alignment is load-bearing
 
