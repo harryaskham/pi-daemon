@@ -60,6 +60,7 @@ import type {
   SessionCatalogRecord,
   SessionCatalogStore,
 } from "./session-catalog.js";
+import { hasForeignPathOwner } from "./path-ownership.js";
 
 export const SESSION_INVENTORY_FORMAT_VERSION = 1 as const;
 export const SESSION_INVENTORY_SEARCH_KEY_VERSION = 1 as const;
@@ -1207,7 +1208,7 @@ async function validateInventoryRoot(path: string): Promise<string> {
     );
   }
   const getuid = process.getuid;
-  if (getuid !== undefined && info.uid !== getuid()) {
+  if (hasForeignPathOwner(info.uid, "owner-only", getuid?.())) {
     throw new SessionInventoryError(
       "insecure_inventory_root",
       "configured session inventory root must be owned by current user",
@@ -1263,7 +1264,7 @@ async function collectSessionFiles(
           continue;
         }
         const getuid = process.getuid;
-        if (getuid !== undefined && info.uid !== getuid()) {
+        if (hasForeignPathOwner(info.uid, "owner-only", getuid?.())) {
           issues.add("inventory_foreign_owner_skipped");
           continue;
         }
@@ -1317,7 +1318,7 @@ async function scanSessionFile(
       );
     }
     const getuid = process.getuid;
-    if (getuid !== undefined && info.uid !== getuid()) {
+    if (hasForeignPathOwner(info.uid, "owner-only", getuid?.())) {
       throw new SessionInventoryError(
         "inventory_source_foreign_owner",
         "session source must be owned by current user",
@@ -1631,7 +1632,7 @@ function readInventoryHeadSnapshotSync(path: string, maxBytes: number): unknown 
     const getuid = process.getuid;
     if (
       !info.isFile() ||
-      (getuid !== undefined && info.uid !== getuid()) ||
+      (hasForeignPathOwner(info.uid, "owner-only", getuid?.())) ||
       (info.mode & 0o077) !== 0
     ) {
       throw new SessionInventoryError(
@@ -1694,7 +1695,7 @@ function readInventoryHeadSync(path: string, maxBytes: number): unknown | undefi
       );
     }
     const getuid = process.getuid;
-    if (getuid !== undefined && info.uid !== getuid()) {
+    if (hasForeignPathOwner(info.uid, "owner-only", getuid?.())) {
       throw new SessionInventoryError(
         "insecure_inventory_head",
         "inventory hot head must be owned by current user",

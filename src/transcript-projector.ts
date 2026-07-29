@@ -27,6 +27,7 @@ import {
 } from "./durability.js";
 import type { JsonObject, JsonValue } from "./session-api.js";
 import { formatSessionSourceFingerprint } from "./source-fingerprint.js";
+import { hasForeignPathOwner } from "./path-ownership.js";
 
 const PROJECTION_CACHE_FORMAT_VERSION = 1 as const;
 const UTF8 = new TextDecoder("utf-8", { fatal: true });
@@ -1040,7 +1041,7 @@ function validateOpenedSource(
     throw new TranscriptProjectionError("source_not_regular", "session source must be a regular file");
   }
   const getuid = process.getuid;
-  if (getuid !== undefined && info.uid !== getuid()) {
+  if (hasForeignPathOwner(info.uid, "owner-only", getuid?.())) {
     throw new TranscriptProjectionError("source_owner_mismatch", "session source must be owned by current user");
   }
   if ((info.mode & 0o022) !== 0) {

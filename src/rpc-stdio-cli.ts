@@ -11,6 +11,7 @@ import {
   RpcStdioBridge,
   type RpcStdioBridgeOptions,
 } from "./rpc-bridge.js";
+import { hasForeignPathOwner } from "./path-ownership.js";
 
 const VERSION = PI_DAEMON_VERSION;
 const TOKEN_ENV = "PI_DAEMON_BEARER_TOKEN";
@@ -238,7 +239,7 @@ function readBoundedFd(fd: number, requirePrivate: boolean): string {
   if (!info.isFile()) throw new Error("bearer source must be a regular file");
   if (requirePrivate) {
     const getuid = process.getuid;
-    if (getuid !== undefined && info.uid !== getuid()) {
+    if (hasForeignPathOwner(info.uid, "owner-only", getuid?.())) {
       throw new Error("bearer token file must be owned by the current user");
     }
     if ((info.mode & 0o077) !== 0) throw new Error("bearer token file must be owner-only");

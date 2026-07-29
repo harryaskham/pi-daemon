@@ -106,6 +106,7 @@ import {
 } from "./dashboard-tls.js";
 import { DEFAULT_SCHEDULE_LIMITS } from "./schedule-contract.js";
 import type { ApiErrorBody, JsonValue } from "./session-api.js";
+import { hasForeignPathOwner } from "./path-ownership.js";
 
 const DEFAULT_MAX_HEADER_BYTES = 32 * 1024;
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
@@ -2375,7 +2376,7 @@ async function readStaticFile(path: string, maxBytes: number): Promise<Buffer> {
       throw new DashboardServerError(404, "not_found", "dashboard asset was not found");
     }
     const getuid = process.getuid;
-    if (getuid !== undefined && info.uid !== getuid() && info.uid !== 0) {
+    if (hasForeignPathOwner(info.uid, "owner-or-root", getuid?.())) {
       throw new DashboardServerError(404, "not_found", "dashboard asset was not found");
     }
     const result = Buffer.allocUnsafe(info.size);

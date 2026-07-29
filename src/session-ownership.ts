@@ -58,6 +58,7 @@ import {
   type SessionOwnershipStore,
 } from "./session-ownership-store.js";
 import { formatSessionSourceFingerprint } from "./source-fingerprint.js";
+import { hasForeignPathOwner } from "./path-ownership.js";
 
 export const DIRECT_COOPT_POLICY_REF = DASH_DIRECT_COOPT_POLICY_REF;
 export const DEFAULT_OWNERSHIP_MAX_SOURCE_BYTES = 256 * 1024 * 1024;
@@ -978,7 +979,7 @@ async function inspectSessionFile(
     );
   }
   const getuid = process.getuid;
-  if (getuid !== undefined && info.uid !== getuid()) {
+  if (hasForeignPathOwner(info.uid, "owner-only", getuid?.())) {
     throw new SessionOwnershipError(
       "source_owner_mismatch",
       "session source must be owned by current user",
@@ -1003,7 +1004,7 @@ async function inspectSessionFile(
     openedInfo = await handle.stat();
     if (
       !openedInfo.isFile() ||
-      (getuid !== undefined && openedInfo.uid !== getuid()) ||
+      (hasForeignPathOwner(openedInfo.uid, "owner-only", getuid?.())) ||
       (openedInfo.mode & 0o022) !== 0
     ) {
       throw new SessionOwnershipError(
@@ -1246,7 +1247,7 @@ async function validatePrivateRoot(path: string): Promise<string> {
     );
   }
   const getuid = process.getuid;
-  if (getuid !== undefined && info.uid !== getuid()) {
+  if (hasForeignPathOwner(info.uid, "owner-only", getuid?.())) {
     throw new SessionOwnershipError(
       "insecure_ownership_root",
       "ownership root must be owned by current user",

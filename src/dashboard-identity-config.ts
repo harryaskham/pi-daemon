@@ -19,6 +19,7 @@ import {
   type DashboardIdentityProvider,
   type StaticDashboardIdentity,
 } from "./dashboard-identity.js";
+import { hasForeignPathOwner } from "./path-ownership.js";
 
 export const MAX_DASHBOARD_IDENTITY_PROVIDER_FILE_BYTES = 256 * 1024;
 
@@ -44,7 +45,7 @@ export async function loadDashboardIdentityProviderFile(path: string): Promise<D
     );
   }
   const getuid = process.getuid;
-  if (getuid !== undefined && info.uid !== getuid() && info.uid !== 0) {
+  if (hasForeignPathOwner(info.uid, "owner-or-root", getuid?.())) {
     throw new PiDaemonConfigError(
       "identity_provider_owner_mismatch",
       "dashboard identity provider file must be owned by the current user or root",

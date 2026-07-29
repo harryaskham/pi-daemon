@@ -22,6 +22,7 @@ import {
   readPrivateJsonIfExists,
 } from "./durability.js";
 import { PI_DAEMON_VERSION } from "./version.js";
+import { hasForeignPathOwner } from "./path-ownership.js";
 
 const RELEASE_API = "https://api.github.com/repos/harryaskham/pi-daemon/releases/latest";
 const RELEASE_ASSET_PREFIX = "harryaskham-pi-daemon-";
@@ -323,7 +324,7 @@ export class PiDaemonSelfUpdater {
           info === undefined ||
           info.isSymbolicLink() ||
           !info.isDirectory() ||
-          (process.getuid !== undefined && info.uid !== process.getuid()) ||
+          (hasForeignPathOwner(info.uid, "owner-only", process.getuid?.())) ||
           (info.mode & 0o077) !== 0
         ) {
           throw new SelfUpdateError("update_lock_insecure", "self-update lock path is insecure");
@@ -611,7 +612,7 @@ async function ensureOwnedBinDirectory(path: string): Promise<void> {
   if (info.isSymbolicLink() || !info.isDirectory()) {
     throw new SelfUpdateError("update_bin_dir_insecure", "local bin path must be a real directory");
   }
-  if (process.getuid !== undefined && info.uid !== process.getuid()) {
+  if (hasForeignPathOwner(info.uid, "owner-only", process.getuid?.())) {
     throw new SelfUpdateError("update_bin_dir_insecure", "local bin path must be owned by current user");
   }
   if ((info.mode & 0o022) !== 0) {

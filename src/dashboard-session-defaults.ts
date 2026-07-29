@@ -11,6 +11,7 @@ import {
   type DashboardSessionDraftSpec,
 } from "./dashboard-session-drafts.js";
 import type { SessionThinkingLevel } from "./session-api.js";
+import { hasForeignPathOwner } from "./path-ownership.js";
 
 const MAX_PI_SETTINGS_BYTES = 1_048_576;
 const THINKING_LEVELS = new Set<SessionThinkingLevel>([
@@ -193,7 +194,7 @@ async function readPiModelDefaults(path: string): Promise<{
     );
   }
   const getuid = process.getuid;
-  if (getuid !== undefined && info.uid !== getuid() && info.uid !== 0) {
+  if (hasForeignPathOwner(info.uid, "owner-or-root", getuid?.())) {
     throw new DashboardSessionDefaultsError(
       "pi_settings_owner_mismatch",
       "configured Pi settings file must be owned by the current user or root",

@@ -7,6 +7,7 @@ import {
   type PackageSource,
   type ResolvedPaths,
 } from "@earendil-works/pi-coding-agent";
+import { hasForeignPathOwner } from "./path-ownership.js";
 
 export const MAX_INSTALLED_PACKAGE_SETTINGS_BYTES = 1024 * 1024;
 export const MAX_INSTALLED_PI_PACKAGES = 128;
@@ -101,7 +102,7 @@ async function readGlobalPackageDeclarations(path: string): Promise<PackageSourc
   if (
     !info.isFile() ||
     info.size > MAX_INSTALLED_PACKAGE_SETTINGS_BYTES ||
-    (getuid !== undefined && info.uid !== getuid() && info.uid !== 0) ||
+    (hasForeignPathOwner(info.uid, "owner-or-root", getuid?.())) ||
     (info.mode & 0o022) !== 0
   ) {
     throw new InstalledPiPackageError(
@@ -166,7 +167,7 @@ async function installedLocalPackageSources(
       const getuid = process.getuid;
       if (
         (!info.isFile() && !info.isDirectory()) ||
-        (getuid !== undefined && info.uid !== getuid() && info.uid !== 0) ||
+        (hasForeignPathOwner(info.uid, "owner-or-root", getuid?.())) ||
         (info.mode & 0o022) !== 0
       ) {
         throw new Error();

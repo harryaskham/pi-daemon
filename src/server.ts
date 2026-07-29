@@ -25,6 +25,7 @@ import {
 } from "./protocol-v2.js";
 import { NEUTRAL_TOOL_OPERATIONS } from "./tool-adapter-protocol.js";
 import { PI_DAEMON_VERSION } from "./version.js";
+import { hasForeignPathOwner } from "./path-ownership.js";
 
 export interface ProtocolServerLimits {
   maxConnections: number;
@@ -623,7 +624,7 @@ async function validatePrivateDirectory(path: string, label: string): Promise<vo
     throw new Error(`${label} must be a real directory: ${path}`);
   }
   const getuid = process.getuid;
-  if (getuid !== undefined && info.uid !== getuid()) {
+  if (hasForeignPathOwner(info.uid, "owner-only", getuid?.())) {
     throw new Error(`${label} must be owned by the current user: ${path}`);
   }
   if ((info.mode & 0o022) !== 0) {
@@ -641,7 +642,7 @@ async function prepareSocketPath(path: string): Promise<void> {
   }
   if (!existing.isSocket()) throw new Error(`refusing to replace non-socket path: ${path}`);
   const getuid = process.getuid;
-  if (getuid !== undefined && existing.uid !== getuid()) {
+  if (hasForeignPathOwner(existing.uid, "owner-only", getuid?.())) {
     throw new Error(`refusing to replace socket not owned by current user: ${path}`);
   }
 

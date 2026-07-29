@@ -3,6 +3,8 @@ import { constants, fstatSync, readSync } from "node:fs";
 import { open as openFile, realpath } from "node:fs/promises";
 import { createSecureContext } from "node:tls";
 
+import { hasForeignPathOwner } from "./path-ownership.js";
+
 export const MAX_DASHBOARD_TLS_MATERIAL_BYTES = 1024 * 1024;
 export const MIN_DASHBOARD_TLS_RELOAD_INTERVAL_MS = 1_000;
 
@@ -118,7 +120,7 @@ async function readBoundedTlsFile(path: string, privateKey: boolean): Promise<Bu
       );
     }
     const getuid = process.getuid;
-    if (getuid !== undefined && info.uid !== getuid() && info.uid !== 0) {
+    if (hasForeignPathOwner(info.uid, "owner-or-root", getuid?.())) {
       throw new Error(
         `Dashboard TLS ${privateKey ? "private-key" : "certificate"} file must be owner-controlled`,
       );

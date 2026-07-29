@@ -19,6 +19,7 @@ import {
   TOOL_ADAPTER_LIMIT_BOUNDS,
   TOOL_ADAPTER_PROTOCOL_VERSION,
 } from "./tool-adapter-protocol.js";
+import { hasForeignPathOwner } from "./path-ownership.js";
 
 export const DURABILITY_FORMAT_VERSION = 1 as const;
 
@@ -947,7 +948,7 @@ export async function ensurePrivateDirectory(
       });
     }
     const getuid = process.getuid;
-    if (getuid !== undefined && info.uid !== getuid()) {
+    if (hasForeignPathOwner(info.uid, "owner-only", getuid?.())) {
       throw new DurabilityError("insecure_state_path", `${label} must be owned by current user`, {
         path,
       });
@@ -966,7 +967,7 @@ export async function ensurePrivateDirectory(
           path,
         });
       }
-      if (getuid !== undefined && info.uid !== getuid()) {
+      if (hasForeignPathOwner(info.uid, "owner-only", getuid?.())) {
         throw new DurabilityError("insecure_state_path", `${label} must be owned by current user`, {
           path,
         });
@@ -996,7 +997,7 @@ export async function validatePrivateFileIfExists(path: string, label: string): 
     throw new DurabilityError("insecure_state_path", `${label} must be a regular file`, { path });
   }
   const getuid = process.getuid;
-  if (getuid !== undefined && info.uid !== getuid()) {
+  if (hasForeignPathOwner(info.uid, "owner-only", getuid?.())) {
     throw new DurabilityError("insecure_state_path", `${label} must be owned by current user`, {
       path,
     });

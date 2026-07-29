@@ -6,6 +6,7 @@ import { parseDocument } from "yaml";
 import type { LoadedPiDaemonConfig } from "./config.js";
 import type { ScheduleResource } from "./schedule-contract.js";
 import { FileScheduleStore, type ScheduleDefinition } from "./schedule-store.js";
+import { hasForeignPathOwner } from "./path-ownership.js";
 
 const MAX_IMPORT_BYTES = 1024 * 1024;
 
@@ -78,7 +79,7 @@ export async function importConfiguredSchedules(options: {
 async function readConfigData(path: string): Promise<unknown> {
   const info = await stat(path);
   const getuid = process.getuid;
-  if (!info.isFile() || (getuid !== undefined && info.uid !== getuid() && info.uid !== 0) || (info.mode & 0o022) !== 0 || info.size < 1 || info.size > MAX_IMPORT_BYTES) {
+  if (!info.isFile() || (hasForeignPathOwner(info.uid, "owner-or-root", getuid?.())) || (info.mode & 0o022) !== 0 || info.size < 1 || info.size > MAX_IMPORT_BYTES) {
     throw new Error("schedule import must be a bounded non-writable regular file owned by the current user or root");
   }
   const text = await readFile(path, "utf8");
@@ -94,7 +95,7 @@ async function readConfigData(path: string): Promise<unknown> {
 async function readPrivatePrompt(path: string): Promise<string> {
   const info = await lstat(path);
   const getuid = process.getuid;
-  if (info.isSymbolicLink() || !info.isFile() || (getuid !== undefined && info.uid !== getuid()) || (info.mode & 0o077) !== 0 || info.size < 1 || info.size > 65_536) {
+  if (info.isSymbolicLink() || !info.isFile() || (hasForeignPathOwner(info.uid, "owner-only", getuid?.())) || (info.mode & 0o077) !== 0 || info.size < 1 || info.size > 65_536) {
     throw new Error("schedule promptFile must be an owner-only bounded regular non-symlink file");
   }
   const value = await readFile(path, "utf8");

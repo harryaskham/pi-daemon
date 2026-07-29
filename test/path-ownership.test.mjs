@@ -56,15 +56,31 @@ const OWNERSHIP_CENSUS = {
   "session-cli.ts": { ownerOnly: 2, ownerOrRoot: 0 },
   "session-inventory.ts": { ownerOnly: 5, ownerOrRoot: 0 },
   "session-ownership.ts": { ownerOnly: 3, ownerOrRoot: 0 },
-  "tool-adapter-runtime.ts": { ownerOnly: 1, ownerOrRoot: 0 },
+  "tool-adapter-runtime.ts": { ownerOnly: 2, ownerOrRoot: 0 },
   "transcript-projector.ts": { ownerOnly: 1, ownerOrRoot: 0 },
 };
 
-/** Classify each ownership comparison in a module by the policy it applies. */
+/**
+ * Classify each ownership decision in a module by the policy it applies.
+ *
+ * Both shapes are recognised. The adopted shape is a `hasForeignPathOwner` call
+ * naming its policy; the open-coded shape is the uid comparison the call sites
+ * used before adoption. The second is retained deliberately: a new guard
+ * written the old way must still be counted, or it would evade the census by
+ * being the very thing the census exists to notice.
+ */
 function censusOf(source) {
   const lines = source.split("\n");
   let ownerOnly = 0;
   let ownerOrRoot = 0;
+
+  for (const match of source.matchAll(
+    /hasForeignPathOwner\([^,]+,\s*"(owner-only|owner-or-root)"/g,
+  )) {
+    if (match[1] === "owner-or-root") ownerOrRoot += 1;
+    else ownerOnly += 1;
+  }
+
   lines.forEach((line, index) => {
     if (!line.includes(".uid !== ")) return;
     const isCurrentUserComparison =
@@ -141,8 +157,31 @@ test("every ownership guard in the source is accounted for by policy", async () 
     }),
     { ownerOnly: 0, ownerOrRoot: 0 },
   );
-  assert.equal(totals.ownerOnly, 33);
+  // 34 rather than 33: adoption split the socket/parent pair in
+  // tool-adapter-runtime.ts into two decisions, which it always was.
+  assert.equal(totals.ownerOnly, 34);
   assert.equal(totals.ownerOrRoot, 10);
+});
+
+test("no ownership decision is computed outside the tested predicate", async () => {
+  // The predicate is only authoritative if nothing recomputes the decision. An
+  // open-coded comparison is a guard no test can reach, which is the situation
+  // the extraction replaced; the census would count it, but counting it is not
+  // the same as covering it.
+  const entries = (await readdir(sourceRoot)).filter((name) => name.endsWith(".ts")).sort();
+  const openCoded = [];
+  for (const entry of entries) {
+    if (entry === "path-ownership.ts") continue;
+    const source = await readFile(join(sourceRoot, entry), "utf8");
+    source.split("\n").forEach((line, index) => {
+      if (line.includes(".uid !== ")) openCoded.push(`${entry}:${index + 1} ${line.trim()}`);
+    });
+  }
+  assert.deepEqual(
+    openCoded,
+    [],
+    "these decide ownership themselves instead of calling hasForeignPathOwner",
+  );
 });
 
 test("the census classifier itself distinguishes the two policies", () => {
@@ -154,6 +193,15 @@ test("the census classifier itself distinguishes the two policies", () => {
   );
   assert.deepEqual(
     censusOf("if (getuid !== undefined && info.uid !== getuid() && info.uid !== 0) throw x;"),
+    { ownerOnly: 0, ownerOrRoot: 1 },
+  );
+  // And the adopted shape, which is what the call sites carry now.
+  assert.deepEqual(
+    censusOf('if (hasForeignPathOwner(info.uid, "owner-only", getuid?.())) throw x;'),
+    { ownerOnly: 1, ownerOrRoot: 0 },
+  );
+  assert.deepEqual(
+    censusOf('if (hasForeignPathOwner(info.uid, "owner-or-root", getuid?.())) throw x;'),
     { ownerOnly: 0, ownerOrRoot: 1 },
   );
   assert.deepEqual(

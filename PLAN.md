@@ -776,6 +776,9 @@ implementation order. This list is a human-readable crosswalk.
 - [x] `bd-27c44a` — negative controls for fail-closed assertions: a checked
   permission-fixture helper, its own negative case, and the convention recorded
   in CONTRIBUTING.
+- [x] `bd-95635b` — the tested ownership predicate adopted at all 43 guard call
+  sites, with the census and an open-coded-guard invariant keeping it
+  authoritative.
 - [ ] `bd-4e10da` — future neutral persisted per-session cron/prompt scheduler
   and durable wakes; detailed alongside Dash in `web/PLAN.md`.
   - [x] `bd-6d96bb` — v1 schedule resource/schema/fixtures, bounded owner-private

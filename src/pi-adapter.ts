@@ -58,6 +58,7 @@ import {
   createHostToolDefinitions,
 } from "./tool-adapter-runtime.js";
 import type { HostToolAdapterDescriptor } from "./tool-adapter-protocol.js";
+import { hasForeignPathOwner } from "./path-ownership.js";
 
 export interface PiSessionFactoryOptions {
   stateDir: string;
@@ -871,7 +872,7 @@ async function validateExplicitResourceAuthority(
     if (
       info.isSymbolicLink() ||
       (!info.isFile() && !info.isDirectory()) ||
-      (getuid !== undefined && info.uid !== getuid() && info.uid !== 0) ||
+      (hasForeignPathOwner(info.uid, "owner-or-root", getuid?.())) ||
       (info.mode & 0o022) !== 0
     ) {
       throw new PiAdapterError(
@@ -904,7 +905,7 @@ async function validateInstalledPackageResourceAuthority(
     if (
       info.isSymbolicLink() ||
       (!info.isFile() && !info.isDirectory()) ||
-      (getuid !== undefined && info.uid !== getuid() && info.uid !== 0) ||
+      (hasForeignPathOwner(info.uid, "owner-or-root", getuid?.())) ||
       (info.mode & 0o022) !== 0
     ) {
       throw new PiAdapterError(
@@ -1122,7 +1123,7 @@ async function isOwnerControlledExternalSessionDirectory(
   if (!roots.some((root) => isWithin(root, canonical))) return false;
   const info = await lstat(canonical);
   const getuid = process.getuid;
-  if (getuid !== undefined && info.uid !== getuid()) {
+  if (hasForeignPathOwner(info.uid, "owner-only", getuid?.())) {
     throw new PiAdapterError(
       "insecure_session_path",
       "external Pi session directory must be owned by the current user",
@@ -1184,7 +1185,7 @@ async function materializeSessionManager(
       );
     }
     const getuid = process.getuid;
-    if (getuid !== undefined && info.uid !== getuid()) {
+    if (hasForeignPathOwner(info.uid, "owner-only", getuid?.())) {
       throw new PiAdapterError(
         "insecure_session_path",
         "Pi session file must be owned by the current user",
@@ -1357,7 +1358,7 @@ function validatePrivateAuthFile(path: string): void {
     throw new PiAdapterError("insecure_auth_path", "Pi auth storage must be a regular file");
   }
   const getuid = process.getuid;
-  if (getuid !== undefined && info.uid !== getuid()) {
+  if (hasForeignPathOwner(info.uid, "owner-only", getuid?.())) {
     throw new PiAdapterError("insecure_auth_path", "Pi auth storage must be owned by current user");
   }
   if ((info.mode & 0o077) !== 0) {

@@ -14,6 +14,7 @@ import type {
   SessionResourceSpec,
   SessionToolSpec,
 } from "./session-api.js";
+import { hasForeignPathOwner } from "./path-ownership.js";
 
 export const PI_DAEMON_CONFIG_ENV = "PI_DAEMON_CONFIG" as const;
 export const PI_DAEMON_INSTANCE_ENV = "PI_DAEMON_INSTANCE" as const;
@@ -260,7 +261,7 @@ export async function loadPiDaemonConfig(options: {
     throw new PiDaemonConfigError("config_not_regular", "configuration path must resolve to a regular file");
   }
   const getuid = process.getuid;
-  if (getuid !== undefined && info.uid !== getuid() && info.uid !== 0) {
+  if (hasForeignPathOwner(info.uid, "owner-or-root", getuid?.())) {
     throw new PiDaemonConfigError(
       "config_owner_mismatch",
       "configuration file must be owned by the current user or root",

@@ -23,6 +23,7 @@ import {
   type HostToolAdapterResultFrame,
   type NeutralToolOperation,
 } from "./tool-adapter-protocol.js";
+import { hasForeignPathOwner } from "./path-ownership.js";
 
 export const HOST_TOOL_NAMES = {
   "fs.list": "fs_list",
@@ -1006,8 +1007,8 @@ async function validatePrivateUnixSocket(path: string): Promise<void> {
     }
     const getuid = process.getuid;
     if (
-      getuid !== undefined &&
-      (socketInfo.uid !== getuid() || parentInfo.uid !== getuid())
+      hasForeignPathOwner(socketInfo.uid, "owner-only", getuid?.()) ||
+      hasForeignPathOwner(parentInfo.uid, "owner-only", getuid?.())
     ) {
       throw new Error("invalid");
     }

@@ -13,6 +13,7 @@ import {
 import { SessionApiClient } from "./session-client.js";
 import type { ScheduleResource } from "./schedule-contract.js";
 import { parseDocument } from "yaml";
+import { hasForeignPathOwner } from "./path-ownership.js";
 
 export interface SessionCliIo {
   stdout: (text: string) => void;
@@ -351,7 +352,7 @@ async function readOwnerOnlyDataFile(pathValue: string, label: string, maxBytes:
 async function readOwnerOnlyText(path: string, label: string, maxBytes: number): Promise<string> {
   const info = await lstat(path);
   const getuid = process.getuid;
-  if (info.isSymbolicLink() || !info.isFile() || (getuid !== undefined && info.uid !== getuid()) || (info.mode & 0o077) !== 0 || info.size < 1 || info.size > maxBytes) {
+  if (info.isSymbolicLink() || !info.isFile() || (hasForeignPathOwner(info.uid, "owner-only", getuid?.())) || (info.mode & 0o077) !== 0 || info.size < 1 || info.size > maxBytes) {
     throw new SessionCliUsageError(`${label} must be an owner-only bounded regular non-symlink file`);
   }
   const text = await readFile(path, "utf8");
@@ -678,7 +679,7 @@ async function sessionSpec(options: OptionMap): Promise<SessionSpec> {
     if (
       info.isSymbolicLink() ||
       !info.isFile() ||
-      (getuid !== undefined && info.uid !== getuid()) ||
+      (hasForeignPathOwner(info.uid, "owner-only", getuid?.())) ||
       (info.mode & 0o077) !== 0 ||
       info.size > 1024 * 1024
     ) {
