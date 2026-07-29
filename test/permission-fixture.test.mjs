@@ -93,3 +93,27 @@ test("the convention is written down, in the order review settled on", async () 
   assert.match(section, /build inputs|closure/);
   assert.match(section, /lane/);
 });
+
+test("every repository path the convention cites is really there", async () => {
+  // A worked example that does not exist is worse than none, since the reader
+  // cannot tell the advice from the illustration. This cannot check the thing
+  // that actually went wrong — form 2 once cited an example that was really an
+  // instance of form 3 — because whether a citation is of the right kind is not
+  // mechanically decidable. It catches the cheaper mistake only.
+  const repositoryRoot = join(here, "..");
+  const contributing = await readFile(join(repositoryRoot, "CONTRIBUTING.md"), "utf8");
+  const section = contributing.slice(
+    contributing.indexOf("## Negative controls"),
+    contributing.indexOf("## Nix formatting"),
+  );
+  const cited = [...section.matchAll(/`((?:test|nix|src|web|scripts)\/[\w./-]+)`/g)].map(
+    (match) => match[1],
+  );
+  assert.notEqual(cited.length, 0, "the convention should cite its instances");
+  for (const path of new Set(cited)) {
+    await assert.doesNotReject(
+      stat(join(repositoryRoot, path)),
+      `the convention cites ${path}, which does not exist`,
+    );
+  }
+});

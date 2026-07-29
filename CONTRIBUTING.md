@@ -135,11 +135,14 @@ So demonstrate that the assertion can fail. In order of preference:
 2. **Check in a negative case against an extracted predicate.** Where the
    predicate can be pulled out, assert that it rejects the broken shapes, in the
    same file, so a later change that hollows out the assertion fails visibly.
-   `test/playwright-browser-resolution.test.mjs` checks in the four ways its
-   pipeline could genuinely break.
+   `nix/e2e-shell-check.nix` expresses its validation once and runs it twice:
+   against the real shell, and against five tuples that each break exactly one
+   clause. The mutations run on every `nix flake check`.
 3. **Record a manual mutation.** Otherwise, break the property, watch the test
    fail, restore it, and name the mutation in the commit message, so the next
-   editor can tell it was done.
+   editor can tell it was done. The `bd-228b91` commit names the four ways its
+   pipeline could break and records that each was rejected — the weakest form
+   doing its limited job.
 
 The two checked forms answer different questions and neither implies the other:
 a precondition proves the setup still establishes the situation the assertion
@@ -157,7 +160,12 @@ it — but check what the observation costs first. Interpolating a store path in
 a check derivation pulls that closure into the check's build inputs, so
 asserting a value such as `PLAYWRIGHT_BROWSERS_PATH` naively would add the 2.1
 GiB Playwright bundle to every `nix flake check`; discard the string context, or
-confine the check to attributes that carry no store path. Observation is also
+confine the check to attributes that carry no store path. Where a check is
+metadata-only by design, that is worth enforcing rather than remembering:
+`nix/e2e-shell-check.nix` guards every value with `builtins.hasContext` and
+throws at evaluation, naming the cause and the remedy, instead of silently
+acquiring the input. Do not generalise the guard — a check that legitimately
+needs a store path is ordinary. Observation is also
 only free in a lane that can perform it — evaluating a devShell attribute needs
 Nix, and the Node gate deliberately has none — so preferring the stronger form
 sometimes means moving an assertion between lanes rather than rewriting it.
