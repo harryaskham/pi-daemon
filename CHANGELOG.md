@@ -5,6 +5,7 @@ semantic versioning once a release tag is cut.
 
 ## Unreleased
 
+- let the macOS Nix job actually report: stop cancelling superseded runs on pushes to `main` so a later landing cannot kill the slowest job before it finishes, and give each platform its own step and job budget so the measured 1.2-13.3 minute macOS spread no longer hits a ceiling sized for Linux
 - make the test suite's environmental dependencies explicit instead of accidental: `test/tls-fixture.mjs` now fails with a message naming `openssl`, the `OPENSSL_BIN` override, and the lane that lacks it rather than a bare spawn `ENOENT`, both dev shells and the plain Node CI lane provide the binary from the pinned nixpkgs, and the two permission fixtures that a restrictive umask silently turned owner-only now state their mode explicitly so the fail-closed assertions cannot pass vacuously
 - keep the bounded-shutdown acceptance semantic rather than wall-clock: the `adapter_dispose_timeout`/`host_shutdown_timeout` event remains the proof that shutdown is bounded, while the elapsed-time check becomes a generous hang bound so host load cannot fail the gate on unchanged code
 

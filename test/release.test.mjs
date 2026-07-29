@@ -212,8 +212,25 @@ test("self-hosted workflows bound every job and long-running Nix step", async ()
     readFile(join(repositoryRoot, ".github/workflows/pages.yml"), "utf8"),
     readFile(join(repositoryRoot, ".github/workflows/release.yml"), "utf8"),
   ]);
-  assert.equal((ci.match(/timeout-minutes: 30/g) ?? []).length, 2);
-  assert.match(ci, /nix flake check --print-build-logs\n\s+timeout-minutes: 25/);
+  // Every job is bounded, and the bound is per platform where the platforms
+  // differ materially: macOS measured 1.2 to 13.3 minutes on success, so it
+  // gets the budget its cold tail needs rather than the Linux ceiling
+  // (bd-8dab81). Asserted as "every job and long step declares a bound" rather
+  // than by counting one literal, so a deliberate per-platform budget is not a
+  // test failure.
+  const jobTimeouts = ci.match(/^\s{4}timeout-minutes: .+$/gm) ?? [];
+  assert.equal(jobTimeouts.length, 3, "every CI job must declare its own timeout");
+  assert.match(ci, /timeout-minutes: \$\{\{ matrix\.jobTimeout \}\}/);
+  assert.match(ci, /jobTimeout: 30\n\s+#.*\n\s+#.*\n\s+checkTimeout: 25/);
+  assert.match(ci, /jobTimeout: 60/);
+  assert.match(ci, /checkTimeout: 50/);
+  assert.match(
+    ci,
+    /nix flake check --print-build-logs\n\s+timeout-minutes: \$\{\{ matrix\.checkTimeout \}\}/,
+  );
+  // A push to main must never be cancelled by a later one, or the slowest job
+  // reports on a minority of landings and nobody reads it (bd-8dab81).
+  assert.match(ci, /cancel-in-progress: \$\{\{ github\.event_name == 'pull_request' \}\}/);
   assert.match(ci, /nix run \.#pi-daemon -- version\n\s+timeout-minutes: 5/);
   assert.match(
     ci,
