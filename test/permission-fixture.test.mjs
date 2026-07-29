@@ -97,8 +97,8 @@ test("the convention is written down, in the order review settled on", async () 
   // manual mutation — both learned by committing them.
   assert.match(section, /capable of happening/);
   assert.match(section, /HEAD/);
-  // And the reporting form: figures come from the run being reported.
-  assert.match(section, /leave it out/);
+  // And the reporting form, whose defence is mechanical rather than careful.
+  assert.match(section, /in the invocation that produces/);
 });
 
 test("every repository path the convention cites is really there", async () => {

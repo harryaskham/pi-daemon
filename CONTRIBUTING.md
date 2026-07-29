@@ -214,12 +214,13 @@ fire; and a CI job's six-successes-in-thirty record was counted without asking
 whether a runner carrying its labels existed at all. Before reading a rate, ask
 what a failure would have required.
 
-The same applies to reporting one. Every figure in a verification report comes
-from the run being reported, or it is not stated — if you did not read it off
-this run, leave it out. A fabricated number inside an otherwise-observed report
-is worse than a wrong one standing alone, because everything around it is
-checkable and true, so a reader extends that credibility to the one figure
-nobody measured.
+The same applies to reporting one. A figure comes from the run it describes or it
+is not stated — in a report, or in passing. A report lends a fabricated number
+the credibility of the checkable material around it; a passing mention is likelier
+to contain one, because nobody is careful in a sentence that is not the point.
+Vigilance is not the defence: both instances behind this rule were written by
+people actively describing it. Capture the figure in the invocation that produces
+the result rather than transcribing it.
 
 This matters most for fail-closed and permission assertions, where a vacuous
 pass is a silent loss of security coverage rather than a missing test.
