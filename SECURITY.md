@@ -122,5 +122,21 @@ package fallback.
 The exact npm lock pins Ajv 8.20.0, outside `GHSA-2g4f-4pwh-qvx6`. Ajv is a
 direct development dependency used only by protocol/schema conformance tests;
 all call sites construct strict draft-2020 validators without enabling `$data`.
-A clean `npm ci --ignore-scripts` followed by the full `npm audit` reports zero
-known vulnerabilities for the locked dependency graph.
+
+One finding is outstanding and cannot be resolved here. The Pi SDK ships an
+`npm-shrinkwrap.json` pinning `brace-expansion` 5.0.7, which
+`GHSA-mh99-v99m-4gvg` covers at high severity — a different advisory from the
+one 5.0.7 fixed. The only dependant is the SDK's `minimatch`, whose range is
+`^5.0.5`, and 5.0.8 is published and satisfies it, so the repair is an upstream
+shrinkwrap regeneration rather than a code or dependency change.
+
+It must not be papered over from here. A shipped shrinkwrap is authoritative for
+its own subtree, so a root `overrides` entry does not change what `npm ci`
+installs — it changes only what `npm audit` reports, taking the metadata green
+while the vulnerable nested copy remains. That was attempted once and reverted;
+`test/pi-sdk-compatibility.test.mjs` now rejects any root override naming a
+package the SDK's shrinkwrap owns. `npm audit fix --dry-run` confirms the
+position, reporting 0 added, 0 removed, 0 changed.
+
+No untrusted glob or pattern input path into the nested `minimatch` has been
+established, so the exposure is dependency-availability risk pending upstream.

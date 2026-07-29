@@ -195,6 +195,39 @@ test("default session directory adoption tracks the pinned Pi export surface", a
   );
 });
 
+test("no root override pretends to replace a package the SDK's shrinkwrap owns", async () => {
+  // A shipped npm-shrinkwrap.json is authoritative for its own subtree, so a
+  // root `overrides` entry naming a package inside it does not change what
+  // `npm ci` installs. What it does change is what `npm audit` reports: the
+  // metadata goes green while the vulnerable nested copy is still installed.
+  // That was attempted once for brace-expansion and reverted (bd-36428f,
+  // bd-6b1900); this is the guard against a third attempt, because the failure
+  // is invisible in exactly the direction that matters.
+  const manifest = await json("package.json");
+  const overrides = manifest.overrides ?? {};
+  const shrinkwrapPath = new URL(
+    "node_modules/@earendil-works/pi-coding-agent/npm-shrinkwrap.json",
+    root,
+  );
+  const shrinkwrap = JSON.parse(await readFile(shrinkwrapPath, "utf8"));
+  const owned = new Set(
+    Object.keys(shrinkwrap.packages ?? {})
+      .map((path) => path.split("node_modules/").pop())
+      .filter((name) => name !== undefined && name !== ""),
+  );
+  const pretending = Object.keys(overrides).filter((name) => owned.has(name));
+  assert.deepEqual(
+    pretending,
+    [],
+    "these overrides cannot take effect and will make npm audit report green while npm ci still " +
+      `installs the SDK's pinned copy: ${pretending.join(", ")}. The fix is upstream shrinkwrap ` +
+      "regeneration, not a root override.",
+  );
+  // The guard is only meaningful if the shrinkwrap it reads is populated.
+  assert.ok(owned.size > 50, `expected the SDK's shrinkwrap to name packages, found ${owned.size}`);
+  assert.ok(owned.has("brace-expansion"), "brace-expansion is the case this guard exists for");
+});
+
 test("Pi npm shrinkwrap dependencies retain integrity for Nix prefetch", async () => {
   const lock = await json("package-lock.json");
   assert.equal(
