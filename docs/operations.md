@@ -184,7 +184,18 @@ Relative YAML paths resolve from the configuration file; `~/` resolves from the
 service home. The file is byte/depth/property bounded, rejects duplicate or
 unknown service fields and YAML alias expansion, and must resolve to a regular
 current-user/root-owned file that is not group/world writable. Home Manager
-symlinks to immutable Nix-store targets are supported. Configuration contains
+symlinks to immutable Nix-store targets are supported.
+
+That root exemption is policy, not an accident, and it is not uniform. Paths
+holding material the system provisions *for* the service accept a
+current-user or root owner: configuration, TLS material, installed package
+resources, and session defaults, where a root-owned Nix store path or system
+file is a normal deployment. Paths holding material the service owns as its
+own secret accept the current user only: the API bearer token, the Pi auth
+seed, Dashboard credentials and descriptors, the authorization store, and
+durable session state. A root-owned secret is not a deployment shape; it means
+something else wrote it. `test/path-ownership.test.mjs` pins which modules
+apply which policy, so a change to that split is a visible diff. Configuration contains
 only non-secret values and secret **paths**: literal tokens, passwords, bearers,
 and API keys are rejected from the forward-compatible `web.ui` map. Runtime web
 preferences are a separate allowlisted overlay under `STATE_DIR/web`; they
