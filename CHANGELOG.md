@@ -3,7 +3,7 @@
 All notable changes to Pi Daemon are documented here. The project follows
 semantic versioning once a release tag is cut.
 
-## Unreleased
+## 0.3.0 — 2026-07-29
 
 - require every quoted figure to come from the run it describes, in a report or in passing, and to be captured in the invocation that produces the result rather than transcribed — a report lends a fabricated number the credibility of the checkable material around it, and a passing mention is likelier to contain one
 - hold the `@smoke` browser subset to bounding only what the fixture determines, since it gates every push: times, pixel geometry, and scroll offsets are rejected there while rendered-row counts stay allowed, and fixing the camelCase blind spot this exposed also widened the existing wall-clock rule to catch names like `totalDuration`

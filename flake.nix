@@ -21,8 +21,8 @@
     # block with `npm run nix:deps-hash` after any package-lock.json change; the
     # `npm-deps-lock` marker is a plain staleness signal that lets CI flag a
     # stale pin without needing Nix on the runner.
-    # npm-deps-lock: sha256-P+LEb/9aB+BGPa6kttU6AWM+dkp0CtrbVR6pDjZb2vc=
-    npmDepsHash = "sha256-fWetJxlUuDU84IwesGnTG28rzbv7LT7nLYwau/fqQ4w=";
+    # npm-deps-lock: sha256-1Vrd5iSHWp2LLhnYuYwuH9DbV4pA0UUdyBCJHxIarjk=
+    npmDepsHash = "sha256-xBUqJsyXISopXAMHAe8BtACvercoLzRbOKeOqsCwxT8=";
   in {
     homeManagerModules.pi-daemon = import ./nix/home-manager-module.nix {inherit self;};
     homeManagerModules.default = self.homeManagerModules.pi-daemon;
@@ -31,7 +31,7 @@
       pkgs = import nixpkgs {inherit system;};
       package = pkgs.buildNpmPackage {
         pname = "pi-daemon";
-        version = "0.2.2";
+        version = "0.3.0";
         src = ./.;
 
         nodejs = pkgs.nodejs_24;
@@ -74,8 +74,8 @@
         '';
         doInstallCheck = true;
         installCheckPhase = ''
-          "$out/bin/pi-daemon" version | grep -Fx 0.2.2
-          "$out/bin/pi-daemon-rpc" --version | grep -Fx 0.2.2
+          "$out/bin/pi-daemon" version | grep -Fx 0.3.0
+          "$out/bin/pi-daemon-rpc" --version | grep -Fx 0.3.0
         '';
 
         meta = {
