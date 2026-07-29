@@ -172,12 +172,20 @@ test("the lockfile resolves and verifies every dependency against the public npm
   const lock = JSON.parse(lockText);
   const foreignUrls = [];
   const foreignDigests = [];
+  const missingDigests = [];
   for (const [path, entry] of Object.entries(lock.packages ?? {})) {
     if (typeof entry !== "object" || entry === null) continue;
     const resolved = entry.resolved;
     if (typeof resolved === "string" && resolved.startsWith("http")) {
       if (!resolved.startsWith("https://registry.npmjs.org/")) {
         foreignUrls.push(`${path === "" ? "<root>" : path} -> ${resolved}`);
+      }
+      // The Nix dependency prefetcher panics with "non-git dependencies should
+      // have associated integrity" rather than naming the entry, and npm has
+      // been observed omitting the field for transitive packages during an
+      // ordinary lock regeneration.
+      if (entry.link !== true && typeof entry.integrity !== "string") {
+        missingDigests.push(path);
       }
     }
     const integrity = entry.integrity;
@@ -195,6 +203,11 @@ test("the lockfile resolves and verifies every dependency against the public npm
     foreignDigests,
     [],
     `package-lock.json records non-registry integrity digests, which miss the npm cache:\n${foreignDigests.join("\n")}`,
+  );
+  assert.deepEqual(
+    missingDigests,
+    [],
+    `package-lock.json omits integrity for resolved packages, which panics the Nix prefetcher:\n${missingDigests.join("\n")}`,
   );
   // Negative controls: both predicates must reject the mirror's form, so
   // neither can pass by matching nothing.
