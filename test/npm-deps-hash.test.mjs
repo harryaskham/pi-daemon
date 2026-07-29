@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -37,6 +38,26 @@ async function fixtureRoot() {
     writeFile(join(root, "flake.nix"), flake),
     writeFile(join(root, "package-lock.json"), lock),
   ]);
+  return root;
+}
+
+/**
+ * A fixture whose recorded marker matches its own lockfile, so tests about the
+ * script's behaviour do not depend on the state of the working tree. Inside a
+ * Nix build the source lockfile has already been rewritten by npmConfigHook,
+ * which makes the repository root unusable as a positive fixture.
+ */
+async function consistentFixtureRoot() {
+  const root = await fixtureRoot();
+  const [flake, lock] = await Promise.all([
+    readFile(join(root, "flake.nix"), "utf8"),
+    readFile(join(root, "package-lock.json")),
+  ]);
+  const marker = `sha256-${createHash("sha256").update(lock).digest("base64")}`;
+  await writeFile(
+    join(root, "flake.nix"),
+    flake.replace(/(# npm-deps-lock: )sha256-[A-Za-z0-9+/=]+/, `$1${marker}`),
+  );
   return root;
 }
 
@@ -134,8 +155,17 @@ test("the refresh script fails loudly when the pin shape is gone", async () => {
 });
 
 test("the fast check needs no Nix on PATH, which is the point of running it in the Node jobs", async () => {
-  // An empty PATH also proves it shells out to nothing at all.
-  const result = await runFast(repositoryRoot, { env: { PATH: "" } });
-  assert.equal(result.code, 0, result.output);
-  assert.match(result.output, /pin is current/);
+  // Runs against a self-consistent fixture rather than the working tree: the
+  // claim under test is that the script shells out to nothing, which must hold
+  // even inside a Nix build, where npmConfigHook has rewritten the source
+  // lockfile out from under the recorded marker.
+  const root = await consistentFixtureRoot();
+  try {
+    // An empty PATH also proves it shells out to nothing at all.
+    const result = await runFast(root, { env: { PATH: "" } });
+    assert.equal(result.code, 0, result.output);
+    assert.match(result.output, /pin is current/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });
