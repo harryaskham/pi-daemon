@@ -205,6 +205,17 @@ remedy differs too. A vacuous assertion needs a negative case; a misaimed one
 needed its exemption to live where the guard could see it rather than in a
 comment beside it.
 
+A third form fails correctly and still misleads. An assertion's failure text
+renders only on the failing path, so a green suite is no evidence at all about
+it — it is simultaneously the text most likely to be wrong and least likely to be
+read. A drift alarm here recorded that the SDK does not export a helper the
+daemon reproduces, and its message told the reader to update the constant and
+consume the export. That is the one response which satisfies the alarm while
+leaving unasked the question it exists to force, because the upstream helper
+creates directories as a side effect and the daemon needs a pure derivation. The
+assertion was correct throughout; only its advice was wrong, and no passing run
+could have revealed that. Fire the assertion once and read what it prints.
+
 The same error occurs in measurements, not only in assertions. Counting outcomes
 tells you the distribution of what happened, not whether the thing you are
 counting is capable of happening. Three of the findings above are that at
