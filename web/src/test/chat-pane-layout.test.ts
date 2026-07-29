@@ -5,6 +5,7 @@ import {
   liveComposerPresentation,
   measuredRecordHeight,
   restoredTranscriptScrollTop,
+  shouldSampleReadingAnchor,
   transcriptDistanceFromBottom,
 } from "../components/ChatPane";
 import type { DashboardLiveSessionState } from "../dashboard-live-session";
@@ -163,5 +164,21 @@ describe("transcript reading anchor across a presentation switch", () => {
     expect(measuredRecordHeight(0, 0, 126)).toBe(126);
     expect(measuredRecordHeight(Number.NaN, undefined, 132)).toBe(132);
     expect(measuredRecordHeight(-4, 132, 126)).toBe(132);
+  });
+
+  it("samples the anchor whenever the transcript is laid out, not only on scroll", () => {
+    // Laid out and idle: a resize is a legitimate anchor refresh, which is what
+    // keeps a scroll-only anchor from going stale by the growth since the last
+    // scroll event (bd-65fddd).
+    expect(shouldSampleReadingAnchor(626, false)).toBe(true);
+    expect(shouldSampleReadingAnchor(1, false)).toBe(true);
+    // Mid-restore: the offsets are being driven, so sampling them would record
+    // the value being restored rather than the reader's position.
+    expect(shouldSampleReadingAnchor(626, true)).toBe(false);
+    // Collapsed by the presentation switch: nothing meaningful to measure.
+    expect(shouldSampleReadingAnchor(0, false)).toBe(false);
+    expect(shouldSampleReadingAnchor(0, true)).toBe(false);
+    expect(shouldSampleReadingAnchor(Number.NaN, false)).toBe(false);
+    expect(shouldSampleReadingAnchor(-10, false)).toBe(false);
   });
 });

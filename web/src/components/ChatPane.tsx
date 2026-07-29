@@ -175,6 +175,22 @@ export function commandNames(value: DashboardLiveSessionState["availableCommands
 }
 
 /**
+ * Whether a live reading-anchor sample should be trusted.
+ *
+ * The anchor is a distance from the bottom, so it changes whenever the
+ * transcript's total size changes — and dynamic row measurement changes that
+ * size without any scroll event. An anchor refreshed only on scroll therefore
+ * goes stale by exactly the growth since the reader last scrolled, and the
+ * restore faithfully reproduces the stale value: measured on a loaded host, the
+ * transcript grew 111px after the final scroll event and the reader landed
+ * 111px away (bd-65fddd). Samples taken while the layer is collapsed or while a
+ * restore is mid-flight are meaningless and must be ignored.
+ */
+export function shouldSampleReadingAnchor(clientHeight: number, restoring: boolean): boolean {
+  return !restoring && Number.isFinite(clientHeight) && clientHeight > 0;
+}
+
+/**
  * Distance in pixels between the bottom of the rendered transcript and the
  * bottom of its viewport. This is the stable reading anchor across a
  * presentation switch: absolute `scrollTop` is not comparable, because dynamic
@@ -257,6 +273,7 @@ export function ChatPane({
 }: ChatPaneProps) {
   const paneRef = useRef<HTMLDivElement>(null);
   const scrollerRef = useRef<HTMLDivElement>(null);
+  const sizerRef = useRef<HTMLDivElement>(null);
   const readingAnchorRef = useRef(0);
   const laidOutRef = useRef(false);
   const restoringRef = useRef(false);
@@ -308,11 +325,16 @@ export function ChatPane({
 
   // Track the reading anchor while the Rich layer is laid out, so switching to
   // TUI and back returns the reader to the same place in the transcript.
+  //
+  // Scroll events alone are not enough. The anchor is a distance from the
+  // bottom, and dynamic row measurement changes the transcript's total size
+  // without scrolling, so an anchor last written by a scroll event drifts stale
+  // by exactly that growth. Observing the sizer keeps it current (bd-65fddd).
   useEffect(() => {
     const scroller = scrollerRef.current;
     if (scroller === null) return;
     const record = (): void => {
-      if (restoringRef.current || scroller.clientHeight === 0) return;
+      if (!shouldSampleReadingAnchor(scroller.clientHeight, restoringRef.current)) return;
       readingAnchorRef.current = transcriptDistanceFromBottom(
         scroller.scrollHeight,
         scroller.scrollTop,
@@ -320,8 +342,17 @@ export function ChatPane({
       );
     };
     scroller.addEventListener("scroll", record, { passive: true });
-    return () => scroller.removeEventListener("scroll", record);
-  }, []);
+    const sizer = sizerRef.current;
+    const observer =
+      sizer !== null && typeof ResizeObserver !== "undefined"
+        ? new ResizeObserver(() => record())
+        : undefined;
+    observer?.observe(sizer as Element);
+    return () => {
+      scroller.removeEventListener("scroll", record);
+      observer?.disconnect();
+    };
+  }, [shownRecords.length]);
 
   useEffect(() => {
     const pane = paneRef.current;
@@ -444,7 +475,7 @@ export function ChatPane({
         </div>
       ) : (
         <div ref={scrollerRef} className="transcript" aria-label="Conversation transcript" aria-live="polite">
-          <div className="transcript__sizer" style={{ height: virtualizer.getTotalSize() }}>
+          <div ref={sizerRef} className="transcript__sizer" style={{ height: virtualizer.getTotalSize() }}>
             {virtualizer.getVirtualItems().map((row) => {
               const record = shownRecords[row.index];
               if (!record) return null;

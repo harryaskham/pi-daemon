@@ -114,31 +114,39 @@ self-hosted runner class at load average ~11.7, on `85e41a0`:
 | --- | --- | --- |
 | Scenarios | 21 | 3 |
 | Wall clock | 3.0-3.1 min | 53s |
-| Determinism under load | 1 intermittent failure | stable |
+| Determinism under load | fixed in `bd-65fddd` | stable |
 
 The browser bundle is a ~2.1 GiB Nix closure. That is free on a warm
 self-hosted store and substitutable from the binary cache, but it is the one
 cost that would hurt a cold or ephemeral runner.
 
-The blocking issue is determinism, not runtime. Two consecutive full runs failed
-`TUI presentation streams one canonical controller grid to read-only pane
-mirrors` at `expect(Math.abs(restoredAnchor - readingAnchor)).toBeLessThan(32)`
-with a measured 43px, while the same scenario passes in isolation. A gate that
-is red for reasons unrelated to the change under review trains reviewers to
-ignore it, which is worse than no gate. The three `@smoke` scenarios were chosen
-because they assert structure only — bounded virtualization, sidebar states, and
-production boot never painting fixture data — with no wall-clock or pixel
-tolerance, so host contention cannot turn them red.
+The blocking issue was determinism, not runtime, and it is now fixed. Two
+consecutive full runs failed `TUI presentation streams one canonical controller
+grid to read-only pane mirrors` at
+`expect(Math.abs(restoredAnchor - readingAnchor)).toBeLessThan(32)`, while the
+same scenario passed in isolation. That was a real product defect, not a
+tolerance that needed widening: the reading anchor was refreshed only on scroll
+events, so dynamic row measurement grew the transcript underneath it and the
+restore faithfully reproduced a stale anchor. `bd-65fddd` observes the sizer and
+keeps the anchor current. Measured after the fix on the same host at load
+average 14-16.4: five consecutive scenario repeats passed, and three of four
+full-suite runs were 21/21.
 
-Revisit full-suite gating when the load-sensitive scenarios are deterministic
-under contention. At that point the runtime is affordable: 3 minutes on a warm
-runner, in parallel with the existing Node and Nix jobs.
+The remaining reason to keep the subset is the fourth run, which failed six
+scenarios in under a second each — a starvation cascade with a signature quite
+unlike a tolerance miss, on a host also running several other agents. A gate
+that is red for reasons unrelated to the change under review trains reviewers to
+ignore it, which is worse than no gate. The three `@smoke` scenarios assert
+structure only — bounded virtualization, sidebar states, and production boot
+never painting fixture data — with no wall-clock or pixel tolerance, so host
+contention cannot turn them red.
+
+Revisit full-suite gating once the runner class is known not to starve under
+concurrent load. The determinism objection that previously blocked it is
+resolved, and the runtime is affordable: 3 minutes on a warm runner, in parallel
+with the existing Node and Nix jobs.
 
 ## Known failures
 
-`TUI presentation streams one canonical controller grid to read-only pane
-mirrors` fails intermittently in full-suite runs under host load, at the 32px
-reading-anchor tolerance introduced with the `bd-94d7df` fix (43px observed,
-twice, at load average ~11.7). It passes in isolation. The restoration behavior
-itself is fixed; what is not yet load-proof is the tolerance around the settled
-measurement. It is excluded from the `@smoke` subset for that reason.
+None outstanding. The reading-anchor scenario that previously failed under load
+is fixed in `bd-65fddd`; see the gating section above for the measurements.
