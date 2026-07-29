@@ -68,19 +68,25 @@ Two settings in `.github/workflows/ci.yml` are deliberate and easy to undo by
 accident. Both follow the same rule as the budgets above: a gate is only worth
 having if it can actually answer.
 
-**Cancellation is pull-request-only.** `cancel-in-progress` is scoped to pull
-requests, so pushes to `main` queue rather than collapsing to the newest. With
-unconditional cancellation the slowest job, Nix on macOS, was cancelled on 14 of
-30 runs, because a later landing killed it after the fast jobs had already
-reported. That failure mode is self-reinforcing: the faster the project lands,
-the less often its slowest verification is allowed to finish, so coverage
-degrades exactly when the project is most active and everything else is green.
+**Slow verification lives in its own workflow.** `ci.yml` is the fast lane and
+cancels superseded runs; `ci-macos.yml` has its own concurrency group and lets a
+push to `main` queue, so the slowest verification keeps its verdict instead of
+being killed by the next landing.
 
-The cost is that a burst of landings serialises on the single macOS runner and
-can leave it several commits behind. If that becomes the problem, move macOS off
-per-push to a schedule or on demand. Do **not** re-enable cancellation: that
-returns to a job that costs runner time and rarely produces a verdict anyone
-reads.
+They are separate because the first attempt at this put both in one workflow and
+merely scoped `cancel-in-progress` to pull requests. That deadlocked CI
+completely: a job whose runner label matches nothing can never be assigned and
+therefore never completes, so with cancellation off every later run waited behind
+it and dispatched no jobs at all — not a failure, no verdict of any kind, until
+the next push replaced the pending run. Two rules follow.
+
+Do **not** put a slow or optional job in the fast lane's concurrency group and
+turn cancellation off to protect it. Give it its own workflow.
+
+Do **not** assume a job that never reports is flaky. Check that a runner
+carrying its labels is actually registered — `gh api repos/OWNER/REPO/actions/runners`
+— because a job that cannot be scheduled looks exactly like a job that keeps
+being cancelled, and only one of those is worth budgeting around.
 
 **Step and job budgets are per platform.** Linux answers in minutes from a warm
 store, so a run approaching its budget indicates a real problem. macOS measured

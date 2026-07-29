@@ -1,0 +1,44 @@
+name: CI (macOS)
+
+# Separate from the fast lane on purpose. macOS verification is slow and, when
+# no macOS runner is registered, unschedulable — and a job that cannot be
+# assigned never completes. Holding it inside the main workflow's concurrency
+# group meant every later run waited behind it and dispatched nothing at all
+# (bd-775c57). Here it can queue for as long as it needs without blocking the
+# Linux, Node, and browser jobs that answer in minutes.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  # Its own group, and superseded pull-request runs still cancel. A push to
+  # main is allowed to queue, which is the property the fast lane could not
+  # provide: the slowest verification keeps its verdict instead of being killed
+  # by the next landing.
+  group: ci-macos-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  nix:
+    name: Nix (macOS)
+    runs-on: [self-hosted, macos]
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cachix/install-nix-action@v31
+        with:
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+      # Successful macOS runs measured 1.2 to 13.3 minutes, so the ceiling is
+      # sized for the cold tail rather than the warm case: the failures this
+      # replaced were never test failures, they were a budget sized for Linux
+      # (bd-8dab81).
+      - run: nix flake check --print-build-logs
+        timeout-minutes: 50
+      - run: nix run .#pi-daemon -- version
+        timeout-minutes: 5

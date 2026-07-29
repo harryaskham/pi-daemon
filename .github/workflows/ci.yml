@@ -10,13 +10,13 @@ permissions:
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
-  # Cancel superseded pull-request runs, never a push to main. macOS is by far
-  # the slowest job, so with unconditional cancellation a later landing killed
-  # it before it could report: measured over 30 runs it was cancelled 14 times
-  # and answered 6, meaning the faster the project landed the less often its
-  # only macOS verification was allowed to finish (bd-8dab81). Runs on main now
-  # queue instead, so every landed commit gets a verdict.
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  # This workflow is the fast lane, so a superseded run is cancelled. Holding
+  # runs instead deadlocked CI entirely: a job that cannot be assigned never
+  # completes, and with cancellation off every later run waited behind it and
+  # dispatched nothing (bd-8dab81 caused it, bd-775c57 diagnosed it). Slow
+  # verification that must survive a later landing belongs in its own workflow
+  # with its own concurrency group, as macOS now is.
+  cancel-in-progress: true
 
 jobs:
   node:
@@ -66,15 +66,6 @@ jobs:
             # Linux answers in minutes from a warm store; a run that needs
             # anything close to this budget is a real problem, not a cold cache.
             checkTimeout: 25
-          - name: macOS
-            runner: [self-hosted, macos]
-            jobTimeout: 60
-            # Successful macOS runs measured 1.2 to 13.3 minutes, so the spread
-            # is wide enough that a 25-minute ceiling was hit whenever the
-            # runner had to build rather than substitute, producing 7 timeouts
-            # in 30 runs that were never test failures (bd-8dab81). Budget for
-            # the cold tail instead of failing on it.
-            checkTimeout: 50
     steps:
       - uses: actions/checkout@v4
       - uses: cachix/install-nix-action@v31
