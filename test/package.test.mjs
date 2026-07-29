@@ -158,6 +158,34 @@ test("schema conformance uses the audited exact Ajv pin without $data", async ()
   }
 });
 
+test("the lockfile resolves every dependency from the public npm registry", async () => {
+  // The offline package acceptance below installs the packed tarball with
+  // `--registry=https://registry.npmjs.org` against a prepopulated cache, and
+  // npm keys that cache by request URL. A contributor whose npm points at a
+  // private mirror rewrites `resolved` for exactly the packages they touch, so
+  // the cached entry and the requested URL stop matching and the install fails
+  // with ENOTCACHED far from the edit that caused it. This also keeps internal
+  // mirror hostnames out of a public lockfile.
+  const lockText = await readFile(join(repositoryRoot, "package-lock.json"), "utf8");
+  const lock = JSON.parse(lockText);
+  const foreign = [];
+  for (const [path, entry] of Object.entries(lock.packages ?? {})) {
+    const resolved = entry?.resolved;
+    if (typeof resolved !== "string" || !resolved.startsWith("http")) continue;
+    if (!resolved.startsWith("https://registry.npmjs.org/")) {
+      foreign.push(`${path === "" ? "<root>" : path} -> ${resolved}`);
+    }
+  }
+  assert.deepEqual(
+    foreign,
+    [],
+    `package-lock.json resolves outside https://registry.npmjs.org/; rewrite these before committing:\n${foreign.join("\n")}`,
+  );
+  // Negative control: the predicate must reject a mirror URL, so this cannot
+  // pass by matching nothing.
+  assert.equal("https://mirror.example/npm/registry/ws/-/ws-8.21.1.tgz".startsWith("https://registry.npmjs.org/"), false);
+});
+
 test(
   "clean npm pack builds runtime files and the installed CLI executes through npm bin links",
   { timeout: CLEAN_PACKAGE_ACCEPTANCE_TIMEOUT_MS },
