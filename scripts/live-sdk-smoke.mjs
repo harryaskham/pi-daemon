@@ -31,9 +31,7 @@ let secondClient;
 try {
   await mkdir(cwd, { mode: 0o700 });
   await mkdir(stateDir, { mode: 0o700 });
-  const { AuthStorage, getAgentDir, ModelRegistry } = await import(
-    "@earendil-works/pi-coding-agent"
-  );
+  const { getAgentDir, ModelRuntime } = await import("@earendil-works/pi-coding-agent");
   const { PiDaemonClient } = await import("../dist/client.js");
   const { FileDurabilityStore } = await import("../dist/durability.js");
   const { Multiplexer } = await import("../dist/multiplexer.js");
@@ -41,8 +39,10 @@ try {
   const { ProtocolServer } = await import("../dist/server.js");
 
   const agentDir = getAgentDir();
-  const authStorage = AuthStorage.create(join(agentDir, "auth.json"));
-  const modelRegistry = ModelRegistry.create(authStorage, join(agentDir, "models.json"));
+  const modelRuntime = await ModelRuntime.create({
+    authPath: join(agentDir, "auth.json"),
+    modelsPath: join(agentDir, "models.json"),
+  });
   const requested = process.env.PI_DAEMON_LIVE_MODEL;
   let model;
   if (requested !== undefined) {
@@ -50,13 +50,13 @@ try {
     if (slash <= 0 || slash === requested.length - 1) {
       throw new Error("PI_DAEMON_LIVE_MODEL must be provider/model-id");
     }
-    model = modelRegistry.find(requested.slice(0, slash), requested.slice(slash + 1));
+    model = modelRuntime.getModel(requested.slice(0, slash), requested.slice(slash + 1));
     if (model === undefined) throw new Error(`model not found: ${requested}`);
-    if (!modelRegistry.hasConfiguredAuth(model)) {
+    if (!modelRuntime.hasConfiguredAuth(model.provider)) {
       throw new Error(`model authentication is unavailable: ${requested}`);
     }
   } else {
-    model = modelRegistry.getAvailable()[0];
+    model = (await modelRuntime.getAvailable())[0];
     if (model === undefined) {
       throw new Error("no authenticated Pi model is available; set PI_DAEMON_LIVE_MODEL");
     }
@@ -66,8 +66,7 @@ try {
     stateDir,
     agentDir,
     allowedRoots: [cwd],
-    authStorage,
-    modelRegistry,
+    modelRuntime,
   });
   const durability = new FileDurabilityStore({ stateDir });
   multiplexer = new Multiplexer({
