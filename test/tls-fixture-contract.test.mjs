@@ -97,11 +97,6 @@ test("permission fixtures state their mode rather than inheriting the umask", as
     process.umask(previous);
   }
 
-  // And the two fixtures this actually caught state their mode explicitly.
-  const [identity, bootstrap] = await Promise.all([
-    readFile(join(here, "dashboard-identity-config.test.mjs"), "utf8"),
-    readFile(join(here, "bootstrap.test.mjs"), "utf8"),
-  ]);
-  assert.match(identity, /chmod\(secretPath, 0o644\)/);
-  assert.match(bootstrap, /chmod\(paths\.stateDir, 0o755\)/);
+  // Which fixtures must state their mode, and that they do, is asserted by
+  // test/permission-fixture.test.mjs; this case only fixes the reason why.
 });

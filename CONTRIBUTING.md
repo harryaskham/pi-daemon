@@ -86,6 +86,37 @@ and `OPENSSL_BIN` points the fixture at a specific binary if yours is elsewhere.
 Those cases must never be skipped when it is absent; they are the security
 coverage, and a skip would turn the gate green while it silently disappears.
 
+## Negative controls
+
+An assertion whose value is that it *rejects* something can pass while checking
+nothing, and reading it will not reveal that: its text describes the intended
+property correctly, and what is missing — any evidence that it can fail — is not
+visible in the source at all. Three such assertions were found in one night, each
+exposed only by an environment that differed slightly from the one it was written
+in: an acceptance comparing two pre-hydration zeros, a fixture whose
+permissiveness depended on the runner's umask, and a check pinned to a spelling
+rather than a property.
+
+So demonstrate that the assertion can fail. In order of preference:
+
+1. **A checked-in negative case.** Where the predicate can be extracted, assert
+   that it rejects the broken shapes, in the same file. It never rots, and a
+   later change that hollows out the assertion fails visibly.
+   `test/playwright-browser-resolution.test.mjs` checks in the four ways its
+   pipeline could genuinely break.
+2. **A checked precondition.** Where the property is only observable end-to-end
+   but its precondition is not, assert the precondition. A fail-closed case that
+   needs a group-readable file should prove the file is group-readable before
+   asserting the rejection — that is what `test/permission-fixture.mjs` does, and
+   it fails in exactly the environment that would otherwise make the case
+   vacuous, which a one-off manual check on your own machine cannot.
+3. **A recorded manual mutation.** Otherwise, break the property, watch the test
+   fail, restore it, and name the mutation in the commit message. The record is
+   the point: without it the next editor cannot tell it was ever done.
+
+This matters most for fail-closed and permission assertions, where a vacuous
+pass is a silent loss of security coverage rather than a missing test.
+
 ## Nix formatting
 
 `flake.nix` declares `alejandra` as the repository formatter and the Nix sources

@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
 import { fstatSync } from "node:fs";
-import { chmod, mkdtemp, open, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, open, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
 import { PiDaemonConfigError } from "../dist/config.js";
+import { writeFileWithMode } from "./permission-fixture.mjs";
 import {
   createDashboardIdentityProvider,
   loadDashboardIdentityProviderFile,
@@ -79,8 +80,9 @@ identities:
 test("provider documents and credential sources fail closed", async (t) => {
   const root = await fixture(t);
   const insecure = join(root, "insecure.yaml");
-  await writeFile(insecure, "type: static\nidentities: []\n", { mode: 0o666 });
-  await chmod(insecure, 0o666);
+  // Permissive on purpose: the mode is the property under test, so state it and
+  // check it rather than inheriting whatever the environment allows.
+  await writeFileWithMode(insecure, "type: static\nidentities: []\n", 0o666);
   await assert.rejects(
     loadDashboardIdentityProviderFile(insecure),
     (error) => error instanceof PiDaemonConfigError && error.code === "identity_provider_insecure_mode",
@@ -99,13 +101,8 @@ identities:
   );
 
   const secretPath = join(root, "owner.secret");
-  await writeFile(secretPath, `${OWNER_TOKEN}\n`, { mode: 0o644 });
-  // The point of this case is a group/world-readable credential, so set the
-  // mode explicitly: `writeFile` masks its mode with the ambient umask, and a
-  // restrictive one silently produces an owner-only file with nothing to
-  // reject. That is how this assertion failed on a CI runner while passing
-  // locally.
-  await chmod(secretPath, 0o644);
+  // Group/world-readable on purpose, for the same reason.
+  await writeFileWithMode(secretPath, `${OWNER_TOKEN}\n`, 0o644);
   const providerPath = join(root, "provider.yaml");
   await writeFile(providerPath, `type: static
 identities:

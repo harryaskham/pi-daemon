@@ -773,6 +773,9 @@ implementation order. This list is a human-readable crosswalk.
 - [x] `bd-7cba4b` — the Node CI lane's undeclared `openssl` dependency declared
   and provided, with a self-describing failure, plus the umask-dependent
   permission fixtures that were failing the same lane for an unrelated reason.
+- [x] `bd-27c44a` — negative controls for fail-closed assertions: a checked
+  permission-fixture helper, its own negative case, and the convention recorded
+  in CONTRIBUTING.
 - [ ] `bd-4e10da` — future neutral persisted per-session cron/prompt scheduler
   and durable wakes; detailed alongside Dash in `web/PLAN.md`.
   - [x] `bd-6d96bb` — v1 schedule resource/schema/fixtures, bounded owner-private

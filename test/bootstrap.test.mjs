@@ -15,6 +15,7 @@ import test from "node:test";
 
 import { loadServiceBearer } from "../dist/api-auth.js";
 import { bootstrapServicePaths } from "../dist/bootstrap.js";
+import { assertFixtureMode, mkdirWithMode } from "./permission-fixture.mjs";
 
 const AUTH = `${JSON.stringify({ "github-copilot": { type: "oauth", refresh: "fixture" } }, null, 2)}\n`;
 
@@ -120,6 +121,9 @@ test("implicit absent auth seeds are nonfatal while explicit absent seeds fail",
 test("bootstrap rejects permissive or symlinked seed and bearer files", async (t) => {
   const permissive = await harness(t, "pi-daemon-bootstrap-permissive-");
   await chmod(permissive.source, 0o644);
+  // The mode is the property under test, so check it rather than assume chmod
+  // took effect.
+  await assertFixtureMode(permissive.source, 0o644, "fixture file");
   await assert.rejects(
     bootstrapServicePaths({
       ...permissive,
@@ -169,11 +173,9 @@ test("bootstrap bounds and validates auth seed content before copying", async (t
 
 test("bootstrap rejects permissive daemon-owned directories", async (t) => {
   const paths = await harness(t, "pi-daemon-bootstrap-permissive-dir-");
-  await mkdir(paths.stateDir, { recursive: true, mode: 0o755 });
-  // `mkdir` masks its mode with the ambient umask, and does not apply it at all
-  // when the directory already exists, so state the permissive mode this case
-  // depends on rather than inheriting whichever one the environment allows.
-  await chmod(paths.stateDir, 0o755);
+  // Permissive on purpose: the mode is the property under test, so state it and
+  // check it rather than inheriting whatever the environment allows.
+  await mkdirWithMode(paths.stateDir, 0o755);
   await assert.rejects(
     bootstrapServicePaths(paths),
     (error) => error instanceof Error && "code" in error && error.code === "insecure_state_path",
