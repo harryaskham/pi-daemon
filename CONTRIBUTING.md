@@ -54,6 +54,32 @@ add a bare wall-clock assertion to the standard suite; report it through
 `test/performance-budget.mjs`, `web/src/test/performance-budget.ts`, or
 `web/e2e/performance-budget.ts` instead.
 
+## Editing the CI workflow
+
+Two settings in `.github/workflows/ci.yml` are deliberate and easy to undo by
+accident. Both follow the same rule as the budgets above: a gate is only worth
+having if it can actually answer.
+
+**Cancellation is pull-request-only.** `cancel-in-progress` is scoped to pull
+requests, so pushes to `main` queue rather than collapsing to the newest. With
+unconditional cancellation the slowest job, Nix on macOS, was cancelled on 14 of
+30 runs, because a later landing killed it after the fast jobs had already
+reported. That failure mode is self-reinforcing: the faster the project lands,
+the less often its slowest verification is allowed to finish, so coverage
+degrades exactly when the project is most active and everything else is green.
+
+The cost is that a burst of landings serialises on the single macOS runner and
+can leave it several commits behind. If that becomes the problem, move macOS off
+per-push to a schedule or on demand. Do **not** re-enable cancellation: that
+returns to a job that costs runner time and rarely produces a verdict anyone
+reads.
+
+**Step and job budgets are per platform.** Linux answers in minutes from a warm
+store, so a run approaching its budget indicates a real problem. macOS measured
+1.2 to 13.3 minutes on success, so it carries a wider budget to cover a cold
+cache rather than failing on its own tail. Keep them separate; a single shared
+ceiling either fails macOS on healthy runs or hides a genuine Linux regression.
+
 ## Dependency updates and the pinned Nix hash
 
 `flake.nix` pins `npmDepsHash`, a fixed-output hash over the npm dependency
