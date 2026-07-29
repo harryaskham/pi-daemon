@@ -242,12 +242,14 @@
     "web:e2e:nix": "npm run e2e:nix --workspace @harryaskham/pi-daemon-dash",
     "web:e2e:smoke": "npm run e2e:smoke --workspace @harryaskham/pi-daemon-dash",
     "web:bundle-report": "npm run bundle:report --workspace @harryaskham/pi-daemon-dash",
-    "test:manual:performance": "npm run build && PI_DAEMON_PERFORMANCE_BUDGETS=1 node --test --test-concurrency=1 test/transcript-projector.test.mjs test/dashboard-remote-backend.test.mjs test/shadow-tui-host.test.mjs test/virtual-terminal.test.mjs"
+    "test:manual:performance": "npm run build && PI_DAEMON_PERFORMANCE_BUDGETS=1 node --test --test-concurrency=1 test/transcript-projector.test.mjs test/dashboard-remote-backend.test.mjs test/shadow-tui-host.test.mjs test/virtual-terminal.test.mjs",
+    "lock:repair-integrity": "node scripts/repair-lock-integrity.mjs",
+    "lock:repair-integrity:check": "node scripts/repair-lock-integrity.mjs --check"
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "1.2.0",
-    "@earendil-works/pi-coding-agent": "0.80.6",
-    "@earendil-works/pi-tui": "0.80.6",
+    "@earendil-works/pi-coding-agent": "0.82.1",
+    "@earendil-works/pi-tui": "0.82.1",
     "ws": "8.21.1",
     "yaml": "2.9.0"
   },

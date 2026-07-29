@@ -4,28 +4,14 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import test from "node:test";
 
-import {
-  AuthStorage,
-  ModelRegistry,
-  createAgentSession,
-} from "@earendil-works/pi-coding-agent";
+import { ModelRuntime, createAgentSession } from "@earendil-works/pi-coding-agent";
 
+import { inMemoryCredentials, modelHarness } from "./model-harness.mjs";
 import { PiAdapterError, PiSessionAdapter, PiSessionFactory } from "../dist/pi-adapter.js";
 import { parseSessionConfiguration } from "../dist/session-config.js";
 
 const temporaryDirectory = async () =>
   realpath(await mkdtemp(join(tmpdir(), "pi-daemon-adapter-")));
-
-const modelHarness = () => {
-  const seedRegistry = ModelRegistry.inMemory(AuthStorage.inMemory());
-  const model = seedRegistry.getAll()[0];
-  assert.ok(model, "Pi built-in model registry must not be empty");
-  const authStorage = AuthStorage.inMemory({
-    [model.provider]: { type: "api_key", key: "test-only-key" },
-  });
-  const modelRegistry = ModelRegistry.inMemory(authStorage);
-  return { authStorage, modelRegistry, model };
-};
 
 const openRequest = (cwd, model, sessionId = "agent-a") => ({
   sessionId,
@@ -180,15 +166,15 @@ test("factory shares auth/models while isolating session, settings, and locked r
   const stateDir = await temporaryDirectory();
   const agentDir = await temporaryDirectory();
   const cwd = await temporaryDirectory();
-  const { authStorage, modelRegistry, model } = modelHarness();
+  const { credentials, modelRuntime, model } = await modelHarness();
   const captures = [];
   const sessions = [];
   const factory = new PiSessionFactory({
     stateDir,
     agentDir,
     allowedRoots: [cwd],
-    authStorage,
-    modelRegistry,
+    credentials,
+    modelRuntime,
     async createSession(options) {
       captures.push(options);
       const session = new FakePiSession(
@@ -207,8 +193,8 @@ test("factory shares auth/models while isolating session, settings, and locked r
   const first = await factory.open(openRequest(cwd, model, "a"));
   const second = await factory.open(openRequest(cwd, model, "b"));
   assert.equal(captures.length, 2);
-  assert.equal(captures[0].authStorage, authStorage);
-  assert.equal(captures[1].modelRegistry, modelRegistry);
+  assert.equal(captures[0].modelRuntime, modelRuntime);
+  assert.equal(captures[1].modelRuntime, modelRuntime);
   assert.notEqual(captures[0].sessionManager, captures[1].sessionManager);
   assert.notEqual(captures[0].settingsManager, captures[1].settingsManager);
   assert.notEqual(captures[0].resourceLoader, captures[1].resourceLoader);
@@ -236,7 +222,7 @@ test("factory injects only descriptor-granted host tools and revokes them with t
   const stateDir = await temporaryDirectory();
   const agentDir = await temporaryDirectory();
   const cwd = await temporaryDirectory();
-  const { authStorage, modelRegistry, model } = modelHarness();
+  const { credentials, modelRuntime, model } = await modelHarness();
   const captures = [];
   const registryCalls = [];
   const invocations = [];
@@ -275,8 +261,8 @@ test("factory injects only descriptor-granted host tools and revokes them with t
     stateDir,
     agentDir,
     allowedRoots: [cwd],
-    authStorage,
-    modelRegistry,
+    credentials,
+    modelRuntime,
     hostToolAdapters,
     async createSession(options) {
       captures.push(options);
@@ -350,13 +336,13 @@ test("configured factory applies scoped model auth, settings, resources, and too
   await writeFile(join(autoExtensions, "ambient.ts"), "export default function () {}\n");
   await writeFile(join(cwd, "AGENTS.md"), "ambient context must not load\n");
 
-  const seedRegistry = ModelRegistry.inMemory(AuthStorage.inMemory());
-  const model = seedRegistry.getAll().find((candidate) => candidate.provider === "openai");
+  const seed = await ModelRuntime.create({ credentials: inMemoryCredentials(), modelsPath: null });
+  const model = seed.getModels().find((candidate) => candidate.provider === "openai");
   assert.ok(model, "Pi built-in registry must expose an OpenAI model");
-  const authStorage = AuthStorage.inMemory({
+  const credentials = inMemoryCredentials({
     [model.provider]: { type: "api_key", key: "shared-key" },
   });
-  const modelRegistry = ModelRegistry.inMemory(authStorage);
+  const modelRuntime = await ModelRuntime.create({ credentials, modelsPath: null });
   const previous = process.env.OPENAI_API_KEY;
   delete process.env.OPENAI_API_KEY;
   const captures = [];
@@ -364,8 +350,8 @@ test("configured factory applies scoped model auth, settings, resources, and too
     stateDir,
     agentDir,
     allowedRoots: [cwd],
-    authStorage,
-    modelRegistry,
+    credentials,
+    modelRuntime,
     async createSession(options) {
       captures.push(options);
       return {
@@ -405,9 +391,14 @@ test("configured factory applies scoped model auth, settings, resources, and too
     assert.equal(captures.length, 1);
     const options = captures[0];
     assert.equal(options.agentDir, scopedAgentDir);
-    assert.notEqual(options.authStorage, authStorage);
-    assert.equal(await options.authStorage.getApiKey(model.provider), "session-key");
-    assert.equal(await authStorage.getApiKey(model.provider), "shared-key");
+    // The environment overlay must produce a session-scoped runtime whose
+    // credential resolves to the session key, while the factory-wide runtime
+    // keeps the shared one.
+    assert.notEqual(options.modelRuntime, modelRuntime);
+    const scopedAuth = await options.modelRuntime.getAuth(model.provider);
+    assert.equal(scopedAuth?.auth.apiKey, "session-key");
+    const sharedAuth = await modelRuntime.getAuth(model.provider);
+    assert.equal(sharedAuth?.auth.apiKey, "shared-key");
     assert.equal(options.model.provider, model.provider);
     assert.equal(options.model.id, model.id);
     assert.equal(options.thinkingLevel, "high");
@@ -490,7 +481,7 @@ test("configured factory applies scoped model auth, settings, resources, and too
 });
 
 test("adapter maps Pi events, prompt result, queue controls, abort, and preflight rejection", async () => {
-  const { model } = modelHarness();
+  const { model } = await modelHarness();
   const sessionRoot = await temporaryDirectory();
   const session = new FakePiSession("sdk-a", model);
   const adapter = await adapterForFakeRuntime(new FakePiRuntime(session), sessionRoot);
@@ -542,7 +533,7 @@ test("factory opens owner-controlled external Pi sessions without chmodding norm
   await mkdir(sessionDir, { recursive: true, mode: 0o755 });
   await chmod(externalRoot, 0o755);
   await chmod(sessionDir, 0o755);
-  const { authStorage, modelRegistry, model } = modelHarness();
+  const { credentials, modelRuntime, model } = await modelHarness();
   const source = join(sessionDir, "source.jsonl");
   const timestamp = "2026-07-21T12:00:00.000Z";
   await writeFile(
@@ -557,8 +548,8 @@ test("factory opens owner-controlled external Pi sessions without chmodding norm
     agentDir,
     allowedRoots: [cwd],
     externalSessionRoots: [externalRoot],
-    authStorage,
-    modelRegistry,
+    credentials,
+    modelRuntime,
     async createSession(options) {
       captures.push(options);
       return {
@@ -618,14 +609,14 @@ test("factory permits only the canonical Pi sessions data subtree inside agentDi
   const cwd = await temporaryDirectory();
   const sessionDir = join(agentDir, "sessions", "project");
   await mkdir(sessionDir, { recursive: true, mode: 0o700 });
-  const { authStorage, modelRegistry, model } = modelHarness();
+  const { credentials, modelRuntime, model } = await modelHarness();
   const captures = [];
   const factory = new PiSessionFactory({
     stateDir,
     agentDir,
     allowedRoots: [cwd],
-    authStorage,
-    modelRegistry,
+    credentials,
+    modelRuntime,
     async createSession(options) {
       captures.push(options);
       return {
@@ -670,7 +661,7 @@ test("factory permits only the canonical Pi sessions data subtree inside agentDi
 
 test("runtime replacement rebinds subscriptions and persists changed identity before returning", async () => {
   const sessionRoot = await temporaryDirectory();
-  const { model } = modelHarness();
+  const { model } = await modelHarness();
   const first = new FakePiSession("sdk-first", model);
   const second = new FakePiSession("sdk-second", model);
   const runtime = new FakePiRuntime(first, second);
@@ -689,7 +680,7 @@ test("runtime replacement rebinds subscriptions and persists changed identity be
 
 test("runtime replacement fails closed when durable identity persistence fails", async () => {
   const sessionRoot = await temporaryDirectory();
-  const { model } = modelHarness();
+  const { model } = await modelHarness();
   const runtime = new FakePiRuntime(
     new FakePiSession("sdk-first", model),
     new FakePiSession("sdk-second", model),
@@ -724,7 +715,7 @@ test("factory refuses cwd authority overlap, out-of-root cwd, and external sessi
   const allowedRoot = await temporaryDirectory();
   const outsideCwd = await temporaryDirectory();
   const agentDir = await temporaryDirectory();
-  const { authStorage, modelRegistry, model } = modelHarness();
+  const { credentials, modelRuntime, model } = await modelHarness();
 
   const stateDir = join(allowedRoot, "state");
   await mkdir(stateDir, { mode: 0o700 });
@@ -732,8 +723,8 @@ test("factory refuses cwd authority overlap, out-of-root cwd, and external sessi
     stateDir,
     agentDir,
     allowedRoots: [allowedRoot],
-    authStorage,
-    modelRegistry,
+    credentials,
+    modelRuntime,
   });
   await assert.rejects(
     overlapping.open(openRequest(allowedRoot, model)),
@@ -749,8 +740,8 @@ test("factory refuses cwd authority overlap, out-of-root cwd, and external sessi
     agentDir,
     allowedRoots: [allowedRoot],
     allowAuthorityRootOverlap: true,
-    authStorage,
-    modelRegistry,
+    credentials,
+    modelRuntime,
   });
   const overlappingAdapter = await explicitlyOverlapping.open(
     openRequest(allowedRoot, model, "explicit-overlap-session"),
@@ -767,8 +758,8 @@ test("factory refuses cwd authority overlap, out-of-root cwd, and external sessi
     stateDir: safeState,
     agentDir,
     allowedRoots: [allowedRoot],
-    authStorage,
-    modelRegistry,
+    credentials,
+    modelRuntime,
   });
   const sourceRequest = openRequest(allowedRoot, model, "source-session");
   sourceRequest.session = { mode: "new" };
@@ -813,13 +804,13 @@ test("real Pi runtime new, switch, fork, and import preserve resolved conversati
   const stateDir = await temporaryDirectory();
   const agentDir = await temporaryDirectory();
   const cwd = await temporaryDirectory();
-  const { authStorage, modelRegistry, model } = modelHarness();
+  const { credentials, modelRuntime, model } = await modelHarness();
   const factory = new PiSessionFactory({
     stateDir,
     agentDir,
     allowedRoots: [cwd],
-    authStorage,
-    modelRegistry,
+    credentials,
+    modelRuntime,
   });
   const request = openRequest(cwd, model);
   request.session = { mode: "new" };
@@ -883,14 +874,14 @@ test("configured sessions inherit only Pi packages already installed by the Pi C
     `${JSON.stringify({ packages: ["./installed-fixture"] })}\n`,
     { mode: 0o600 },
   );
-  const { authStorage, modelRegistry, model } = modelHarness();
+  const { credentials, modelRuntime, model } = await modelHarness();
   const captures = [];
   const factory = new PiSessionFactory({
     stateDir,
     agentDir,
     allowedRoots: [cwd],
-    authStorage,
-    modelRegistry,
+    credentials,
+    modelRuntime,
     async createSession(options) {
       captures.push(options);
       return {
@@ -959,14 +950,14 @@ test("real Pi SDK loads only an explicitly approved extension command/tool profi
     `export default function (pi) {\n  pi.registerCommand("m", { description: "Switch model", handler: async () => {} });\n  pi.registerTool({ name: "self_set_model", label: "Self Set Model", description: "Switch model", parameters: { type: "object", properties: {} }, async execute() { return { content: [{ type: "text", text: "ok" }] }; } });\n}\n`,
     { mode: 0o600 },
   );
-  const { authStorage, modelRegistry, model } = modelHarness();
+  const { credentials, modelRuntime, model } = await modelHarness();
   const sessions = [];
   const factory = new PiSessionFactory({
     stateDir,
     agentDir,
     allowedRoots: [cwd],
-    authStorage,
-    modelRegistry,
+    credentials,
+    modelRuntime,
     async createSession(options) {
       const result = await createAgentSession(options);
       sessions.push(result.session);
@@ -1009,14 +1000,14 @@ test("real Pi SDK accepts the configured bash override without a model turn", as
   const stateDir = await temporaryDirectory();
   const agentDir = await temporaryDirectory();
   const cwd = await temporaryDirectory();
-  const { authStorage, modelRegistry, model } = modelHarness();
+  const { credentials, modelRuntime, model } = await modelHarness();
   const sessions = [];
   const factory = new PiSessionFactory({
     stateDir,
     agentDir,
     allowedRoots: [cwd],
-    authStorage,
-    modelRegistry,
+    credentials,
+    modelRuntime,
     async createSession(options) {
       const result = await createAgentSession(options);
       sessions.push(result.session);
@@ -1059,7 +1050,7 @@ test("real Pi SDK activates only host-adapter custom tools without a model turn"
   const stateDir = await temporaryDirectory();
   const agentDir = await temporaryDirectory();
   const cwd = await temporaryDirectory();
-  const { authStorage, modelRegistry, model } = modelHarness();
+  const { credentials, modelRuntime, model } = await modelHarness();
   let disposed = 0;
   const hostSession = {
     operations: ["fs.read", "fs.write"],
@@ -1084,8 +1075,8 @@ test("real Pi SDK activates only host-adapter custom tools without a model turn"
     stateDir,
     agentDir,
     allowedRoots: [cwd],
-    authStorage,
-    modelRegistry,
+    credentials,
+    modelRuntime,
     hostToolAdapters: { async open() { return hostSession; } },
   });
   const request = openRequest(cwd, model, "real-host-tools");
@@ -1116,22 +1107,25 @@ test("readiness caches redacted auth errors without exposing private paths", asy
   const stateDir = await temporaryDirectory();
   const agentDir = await temporaryDirectory();
   const cwd = await temporaryDirectory();
-  const { authStorage, modelRegistry } = modelHarness();
-  let firstDrain = true;
-  authStorage.drainErrors = () => {
-    if (!firstDrain) return [];
-    firstDrain = false;
+  const { credentials, modelRuntime } = await modelHarness();
+  // Pi SDK 0.82 removed AuthStorage.drainErrors; credential-listing failure is
+  // the surviving path that surfaces an auth error into readiness.
+  let firstList = true;
+  credentials.list = async () => {
+    if (!firstList) return [];
+    firstList = false;
     const error = new Error(`${agentDir}/auth.json failed with secret-value`);
     error.code = "auth_load_failed";
-    return [error];
+    throw error;
   };
   const factory = new PiSessionFactory({
     stateDir,
     agentDir,
     allowedRoots: [cwd],
-    authStorage,
-    modelRegistry,
+    credentials,
+    modelRuntime,
   });
+  await factory.modelRuntime();
   const first = factory.readiness();
   const second = factory.readiness();
   assert.deepEqual(first.authErrorCodes, ["auth_load_failed"]);
@@ -1145,13 +1139,13 @@ test("real Pi SDK opens an isolated no-tools in-memory session without a model t
   const stateDir = await temporaryDirectory();
   const agentDir = await temporaryDirectory();
   const cwd = await temporaryDirectory();
-  const { authStorage, modelRegistry, model } = modelHarness();
+  const { credentials, modelRuntime, model } = await modelHarness();
   const factory = new PiSessionFactory({
     stateDir,
     agentDir,
     allowedRoots: [cwd],
-    authStorage,
-    modelRegistry,
+    credentials,
+    modelRuntime,
   });
   const adapter = await factory.open(openRequest(cwd, model));
   const controller = await adapter.rpcController();

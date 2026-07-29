@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
+import { inMemoryCredentials, modelHarness } from "./model-harness.mjs";
 import { chmod, mkdir, mkdtemp, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import test from "node:test";
 
-import { AuthStorage, ModelRegistry } from "@earendil-works/pi-coding-agent";
 
 import { FileDurabilityStore } from "../dist/durability.js";
 import { Multiplexer } from "../dist/multiplexer.js";
@@ -14,16 +14,6 @@ import {
   parseSessionConfiguration,
   sessionOpenPayloadFromSpec,
 } from "../dist/session-config.js";
-
-const modelHarness = () => {
-  const seedRegistry = ModelRegistry.inMemory(AuthStorage.inMemory());
-  const model = seedRegistry.getAll()[0];
-  assert.ok(model, "Pi built-in model registry must not be empty");
-  const authStorage = AuthStorage.inMemory({
-    [model.provider]: { type: "api_key", key: "test-only-key" },
-  });
-  return { authStorage, modelRegistry: ModelRegistry.inMemory(authStorage), model };
-};
 
 class RecordingFactory {
   adapters = [];
@@ -100,15 +90,15 @@ test("configured fork restart reopens the managed JSONL without replaying its so
     `${JSON.stringify({ type: "session", version: 3, id: "pi-source", timestamp, cwd })}\n${JSON.stringify({ type: "message", id: "source-message", parentId: null, timestamp, message: { role: "user", content: "fixture", timestamp: Date.parse(timestamp) } })}\n`,
     { mode: 0o600 },
   );
-  const { authStorage, modelRegistry, model } = modelHarness();
+  const { credentials, modelRuntime, model } = await modelHarness();
   const makeFactory = () =>
     new RecordingFactory(
       new PiSessionFactory({
         stateDir,
         agentDir,
         allowedRoots: [cwd],
-        authStorage,
-        modelRegistry,
+        credentials,
+        modelRuntime,
       }),
     );
   const makeMux = (factory) =>
@@ -186,15 +176,15 @@ test("real Pi conversation identity survives restart and loss blocks queued repl
     mkdir(agentDir, { mode: 0o700 }),
     mkdir(cwd),
   ]);
-  const { authStorage, modelRegistry, model } = modelHarness();
+  const { credentials, modelRuntime, model } = await modelHarness();
   const makeFactory = () =>
     new RecordingFactory(
       new PiSessionFactory({
         stateDir,
         agentDir,
         allowedRoots: [cwd],
-        authStorage,
-        modelRegistry,
+        credentials,
+        modelRuntime,
       }),
     );
   const makeMux = (factory) =>

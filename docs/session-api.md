@@ -318,13 +318,13 @@ Frames are:
 - `tree_navigate` — controller-only Pi Daemon framed in-place branch request; and
 - `tree_navigate_result` — private non-replayed result or typed error.
 
-The full v1 command inventory matches Pi 0.80.6:
+The full v1 command inventory matches Pi 0.82.1:
 
 ```text
 prompt steer follow_up abort new_session
 get_state get_messages get_commands
 set_model cycle_model get_available_models
-set_thinking_level cycle_thinking_level
+set_thinking_level cycle_thinking_level get_available_thinking_levels
 set_steering_mode set_follow_up_mode
 compact set_auto_compaction set_auto_retry abort_retry
 bash abort_bash get_session_stats export_html

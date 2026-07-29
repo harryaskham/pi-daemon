@@ -5,7 +5,7 @@ title: Pi RPC runtime host
 
 # In-process Pi RPC runtime host
 
-Pi Daemon implements the complete Pi 0.80.6 RPC command union against the
+Pi Daemon implements the complete Pi 0.82.1 RPC command union against the
 resident `AgentSessionRuntime`. It does **not** invoke `runRpcMode()` because that
 helper owns process stdin/stdout, signal handlers, child cleanup, backpressure,
 and `process.exit`. The daemon controller is transport-neutral: authenticated
@@ -30,7 +30,7 @@ checks prevent an SDK upgrade from silently adding or removing commands/events.
 - new/switch/fork/clone use the hosted runtime replacement seam. Extension/event
   bindings move to `runtime.session`, and the new Pi conversation identity is
   persisted before the command response returns.
-- import remains a supported runtime operation even though Pi 0.80.6 does not
+- import remains a supported runtime operation even though Pi 0.82.1 does not
   define an `import` member in its stock 31-command RPC union.
 - in-place branch navigation remains outside that stock union: the controller
   exposes a bounded direct `navigateTree` method only to the authenticated

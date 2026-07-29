@@ -117,7 +117,7 @@ test("shadow TUI terminal is exported with its audited upstream seam", async () 
     readFile(join(repositoryRoot, "src/virtual-terminal.ts"), "utf8"),
   ]);
   assert.equal(manifest.exports["./virtual-terminal"].import, "./dist/virtual-terminal.js");
-  assert.equal(manifest.dependencies["@earendil-works/pi-tui"], "0.80.6");
+  assert.equal(manifest.dependencies["@earendil-works/pi-tui"], "0.82.1");
   assert.match(index, /export \* from "\.\/virtual-terminal\.js"/);
   assert.match(docs, /extensionBinding\?: "managed" \| "external"/);
   assert.doesNotMatch(implementation, /node:child_process|ProcessTerminal|process\.(?:stdin|stdout)/);

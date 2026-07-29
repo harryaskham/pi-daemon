@@ -1,10 +1,9 @@
-import { lstatSync } from "node:fs";
+import { lstatSync, readFileSync } from "node:fs";
 import { chmod, lstat, open, realpath, stat } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve } from "node:path";
 
 import {
   AgentSessionRuntime,
-  AuthStorage,
   createAgentSession,
   createAgentSessionRuntime,
   createAgentSessionServices,
@@ -12,7 +11,7 @@ import {
   createExtensionRuntime,
   createLocalBashOperations,
   getAgentDir,
-  ModelRegistry,
+  ModelRuntime,
   resolveCliModel,
   resolveModelScopeWithDiagnostics,
   SessionManager,
@@ -20,6 +19,7 @@ import {
   type AgentSession,
   type AgentSessionEvent,
   type AgentSessionServices,
+  type CreateModelRuntimeOptions,
   type BashOperations,
   type CreateAgentSessionOptions,
   type CreateAgentSessionResult,
@@ -72,8 +72,8 @@ export interface PiSessionFactoryOptions {
    */
   externalSessionRoots?: string[];
   allowAuthorityRootOverlap?: boolean;
-  authStorage?: AuthStorage;
-  modelRegistry?: ModelRegistry;
+  credentials?: PiCredentialStore;
+  modelRuntime?: ModelRuntime;
   createSession?: (options: CreateAgentSessionOptions) => Promise<CreateAgentSessionResult>;
   rpcControllerOptions?: PiRpcControllerOptions;
   hostToolAdapters?: HostToolAdapterRegistry;
@@ -95,13 +95,27 @@ export interface PiFactoryReadiness {
 }
 
 /**
+ * The credential surface this adapter depends on, derived from the SDK's own
+ * public option type rather than restated, so a future change to the store
+ * contract surfaces here as a type error instead of a silent divergence.
+ */
+export type PiCredentialStore = NonNullable<CreateModelRuntimeOptions["credentials"]>;
+
+export type PiStoredCredential = NonNullable<Awaited<ReturnType<PiCredentialStore["read"]>>>;
+
+/**
  * Real Pi SDK adapter with process-global auth/model state and per-session
  * SessionManager, SettingsManager, ResourceLoader, event subscription, and cwd.
  */
 export class PiSessionFactory implements SessionFactory {
   readonly agentDir: string;
-  readonly authStorage: AuthStorage;
-  readonly modelRegistry: ModelRegistry;
+  readonly authPath: string;
+  readonly #modelsPath: string;
+  readonly #credentials: PiCredentialStore | undefined;
+  readonly #modelRuntimeReady: Promise<ModelRuntime>;
+  #modelRuntime: ModelRuntime | undefined;
+  #modelRuntimeInitError: unknown;
+  #configuredProviderCount = 0;
   readonly #stateDir: string;
   readonly #allowedRoots: string[];
   readonly #externalSessionRoots: string[];
@@ -126,29 +140,87 @@ export class PiSessionFactory implements SessionFactory {
     this.agentDir = resolve(options.agentDir ?? getAgentDir());
     this.#allowAuthorityRootOverlap = options.allowAuthorityRootOverlap ?? false;
     const authPath = join(this.agentDir, "auth.json");
-    if (options.authStorage === undefined) validatePrivateAuthFile(authPath);
-    this.authStorage = options.authStorage ?? AuthStorage.create(authPath);
-    this.modelRegistry =
-      options.modelRegistry ??
-      ModelRegistry.create(this.authStorage, join(this.agentDir, "models.json"));
+    if (options.credentials === undefined) validatePrivateAuthFile(authPath);
+    this.authPath = authPath;
+    this.#modelsPath = join(this.agentDir, "models.json");
+    this.#credentials = options.credentials;
+    this.#modelRuntimeReady = this.#createModelRuntime(options.modelRuntime);
+    // A rejection is reported through readiness(); never surface it as an
+    // unhandled rejection just because nobody has opened a session yet.
+    void this.#modelRuntimeReady.catch(() => undefined);
     this.#createSession = options.createSession ?? createAgentSession;
     this.#rpcControllerOptions = { ...(options.rpcControllerOptions ?? {}) };
     this.#hostToolAdapters = options.hostToolAdapters ?? new HostToolAdapterRegistry();
   }
 
+  #createModelRuntime(injected: ModelRuntime | undefined): Promise<ModelRuntime> {
+    const pending =
+      injected === undefined
+        ? ModelRuntime.create({
+            ...(this.#credentials === undefined
+              ? { authPath: this.authPath }
+              : { credentials: this.#credentials }),
+            modelsPath: this.#modelsPath,
+          })
+        : Promise.resolve(injected);
+    return pending.then(
+      async (runtime) => {
+        this.#modelRuntime = runtime;
+        this.#configuredProviderCount = await runtime
+          .listCredentials()
+          .then((entries) => entries.length)
+          .catch((error) => {
+            this.#recordAuthError(error);
+            return this.#configuredProviderCount;
+          });
+        return runtime;
+      },
+      (error: unknown) => {
+        this.#modelRuntimeInitError = error;
+        this.#recordAuthError(error);
+        throw error;
+      },
+    );
+  }
+
+  #recordAuthError(error: unknown): void {
+    const code = safeReadinessErrorCode(error);
+    if (!this.#authErrorCodes.includes(code)) this.#authErrorCodes.push(code);
+  }
+
+  /** Resolved model runtime, awaited once per factory. */
+  async modelRuntime(): Promise<ModelRuntime> {
+    return await this.#modelRuntimeReady;
+  }
+
   readiness(): PiFactoryReadiness {
-    for (const error of this.authStorage.drainErrors()) {
-      const code = safeReadinessErrorCode(error);
-      if (!this.#authErrorCodes.includes(code)) this.#authErrorCodes.push(code);
+    const runtime = this.#modelRuntime;
+    if (runtime === undefined) {
+      // Unavailable is not the same as empty: report that the runtime cannot
+      // answer yet rather than asserting zero available or authenticated models
+      // as a fact about the host.
+      const result: PiFactoryReadiness = {
+        ready: false,
+        configuredProviderCount: this.#configuredProviderCount,
+        availableModels: 0,
+        authenticatedModels: 0,
+        authErrorCount: this.#authErrorCodes.length,
+        authErrorCodes: [...this.#authErrorCodes],
+      };
+      result.modelRegistryErrorCode =
+        this.#modelRuntimeInitError === undefined
+          ? "model_runtime_initializing"
+          : safeReadinessErrorCode(this.#modelRuntimeInitError);
+      return result;
     }
-    const registryError = this.modelRegistry.getError();
-    const available = this.modelRegistry.getAvailable();
+    const registryError = runtime.getError();
+    const available = runtime.getAvailableSnapshot();
     const authenticatedModels = available.filter((model) =>
-      this.modelRegistry.hasConfiguredAuth(model),
+      runtime.hasConfiguredAuth(model.provider),
     ).length;
     const result: PiFactoryReadiness = {
       ready: registryError === undefined && authenticatedModels > 0,
-      configuredProviderCount: this.authStorage.list().length,
+      configuredProviderCount: this.#configuredProviderCount,
       availableModels: available.length,
       authenticatedModels,
       authErrorCount: this.#authErrorCodes.length,
@@ -235,15 +307,22 @@ export class PiSessionFactory implements SessionFactory {
     );
     const sessionManager = await createSessionManager(request, cwd, canonicalSessionDir);
 
-    const baseAuthStorage =
+    const sharedRuntime = await this.#modelRuntimeReady;
+    const scopedCredentials = scopedCredentialStore(
       selectedAgentDir === this.agentDir
-        ? this.authStorage
-        : AuthStorage.create(join(selectedAgentDir, "auth.json"));
-    const authStorage = scopedAuthStorage(baseAuthStorage, runtimeOptions);
-    const modelRegistry =
-      authStorage === this.authStorage && selectedAgentDir === this.agentDir
-        ? this.modelRegistry
-        : ModelRegistry.create(authStorage, join(selectedAgentDir, "models.json"));
+        ? (this.#credentials ?? fileCredentialStore(this.authPath))
+        : fileCredentialStore(join(selectedAgentDir, "auth.json")),
+      runtimeOptions,
+    );
+    const modelRuntime =
+      scopedCredentials === undefined && selectedAgentDir === this.agentDir
+        ? sharedRuntime
+        : await ModelRuntime.create({
+            ...(scopedCredentials === undefined
+              ? { authPath: join(selectedAgentDir, "auth.json") }
+              : { credentials: scopedCredentials }),
+            modelsPath: join(selectedAgentDir, "models.json"),
+          });
     const configuredModel =
       configuredSpec === undefined
         ? undefined
@@ -262,7 +341,7 @@ export class PiSessionFactory implements SessionFactory {
             ...(configuredModel.thinkingLevel === undefined
               ? {}
               : { cliThinking: configuredModel.thinkingLevel }),
-            modelRegistry,
+            modelRuntime,
           });
     if (resolvedModel?.error !== undefined) {
       throw new PiAdapterError("model_unavailable", resolvedModel.error);
@@ -270,20 +349,20 @@ export class PiSessionFactory implements SessionFactory {
     const scope =
       configuredModel?.scopedModels === undefined
         ? { scopedModels: [], diagnostics: [] }
-        : await resolveModelScopeWithDiagnostics(configuredModel.scopedModels, modelRegistry);
+        : await resolveModelScopeWithDiagnostics(configuredModel.scopedModels, modelRuntime);
     const legacyModel =
       request.model === undefined
         ? undefined
-        : modelRegistry.find(request.model.provider, request.model.id);
+        : modelRuntime.getModel(request.model.provider, request.model.id);
     const model =
       resolvedModel?.model ??
       legacyModel ??
       scope.scopedModels[0]?.model ??
-      (configuredSpec === undefined ? modelRegistry.getAvailable()[0] : undefined);
+      (configuredSpec === undefined ? (await modelRuntime.getAvailable())[0] : undefined);
     if (configuredSpec === undefined && model === undefined) {
       throw new PiAdapterError("model_unavailable", "no authenticated Pi model is available");
     }
-    if (model !== undefined && !modelRegistry.hasConfiguredAuth(model)) {
+    if (model !== undefined && !modelRuntime.hasConfiguredAuth(model.provider)) {
       throw new PiAdapterError(
         "model_auth_unavailable",
         `authentication is not configured for provider: ${model.provider}`,
@@ -360,16 +439,14 @@ export class PiSessionFactory implements SessionFactory {
           ? legacyServices(
               canonicalCwd,
               selectedAgentDir,
-              authStorage,
-              modelRegistry,
+              modelRuntime,
               settingsManager,
               request.resources?.systemPrompt,
             )
           : await createAgentSessionServices({
               cwd: canonicalCwd,
               agentDir: selectedAgentDir,
-              authStorage,
-              modelRegistry,
+              modelRuntime,
               settingsManager,
               ...(configuredExtensionFlags === undefined
                 ? {}
@@ -413,8 +490,7 @@ export class PiSessionFactory implements SessionFactory {
       const result = await this.#createSession({
         cwd: canonicalCwd,
         agentDir: selectedAgentDir,
-        authStorage,
-        modelRegistry,
+        modelRuntime,
         ...(model === undefined ? {} : { model }),
         ...(thinkingLevel === undefined ? {} : { thinkingLevel }),
         ...(scope.scopedModels.length === 0 ? {} : { scopedModels: scope.scopedModels }),
@@ -831,16 +907,14 @@ class LockedResourceLoader implements ResourceLoader {
 function legacyServices(
   cwd: string,
   agentDir: string,
-  authStorage: AuthStorage,
-  modelRegistry: ModelRegistry,
+  modelRuntime: ModelRuntime,
   settingsManager: SettingsManager,
   systemPrompt: string | undefined,
 ): AgentSessionServices {
   return {
     cwd,
     agentDir,
-    authStorage,
-    modelRegistry,
+    modelRuntime,
     settingsManager,
     resourceLoader: new LockedResourceLoader(systemPrompt),
     diagnostics: [],
@@ -1009,28 +1083,98 @@ function resourceLoaderOptions(
   };
 }
 
-function scopedAuthStorage(
-  base: AuthStorage,
+/**
+ * File-backed credential store for an agent directory's `auth.json`, in the
+ * shape `ModelRuntime` accepts. Reads are one-off and synchronous underneath,
+ * so a rewritten file is observed without holding stale state.
+ */
+function fileCredentialStore(authPath: string): PiCredentialStore {
+  const readAll = (): Record<string, PiStoredCredential> => {
+    try {
+      const raw = readFileSync(authPath, "utf8");
+      const parsed: unknown = JSON.parse(raw);
+      if (parsed === null || typeof parsed !== "object") return {};
+      return parsed as Record<string, PiStoredCredential>;
+    } catch {
+      return {};
+    }
+  };
+  return {
+    async read(providerId) {
+      return readAll()[providerId];
+    },
+    async list() {
+      const stored = readAll();
+      return Object.keys(stored).flatMap((providerId) => {
+        const type = stored[providerId]?.type;
+        return type === undefined ? [] : [{ providerId, type }];
+      });
+    },
+    async modify() {
+      throw new PiAdapterError(
+        "credential_store_read_only",
+        "hosted sessions never write provider credentials",
+      );
+    },
+    async delete() {
+      throw new PiAdapterError(
+        "credential_store_read_only",
+        "hosted sessions never delete provider credentials",
+      );
+    },
+  };
+}
+
+/**
+ * Overlay the runtime environment onto one provider's credential, replacing
+ * the pre-0.82 scoped `AuthStorage` clone. Returns undefined when no overlay
+ * applies, so the caller can keep sharing the factory-wide runtime.
+ */
+function scopedCredentialStore(
+  base: PiCredentialStore,
   runtimeOptions: PreparedSessionRuntimeOptions | undefined,
-): AuthStorage {
+): PiCredentialStore | undefined {
   if (runtimeOptions === undefined || Object.keys(runtimeOptions.environmentOverlay).length === 0) {
-    return base;
+    return undefined;
   }
-  const scoped = AuthStorage.inMemory(base.getAll());
   const provider = runtimeOptions.persistedSpec.model?.provider;
-  if (provider === undefined) return scoped;
+  if (provider === undefined) return base;
   const environment = { ...runtimeOptions.environmentOverlay };
   const apiKey = providerApiKeyFromEnvironment(provider, runtimeOptions.environmentOverlay);
-  const existing = scoped.get(provider);
-  if (apiKey !== undefined) {
-    scoped.set(provider, { type: "api_key", key: apiKey, env: environment });
-  } else if (existing?.type === "api_key") {
-    scoped.set(provider, {
-      ...existing,
-      env: { ...(existing.env ?? {}), ...environment },
-    });
-  }
-  return scoped;
+  const overlay = async (
+    current: PiStoredCredential | undefined,
+  ): Promise<PiStoredCredential | undefined> => {
+    if (apiKey !== undefined) return { type: "api_key", key: apiKey, env: environment };
+    if (current?.type === "api_key") {
+      return { ...current, env: { ...(current.env ?? {}), ...environment } };
+    }
+    return current;
+  };
+  return {
+    async read(providerId) {
+      const current = await base.read(providerId);
+      return providerId === provider ? await overlay(current) : current;
+    },
+    async list() {
+      const entries = await base.list();
+      if (apiKey === undefined || entries.some((entry) => entry.providerId === provider)) {
+        return entries;
+      }
+      return [...entries, { providerId: provider, type: "api_key" as const }];
+    },
+    async modify() {
+      throw new PiAdapterError(
+        "credential_store_read_only",
+        "hosted sessions never write provider credentials",
+      );
+    },
+    async delete() {
+      throw new PiAdapterError(
+        "credential_store_read_only",
+        "hosted sessions never delete provider credentials",
+      );
+    },
+  };
 }
 
 function configuredRpcControllerOptions(
@@ -1074,6 +1218,12 @@ function environmentToolOverrides(
 ): ToolDefinition[] {
   if (Object.keys(environment).length === 0 || !configuredBashEnabled(spec)) return [];
   const bash = createBashTool(cwd, {
+    // Pi SDK 0.82 defaults exposeSessionEnvironment to true, injecting
+    // PI_SESSION_ID/PI_SESSION_FILE/PI_PROVIDER/PI_MODEL into every command's
+    // environment. Hosted sessions never opted into publishing session
+    // identity to spawned commands, so keep the pre-0.82 behaviour explicitly
+    // rather than inheriting a new default.
+    exposeSessionEnvironment: false,
     spawnHook: (context) => ({
       ...context,
       env: { ...context.env, ...environment },

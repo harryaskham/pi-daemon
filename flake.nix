@@ -21,8 +21,8 @@
     # block with `npm run nix:deps-hash` after any package-lock.json change; the
     # `npm-deps-lock` marker is a plain staleness signal that lets CI flag a
     # stale pin without needing Nix on the runner.
-    # npm-deps-lock: sha256-VHt3O8K7n+x5PAN4FlhYwhuH0/7K539JndgZoHf6PUA=
-    npmDepsHash = "sha256-vvbEg40kDugeCJtCzFB8oid7f3sGsGRaUw1bukKlRgc=";
+    # npm-deps-lock: sha256-gyNnlsUdBPiqCRSl3bgJ1Twd1JBbOHVWWEeLiyXWh/E=
+    npmDepsHash = "sha256-9Ohrw8mLHtCRGl+o/ClCo3Yf0Xu8adGBan92M9QG73s=";
   in {
     homeManagerModules.pi-daemon = import ./nix/home-manager-module.nix {inherit self;};
     homeManagerModules.default = self.homeManagerModules.pi-daemon;

@@ -33,8 +33,8 @@ host-global values.
 For configured sessions the host creates cwd-bound Pi services with isolated
 `SettingsManager`, `ResourceLoader`, `SessionManager`, event subscription, tool
 selection, and extension flag values. Model and scoped-model patterns use Pi's
-public resolvers. A session-specific `agentDir` gets its own `AuthStorage` and
-`ModelRegistry`; otherwise the reviewed host defaults are reused.
+public resolvers. A session-specific `agentDir` gets its own credential store and
+`ModelRuntime`; otherwise the reviewed host defaults are reused.
 
 Explicit extension, skill, prompt, and theme paths are loaded only from the
 prepared absolute paths. Automatic project/global discovery and context files
@@ -57,11 +57,11 @@ initial unisolated implementation applies it only through explicit public SDK
 seams:
 
 - a selected provider's known API-key environment variable becomes a
-  session-scoped in-memory `AuthStorage` override; and
+  session-scoped credential-store overlay; and
 - the built-in `bash` tool is replaced with the public Pi bash definition using
   a spawn hook that merges the overlay into that child process only.
 
-The shared `AuthStorage`, ambient daemon environment, and other sessions are not
+The shared credential store, ambient daemon environment, and other sessions are not
 mutated. OAuth, ADC/profile credentials, custom provider command interpolation,
 extension `pi.exec()`, and arbitrary extension reads of `process.env` retain
 normal process-wide behavior unless a future Pi injection seam or stronger

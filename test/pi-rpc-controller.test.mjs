@@ -67,12 +67,13 @@ class FakeRpcSession {
     this.promptCompletion = new Promise((resolve) => {
       this.#finishPrompt = resolve;
     });
-    this.modelRegistry = {
+    this.modelRuntime = {
       getAvailable: async () => [
         this.model,
         { provider: "other", id: "other-model", name: "Other" },
       ],
     };
+    this.getAvailableThinkingLevels = () => ["off", "low", "high"];
     this.sessionManager = {
       getLeafId: () => "entry-2",
       getEntries: () => [entryOne, entryTwo],
@@ -245,6 +246,7 @@ const commandFixtures = [
   { type: "get_available_models" },
   { type: "set_thinking_level", level: "max" },
   { type: "cycle_thinking_level" },
+  { type: "get_available_thinking_levels" },
   { type: "set_steering_mode", mode: "all" },
   { type: "set_follow_up_mode", mode: "all" },
   { type: "compact", customInstructions: "compact" },

@@ -5,10 +5,20 @@
   "ok": true,
   "data": {
     "apiVersion": "1.0",
-    "transports": ["unix-ndjson", "http", "websocket"],
-    "rpcSubprotocols": ["pi-rpc.v1", "pi-daemon-rpc.v1"],
+    "transports": [
+      "unix-ndjson",
+      "http",
+      "websocket"
+    ],
+    "rpcSubprotocols": [
+      "pi-rpc.v1",
+      "pi-daemon-rpc.v1"
+    ],
     "rpc": {
-      "subprotocols": ["pi-rpc.v1", "pi-daemon-rpc.v1"],
+      "subprotocols": [
+        "pi-rpc.v1",
+        "pi-daemon-rpc.v1"
+      ],
       "host": {
         "sdkVersion": "0.80.6",
         "commandTypes": [
@@ -23,6 +33,7 @@
           "get_available_models",
           "set_thinking_level",
           "cycle_thinking_level",
+          "get_available_thinking_levels",
           "set_steering_mode",
           "set_follow_up_mode",
           "compact",
@@ -47,7 +58,11 @@
         "rawSessionEvents": true,
         "extensionUi": true,
         "processTransportOwned": false,
-        "policyGatedCommands": ["bash", "abort_bash", "export_html"]
+        "policyGatedCommands": [
+          "bash",
+          "abort_bash",
+          "export_html"
+        ]
       },
       "limits": {
         "maxHubs": 32,
@@ -60,7 +75,10 @@
         "keepAliveMs": 30000,
         "residencyLeaseTtlMs": 60000
       },
-      "roles": ["controller", "observer"],
+      "roles": [
+        "controller",
+        "observer"
+      ],
       "replay": true
     },
     "acp": {
@@ -83,7 +101,9 @@
         "maxListSessions": 100
       }
     },
-    "isolationModes": ["unisolated"],
+    "isolationModes": [
+      "unisolated"
+    ],
     "authentication": "service-bearer",
     "schedules": {
       "contractVersion": "1.0",
@@ -92,8 +112,16 @@
       "cronSyntax": "posix-five-field",
       "timezoneDatabase": "runtime-iana",
       "optimisticConcurrency": "expected-revision",
-      "overlapPolicies": ["skip", "queue-one", "reject"],
-      "missedWakePolicies": ["skip", "run-once", "bounded-catch-up"],
+      "overlapPolicies": [
+        "skip",
+        "queue-one",
+        "reject"
+      ],
+      "missedWakePolicies": [
+        "skip",
+        "run-once",
+        "bounded-catch-up"
+      ],
       "promptHandling": "owner-private-sensitive-content",
       "terminalTicketSummary": "content-free",
       "clock": "wall-clock-utc-instants",

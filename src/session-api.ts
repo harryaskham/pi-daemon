@@ -41,7 +41,7 @@ export const DASHBOARD_TUI_SUBPROTOCOL = "pi-daemon-tui.v1" as const;
 export const SESSION_RPC_SUBPROTOCOLS = ["pi-rpc.v1", "pi-daemon-rpc.v1"] as const;
 export type SessionRpcSubprotocol = (typeof SESSION_RPC_SUBPROTOCOLS)[number];
 
-/** Pi 0.80.6 RPC command names. Additions require compatibility fixtures. */
+/** Pi 0.82.1 RPC command names. Additions require compatibility fixtures. */
 export const PI_RPC_COMMAND_TYPES = [
   "prompt",
   "steer",
@@ -54,6 +54,7 @@ export const PI_RPC_COMMAND_TYPES = [
   "get_available_models",
   "set_thinking_level",
   "cycle_thinking_level",
+  "get_available_thinking_levels",
   "set_steering_mode",
   "set_follow_up_mode",
   "compact",

@@ -108,7 +108,7 @@ export interface PiRpcControllerCapabilities {
 }
 
 /**
- * Transport-neutral implementation of Pi 0.80.6's stock RPC command semantics.
+ * Transport-neutral implementation of Pi 0.82.1's stock RPC command semantics.
  *
  * It deliberately does not own stdin/stdout, process signals, process.exit, or
  * socket framing. Callers attach outputs and carry responses over any bounded
@@ -282,7 +282,7 @@ export class PiRpcController {
         case "get_state":
           return success(id, "get_state", this.snapshot().rpcState);
         case "set_model": {
-          const models = await session.modelRegistry.getAvailable();
+          const models = await session.modelRuntime.getAvailable();
           const model = models.find(
             (candidate) =>
               candidate.provider === command.provider && candidate.id === command.modelId,
@@ -301,7 +301,7 @@ export class PiRpcController {
           return success(id, "cycle_model", (await session.cycleModel()) ?? null);
         case "get_available_models":
           return success(id, "get_available_models", {
-            models: await session.modelRegistry.getAvailable(),
+            models: await session.modelRuntime.getAvailable(),
           });
         case "set_thinking_level":
           session.setThinkingLevel(command.level);
@@ -310,6 +310,10 @@ export class PiRpcController {
           const level = session.cycleThinkingLevel();
           return success(id, "cycle_thinking_level", level === undefined ? null : { level });
         }
+        case "get_available_thinking_levels":
+          return success(id, "get_available_thinking_levels", {
+            levels: session.getAvailableThinkingLevels(),
+          });
         case "set_steering_mode":
           session.setSteeringMode(command.mode);
           return success(id, "set_steering_mode");
@@ -726,6 +730,7 @@ export function parsePiRpcCommand(value: unknown): RpcCommand {
     case "cycle_model":
     case "get_available_models":
     case "cycle_thinking_level":
+    case "get_available_thinking_levels":
     case "abort_retry":
     case "abort_bash":
     case "get_session_stats":

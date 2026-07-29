@@ -13,7 +13,7 @@ embeddable dispatcher.
 
 ## Supported baseline
 
-The current exact baseline is **Pi 0.80.6**. This is the first audited release
+The current exact baseline is **Pi 0.82.1**. This is the first audited release
 for the full host because its public SDK provides:
 
 - `AgentSessionRuntime` and `createAgentSessionRuntime()` for new, switch, fork,
@@ -40,11 +40,21 @@ host rewriting. This matters when an enterprise npm mirror lags the public Pi
 release: `npm ci` must consume the reviewed lock rather than silently resolving
 an older package from the ambient registry.
 
-Pi 0.80.6's published shrinkwrap omits integrity fields for three nested Pi
-workspace packages. npm accepts those records, but Nix's `prefetch-npm-deps`
-correctly rejects non-git dependencies without integrity. The checked lock adds
-the public registry SHA-512 values for `pi-agent-core`, `pi-ai`, and `pi-tui`.
-The compatibility test prevents a later lock regeneration from dropping them.
+Every Pi release so far, including 0.82.1, publishes a shrinkwrap that omits
+integrity fields for three nested Pi workspace packages. npm accepts those
+records, but Nix's `prefetch-npm-deps` correctly rejects non-git dependencies
+without integrity. The checked lock carries the public registry SHA-512 values
+for `pi-agent-core`, `pi-ai`, and `pi-tui`, and the compatibility test prevents a
+later lock regeneration from dropping them.
+
+`npm run lock:repair-integrity` restores those values from the registry's own
+published `dist.integrity` for the exact name and version the entry already
+names, so an upgrade does not need the repair performed by hand.
+`npm run lock:repair-integrity:check` fails without rewriting, for CI. Where the
+same tarball also appears elsewhere in the lock with integrity intact, the script
+cross-checks the two and refuses on disagreement; where it does not, the registry
+is the only witness, which is why the script accepts only
+`https://registry.npmjs.org/` URLs.
 `flake.nix` selects `npmDepsFetcherVersion = 2` because the older Nix fetcher
 does not populate npm's offline cache correctly for those nested shrinkwrap
 entries; downgrading the fetcher makes `npm ci` request uncached Pi tarballs.

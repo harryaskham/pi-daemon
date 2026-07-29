@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { inMemoryCredentials, modelHarness } from "./model-harness.mjs";
 import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -7,8 +8,6 @@ import test from "node:test";
 
 import * as piSdk from "@earendil-works/pi-coding-agent";
 import {
-  AuthStorage,
-  ModelRegistry,
   SessionManager,
   SettingsManager,
   createAgentSessionFromServices,
@@ -32,22 +31,12 @@ const root = new URL("../", import.meta.url);
 
 const json = async (path) => JSON.parse(await readFile(new URL(path, root), "utf8"));
 
-const modelHarness = () => {
-  const seedRegistry = ModelRegistry.inMemory(AuthStorage.inMemory());
-  const model = seedRegistry.getAll()[0];
-  assert.ok(model, "Pi built-in model registry must not be empty");
-  const authStorage = AuthStorage.inMemory({
-    [model.provider]: { type: "api_key", key: "test-only-key" },
-  });
-  return { authStorage, modelRegistry: ModelRegistry.inMemory(authStorage), model };
-};
-
 test("pinned Pi SDK exposes the reviewed RPC and session-event contracts", async () => {
   const fixture = await json("fixtures/pi-rpc-command-types.json");
-  assert.equal(PI_SDK_COMPATIBILITY_VERSION, "0.80.6");
+  assert.equal(PI_SDK_COMPATIBILITY_VERSION, "0.82.1");
   assert.equal(fixture.sdkVersion, PI_SDK_COMPATIBILITY_VERSION);
   assert.deepEqual(PI_RPC_COMMAND_TYPES, fixture.commandTypes);
-  assert.equal(PI_RPC_COMMAND_TYPES.length, 31);
+  assert.equal(PI_RPC_COMMAND_TYPES.length, 32);
   assert.ok(PI_SESSION_EVENT_TYPES.includes("agent_settled"));
   assert.ok(PI_SESSION_EVENT_TYPES.includes("entry_appended"));
 });
@@ -59,7 +48,7 @@ test("Pi AgentSessionRuntime replaces an in-memory session and rebinds the host"
   const agentDir = join(directory, "agent");
   await Promise.all([mkdir(cwd), mkdir(agentDir)]);
 
-  const { authStorage, modelRegistry, model } = modelHarness();
+  const { credentials, modelRuntime, model } = await modelHarness();
   const settingsManager = SettingsManager.inMemory({
     compaction: { enabled: false },
     retry: { enabled: false },
@@ -68,8 +57,8 @@ test("Pi AgentSessionRuntime replaces an in-memory session and rebinds the host"
     const services = await createAgentSessionServices({
       cwd: runtimeCwd,
       agentDir,
-      authStorage,
-      modelRegistry,
+      credentials,
+      modelRuntime,
       settingsManager,
       resourceLoaderOptions: {
         noExtensions: true,

@@ -11,42 +11,72 @@
       "description": "Default loopback listener; the implementation may also expose the same HTTP routes over a Unix socket."
     }
   ],
-  "security": [{ "serviceBearer": [] }],
+  "security": [
+    {
+      "serviceBearer": []
+    }
+  ],
   "paths": {
     "/capabilities": {
       "get": {
         "operationId": "getCapabilities",
         "summary": "Negotiate API, transport, RPC, isolation, and authentication capabilities",
-        "parameters": [{ "$ref": "#/components/parameters/RequestId" }],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RequestId"
+          }
+        ],
         "responses": {
           "200": {
             "description": "Current host capabilities",
             "content": {
               "application/json": {
-                "schema": { "$ref": "./session-api.schema.json#/$defs/capabilitiesEnvelope" }
+                "schema": {
+                  "$ref": "./session-api.schema.json#/$defs/capabilitiesEnvelope"
+                }
               }
             }
           },
-          "401": { "$ref": "#/components/responses/Unauthorized" },
-          "503": { "$ref": "#/components/responses/Unavailable" }
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
         }
       }
     },
     "/session": {
-      "parameters": [{ "$ref": "#/components/parameters/RequestId" }],
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/RequestId"
+        }
+      ],
       "get": {
         "operationId": "listSessions",
         "summary": "List logical sessions without secret environment values",
         "parameters": [
-          { "$ref": "#/components/parameters/PageCursor" },
-          { "$ref": "#/components/parameters/PageLimit" },
+          {
+            "$ref": "#/components/parameters/PageCursor"
+          },
+          {
+            "$ref": "#/components/parameters/PageLimit"
+          },
           {
             "name": "state",
             "in": "query",
             "required": false,
             "schema": {
               "type": "array",
-              "items": { "enum": ["opening", "idle", "running", "failed", "closing"] },
+              "items": {
+                "enum": [
+                  "opening",
+                  "idle",
+                  "running",
+                  "failed",
+                  "closing"
+                ]
+              },
               "maxItems": 5
             },
             "style": "form",
@@ -58,12 +88,18 @@
             "description": "One stable page ordered by session ID",
             "content": {
               "application/json": {
-                "schema": { "$ref": "./session-api.schema.json#/$defs/sessionListEnvelope" }
+                "schema": {
+                  "$ref": "./session-api.schema.json#/$defs/sessionListEnvelope"
+                }
               }
             }
           },
-          "400": { "$ref": "#/components/responses/InvalidRequest" },
-          "401": { "$ref": "#/components/responses/Unauthorized" }
+          "400": {
+            "$ref": "#/components/responses/InvalidRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
         }
       },
       "post": {
@@ -71,14 +107,20 @@
         "summary": "Create one logical Pi runtime from a CLI-equivalent session specification",
         "description": "The server allocates the canonical session ID before returning a bounded retained ticket. Raw env values are memory-only and must never appear in the ticket, logs, metrics, manifests, journals, or session resource.",
         "parameters": [
-          { "$ref": "#/components/parameters/IdempotencyKey" },
-          { "$ref": "#/components/parameters/WaitForTerminal" }
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          },
+          {
+            "$ref": "#/components/parameters/WaitForTerminal"
+          }
         ],
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
-              "schema": { "$ref": "./session-api.schema.json#/$defs/sessionCreateRequest" }
+              "schema": {
+                "$ref": "./session-api.schema.json#/$defs/sessionCreateRequest"
+              }
             }
           }
         },
@@ -86,28 +128,50 @@
           "202": {
             "description": "Creation durably admitted or joined by idempotency key",
             "headers": {
-              "Location": { "$ref": "#/components/headers/Location" }
+              "Location": {
+                "$ref": "#/components/headers/Location"
+              }
             },
             "content": {
               "application/json": {
-                "schema": { "$ref": "./session-api.schema.json#/$defs/ticketEnvelope" }
+                "schema": {
+                  "$ref": "./session-api.schema.json#/$defs/ticketEnvelope"
+                }
               }
             }
           },
-          "400": { "$ref": "#/components/responses/InvalidRequest" },
-          "401": { "$ref": "#/components/responses/Unauthorized" },
-          "409": { "$ref": "#/components/responses/Conflict" },
-          "413": { "$ref": "#/components/responses/TooLarge" },
-          "422": { "$ref": "#/components/responses/Unsupported" },
-          "429": { "$ref": "#/components/responses/Capacity" },
-          "503": { "$ref": "#/components/responses/Unavailable" }
+          "400": {
+            "$ref": "#/components/responses/InvalidRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "413": {
+            "$ref": "#/components/responses/TooLarge"
+          },
+          "422": {
+            "$ref": "#/components/responses/Unsupported"
+          },
+          "429": {
+            "$ref": "#/components/responses/Capacity"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
         }
       }
     },
     "/session/{sessionRef}": {
       "parameters": [
-        { "$ref": "#/components/parameters/SessionRef" },
-        { "$ref": "#/components/parameters/RequestId" }
+        {
+          "$ref": "#/components/parameters/SessionRef"
+        },
+        {
+          "$ref": "#/components/parameters/RequestId"
+        }
       ],
       "get": {
         "operationId": "getSession",
@@ -116,17 +180,27 @@
           "200": {
             "description": "Current session resource and attach links",
             "headers": {
-              "ETag": { "$ref": "#/components/headers/ETag" }
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              }
             },
             "content": {
               "application/json": {
-                "schema": { "$ref": "./session-api.schema.json#/$defs/sessionEnvelope" }
+                "schema": {
+                  "$ref": "./session-api.schema.json#/$defs/sessionEnvelope"
+                }
               }
             }
           },
-          "401": { "$ref": "#/components/responses/Unauthorized" },
-          "404": { "$ref": "#/components/responses/NotFound" },
-          "409": { "$ref": "#/components/responses/Conflict" }
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
         }
       },
       "put": {
@@ -134,15 +208,23 @@
         "summary": "Replace a session specification with optimistic generation and revision checks",
         "description": "A cwd, target, agentDir, environment, resource, settings, or isolation change replaces the runtime and increments generation. In-place name or supported Pi state changes increment revision only. Busy replacements fail rather than racing a live turn.",
         "parameters": [
-          { "$ref": "#/components/parameters/IdempotencyKey" },
-          { "$ref": "#/components/parameters/IfMatch" },
-          { "$ref": "#/components/parameters/WaitForTerminal" }
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          },
+          {
+            "$ref": "#/components/parameters/IfMatch"
+          },
+          {
+            "$ref": "#/components/parameters/WaitForTerminal"
+          }
         ],
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
-              "schema": { "$ref": "./session-api.schema.json#/$defs/sessionUpdateRequest" }
+              "schema": {
+                "$ref": "./session-api.schema.json#/$defs/sessionUpdateRequest"
+              }
             }
           }
         },
@@ -150,89 +232,152 @@
           "202": {
             "description": "Update admitted or joined",
             "headers": {
-              "Location": { "$ref": "#/components/headers/Location" }
+              "Location": {
+                "$ref": "#/components/headers/Location"
+              }
             },
             "content": {
               "application/json": {
-                "schema": { "$ref": "./session-api.schema.json#/$defs/ticketEnvelope" }
+                "schema": {
+                  "$ref": "./session-api.schema.json#/$defs/ticketEnvelope"
+                }
               }
             }
           },
-          "400": { "$ref": "#/components/responses/InvalidRequest" },
-          "401": { "$ref": "#/components/responses/Unauthorized" },
-          "404": { "$ref": "#/components/responses/NotFound" },
-          "409": { "$ref": "#/components/responses/Conflict" },
-          "412": { "$ref": "#/components/responses/PreconditionFailed" },
-          "413": { "$ref": "#/components/responses/TooLarge" },
-          "422": { "$ref": "#/components/responses/Unsupported" },
-          "503": { "$ref": "#/components/responses/Unavailable" }
+          "400": {
+            "$ref": "#/components/responses/InvalidRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "412": {
+            "$ref": "#/components/responses/PreconditionFailed"
+          },
+          "413": {
+            "$ref": "#/components/responses/TooLarge"
+          },
+          "422": {
+            "$ref": "#/components/responses/Unsupported"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
         }
       },
       "delete": {
         "operationId": "deleteSession",
         "summary": "Close a session and optionally delete retained artifacts",
         "parameters": [
-          { "$ref": "#/components/parameters/IdempotencyKey" },
-          { "$ref": "#/components/parameters/IfMatch" },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          },
+          {
+            "$ref": "#/components/parameters/IfMatch"
+          },
           {
             "name": "retainArtifacts",
             "in": "query",
             "required": false,
-            "schema": { "type": "boolean", "default": true }
+            "schema": {
+              "type": "boolean",
+              "default": true
+            }
           },
-          { "$ref": "#/components/parameters/WaitForTerminal" }
+          {
+            "$ref": "#/components/parameters/WaitForTerminal"
+          }
         ],
         "responses": {
           "202": {
             "description": "Close admitted or joined",
             "headers": {
-              "Location": { "$ref": "#/components/headers/Location" }
+              "Location": {
+                "$ref": "#/components/headers/Location"
+              }
             },
             "content": {
               "application/json": {
-                "schema": { "$ref": "./session-api.schema.json#/$defs/ticketEnvelope" }
+                "schema": {
+                  "$ref": "./session-api.schema.json#/$defs/ticketEnvelope"
+                }
               }
             }
           },
-          "401": { "$ref": "#/components/responses/Unauthorized" },
-          "404": { "$ref": "#/components/responses/NotFound" },
-          "409": { "$ref": "#/components/responses/Conflict" },
-          "412": { "$ref": "#/components/responses/PreconditionFailed" },
-          "503": { "$ref": "#/components/responses/Unavailable" }
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "412": {
+            "$ref": "#/components/responses/PreconditionFailed"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
         }
       }
     },
     "/session/{sessionRef}/rpc": {
       "parameters": [
-        { "$ref": "#/components/parameters/SessionRef" },
-        { "$ref": "#/components/parameters/RequestId" },
+        {
+          "$ref": "#/components/parameters/SessionRef"
+        },
+        {
+          "$ref": "#/components/parameters/RequestId"
+        },
         {
           "name": "cursor",
           "in": "query",
           "required": false,
           "description": "Opaque framed-stream cursor scoped to host instance, session ID, and generation.",
-          "schema": { "type": "string", "minLength": 1, "maxLength": 1024 }
+          "schema": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1024
+          }
         },
         {
           "name": "generation",
           "in": "query",
           "required": false,
           "description": "Expected daemon session generation; stale values fail before upgrade.",
-          "schema": { "type": "integer", "minimum": 0 }
+          "schema": {
+            "type": "integer",
+            "minimum": 0
+          }
         },
         {
           "name": "hydrate",
           "in": "query",
           "required": false,
           "description": "Explicit trusted-service opt-in to reopen a retained durable session without prompting before attach. Omission preserves resident-only RPC behavior.",
-          "schema": { "type": "boolean", "default": false }
+          "schema": {
+            "type": "boolean",
+            "default": false
+          }
         },
         {
           "name": "role",
           "in": "query",
           "required": false,
           "description": "Controller is a concurrency lease, not an authorization boundary; every attachment uses the same service bearer.",
-          "schema": { "enum": ["observer", "controller"], "default": "observer" }
+          "schema": {
+            "enum": [
+              "observer",
+              "controller"
+            ],
+            "default": "observer"
+          }
         }
       ],
       "get": {
@@ -244,44 +389,91 @@
             "name": "Sec-WebSocket-Protocol",
             "in": "header",
             "required": true,
-            "schema": { "enum": ["pi-rpc.v1", "pi-daemon-rpc.v1"] }
+            "schema": {
+              "enum": [
+                "pi-rpc.v1",
+                "pi-daemon-rpc.v1"
+              ]
+            }
           }
         ],
         "responses": {
-          "101": { "description": "WebSocket protocol selected and attachment established" },
-          "400": { "$ref": "#/components/responses/InvalidRequest" },
-          "401": { "$ref": "#/components/responses/Unauthorized" },
-          "404": { "$ref": "#/components/responses/NotFound" },
-          "409": { "$ref": "#/components/responses/Conflict" },
-          "426": { "$ref": "#/components/responses/UpgradeRequired" },
-          "429": { "$ref": "#/components/responses/Capacity" },
-          "503": { "$ref": "#/components/responses/Unavailable" }
+          "101": {
+            "description": "WebSocket protocol selected and attachment established"
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "426": {
+            "$ref": "#/components/responses/UpgradeRequired"
+          },
+          "429": {
+            "$ref": "#/components/responses/Capacity"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
         },
         "x-websocket-client-message": {
           "oneOf": [
-            { "$ref": "./session-api.schema.json#/$defs/piRpcCommand" },
-            { "$ref": "./session-api.schema.json#/$defs/rpcCommandFrame" },
-            { "$ref": "./session-api.schema.json#/$defs/rpcExtensionUiResponseFrame" },
-            { "$ref": "./session-api.schema.json#/$defs/rpcControlFrame" }
+            {
+              "$ref": "./session-api.schema.json#/$defs/piRpcCommand"
+            },
+            {
+              "$ref": "./session-api.schema.json#/$defs/rpcCommandFrame"
+            },
+            {
+              "$ref": "./session-api.schema.json#/$defs/rpcExtensionUiResponseFrame"
+            },
+            {
+              "$ref": "./session-api.schema.json#/$defs/rpcControlFrame"
+            }
           ]
         },
         "x-websocket-server-message": {
           "oneOf": [
-            { "$ref": "./session-api.schema.json#/$defs/piRpcResponse" },
-            { "$ref": "./session-api.schema.json#/$defs/piRpcEvent" },
-            { "$ref": "./session-api.schema.json#/$defs/rpcResponseFrame" },
-            { "$ref": "./session-api.schema.json#/$defs/rpcEventFrame" },
-            { "$ref": "./session-api.schema.json#/$defs/rpcAttachReadyFrame" },
-            { "$ref": "./session-api.schema.json#/$defs/rpcReplayGapFrame" },
-            { "$ref": "./session-api.schema.json#/$defs/rpcControlFrame" }
+            {
+              "$ref": "./session-api.schema.json#/$defs/piRpcResponse"
+            },
+            {
+              "$ref": "./session-api.schema.json#/$defs/piRpcEvent"
+            },
+            {
+              "$ref": "./session-api.schema.json#/$defs/rpcResponseFrame"
+            },
+            {
+              "$ref": "./session-api.schema.json#/$defs/rpcEventFrame"
+            },
+            {
+              "$ref": "./session-api.schema.json#/$defs/rpcAttachReadyFrame"
+            },
+            {
+              "$ref": "./session-api.schema.json#/$defs/rpcReplayGapFrame"
+            },
+            {
+              "$ref": "./session-api.schema.json#/$defs/rpcControlFrame"
+            }
           ]
         }
       }
     },
     "/session/{sessionRef}/apc": {
       "parameters": [
-        { "$ref": "#/components/parameters/SessionRef" },
-        { "$ref": "#/components/parameters/RequestId" }
+        {
+          "$ref": "#/components/parameters/SessionRef"
+        },
+        {
+          "$ref": "#/components/parameters/RequestId"
+        }
       ],
       "get": {
         "operationId": "attachAgentClientProtocol",
@@ -292,19 +484,37 @@
             "name": "Sec-WebSocket-Protocol",
             "in": "header",
             "required": true,
-            "schema": { "const": "agent-client-protocol.v1" }
+            "schema": {
+              "const": "agent-client-protocol.v1"
+            }
           }
         ],
         "responses": {
-          "101": { "description": "ACP JSON-RPC WebSocket established" },
-          "400": { "$ref": "#/components/responses/InvalidRequest" },
-          "401": { "$ref": "#/components/responses/Unauthorized" },
-          "404": { "$ref": "#/components/responses/NotFound" },
-          "426": { "$ref": "#/components/responses/UpgradeRequired" },
-          "429": { "$ref": "#/components/responses/Capacity" },
-          "503": { "$ref": "#/components/responses/Unavailable" }
+          "101": {
+            "description": "ACP JSON-RPC WebSocket established"
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "426": {
+            "$ref": "#/components/responses/UpgradeRequired"
+          },
+          "429": {
+            "$ref": "#/components/responses/Capacity"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
         },
-        "x-websocket-message": { "$ref": "./session-api.schema.json#/$defs/jsonRpcMessage" },
+        "x-websocket-message": {
+          "$ref": "./session-api.schema.json#/$defs/jsonRpcMessage"
+        },
         "x-upstream-protocol": "Agent Client Protocol JSON-RPC 2.0"
       }
     },
@@ -313,12 +523,32 @@
         "operationId": "listSchedules",
         "summary": "List durable schedules, optionally resolved by exact session reference",
         "parameters": [
-          { "$ref": "#/components/parameters/RequestId" },
-          { "name": "session", "in": "query", "schema": { "type": "string", "maxLength": 256 } }
+          {
+            "$ref": "#/components/parameters/RequestId"
+          },
+          {
+            "name": "session",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 256
+            }
+          }
         ],
         "responses": {
-          "200": { "description": "Schedule list", "content": { "application/json": { "schema": { "$ref": "./session-api.schema.json#/$defs/scheduleListEnvelope" } } } },
-          "401": { "$ref": "#/components/responses/Unauthorized" }
+          "200": {
+            "description": "Schedule list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./session-api.schema.json#/$defs/scheduleListEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
         }
       }
     },
@@ -327,62 +557,204 @@
         "operationId": "getScheduleStatus",
         "summary": "Get content-free schedule status and next wake",
         "responses": {
-          "200": { "description": "Schedule status", "content": { "application/json": { "schema": { "$ref": "./session-api.schema.json#/$defs/scheduleStatusEnvelope" } } } },
-          "401": { "$ref": "#/components/responses/Unauthorized" }
+          "200": {
+            "description": "Schedule status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./session-api.schema.json#/$defs/scheduleStatusEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
         }
       }
     },
     "/schedule/{scheduleId}": {
       "parameters": [
-        { "name": "scheduleId", "in": "path", "required": true, "schema": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$" } },
-        { "$ref": "#/components/parameters/RequestId" }
+        {
+          "name": "scheduleId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+          }
+        },
+        {
+          "$ref": "#/components/parameters/RequestId"
+        }
       ],
       "get": {
         "operationId": "getSchedule",
         "responses": {
-          "200": { "description": "Schedule and ETag", "content": { "application/json": { "schema": { "$ref": "./session-api.schema.json#/$defs/scheduleResourceEnvelope" } } } },
-          "401": { "$ref": "#/components/responses/Unauthorized" },
-          "404": { "$ref": "#/components/responses/NotFound" }
+          "200": {
+            "description": "Schedule and ETag",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./session-api.schema.json#/$defs/scheduleResourceEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
         }
       },
       "post": {
         "operationId": "createSchedule",
-        "parameters": [{ "$ref": "#/components/parameters/IdempotencyKey" }],
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object" } } } },
-        "responses": { "201": { "description": "Schedule created" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "409": { "$ref": "#/components/responses/Conflict" } }
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Schedule created"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
       },
       "put": {
         "operationId": "updateSchedule",
-        "parameters": [{ "$ref": "#/components/parameters/IdempotencyKey" }, { "$ref": "#/components/parameters/IfMatch" }],
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object" } } } },
-        "responses": { "200": { "description": "Schedule updated" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "412": { "$ref": "#/components/responses/PreconditionFailed" } }
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          },
+          {
+            "$ref": "#/components/parameters/IfMatch"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Schedule updated"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "412": {
+            "$ref": "#/components/responses/PreconditionFailed"
+          }
+        }
       },
       "delete": {
         "operationId": "deleteSchedule",
-        "parameters": [{ "$ref": "#/components/parameters/IdempotencyKey" }, { "$ref": "#/components/parameters/IfMatch" }],
-        "responses": { "200": { "description": "Schedule deleted" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "412": { "$ref": "#/components/responses/PreconditionFailed" } }
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          },
+          {
+            "$ref": "#/components/parameters/IfMatch"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Schedule deleted"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "412": {
+            "$ref": "#/components/responses/PreconditionFailed"
+          }
+        }
       }
     },
     "/schedule/{scheduleId}/enable": {
       "post": {
         "operationId": "enableSchedule",
         "parameters": [
-          { "name": "scheduleId", "in": "path", "required": true, "schema": { "type": "string" } },
-          { "$ref": "#/components/parameters/IdempotencyKey" },
-          { "$ref": "#/components/parameters/IfMatch" }
+          {
+            "name": "scheduleId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          },
+          {
+            "$ref": "#/components/parameters/IfMatch"
+          }
         ],
-        "responses": { "200": { "description": "Schedule enabled" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "412": { "$ref": "#/components/responses/PreconditionFailed" } }
+        "responses": {
+          "200": {
+            "description": "Schedule enabled"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "412": {
+            "$ref": "#/components/responses/PreconditionFailed"
+          }
+        }
       }
     },
     "/schedule/{scheduleId}/disable": {
       "post": {
         "operationId": "disableSchedule",
         "parameters": [
-          { "name": "scheduleId", "in": "path", "required": true, "schema": { "type": "string" } },
-          { "$ref": "#/components/parameters/IdempotencyKey" },
-          { "$ref": "#/components/parameters/IfMatch" }
+          {
+            "name": "scheduleId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          },
+          {
+            "$ref": "#/components/parameters/IfMatch"
+          }
         ],
-        "responses": { "200": { "description": "Schedule disabled" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "412": { "$ref": "#/components/responses/PreconditionFailed" } }
+        "responses": {
+          "200": {
+            "description": "Schedule disabled"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "412": {
+            "$ref": "#/components/responses/PreconditionFailed"
+          }
+        }
       }
     },
     "/dashboard/capabilities": {
@@ -392,9 +764,17 @@
         "responses": {
           "200": {
             "description": "Authenticated neutral Dash service capabilities",
-            "content": { "application/json": { "schema": { "$ref": "./session-api.schema.json#/$defs/dashboardServiceCapabilitiesEnvelope" } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./session-api.schema.json#/$defs/dashboardServiceCapabilitiesEnvelope"
+                }
+              }
+            }
           },
-          "401": { "$ref": "#/components/responses/Unauthorized" }
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
         }
       }
     },
@@ -406,10 +786,20 @@
         "responses": {
           "200": {
             "description": "Browser-safe diagnostics snapshot",
-            "content": { "application/json": { "schema": { "$ref": "./session-api.schema.json#/$defs/dashboardDiagnosticsEnvelope" } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./session-api.schema.json#/$defs/dashboardDiagnosticsEnvelope"
+                }
+              }
+            }
           },
-          "401": { "$ref": "#/components/responses/Unauthorized" },
-          "501": { "$ref": "#/components/responses/NotImplemented" }
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "501": {
+            "$ref": "#/components/responses/NotImplemented"
+          }
         }
       }
     },
@@ -418,27 +808,84 @@
         "operationId": "listDashboardInventory",
         "summary": "List bounded preview-only managed and external Pi sessions",
         "parameters": [
-          { "$ref": "#/components/parameters/PageCursor" },
-          { "$ref": "#/components/parameters/PageLimit" },
-          { "name": "search", "in": "query", "schema": { "type": "string", "maxLength": 1024 } },
-          { "name": "sourceKind", "in": "query", "schema": { "type": "string", "maxLength": 512 } },
-          { "name": "runtime", "in": "query", "schema": { "type": "string", "maxLength": 512 } },
-          { "name": "unread", "in": "query", "schema": { "type": "boolean" } },
-          { "name": "modifiedAfter", "in": "query", "schema": { "type": "string", "maxLength": 64 } }
+          {
+            "$ref": "#/components/parameters/PageCursor"
+          },
+          {
+            "$ref": "#/components/parameters/PageLimit"
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 1024
+            }
+          },
+          {
+            "name": "sourceKind",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 512
+            }
+          },
+          {
+            "name": "runtime",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 512
+            }
+          },
+          {
+            "name": "unread",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "modifiedAfter",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 64
+            }
+          }
         ],
         "responses": {
           "200": {
             "description": "Stable opaque-cursor inventory page without canonical paths",
-            "content": { "application/json": { "schema": { "$ref": "./session-api.schema.json#/$defs/dashboardInventoryEnvelope" } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./session-api.schema.json#/$defs/dashboardInventoryEnvelope"
+                }
+              }
+            }
           },
-          "400": { "$ref": "#/components/responses/InvalidRequest" },
-          "401": { "$ref": "#/components/responses/Unauthorized" }
+          "400": {
+            "$ref": "#/components/responses/InvalidRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
         }
       }
     },
     "/dashboard/inventory/{inventoryId}": {
       "parameters": [
-        { "name": "inventoryId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1, "maxLength": 256 } }
+        {
+          "name": "inventoryId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        }
       ],
       "get": {
         "operationId": "getDashboardInventoryInfo",
@@ -446,139 +893,339 @@
         "responses": {
           "200": {
             "description": "Full safe inventory information; may include canonical source path",
-            "content": { "application/json": { "schema": { "$ref": "./session-api.schema.json#/$defs/dashboardSessionInfoEnvelope" } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./session-api.schema.json#/$defs/dashboardSessionInfoEnvelope"
+                }
+              }
+            }
           },
-          "401": { "$ref": "#/components/responses/Unauthorized" },
-          "404": { "$ref": "#/components/responses/NotFound" }
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
         }
       }
     },
     "/dashboard/inventory/{inventoryId}/transcript": {
       "parameters": [
-        { "name": "inventoryId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1, "maxLength": 256 } }
+        {
+          "name": "inventoryId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        }
       ],
       "get": {
         "operationId": "getDashboardInventoryTranscript",
         "summary": "Project a bounded active-branch transcript without runtime hydration",
         "parameters": [
-          { "$ref": "#/components/parameters/PageCursor" },
-          { "name": "limit", "in": "query", "schema": { "type": "integer", "minimum": 1, "maximum": 200 } },
-          { "name": "direction", "in": "query", "schema": { "enum": ["older", "newer"] } },
-          { "name": "leafId", "in": "query", "schema": { "type": "string", "maxLength": 256 } },
-          { "name": "fingerprint", "in": "query", "schema": { "$ref": "./dashboard-api.schema.json#/$defs/fingerprint" } }
+          {
+            "$ref": "#/components/parameters/PageCursor"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200
+            }
+          },
+          {
+            "name": "direction",
+            "in": "query",
+            "schema": {
+              "enum": [
+                "older",
+                "newer"
+              ]
+            }
+          },
+          {
+            "name": "leafId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 256
+            }
+          },
+          {
+            "name": "fingerprint",
+            "in": "query",
+            "schema": {
+              "$ref": "./dashboard-api.schema.json#/$defs/fingerprint"
+            }
+          }
         ],
         "responses": {
           "200": {
             "description": "Normalized preview-only transcript page",
-            "content": { "application/json": { "schema": { "$ref": "./session-api.schema.json#/$defs/dashboardTranscriptEnvelope" } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./session-api.schema.json#/$defs/dashboardTranscriptEnvelope"
+                }
+              }
+            }
           },
-          "401": { "$ref": "#/components/responses/Unauthorized" },
-          "404": { "$ref": "#/components/responses/NotFound" },
-          "409": { "$ref": "#/components/responses/Conflict" },
-          "413": { "$ref": "#/components/responses/TooLarge" }
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "413": {
+            "$ref": "#/components/responses/TooLarge"
+          }
         }
       }
     },
     "/dashboard/inventory/{inventoryId}/activate": {
       "parameters": [
-        { "name": "inventoryId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1, "maxLength": 256 } },
-        { "$ref": "#/components/parameters/IdempotencyKey" }
+        {
+          "name": "inventoryId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        },
+        {
+          "$ref": "#/components/parameters/IdempotencyKey"
+        }
       ],
       "post": {
         "operationId": "activateDashboardInventorySession",
         "summary": "Durably admit preview-only, reuse, direct co-opt, or fork/import activation",
         "requestBody": {
           "required": true,
-          "content": { "application/json": { "schema": { "$ref": "./dashboard-api.schema.json#/$defs/activationRequest" } } }
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "./dashboard-api.schema.json#/$defs/activationRequest"
+              }
+            }
+          }
         },
         "responses": {
           "202": {
             "description": "Durable activation ticket",
-            "content": { "application/json": { "schema": { "$ref": "./session-api.schema.json#/$defs/dashboardActivationEnvelope" } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./session-api.schema.json#/$defs/dashboardActivationEnvelope"
+                }
+              }
+            }
           },
-          "400": { "$ref": "#/components/responses/InvalidRequest" },
-          "401": { "$ref": "#/components/responses/Unauthorized" },
-          "409": { "$ref": "#/components/responses/Conflict" },
-          "413": { "$ref": "#/components/responses/TooLarge" },
-          "429": { "$ref": "#/components/responses/Capacity" }
+          "400": {
+            "$ref": "#/components/responses/InvalidRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "413": {
+            "$ref": "#/components/responses/TooLarge"
+          },
+          "429": {
+            "$ref": "#/components/responses/Capacity"
+          }
         }
       }
     },
     "/dashboard/activation/{ticketId}": {
-      "parameters": [{ "$ref": "#/components/parameters/TicketId" }],
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TicketId"
+        }
+      ],
       "get": {
         "operationId": "getDashboardActivationTicket",
         "summary": "Inspect a durable activation ticket",
         "responses": {
-          "200": { "description": "Activation ticket", "content": { "application/json": { "schema": { "$ref": "./session-api.schema.json#/$defs/dashboardActivationEnvelope" } } } },
-          "401": { "$ref": "#/components/responses/Unauthorized" },
-          "404": { "$ref": "#/components/responses/NotFound" }
+          "200": {
+            "description": "Activation ticket",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./session-api.schema.json#/$defs/dashboardActivationEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
         }
       }
     },
     "/dashboard/session/{sessionRef}/export": {
       "parameters": [
-        { "$ref": "#/components/parameters/SessionRef" },
-        { "$ref": "#/components/parameters/IdempotencyKey" }
+        {
+          "$ref": "#/components/parameters/SessionRef"
+        },
+        {
+          "$ref": "#/components/parameters/IdempotencyKey"
+        }
       ],
       "post": {
         "operationId": "exportDashboardSession",
         "summary": "Durably export as new or guarded append-to-origin",
         "requestBody": {
           "required": true,
-          "content": { "application/json": { "schema": { "$ref": "./dashboard-api.schema.json#/$defs/exportRequest" } } }
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "./dashboard-api.schema.json#/$defs/exportRequest"
+              }
+            }
+          }
         },
         "responses": {
-          "202": { "description": "Durable export ticket", "content": { "application/json": { "schema": { "$ref": "./session-api.schema.json#/$defs/dashboardExportEnvelope" } } } },
-          "400": { "$ref": "#/components/responses/InvalidRequest" },
-          "401": { "$ref": "#/components/responses/Unauthorized" },
-          "409": { "$ref": "#/components/responses/Conflict" },
-          "413": { "$ref": "#/components/responses/TooLarge" }
+          "202": {
+            "description": "Durable export ticket",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./session-api.schema.json#/$defs/dashboardExportEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "413": {
+            "$ref": "#/components/responses/TooLarge"
+          }
         }
       }
     },
     "/dashboard/export/{ticketId}": {
-      "parameters": [{ "$ref": "#/components/parameters/TicketId" }],
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TicketId"
+        }
+      ],
       "get": {
         "operationId": "getDashboardExportTicket",
         "summary": "Inspect a durable export ticket",
         "responses": {
-          "200": { "description": "Export ticket", "content": { "application/json": { "schema": { "$ref": "./session-api.schema.json#/$defs/dashboardExportEnvelope" } } } },
-          "401": { "$ref": "#/components/responses/Unauthorized" },
-          "404": { "$ref": "#/components/responses/NotFound" }
+          "200": {
+            "description": "Export ticket",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./session-api.schema.json#/$defs/dashboardExportEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
         }
       }
     },
     "/dashboard/session/{sessionRef}/lease": {
-      "parameters": [{ "$ref": "#/components/parameters/SessionRef" }],
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/SessionRef"
+        }
+      ],
       "post": {
         "operationId": "renewDashboardOwnershipLease",
         "summary": "Renew the exact active cooperative ownership lease",
         "requestBody": {
           "required": true,
-          "content": { "application/json": { "schema": { "$ref": "./dashboard-api.schema.json#/$defs/dashboardLeaseRequest" } } }
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "./dashboard-api.schema.json#/$defs/dashboardLeaseRequest"
+              }
+            }
+          }
         },
         "responses": {
-          "200": { "description": "Renewed lease", "content": { "application/json": { "schema": { "$ref": "./session-api.schema.json#/$defs/dashboardLeaseEnvelope" } } } },
-          "400": { "$ref": "#/components/responses/InvalidRequest" },
-          "401": { "$ref": "#/components/responses/Unauthorized" },
-          "409": { "$ref": "#/components/responses/Conflict" }
+          "200": {
+            "description": "Renewed lease",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./session-api.schema.json#/$defs/dashboardLeaseEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
         }
       }
     },
     "/dashboard/session/{sessionRef}/tui": {
-      "parameters": [{ "$ref": "#/components/parameters/SessionRef" }],
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/SessionRef"
+        }
+      ],
       "get": {
         "operationId": "attachDashboardTuiChannel",
         "summary": "Capability-gated server-side TUI channel",
         "x-websocket-subprotocol": "pi-daemon-tui.v1",
         "responses": {
-          "101": { "description": "Authenticated TUI WebSocket attachment" },
-          "401": { "$ref": "#/components/responses/Unauthorized" },
-          "404": { "$ref": "#/components/responses/NotFound" },
-          "409": { "$ref": "#/components/responses/Conflict" },
-          "426": { "$ref": "#/components/responses/UpgradeRequired" },
-          "501": { "$ref": "#/components/responses/NotImplemented" }
+          "101": {
+            "description": "Authenticated TUI WebSocket attachment"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "426": {
+            "$ref": "#/components/responses/UpgradeRequired"
+          },
+          "501": {
+            "$ref": "#/components/responses/NotImplemented"
+          }
         }
       }
     },
@@ -587,19 +1234,34 @@
         "operationId": "getTicketByIdempotency",
         "summary": "Read a retained mutation ticket by idempotency scope",
         "parameters": [
-          { "$ref": "#/components/parameters/RequestId" },
-          { "$ref": "#/components/parameters/IdempotencyKey" },
+          {
+            "$ref": "#/components/parameters/RequestId"
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          },
           {
             "name": "method",
             "in": "query",
             "required": true,
-            "schema": { "enum": ["POST", "PUT", "DELETE", "WAKE"] }
+            "schema": {
+              "enum": [
+                "POST",
+                "PUT",
+                "DELETE",
+                "WAKE"
+              ]
+            }
           },
           {
             "name": "target",
             "in": "query",
             "required": true,
-            "schema": { "type": "string", "minLength": 1, "maxLength": 4096 }
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4096
+            }
           }
         ],
         "responses": {
@@ -607,13 +1269,21 @@
             "description": "Current ticket for the exact method, canonical target, and idempotency key",
             "content": {
               "application/json": {
-                "schema": { "$ref": "./session-api.schema.json#/$defs/ticketEnvelope" }
+                "schema": {
+                  "$ref": "./session-api.schema.json#/$defs/ticketEnvelope"
+                }
               }
             }
           },
-          "400": { "$ref": "#/components/responses/InvalidRequest" },
-          "401": { "$ref": "#/components/responses/Unauthorized" },
-          "404": { "$ref": "#/components/responses/NotFound" }
+          "400": {
+            "$ref": "#/components/responses/InvalidRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
         }
       }
     },
@@ -622,12 +1292,16 @@
         "operationId": "reconcileTicket",
         "summary": "Explicitly resolve an indeterminate ticket after inspecting retained Pi entries",
         "parameters": [
-          { "$ref": "#/components/parameters/RequestId" },
+          {
+            "$ref": "#/components/parameters/RequestId"
+          },
           {
             "name": "ticketId",
             "in": "path",
             "required": true,
-            "schema": { "$ref": "./session-api.schema.json#/$defs/identifier" }
+            "schema": {
+              "$ref": "./session-api.schema.json#/$defs/identifier"
+            }
           }
         ],
         "requestBody": {
@@ -636,20 +1310,37 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["requestId", "state", "evidence"],
+                "required": [
+                  "requestId",
+                  "state",
+                  "evidence"
+                ],
                 "properties": {
-                  "requestId": { "$ref": "./session-api.schema.json#/$defs/identifier" },
-                  "state": { "enum": ["succeeded", "failed"] },
-                  "error": { "$ref": "./session-api.schema.json#/$defs/apiError" },
+                  "requestId": {
+                    "$ref": "./session-api.schema.json#/$defs/identifier"
+                  },
+                  "state": {
+                    "enum": [
+                      "succeeded",
+                      "failed"
+                    ]
+                  },
+                  "error": {
+                    "$ref": "./session-api.schema.json#/$defs/apiError"
+                  },
                   "evidence": {
                     "type": "object",
-                    "required": ["piEntryIds"],
+                    "required": [
+                      "piEntryIds"
+                    ],
                     "properties": {
                       "piEntryIds": {
                         "type": "array",
                         "minItems": 1,
                         "maxItems": 256,
-                        "items": { "$ref": "./session-api.schema.json#/$defs/identifier" }
+                        "items": {
+                          "$ref": "./session-api.schema.json#/$defs/identifier"
+                        }
                       }
                     },
                     "additionalProperties": false
@@ -665,14 +1356,24 @@
             "description": "Reconciled terminal ticket",
             "content": {
               "application/json": {
-                "schema": { "$ref": "./session-api.schema.json#/$defs/ticketEnvelope" }
+                "schema": {
+                  "$ref": "./session-api.schema.json#/$defs/ticketEnvelope"
+                }
               }
             }
           },
-          "400": { "$ref": "#/components/responses/InvalidRequest" },
-          "401": { "$ref": "#/components/responses/Unauthorized" },
-          "404": { "$ref": "#/components/responses/NotFound" },
-          "409": { "$ref": "#/components/responses/Conflict" }
+          "400": {
+            "$ref": "#/components/responses/InvalidRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
         }
       }
     },
@@ -681,12 +1382,16 @@
         "operationId": "getTicket",
         "summary": "Read a retained mutation ticket",
         "parameters": [
-          { "$ref": "#/components/parameters/RequestId" },
+          {
+            "$ref": "#/components/parameters/RequestId"
+          },
           {
             "name": "ticketId",
             "in": "path",
             "required": true,
-            "schema": { "$ref": "./session-api.schema.json#/$defs/identifier" }
+            "schema": {
+              "$ref": "./session-api.schema.json#/$defs/identifier"
+            }
           }
         ],
         "responses": {
@@ -694,12 +1399,18 @@
             "description": "Current queued, running, terminal, or indeterminate state",
             "content": {
               "application/json": {
-                "schema": { "$ref": "./session-api.schema.json#/$defs/ticketEnvelope" }
+                "schema": {
+                  "$ref": "./session-api.schema.json#/$defs/ticketEnvelope"
+                }
               }
             }
           },
-          "401": { "$ref": "#/components/responses/Unauthorized" },
-          "404": { "$ref": "#/components/responses/NotFound" }
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
         }
       }
     },
@@ -1060,107 +1771,228 @@
         "in": "header",
         "required": false,
         "description": "Optional caller correlation ID. If a mutating JSON body also carries requestId, the values must match. The server generates one when absent.",
-        "schema": { "type": "string", "minLength": 1, "maxLength": 128 }
+        "schema": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        }
       },
       "SessionRef": {
         "name": "sessionRef",
         "in": "path",
         "required": true,
         "description": "URL-encoded canonical ID or unique exact session name. Ambiguity is a conflict, never first-match selection.",
-        "schema": { "type": "string", "minLength": 1, "maxLength": 256 }
+        "schema": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        }
       },
       "IdempotencyKey": {
         "name": "Idempotency-Key",
         "in": "header",
         "required": true,
-        "schema": { "type": "string", "minLength": 1, "maxLength": 512 }
+        "schema": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        }
       },
       "WaitForTerminal": {
         "name": "waitForTerminal",
         "in": "query",
         "required": false,
         "description": "Convenience barrier: hold the ticket envelope until terminal instead of returning immediately after admission.",
-        "schema": { "type": "boolean", "default": false }
+        "schema": {
+          "type": "boolean",
+          "default": false
+        }
       },
       "IfMatch": {
         "name": "If-Match",
         "in": "header",
         "required": true,
         "description": "Strong ETag returned by GET, derived from immutable session ID and revision without secret material.",
-        "schema": { "type": "string", "minLength": 1, "maxLength": 256 }
+        "schema": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        }
       },
       "PageCursor": {
         "name": "cursor",
         "in": "query",
         "required": false,
-        "schema": { "type": "string", "minLength": 1, "maxLength": 1024 }
+        "schema": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        }
       },
       "PageLimit": {
         "name": "limit",
         "in": "query",
         "required": false,
-        "schema": { "type": "integer", "minimum": 1, "maximum": 100, "default": 50 }
+        "schema": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100,
+          "default": 50
+        }
       }
     },
     "headers": {
       "Location": {
         "description": "Ticket or canonical session resource URL",
-        "schema": { "type": "string", "minLength": 1, "maxLength": 4096 }
+        "schema": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096
+        }
       },
       "ETag": {
         "description": "Strong session revision validator",
-        "schema": { "type": "string", "minLength": 1, "maxLength": 256 }
+        "schema": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        }
       }
     },
     "responses": {
       "InvalidRequest": {
         "description": "Malformed or semantically invalid request",
-        "content": { "application/json": { "schema": { "$ref": "./session-api.schema.json#/$defs/apiErrorEnvelope" } } }
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "./session-api.schema.json#/$defs/apiErrorEnvelope"
+            }
+          }
+        }
       },
       "Unauthorized": {
         "description": "Missing or invalid service bearer; response never identifies sessions",
         "headers": {
-          "WWW-Authenticate": { "schema": { "type": "string", "const": "Bearer" } }
+          "WWW-Authenticate": {
+            "schema": {
+              "type": "string",
+              "const": "Bearer"
+            }
+          }
         },
-        "content": { "application/json": { "schema": { "$ref": "./session-api.schema.json#/$defs/apiErrorEnvelope" } } }
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "./session-api.schema.json#/$defs/apiErrorEnvelope"
+            }
+          }
+        }
       },
       "NotFound": {
         "description": "Session or ticket not found",
-        "content": { "application/json": { "schema": { "$ref": "./session-api.schema.json#/$defs/apiErrorEnvelope" } } }
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "./session-api.schema.json#/$defs/apiErrorEnvelope"
+            }
+          }
+        }
       },
       "Conflict": {
         "description": "Name ambiguity, generation, idempotency, controller, or busy-state conflict",
-        "content": { "application/json": { "schema": { "$ref": "./session-api.schema.json#/$defs/apiErrorEnvelope" } } }
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "./session-api.schema.json#/$defs/apiErrorEnvelope"
+            }
+          }
+        }
       },
       "PreconditionFailed": {
         "description": "ETag, expected revision, or expected generation does not match",
-        "content": { "application/json": { "schema": { "$ref": "./session-api.schema.json#/$defs/apiErrorEnvelope" } } }
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "./session-api.schema.json#/$defs/apiErrorEnvelope"
+            }
+          }
+        }
       },
       "TooLarge": {
         "description": "Request body, environment, prompt, or frame exceeds a configured bound",
-        "content": { "application/json": { "schema": { "$ref": "./session-api.schema.json#/$defs/apiErrorEnvelope" } } }
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "./session-api.schema.json#/$defs/apiErrorEnvelope"
+            }
+          }
+        }
       },
       "Unsupported": {
         "description": "Known Pi option, resource, isolation mode, or protocol feature is unsupported",
-        "content": { "application/json": { "schema": { "$ref": "./session-api.schema.json#/$defs/apiErrorEnvelope" } } }
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "./session-api.schema.json#/$defs/apiErrorEnvelope"
+            }
+          }
+        }
       },
       "Capacity": {
         "description": "Connection, session, queue, ticket, or outbound capacity reached",
-        "headers": { "Retry-After": { "schema": { "type": "integer", "minimum": 0 } } },
-        "content": { "application/json": { "schema": { "$ref": "./session-api.schema.json#/$defs/apiErrorEnvelope" } } }
+        "headers": {
+          "Retry-After": {
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "./session-api.schema.json#/$defs/apiErrorEnvelope"
+            }
+          }
+        }
       },
       "UpgradeRequired": {
         "description": "WebSocket upgrade or supported subprotocol required",
-        "content": { "application/json": { "schema": { "$ref": "./session-api.schema.json#/$defs/apiErrorEnvelope" } } }
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "./session-api.schema.json#/$defs/apiErrorEnvelope"
+            }
+          }
+        }
       },
       "NotImplemented": {
         "description": "Capability is known but unavailable in this host configuration",
-        "content": { "application/json": { "schema": { "$ref": "./session-api.schema.json#/$defs/apiErrorEnvelope" } } }
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "./session-api.schema.json#/$defs/apiErrorEnvelope"
+            }
+          }
+        }
       },
       "Unavailable": {
         "description": "Host not ready, draining, or temporarily unable to admit the operation",
-        "headers": { "Retry-After": { "schema": { "type": "integer", "minimum": 0 } } },
-        "content": { "application/json": { "schema": { "$ref": "./session-api.schema.json#/$defs/apiErrorEnvelope" } } }
+        "headers": {
+          "Retry-After": {
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "./session-api.schema.json#/$defs/apiErrorEnvelope"
+            }
+          }
+        }
       }
     }
   }
