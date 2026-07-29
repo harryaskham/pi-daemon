@@ -163,7 +163,16 @@ test("default session directory adoption tracks the pinned Pi export surface", a
   assert.equal(
     helper !== undefined,
     PI_SDK_EXPORTS_DEFAULT_SESSION_DIR,
-    "Pi's exported surface drifted: update PI_SDK_EXPORTS_DEFAULT_SESSION_DIR and consume the upstream helper in src/pi-sdk-contract.ts",
+    [
+      "Pi's exported surface drifted: the package root now exports getDefaultSessionDir.",
+      "Do not simply flip PI_SDK_EXPORTS_DEFAULT_SESSION_DIR — that turns this green and leaves the",
+      "question unasked. Decide which helper upstream exports:",
+      "  - if it still calls mkdirSync, keep the side-effect-free reproduction in src/pi-sdk-contract.ts",
+      "    and use the export only as a conformance oracle here, because the daemon creates every",
+      "    session directory owner-private with repair and cannot use a creating helper;",
+      "  - if it is a path-only variant, consume it and delete the reproduction.",
+      "Then set the constant to match what you decided.",
+    ].join("\n"),
   );
   assert.equal(
     piSdkDefaultSessionDirHelper({ getDefaultSessionDir: (cwd) => `probe:${cwd}` })?.("/tmp/x"),
