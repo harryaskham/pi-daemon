@@ -15,7 +15,8 @@ Dash browser acceptance runs from its own shell, which supplies audited
 Playwright browsers instead of an unrunnable download:
 
 ```bash
-just dash-e2e
+just dash-e2e         # whole suite, deliberate local acceptance
+just dash-e2e-smoke   # the bounded @smoke subset CI runs on every push
 ```
 
 See [`docs/dash-e2e.md`](docs/dash-e2e.md) for scenario filtering, the

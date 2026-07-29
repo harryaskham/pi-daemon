@@ -213,6 +213,12 @@ test("self-hosted workflows bound every job and long-running Nix step", async ()
   assert.equal((ci.match(/timeout-minutes: 30/g) ?? []).length, 2);
   assert.match(ci, /nix flake check --print-build-logs\n\s+timeout-minutes: 25/);
   assert.match(ci, /nix run \.#pi-daemon -- version\n\s+timeout-minutes: 5/);
+  assert.match(
+    ci,
+    /dash-smoke:\n\s+name: Dash browser smoke\n\s+runs-on: \[self-hosted, nix, x86_64-linux\]\n\s+timeout-minutes: 20/,
+  );
+  assert.match(ci, /nix develop \.#e2e --command npm ci --ignore-scripts\n\s+timeout-minutes: 10/);
+  assert.match(ci, /nix develop \.#e2e --command npm run web:e2e:smoke\n\s+timeout-minutes: 10/);
   assert.match(pages, /build:\n\s+runs-on: \[self-hosted, nix, x86_64-linux\]\n\s+timeout-minutes: 20/);
   assert.match(pages, /deploy:\n\s+timeout-minutes: 10/);
   assert.match(release, /release:\n\s+runs-on: \[self-hosted, nix, x86_64-linux\]\n\s+timeout-minutes: 45/);
@@ -220,6 +226,29 @@ test("self-hosted workflows bound every job and long-running Nix step", async ()
   assert.match(release, /package\/npm-shrinkwrap\.json/);
   assert.match(release, /steps\.pack\.outputs\.tarball \}\}\.sha256/);
   assert.match(release, /--latest/);
+});
+
+test("the CI browser smoke subset is wired end to end and never selects an empty set", async () => {
+  const [rootManifest, webManifest, spec, justfile] = await Promise.all([
+    readFile(join(repositoryRoot, "package.json"), "utf8").then(JSON.parse),
+    readFile(join(repositoryRoot, "web/package.json"), "utf8").then(JSON.parse),
+    readFile(join(repositoryRoot, "web/e2e/dash.spec.ts"), "utf8"),
+    readFile(join(repositoryRoot, "Justfile"), "utf8"),
+  ]);
+  assert.equal(
+    webManifest.scripts["e2e:smoke"],
+    "node scripts/check-playwright-browsers.mjs && playwright test --grep @smoke",
+  );
+  assert.equal(
+    rootManifest.scripts["web:e2e:smoke"],
+    "npm run e2e:smoke --workspace @harryaskham/pi-daemon-dash",
+  );
+  assert.match(justfile, /dash-e2e-smoke:\n\s+nix develop \.#e2e --command npm run e2e:smoke/);
+  const tagged = spec.match(/^test\("[^"]*@smoke"/gm) ?? [];
+  assert.ok(
+    tagged.length >= 3,
+    `browser smoke subset must keep at least three tagged scenarios, found ${tagged.length}`,
+  );
 });
 
 test("release invariants reject metadata, tag, changelog, and artifact drift", async (t) => {

@@ -93,13 +93,52 @@ machine; a failure there is a real regression signal.
 
 ## Scope
 
-This is a local developer and acceptance path. Repository CI runs the Node suite
-and `nix flake check`; it does not run browser acceptance, so browser evidence
-is produced deliberately from a documented shell rather than implicitly on every
-push.
+CI runs the bounded `@smoke` subset on every push and pull request, from the
+same Nix shell:
+
+```bash
+just dash-e2e-smoke
+```
+
+The full suite stays a deliberate local and acceptance path. The `Dash browser
+smoke` job proves the SPA still builds, boots, and renders in a real browser, so
+a total breakage cannot reach `main` unnoticed; everything beyond that is run on
+demand.
+
+## Should CI gate on the full suite?
+
+Not yet, and the subset above is the compromise. Measured on the `sonance`
+self-hosted runner class at load average ~11.7, on `85e41a0`:
+
+| Property | Full suite | `@smoke` subset |
+| --- | --- | --- |
+| Scenarios | 21 | 3 |
+| Wall clock | 3.0-3.1 min | 53s |
+| Determinism under load | 1 intermittent failure | stable |
+
+The browser bundle is a ~2.1 GiB Nix closure. That is free on a warm
+self-hosted store and substitutable from the binary cache, but it is the one
+cost that would hurt a cold or ephemeral runner.
+
+The blocking issue is determinism, not runtime. Two consecutive full runs failed
+`TUI presentation streams one canonical controller grid to read-only pane
+mirrors` at `expect(Math.abs(restoredAnchor - readingAnchor)).toBeLessThan(32)`
+with a measured 43px, while the same scenario passes in isolation. A gate that
+is red for reasons unrelated to the change under review trains reviewers to
+ignore it, which is worse than no gate. The three `@smoke` scenarios were chosen
+because they assert structure only — bounded virtualization, sidebar states, and
+production boot never painting fixture data — with no wall-clock or pixel
+tolerance, so host contention cannot turn them red.
+
+Revisit full-suite gating when the load-sensitive scenarios are deterministic
+under contention. At that point the runtime is affordable: 3 minutes on a warm
+runner, in parallel with the existing Node and Nix jobs.
 
 ## Known failures
 
-None outstanding. The Rich/TUI scroll-restoration scenario, which this shell
-first exposed as an assertion that compared two pre-hydration zeros, was fixed
-separately in `bd-94d7df`.
+`TUI presentation streams one canonical controller grid to read-only pane
+mirrors` fails intermittently in full-suite runs under host load, at the 32px
+reading-anchor tolerance introduced with the `bd-94d7df` fix (43px observed,
+twice, at load average ~11.7). It passes in isolation. The restoration behavior
+itself is fixed; what is not yet load-proof is the tolerance around the settled
+measurement. It is excluded from the `@smoke` subset for that reason.

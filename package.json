@@ -238,6 +238,7 @@
     "web:test:performance": "PI_DAEMON_PERFORMANCE_BUDGETS=1 npm run test --workspace @harryaskham/pi-daemon-dash",
     "web:e2e": "npm run e2e --workspace @harryaskham/pi-daemon-dash",
     "web:e2e:nix": "npm run e2e:nix --workspace @harryaskham/pi-daemon-dash",
+    "web:e2e:smoke": "npm run e2e:smoke --workspace @harryaskham/pi-daemon-dash",
     "web:bundle-report": "npm run bundle:report --workspace @harryaskham/pi-daemon-dash",
     "test:manual:performance": "npm run build && PI_DAEMON_PERFORMANCE_BUDGETS=1 node --test --test-concurrency=1 test/transcript-projector.test.mjs test/dashboard-remote-backend.test.mjs test/shadow-tui-host.test.mjs test/virtual-terminal.test.mjs"
   },

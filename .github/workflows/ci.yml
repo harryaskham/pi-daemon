@@ -56,3 +56,30 @@ jobs:
         timeout-minutes: 25
       - run: nix run .#pi-daemon -- version
         timeout-minutes: 5
+
+  dash-smoke:
+    name: Dash browser smoke
+    runs-on: [self-hosted, nix, x86_64-linux]
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cachix/install-nix-action@v31
+        with:
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+      # Node, npm, and the audited Playwright browsers all come from the e2e
+      # shell, so this job never downloads a browser that a library-strict host
+      # cannot run. It is the bounded `@smoke` subset, not the full suite: see
+      # docs/dash-e2e.md for the gating assessment.
+      - run: nix develop .#e2e --command npm ci --ignore-scripts
+        timeout-minutes: 10
+      - run: nix develop .#e2e --command npm run web:e2e:smoke
+        timeout-minutes: 10
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: dash-smoke-playwright
+          path: |
+            web/test-results
+            web/playwright-report
+          retention-days: 7
+          if-no-files-found: ignore

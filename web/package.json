@@ -13,6 +13,7 @@
     "test": "vitest run src/test",
     "e2e": "playwright test",
     "e2e:nix": "node scripts/check-playwright-browsers.mjs && playwright test",
+    "e2e:smoke": "node scripts/check-playwright-browsers.mjs && playwright test --grep @smoke",
     "e2e:check": "node scripts/check-playwright-browsers.mjs",
     "bundle:report": "node scripts/bundle-report.mjs",
     "capture": "node scripts/capture-artifacts.mjs"

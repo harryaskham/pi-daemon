@@ -46,3 +46,9 @@ npm-deps-hash:
 # Verify the pinned Nix npm dependency hash without changing it.
 npm-deps-hash-check:
     npm run nix:deps-hash:check
+
+# The bounded `@smoke` subset that CI runs on every push and pull request.
+# Proves the SPA builds, boots, and stays browser-clean without gating on the
+# full suite's runtime or its load-sensitive scenarios.
+dash-e2e-smoke:
+    nix develop .#e2e --command npm run e2e:smoke --workspace @harryaskham/pi-daemon-dash

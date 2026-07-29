@@ -27,7 +27,7 @@ async function settledDistanceFromBottom(scroller: Locator): Promise<number> {
   return Math.max(0, previous);
 }
 
-test("renders a bounded Nord Midnight workspace from 10k fixtures", async ({ page }) => {
+test("renders a bounded Nord Midnight workspace from 10k fixtures @smoke", async ({ page }) => {
   await page.goto("./?fixture=1");
   await expect(page.getByRole("heading", { name: "Dash" })).toBeVisible();
   await expect(page.getByLabel("Session summary").getByText("10,000")).toBeVisible();
@@ -157,7 +157,7 @@ test("capability-gated schedule editor renders validation, history, disabled and
   await expect(page.locator(".session-row__countdown")).toBeVisible();
 });
 
-test("sidebar loading, error recovery, and mobile drawer states are explicit", async ({ page }) => {
+test("sidebar loading, error recovery, and mobile drawer states are explicit @smoke", async ({ page }) => {
   await page.setViewportSize({ width: 480, height: 820 });
   await page.goto("./?fixture=1&sidebar=error&state=ready");
   await expect(page.locator(".sidebar-list-state--error")).toContainText("Session index unavailable");
@@ -584,7 +584,7 @@ test("TUI presentation streams one canonical controller grid to read-only pane m
   await expect(primary.locator(".transcript")).toBeVisible();
 });
 
-test("production boot uses same-origin login and never paints fixture data", async ({ page }) => {
+test("production boot uses same-origin login and never paints fixture data @smoke", async ({ page }) => {
   let authenticated = false;
   const now = "2026-07-19T00:00:00.000Z";
   const identity = {
