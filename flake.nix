@@ -86,85 +86,86 @@
           platforms = systems;
         };
       };
-      pages = pkgs.runCommand "pi-daemon-pages" {
-        nativeBuildInputs = [pkgs.pandoc];
-      } ''
-        mkdir -p "$out"
-        cat > "$out/style.css" <<'CSS'
-        :root { color-scheme: light dark; font-family: system-ui, sans-serif; line-height: 1.55; }
-        body { max-width: 72rem; margin: 0 auto; padding: 2rem; }
-        a { color: #3273dc; }
-        pre { overflow-x: auto; padding: 1rem; background: color-mix(in srgb, CanvasText 8%, Canvas); }
-        code { font-family: ui-monospace, monospace; }
-        table { border-collapse: collapse; }
-        th, td { border: 1px solid color-mix(in srgb, CanvasText 25%, Canvas); padding: .4rem .6rem; }
-        CSS
-        cat > nested-links.lua <<'LUA'
-        function Link(link)
-          local target = link.target
-          if target:match("^https?://") or target:match("^mailto:") or
-             target:match("^#") or target:match("^/") or target:match("^%.%./") then
+      pages =
+        pkgs.runCommand "pi-daemon-pages" {
+          nativeBuildInputs = [pkgs.pandoc];
+        } ''
+          mkdir -p "$out"
+          cat > "$out/style.css" <<'CSS'
+          :root { color-scheme: light dark; font-family: system-ui, sans-serif; line-height: 1.55; }
+          body { max-width: 72rem; margin: 0 auto; padding: 2rem; }
+          a { color: #3273dc; }
+          pre { overflow-x: auto; padding: 1rem; background: color-mix(in srgb, CanvasText 8%, Canvas); }
+          code { font-family: ui-monospace, monospace; }
+          table { border-collapse: collapse; }
+          th, td { border: 1px solid color-mix(in srgb, CanvasText 25%, Canvas); padding: .4rem .6rem; }
+          CSS
+          cat > nested-links.lua <<'LUA'
+          function Link(link)
+            local target = link.target
+            if target:match("^https?://") or target:match("^mailto:") or
+               target:match("^#") or target:match("^/") or target:match("^%.%./") then
+              return link
+            end
+            link.target = "../" .. target
             return link
           end
-          link.target = "../" .. target
-          return link
-        end
-        LUA
-        for source in ${./docs}/*.md; do
-          name="$(basename "$source" .md)"
-          filter=""
-          if [ "$name" = index ]; then
-            destination="$out/index.html"
-            css="style.css"
-          else
-            mkdir -p "$out/$name"
-            destination="$out/$name/index.html"
-            css="../style.css"
-            filter="--lua-filter=$PWD/nested-links.lua"
-          fi
-          pandoc "$source" \
-            --standalone \
-            --from=gfm+yaml_metadata_block \
-            --to=html5 \
-            --css="$css" \
-            $filter \
-            --output="$destination"
-        done
-        cp ${./protocol.schema.json} "$out/protocol.schema.json"
-        cp ${./protocol-v2.schema.json} "$out/protocol-v2.schema.json"
-        cp ${./tool-adapter.schema.json} "$out/tool-adapter.schema.json"
-        cp ${./session-api.schema.json} "$out/session-api.schema.json"
-        cp ${./session-api.openapi.json} "$out/session-api.openapi.json"
-        cp ${./dashboard-api.schema.json} "$out/dashboard-api.schema.json"
-        cp ${./extension-view.schema.json} "$out/extension-view.schema.json"
-        cp ${./dashboard-api.openapi.json} "$out/dashboard-api.openapi.json"
-        cp ${./dashboard-session-draft.schema.json} "$out/dashboard-session-draft.schema.json"
-        cp ${./schedule.schema.json} "$out/schedule.schema.json"
-        touch "$out/.nojekyll"
-        test -s "$out/index.html"
-        test -s "$out/quickstart/index.html"
-        test -s "$out/protocol/index.html"
-        test -s "$out/tool-adapter-protocol/index.html"
-        test -s "$out/protocol-v2.schema.json"
-        test -s "$out/tool-adapter.schema.json"
-        test -s "$out/dashboard-protocol/index.html"
-        test -s "$out/dashboard-transport-security/index.html"
-        test -s "$out/dashboard-authorization/index.html"
-        test -s "$out/dashboard-inventory/index.html"
-        test -s "$out/shadow-tui/index.html"
-        test -s "$out/dashboard-ownership/index.html"
-        test -s "$out/dashboard-service-api/index.html"
-        test -s "$out/dash-e2e/index.html"
-        test -s "$out/dashboard-api.schema.json"
-        test -s "$out/extension-view.schema.json"
-        test -s "$out/declarative-extension-views/index.html"
-        test -s "$out/dashboard-session-tree/index.html"
-        test -s "$out/dashboard-api.openapi.json"
-        test -s "$out/dashboard-session-drafts/index.html"
-        test -s "$out/dashboard-session-draft.schema.json"
-        test -s "$out/schedules/index.html"
-        test -s "$out/schedule.schema.json"
-      '';
+          LUA
+          for source in ${./docs}/*.md; do
+            name="$(basename "$source" .md)"
+            filter=""
+            if [ "$name" = index ]; then
+              destination="$out/index.html"
+              css="style.css"
+            else
+              mkdir -p "$out/$name"
+              destination="$out/$name/index.html"
+              css="../style.css"
+              filter="--lua-filter=$PWD/nested-links.lua"
+            fi
+            pandoc "$source" \
+              --standalone \
+              --from=gfm+yaml_metadata_block \
+              --to=html5 \
+              --css="$css" \
+              $filter \
+              --output="$destination"
+          done
+          cp ${./protocol.schema.json} "$out/protocol.schema.json"
+          cp ${./protocol-v2.schema.json} "$out/protocol-v2.schema.json"
+          cp ${./tool-adapter.schema.json} "$out/tool-adapter.schema.json"
+          cp ${./session-api.schema.json} "$out/session-api.schema.json"
+          cp ${./session-api.openapi.json} "$out/session-api.openapi.json"
+          cp ${./dashboard-api.schema.json} "$out/dashboard-api.schema.json"
+          cp ${./extension-view.schema.json} "$out/extension-view.schema.json"
+          cp ${./dashboard-api.openapi.json} "$out/dashboard-api.openapi.json"
+          cp ${./dashboard-session-draft.schema.json} "$out/dashboard-session-draft.schema.json"
+          cp ${./schedule.schema.json} "$out/schedule.schema.json"
+          touch "$out/.nojekyll"
+          test -s "$out/index.html"
+          test -s "$out/quickstart/index.html"
+          test -s "$out/protocol/index.html"
+          test -s "$out/tool-adapter-protocol/index.html"
+          test -s "$out/protocol-v2.schema.json"
+          test -s "$out/tool-adapter.schema.json"
+          test -s "$out/dashboard-protocol/index.html"
+          test -s "$out/dashboard-transport-security/index.html"
+          test -s "$out/dashboard-authorization/index.html"
+          test -s "$out/dashboard-inventory/index.html"
+          test -s "$out/shadow-tui/index.html"
+          test -s "$out/dashboard-ownership/index.html"
+          test -s "$out/dashboard-service-api/index.html"
+          test -s "$out/dash-e2e/index.html"
+          test -s "$out/dashboard-api.schema.json"
+          test -s "$out/extension-view.schema.json"
+          test -s "$out/declarative-extension-views/index.html"
+          test -s "$out/dashboard-session-tree/index.html"
+          test -s "$out/dashboard-api.openapi.json"
+          test -s "$out/dashboard-session-drafts/index.html"
+          test -s "$out/dashboard-session-draft.schema.json"
+          test -s "$out/schedules/index.html"
+          test -s "$out/schedule.schema.json"
+        '';
     in {
       default = package;
       pi-daemon = package;

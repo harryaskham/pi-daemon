@@ -280,7 +280,11 @@
     ++ lib.concatMap (root: ["--allow-root" root]) instance.allowedRoots
     ++ [
       "--allow-authority-root-overlap"
-      (if instance.allowAuthorityRootOverlap then "true" else "false")
+      (
+        if instance.allowAuthorityRootOverlap
+        then "true"
+        else "false"
+      )
       "--api-enabled"
       (
         if instance.api.enable
@@ -317,7 +321,10 @@
     else instance.api.bind;
   apiClientUrl = instance: let
     host = apiClientHost instance;
-    renderedHost = if lib.hasInfix ":" host then "[${host}]" else host;
+    renderedHost =
+      if lib.hasInfix ":" host
+      then "[${host}]"
+      else host;
   in "http://${renderedHost}:${toString instance.api.port}";
   dedicatedWebArgs = name: instance:
     [
@@ -342,11 +349,23 @@
       "--web-port"
       (toString instance.dedicatedWeb.port)
       "--api-allow-insecure-http"
-      (if instance.dedicatedWeb.allowInsecureHttp then "true" else "false")
+      (
+        if instance.dedicatedWeb.allowInsecureHttp
+        then "true"
+        else "false"
+      )
       "--web-allow-insecure-http"
-      (if instance.dedicatedWeb.allowInsecurePublicOrigin then "true" else "false")
+      (
+        if instance.dedicatedWeb.allowInsecurePublicOrigin
+        then "true"
+        else "false"
+      )
       "--trust-proxy-headers"
-      (if instance.dedicatedWeb.trustProxyHeaders then "true" else "false")
+      (
+        if instance.dedicatedWeb.trustProxyHeaders
+        then "true"
+        else "false"
+      )
     ]
     ++ lib.optionals (instance.dedicatedWeb.publicOrigin != null) [
       "--public-origin"
@@ -474,7 +493,8 @@ in {
           enabledInstances)
         ++ (lib.mapAttrsToList (name: instance: {
             assertion =
-              instance.dashboardAuth.identityProviderFile == null
+              instance.dashboardAuth.identityProviderFile
+              == null
               || instance.dashboardAuth.identities == [];
             message = "services.pi-daemon.instances.${name}: dashboardAuth.identityProviderFile and identities are mutually exclusive";
           })
@@ -491,7 +511,8 @@ in {
           enabledInstances)
         ++ (lib.mapAttrsToList (name: instance: {
             assertion =
-              instance.dashboardAuth.identities == []
+              instance.dashboardAuth.identities
+              == []
               || lib.any (identity: identity.globalRole == "administrator") instance.dashboardAuth.identities;
             message = "services.pi-daemon.instances.${name}: dashboardAuth identities require at least one administrator";
           })
@@ -520,9 +541,11 @@ in {
           enabledInstances)
         ++ (lib.mapAttrsToList (name: instance: {
             assertion =
-              instance.dedicatedWeb.tls.certFile == null
+              instance.dedicatedWeb.tls.certFile
+              == null
               || (
-                instance.dedicatedWeb.publicOrigin != null
+                instance.dedicatedWeb.publicOrigin
+                != null
                 && lib.hasPrefix "https://" instance.dedicatedWeb.publicOrigin
               );
             message = "services.pi-daemon.instances.${name}: dedicatedWeb native TLS requires an HTTPS publicOrigin";

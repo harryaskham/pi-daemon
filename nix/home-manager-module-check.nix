@@ -190,8 +190,14 @@
         services.pi-daemon.package = testPackage;
         services.pi-daemon.instances.one = {
           allowedRoots = ["/srv/one"];
-          api = { enable = true; port = 17463; };
-          dedicatedWeb = { enable = true; port = 17463; };
+          api = {
+            enable = true;
+            port = 17463;
+          };
+          dedicatedWeb = {
+            enable = true;
+            port = 17463;
+          };
         };
       }
     ];
