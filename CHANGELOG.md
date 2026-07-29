@@ -5,6 +5,7 @@ semantic versioning once a release tag is cut.
 
 ## Unreleased
 
+- require every figure in a verification report to come from the run being reported, since a fabricated number inside an otherwise-observed report inherits the credibility of everything checkable around it
 - hold the `@smoke` browser subset to bounding only what the fixture determines, since it gates every push: times, pixel geometry, and scroll offsets are rejected there while rendered-row counts stay allowed, and fixing the camelCase blind spot this exposed also widened the existing wall-clock rule to catch names like `totalDuration`
 - route every path mode check through the tested exposure predicate, completing the pair: the 40 open-coded `(info.mode & 0o077) !== 0` comparisons now call `hasForbiddenExposure` with the policy they always applied, the TLS module keeps choosing per path between its certificate and its key, the three authority-to-act checks correctly gain no mode requirement at all, and the suite fails if any module masks a mode itself or changes the policy recorded for it
 - pin the mode half of path checks as its own axis rather than a restatement of ownership: an exposure policy distinguishing material nobody else may read from material others may read but not modify, a combined trust policy in which exposure is optional so authority-to-act checks keep taking no view on mode, and a census of every mask literal so widening one is a visible diff

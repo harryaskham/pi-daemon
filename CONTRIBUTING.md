@@ -214,6 +214,13 @@ fire; and a CI job's six-successes-in-thirty record was counted without asking
 whether a runner carrying its labels existed at all. Before reading a rate, ask
 what a failure would have required.
 
+The same applies to reporting one. Every figure in a verification report comes
+from the run being reported, or it is not stated — if you did not read it off
+this run, leave it out. A fabricated number inside an otherwise-observed report
+is worse than a wrong one standing alone, because everything around it is
+checkable and true, so a reader extends that credibility to the one figure
+nobody measured.
+
 This matters most for fail-closed and permission assertions, where a vacuous
 pass is a silent loss of security coverage rather than a missing test.
 
