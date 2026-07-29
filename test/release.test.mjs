@@ -221,6 +221,7 @@ test("self-hosted workflows bound every job and long-running Nix step", async ()
   );
   assert.match(ci, /nix develop \.#e2e --command npm ci --ignore-scripts\n\s+timeout-minutes: 10/);
   assert.match(ci, /nix develop \.#e2e --command npm run web:e2e:smoke\n\s+timeout-minutes: 10/);
+  assert.match(ci, /PI_DAEMON_E2E_NO_SANDBOX: "1"/);
   assert.match(pages, /build:\n\s+runs-on: \[self-hosted, nix, x86_64-linux\]\n\s+timeout-minutes: 20/);
   assert.match(pages, /deploy:\n\s+timeout-minutes: 10/);
   assert.match(release, /release:\n\s+runs-on: \[self-hosted, nix, x86_64-linux\]\n\s+timeout-minutes: 45/);
@@ -251,6 +252,12 @@ test("the CI browser smoke subset is wired end to end and never selects an empty
     tagged.length >= 3,
     `browser smoke subset must keep at least three tagged scenarios, found ${tagged.length}`,
   );
+  // Relaxing the browser sandbox must stay opt-in per environment: a developer
+  // machine keeps it, and only an explicit variable turns it off (bd-df1c84).
+  const playwrightConfig = await readFile(join(repositoryRoot, "web/playwright.config.ts"), "utf8");
+  assert.match(playwrightConfig, /process\.env\.PI_DAEMON_E2E_NO_SANDBOX === "1"/);
+  const sandboxFlags = playwrightConfig.match(/"--no-sandbox"/g) ?? [];
+  assert.equal(sandboxFlags.length, 1, "the sandbox flag must appear only on the opt-in branch");
 });
 
 test("release invariants reject metadata, tag, changelog, and artifact drift", async (t) => {

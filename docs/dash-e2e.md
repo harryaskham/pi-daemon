@@ -42,6 +42,20 @@ levels of `npm run`; use the workspace form above when you need `--grep`.
 | `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD` | Prevents any fallback download of an unusable browser. |
 | `PI_DAEMON_PLAYWRIGHT_DRIVER_VERSION` | The Nix driver version, used by the preflight to explain drift. |
 
+## Sandboxing on CI runners
+
+Chromium's sandbox needs user namespaces and a normally-sized `/dev/shm`. A
+hardened self-hosted runner supplies neither, and the browser then exits during
+launch, so every scenario fails with `Target page, context or browser has been
+closed` before any assertion runs (`bd-df1c84`).
+
+The `Dash browser smoke` job therefore sets `PI_DAEMON_E2E_NO_SANDBOX=1`, which
+adds `--no-sandbox --disable-dev-shm-usage` to the browser launch. That is
+acceptable only because the browser loads nothing but our own build over
+loopback, on a runner that is already an isolated environment. It is opt-in per
+environment and never the default: a developer machine keeps the sandbox, and
+nothing in the repository turns it off implicitly.
+
 ## Version alignment is load-bearing
 
 Playwright resolves browsers by revision, so the npm `@playwright/test` pin must

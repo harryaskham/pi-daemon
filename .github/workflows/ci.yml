@@ -79,6 +79,10 @@ jobs:
         timeout-minutes: 10
       - run: nix develop .#e2e --command npm run web:e2e:smoke
         timeout-minutes: 10
+        env:
+          # The runner's Chromium sandbox cannot open user namespaces; see
+          # web/playwright.config.ts and docs/dash-e2e.md (bd-df1c84).
+          PI_DAEMON_E2E_NO_SANDBOX: "1"
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
