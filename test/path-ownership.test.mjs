@@ -5,6 +5,9 @@ import { fileURLToPath } from "node:url";
 import test from "node:test";
 
 import {
+  EXPOSURE_FORBIDDEN_BITS,
+  hasForbiddenExposure,
+  isTrustedPath,
   ROOT_UID,
   hasForeignPathOwner,
   isPermittedPathOwner,
@@ -93,6 +96,46 @@ function censusOf(source) {
   });
   return { ownerOnly, ownerOrRoot };
 }
+
+/**
+ * Mode-mask literals per module, by the exposure policy each expresses.
+ *
+ * The second axis, censused separately from ownership because it is a separate
+ * decision. Correlating the two holds for 31 of 44 sites and breaks for 9,
+ * which pair a strict owner with a lax mask for session state: only the current
+ * user may have written it, but others reading it is not the property being
+ * protected. Deriving the mask from the ownership policy would have tightened
+ * those nine silently.
+ *
+ * Counted as raw literals rather than by proximity to a guard. An earlier audit
+ * of the ownership half used a three-line window and could misread a distant
+ * exemption, then match that misreading against itself; counting literals has
+ * no window to get wrong.
+ */
+const EXPOSURE_CENSUS = {
+  "api-auth.ts": { private: 1, noForeignWriters: 0 },
+  "bootstrap.ts": { private: 1, noForeignWriters: 0 },
+  "config.ts": { private: 0, noForeignWriters: 1 },
+  "dashboard-auth.ts": { private: 3, noForeignWriters: 0 },
+  "dashboard-authorization.ts": { private: 2, noForeignWriters: 0 },
+  "dashboard-identity-config.ts": { private: 0, noForeignWriters: 1 },
+  "dashboard-server.ts": { private: 0, noForeignWriters: 1 },
+  "dashboard-session-defaults.ts": { private: 0, noForeignWriters: 1 },
+  "dashboard-store.ts": { private: 2, noForeignWriters: 0 },
+  "dashboard-tls.ts": { private: 1, noForeignWriters: 1 },
+  "durability.ts": { private: 3, noForeignWriters: 0 },
+  "installed-package-resources.ts": { private: 0, noForeignWriters: 2 },
+  "pi-adapter.ts": { private: 1, noForeignWriters: 4 },
+  "rpc-stdio-cli.ts": { private: 1, noForeignWriters: 0 },
+  "schedule-config.ts": { private: 1, noForeignWriters: 1 },
+  "self-update.ts": { private: 1, noForeignWriters: 1 },
+  "server.ts": { private: 0, noForeignWriters: 1 },
+  "session-cli.ts": { private: 2, noForeignWriters: 0 },
+  "session-inventory.ts": { private: 2, noForeignWriters: 1 },
+  "session-ownership.ts": { private: 0, noForeignWriters: 3 },
+  "tool-adapter-runtime.ts": { private: 2, noForeignWriters: 0 },
+  "transcript-projector.ts": { private: 0, noForeignWriters: 1 },
+};
 
 test("the ownership predicate rejects every owner it must", () => {
   const currentUid = 1000;
@@ -217,4 +260,69 @@ test("the census classifier itself distinguishes the two policies", () => {
     ownerOnly: 0,
     ownerOrRoot: 0,
   });
+});
+
+test("the exposure predicate forbids exactly the bits its policy names", () => {
+  // The named policies and the octal literals the census counts must stay tied
+  // together, or the census would be counting something the predicate no longer
+  // means.
+  assert.deepEqual(EXPOSURE_FORBIDDEN_BITS, { private: 0o077, "no-foreign-writers": 0o022 });
+  assert.throws(() => {
+    EXPOSURE_FORBIDDEN_BITS.private = 0o022;
+  }, "the mask table must be frozen: a widened bit set would silently pass every guard");
+
+  // 0o077: nobody but the owner. 0o022: others may read, nobody else may write.
+  assert.equal(hasForbiddenExposure(0o600, "private"), false);
+  assert.equal(hasForbiddenExposure(0o640, "private"), true);
+  assert.equal(hasForbiddenExposure(0o604, "private"), true);
+  assert.equal(hasForbiddenExposure(0o700, "private"), false);
+
+  assert.equal(hasForbiddenExposure(0o644, "no-foreign-writers"), false);
+  assert.equal(hasForbiddenExposure(0o755, "no-foreign-writers"), false);
+  assert.equal(hasForbiddenExposure(0o664, "no-foreign-writers"), true);
+  assert.equal(hasForbiddenExposure(0o646, "no-foreign-writers"), true);
+
+  // The policies are not orderings of one another: a mode may satisfy the
+  // laxer one and fail the stricter, which is the whole reason they are two.
+  assert.equal(hasForbiddenExposure(0o644, "private"), true);
+  assert.equal(hasForbiddenExposure(0o644, "no-foreign-writers"), false);
+});
+
+test("a path is trusted only when both axes agree, and exposure is optional", () => {
+  const currentUid = 1000;
+  const secret = { owner: "owner-only", exposure: "private" };
+  assert.equal(isTrustedPath({ uid: currentUid, mode: 0o600 }, secret, currentUid), true);
+  assert.equal(isTrustedPath({ uid: currentUid, mode: 0o640 }, secret, currentUid), false);
+  assert.equal(isTrustedPath({ uid: 0, mode: 0o600 }, secret, currentUid), false);
+
+  const provisioned = { owner: "owner-or-root", exposure: "no-foreign-writers" };
+  assert.equal(isTrustedPath({ uid: 0, mode: 0o644 }, provisioned, currentUid), true);
+  assert.equal(isTrustedPath({ uid: 0, mode: 0o664 }, provisioned, currentUid), false);
+  assert.equal(isTrustedPath({ uid: 1001, mode: 0o644 }, provisioned, currentUid), false);
+
+  // Authority-to-act checks — refusing to replace a socket the process does not
+  // own, skipping foreign entries in a scan — decide who may act on a path, not
+  // what may be trusted from its contents. A mode requirement would be wrong
+  // there rather than merely redundant, so the policy omits it.
+  const authority = { owner: "owner-only" };
+  assert.equal(isTrustedPath({ uid: currentUid, mode: 0o666 }, authority, currentUid), true);
+  assert.equal(isTrustedPath({ uid: 1001, mode: 0o600 }, authority, currentUid), false);
+});
+
+test("every mode mask in the source is accounted for by exposure policy", async () => {
+  const entries = (await readdir(sourceRoot)).filter((name) => name.endsWith(".ts")).sort();
+  const observed = {};
+  for (const entry of entries) {
+    if (entry === "path-ownership.ts") continue;
+    const source = await readFile(join(sourceRoot, entry), "utf8");
+    const private_ = (source.match(/0o077/g) ?? []).length;
+    const noForeignWriters = (source.match(/0o022/g) ?? []).length;
+    if (private_ > 0 || noForeignWriters > 0) observed[entry] = { private: private_, noForeignWriters };
+  }
+  assert.deepEqual(
+    observed,
+    EXPOSURE_CENSUS,
+    "a mode mask was added, removed, or changed: update the census and say why. " +
+      "A secret path widening from 0o077 to 0o022 is a change of policy, not of formatting.",
+  );
 });

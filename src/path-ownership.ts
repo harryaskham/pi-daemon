@@ -66,3 +66,62 @@ export function hasForeignPathOwner(
 ): boolean {
   return !isPermittedPathOwner(ownerUid, policy, currentUid);
 }
+
+/**
+ * Who else may reach a path's contents, independent of who owns it.
+ *
+ * A second axis, not a restatement of the first. Correlating every guard's
+ * ownership policy against the mask beside it holds for 31 of 44 sites and
+ * breaks for 9, and those 9 are coherent: session state under
+ * `session-ownership.ts`, `session-inventory.ts`, `pi-adapter.ts`, `server.ts`,
+ * `self-update.ts`, and `transcript-projector.ts` requires the current user to
+ * have written the path while tolerating that others may read it. Deriving the
+ * mask from the ownership policy would quietly tighten those.
+ *
+ * - `private` (`0o077`) for material nobody else may read or write: tokens,
+ *   credentials, auth seeds, the authorization store.
+ * - `no-foreign-writers` (`0o022`) for material others may read but must not
+ *   modify: configuration, provisioned resources, and session state whose
+ *   confidentiality is not the property being protected.
+ */
+export type PathExposurePolicy = "private" | "no-foreign-writers";
+
+/** Mode bits each exposure policy forbids. */
+export const EXPOSURE_FORBIDDEN_BITS: Readonly<Record<PathExposurePolicy, number>> = Object.freeze({
+  private: 0o077,
+  "no-foreign-writers": 0o022,
+});
+
+/**
+ * Whether a path's mode grants access its policy forbids.
+ *
+ * Reads as the guard it replaces:
+ * `if (hasForbiddenExposure(info.mode, policy)) throw`.
+ */
+export function hasForbiddenExposure(mode: number, policy: PathExposurePolicy): boolean {
+  return (mode & EXPOSURE_FORBIDDEN_BITS[policy]) !== 0;
+}
+
+/**
+ * What a path check requires of a path, on both axes.
+ *
+ * `exposure` is `undefined` for checks that decide *authority to act* on a path
+ * rather than *trust in material read from it* — refusing to replace a socket
+ * the process does not own, or skipping foreign entries during a scan. Those
+ * have no mode requirement, and giving them one would be wrong rather than
+ * merely redundant.
+ */
+export interface PathTrustPolicy {
+  readonly owner: PathOwnershipPolicy;
+  readonly exposure?: PathExposurePolicy;
+}
+
+/** Whether a path satisfies both axes of its policy. */
+export function isTrustedPath(
+  path: { readonly uid: number; readonly mode: number },
+  policy: PathTrustPolicy,
+  currentUid: number | undefined,
+): boolean {
+  if (!isPermittedPathOwner(path.uid, policy.owner, currentUid)) return false;
+  return policy.exposure === undefined || !hasForbiddenExposure(path.mode, policy.exposure);
+}

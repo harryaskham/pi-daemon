@@ -195,7 +195,18 @@ own secret accept the current user only: the API bearer token, the Pi auth
 seed, Dashboard credentials and descriptors, the authorization store, and
 durable session state. A root-owned secret is not a deployment shape; it means
 something else wrote it. `test/path-ownership.test.mjs` pins which modules
-apply which policy, so a change to that split is a visible diff. Configuration contains
+apply which policy, so a change to that split is a visible diff.
+
+Mode is a second axis rather than the same policy restated. Ownership answers
+who may have authored the material; mode answers who else may read or write it.
+Secrets require both strict — owner-only and `0o077`. Provisioned configuration
+relaxes the owner and keeps the writer strict — current-user-or-root and
+`0o022`. Session state does the opposite, requiring the current user to have
+written the path while tolerating that others may read it, which is why the two
+axes cannot be derived from one another. A third shape carries no mode at all:
+checks deciding authority to *act* on a path, such as refusing to replace a
+socket the process does not own or skipping foreign entries during a scan, take
+no view on who may read it. Configuration contains
 only non-secret values and secret **paths**: literal tokens, passwords, bearers,
 and API keys are rejected from the forward-compatible `web.ui` map. Runtime web
 preferences are a separate allowlisted overlay under `STATE_DIR/web`; they
