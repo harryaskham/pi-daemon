@@ -1,5 +1,7 @@
 import { defineConfig } from "@playwright/test";
 
+import { dashReporters } from "./playwright-reporters.mjs";
+
 const port = Number(process.env.DASH_TEST_PORT ?? 4174);
 // The web server command type-checks and builds the SPA before serving it, so a
 // cold checkout needs far more than Playwright's short default. Keep it bounded
@@ -18,6 +20,7 @@ const launchOptions =
 
 export default defineConfig({
   testDir: "./e2e",
+  reporter: dashReporters(),
   timeout: 90_000,
   expect: { timeout: 10_000 },
   use: {

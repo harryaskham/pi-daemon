@@ -1,8 +1,19 @@
+// Browser-resolution unit tests for the Nix Playwright path.
+//
+// INVARIANT: this file must never launch a browser. It lives in `test/`, which
+// the standard `npm test` gate globs, and the gate must stay browser-free: CI
+// runs it on plain Node runners with no Playwright browsers installed. Anything
+// that drives a real page belongs in `web/e2e/`, behind `nix develop .#e2e`.
+// The file is named for what it checks — resolution logic, version-drift
+// detection, and refusal codes — rather than for the suite it supports, so the
+// boundary is visible before someone adds a case on the wrong side of it.
+
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
+import { dashReporters, RUN_RECORD_FILE } from "../web/playwright-reporters.mjs";
 import {
   BROWSERS_PATH_ENV,
   browserDirectoryName,
@@ -127,4 +138,17 @@ test("the repository wires one documented Nix path for Dash browser acceptance",
 
   assert.match(justfile, /^dash-e2e \*ARGS:$/m);
   assert.match(justfile, /nix develop \.#e2e --command npm run e2e:nix/);
+});
+
+test("the browser suite always writes a structured run record", () => {
+  const reporters = dashReporters();
+  // Readable progress stays first so a terminal run is unchanged.
+  assert.deepEqual(reporters[0], ["list"]);
+  const json = reporters.find((entry) => entry[0] === "json");
+  assert.ok(json, "the suite must always emit a machine-readable record");
+  assert.equal(json[1].outputFile, RUN_RECORD_FILE);
+  // Beside the traces Playwright writes on failure, which CI already uploads.
+  assert.match(RUN_RECORD_FILE, /^test-results\//);
+  // Honour an explicit destination so a caller can keep runs side by side.
+  assert.equal(dashReporters("test-results/other.json")[1][1].outputFile, "test-results/other.json");
 });

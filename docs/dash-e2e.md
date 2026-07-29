@@ -105,6 +105,24 @@ are always enforced, so an unbudgeted run still fails if virtualization
 regresses into an O(total entries) DOM. Run the budgeted form on a quiet
 machine; a failure there is a real regression signal.
 
+## The run record
+
+Every browser run writes `web/test-results/run.json` alongside the traces
+Playwright already saves on failure. It holds each scenario's status and error
+text, plus `webServer` startup failures, so an incident can be classified after
+the fact rather than only while someone is watching the terminal. CI uploads
+`web/test-results` as an artifact when the smoke job fails, so the same record
+is available for a runner failure.
+
+Read it first when a run fails:
+
+```bash
+python3 -c 'import json;d=json.load(open("web/test-results/run.json"));print(d["stats"]);print([e["message"][:120] for e in d["errors"]])'
+```
+
+The reporter set lives in `web/playwright-reporters.mjs` so the wiring can be
+asserted structurally rather than by matching config source text.
+
 ## Scope
 
 CI runs the bounded `@smoke` subset on every push and pull request, from the
@@ -143,22 +161,41 @@ tolerance that needed widening: the reading anchor was refreshed only on scroll
 events, so dynamic row measurement grew the transcript underneath it and the
 restore faithfully reproduced a stale anchor. `bd-65fddd` observes the sizer and
 keeps the anchor current. Measured after the fix on the same host at load
-average 14-16.4: five consecutive scenario repeats passed, and three of four
+average 14-16.4: five consecutive scenario repeats passed, and five of six
 full-suite runs were 21/21.
 
-The remaining reason to keep the subset is the fourth run, which failed six
-scenarios in under a second each — a starvation cascade with a signature quite
-unlike a tolerance miss, on a host also running several other agents. A gate
-that is red for reasons unrelated to the change under review trains reviewers to
-ignore it, which is worse than no gate. The three `@smoke` scenarios assert
-structure only — bounded virtualization, sidebar states, and production boot
-never painting fixture data — with no wall-clock or pixel tolerance, so host
-contention cannot turn them red.
+The remaining reason to keep the subset is the sixth run, which failed six
+scenarios in under a second each. That failure is unexplained. Its output was
+not retained, so it cannot now be classified, and it did not reproduce in five
+subsequent full runs. Two candidate explanations are on the table:
 
-Revisit full-suite gating once the runner class is known not to starve under
-concurrent load. The determinism objection that previously blocked it is
-resolved, and the runtime is affordable: 3 minutes on a warm runner, in parallel
-with the existing Node and Nix jobs.
+- **Browser launch failure.** Sub-second failures across consecutive unrelated
+  scenarios are the signature of the browser process dying at launch, which
+  Playwright reports as `browserContext.newPage: Target page, context or browser
+  has been closed`. A merely slow scenario burns its timeout instead. The same
+  signature appeared for all three `@smoke` scenarios in CI run `30412617437`,
+  which `bd-df1c84` addresses.
+- **Host contention.** The host was also running several other agents. Against
+  this, `/dev/shm` measured 85M used of 7.7G before a full run and 79M after,
+  so there was no measurable shared-memory pressure at rest or persisting
+  afterwards.
+
+If it recurs, read `web/test-results/run.json` first. Every run writes that
+record, so the failure is already captured: look for `Target page, context or
+browser has been closed` against every scenario, which separates the two
+explanations in one step, and they need different fixes.
+
+A gate that is red for reasons unrelated to the change under review trains
+reviewers to ignore it, which is worse than no gate. The three `@smoke`
+scenarios assert structure only — bounded virtualization, sidebar states, and
+production boot never painting fixture data — with no wall-clock or pixel
+tolerance, so host contention cannot turn them red.
+
+Revisit full-suite gating once that unexplained failure is classified and the
+runner class is known not to lose browsers under concurrent load. The
+determinism objection that previously blocked it is resolved, and the runtime is
+affordable: 3 minutes on a warm runner, in parallel with the existing Node and
+Nix jobs.
 
 ## Known failures
 
