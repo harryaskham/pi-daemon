@@ -205,6 +205,15 @@ remedy differs too. A vacuous assertion needs a negative case; a misaimed one
 needed its exemption to live where the guard could see it rather than in a
 comment beside it.
 
+A fourth is the only one of these with a greppable smell. A guard whose selector
+is derived from the field it validates cannot detect that field's absence: the
+lockfile prefetch check selected entries having a `resolved` URL and then
+asserted those entries carry `integrity`, so an entry with neither fell outside
+the guard entirely and reached `nix build` as an ENOTCACHED failure. Select the
+population by something independent — here, being under a `node_modules` path —
+and then assert the fields. The tell is visible in the source: the selector
+mentions the same field as the assertion.
+
 A third form fails correctly and still misleads. An assertion's failure text
 renders only on the failing path, so a green suite is no evidence at all about
 it — it is simultaneously the text most likely to be wrong and least likely to be

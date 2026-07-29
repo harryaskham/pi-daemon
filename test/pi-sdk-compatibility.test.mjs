@@ -234,9 +234,78 @@ test("Pi npm shrinkwrap dependencies retain integrity for Nix prefetch", async (
     lock.packages["node_modules/@earendil-works/pi-coding-agent"].version,
     PI_SDK_COMPATIBILITY_VERSION,
   );
-  const missing = Object.entries(lock.packages)
-    .filter(([, entry]) => typeof entry.resolved === "string" && /^https?:/.test(entry.resolved))
-    .filter(([, entry]) => typeof entry.integrity !== "string")
+  // Select the population, then assert the fields. Selecting on `resolved` and
+  // then asserting `integrity` would exempt exactly the entries missing both,
+  // which is the shape a regenerated lock produced during the 0.82.1 migration:
+  // workspace packages recorded with neither, passing this guard and failing
+  // inside `nix build` as ENOTCACHED. A guard whose selector is derived from
+  // the field it validates cannot see that field's absence.
+  const installed = Object.entries(lock.packages).filter(
+    ([path, entry]) =>
+      // Installed packages live under a node_modules path; the project root and
+      // workspace roots are local and legitimately carry neither field. This
+      // selects on location and structural flags only, never on either field
+      // being asserted below.
+      (path.startsWith("node_modules/") || path.includes("/node_modules/")) &&
+      entry.link !== true &&
+      entry.inBundle !== true,
+  );
+  assert.ok(installed.length > 100, "lockfile inventory looks implausibly small");
+  const unfetchable = installed
+    .filter(
+      ([, entry]) =>
+        typeof entry.resolved !== "string" || typeof entry.integrity !== "string",
+    )
+    .map(([path, entry]) => ({
+      path,
+      resolved: typeof entry.resolved === "string",
+      integrity: typeof entry.integrity === "string",
+    }));
+  assert.deepEqual(unfetchable, []);
+  // Anything the prefetcher must fetch has to come from the public registry;
+  // a mirror-rewritten URL is a separate failure with its own guard.
+  const nonRegistry = installed
+    .filter(([, entry]) => !entry.resolved.startsWith("https://registry.npmjs.org/"))
     .map(([path]) => path);
-  assert.deepEqual(missing, []);
+  assert.deepEqual(nonRegistry, []);
+});
+
+test("the prefetch guard rejects an entry missing both fields, not only integrity", async () => {
+  // Negative control for the population selector. The predicate is inlined
+  // rather than imported because the guard above reads a checked-in artifact;
+  // this asserts the selector's behaviour on a mutated copy of that artifact,
+  // so it fails if the selector is ever narrowed back onto `resolved`.
+  const lock = await json("package-lock.json");
+  const unfetchable = (packages) =>
+    Object.entries(packages)
+      .filter(
+        ([path, entry]) =>
+          (path.startsWith("node_modules/") || path.includes("/node_modules/")) &&
+          entry.link !== true &&
+          entry.inBundle !== true,
+      )
+      .filter(
+        ([, entry]) =>
+          typeof entry.resolved !== "string" || typeof entry.integrity !== "string",
+      )
+      .map(([path]) => path);
+
+  const victim = Object.keys(lock.packages).find(
+    (path) =>
+      path.includes("/node_modules/") &&
+      typeof lock.packages[path].resolved === "string" &&
+      typeof lock.packages[path].integrity === "string",
+  );
+  assert.ok(victim, "the lock must contain a fetched package to mutate");
+
+  const withoutIntegrity = structuredClone(lock.packages);
+  delete withoutIntegrity[victim].integrity;
+  assert.deepEqual(unfetchable(withoutIntegrity), [victim]);
+
+  // The shape the previous selector exempted: filtering on `resolved` and then
+  // asserting `integrity` cannot see an entry that carries neither.
+  const withoutBoth = structuredClone(lock.packages);
+  delete withoutBoth[victim].resolved;
+  delete withoutBoth[victim].integrity;
+  assert.deepEqual(unfetchable(withoutBoth), [victim]);
 });
