@@ -50,13 +50,29 @@ during launch, so every scenario fails with `Target page, context or browser has
 been closed` before any assertion runs (`bd-df1c84`).
 
 The `Dash browser smoke` job therefore sets `PI_DAEMON_E2E_NO_SANDBOX=1`, which
-adds `--no-sandbox --disable-dev-shm-usage` to the browser launch. That is
-acceptable only because the browser loads nothing but our own build over
-loopback, on a runner that is already an isolated environment. It is opt-in per
-environment and never the default: a developer machine keeps the sandbox, and
-nothing in the repository turns it off implicitly. The options live in
-`web/playwright-launch.mjs` so the config and the launch preflight cannot
-disagree.
+applies `--no-sandbox --disable-dev-shm-usage --disable-gpu --no-zygote` to the
+browser launch. That is acceptable only because the browser loads nothing but
+our own build over loopback, on a runner that is already an isolated
+environment. It is opt-in per environment and never the default: a developer
+machine keeps the sandbox, and nothing in the repository turns it off
+implicitly. The options live in `web/playwright-launch.mjs` so the config and
+the launch preflight cannot disagree.
+
+The last two arguments were not guesses. With only the first two applied, the
+browser still died and `DEBUG=pw:browser` showed why:
+
+```
+Zygote could not fork: process_type gpu-process numfds 4 child_pid -1
+Zygote could not fork: process_type renderer numfds 5 child_pid -1
+<process did exit: exitCode=null, signal=SIGSEGV>
+```
+
+`child_pid -1` means the zygote's own `fork` failed for every child type, which
+a hardened service unit causes through its process and namespace restrictions —
+not through the sandbox or shared memory, since that runner reported 23 GiB free
+in `/dev/shm`. `--no-zygote` removes the forking helper (it requires
+`--no-sandbox`, already present) and `--disable-gpu` drops a GPU process a
+headless CI browser has no use for.
 
 ## When the browser will not start
 
@@ -196,15 +212,20 @@ subsequent full runs. Two candidate explanations are on the table:
   scenarios are the signature of the browser process dying at launch, which
   Playwright reports as `browserContext.newPage: Target page, context or browser
   has been closed`. A merely slow scenario burns its timeout instead. The same
-  signature appeared for all three `@smoke` scenarios in CI run `30412617437`,
-  which `bd-df1c84` addresses.
+  signature appeared for all three `@smoke` scenarios on the CI runners, where
+  the cause was eventually found to be the zygote's `fork` failing outright
+  (`bd-e3fa3e`). Note what that rules in: launch can fail for reasons wholly
+  unrelated to load, and would fail identically on an idle machine.
 - **Host contention.** The host was also running several other agents. Against
   this, `/dev/shm` measured 85M used of 7.7G before a full run and 79M after,
   so there was no measurable shared-memory pressure at rest or persisting
-  afterwards.
+  afterwards. This remains the honest alternative, but the prior has moved: the
+  CI finding shows a launch can die without any load explanation at all.
 
-If it recurs, read `web/test-results/run.json` first. Every run writes that
-record, so the failure is already captured: look for `Target page, context or
+If it recurs, run `npm run e2e:check-launch --workspace @harryaskham/pi-daemon-dash`
+and read `web/test-results/run.json`. The preflight reports the browser's own
+diagnostics and the environment facts behind a launch failure; the record
+captures every scenario's error structurally. Look for `Target page, context or
 browser has been closed` against every scenario, which separates the two
 explanations in one step, and they need different fixes.
 
@@ -215,10 +236,11 @@ production boot never painting fixture data — with no wall-clock or pixel
 tolerance, so host contention cannot turn them red.
 
 Revisit full-suite gating once that unexplained failure is classified and the
-runner class is known not to lose browsers under concurrent load. The
-determinism objection that previously blocked it is resolved, and the runtime is
-affordable: 3 minutes on a warm runner, in parallel with the existing Node and
-Nix jobs.
+runner class is known not to lose browsers at launch. Load was never shown to be
+the mechanism, and the one launch failure that was diagnosed was entirely
+load-independent. The determinism objection that previously blocked it is
+resolved, and the runtime is affordable: 3 minutes on a warm runner, in parallel
+with the existing Node and Nix jobs.
 
 ## Known failures
 

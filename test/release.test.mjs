@@ -261,7 +261,12 @@ test("the CI browser smoke subset is wired end to end and never selects an empty
     new URL("../web/playwright-launch.mjs", import.meta.url)
   );
   assert.equal(NO_SANDBOX_ENV, "PI_DAEMON_E2E_NO_SANDBOX");
-  assert.deepEqual(NO_SANDBOX_ARGS, ["--no-sandbox", "--disable-dev-shm-usage"]);
+  assert.deepEqual(NO_SANDBOX_ARGS, [
+    "--no-sandbox",
+    "--disable-dev-shm-usage",
+    "--disable-gpu",
+    "--no-zygote",
+  ]);
   assert.deepEqual(browserLaunchOptions({}), {});
   assert.deepEqual(browserLaunchOptions({ [NO_SANDBOX_ENV]: "0" }), {});
   assert.deepEqual(browserLaunchOptions({ [NO_SANDBOX_ENV]: "1" }), { args: NO_SANDBOX_ARGS });
