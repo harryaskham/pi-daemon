@@ -84,7 +84,20 @@ test("the refresh script is wired into npm scripts, the Justfile, and Node CI", 
   assert.equal(fast < ci.indexOf("- run: npm test"), true);
 });
 
-test("the fast check accepts the pin that matches this package-lock.json", async () => {
+test("the fast check accepts the pin that matches this package-lock.json", async (t) => {
+  // This asserts a property of the committed tree: a lock change was landed
+  // with its pin refreshed. It cannot be asserted from inside a Nix build,
+  // because nixpkgs' npmConfigHook runs `prefetch-npm-deps --fixup-lockfile`
+  // against the *source* lockfile before the build phase, so `npm test` there
+  // hashes a file the build itself rewrote and reports drift that does not
+  // exist in the repository. The check still runs where a dependency bump
+  // actually lands: the plain Node CI jobs invoke `npm run nix:deps-hash:fast`
+  // as their own step, before the expensive Nix work it is meant to pre-empt,
+  // and the drift case below is environment-independent.
+  if (process.env.NIX_BUILD_TOP !== undefined) {
+    t.skip("lockfile is rewritten by npmConfigHook inside the Nix sandbox");
+    return;
+  }
   const result = await runFast(repositoryRoot);
   assert.equal(result.code, 0, result.output);
   assert.match(result.output, /pin is current/);
