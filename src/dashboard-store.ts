@@ -25,7 +25,7 @@ import {
   type PaneTarget,
 } from "./dashboard-contract.js";
 import type { ConfigJson } from "./config.js";
-import { hasForeignPathOwner } from "./path-ownership.js";
+import { hasForbiddenExposure, hasForeignPathOwner } from "./path-ownership.js";
 
 const STORE_FORMAT_VERSION = 1 as const;
 const MAX_IDEMPOTENCY_ENTRIES = 128;
@@ -961,7 +961,7 @@ async function ensurePrivateDirectory(path: string, description: string): Promis
   if (!info.isDirectory() || info.isSymbolicLink()) throw new Error(`${description} must be a real directory`);
   const getuid = process.getuid;
   if (hasForeignPathOwner(info.uid, "owner-only", getuid?.())) throw new Error(`${description} must be owned by current user`);
-  if ((info.mode & 0o077) !== 0) throw new Error(`${description} must be owner-only`);
+  if (hasForbiddenExposure(info.mode, "private")) throw new Error(`${description} must be owner-only`);
 }
 
 async function readPrivateJson(path: string, maxBytes: number): Promise<unknown> {
@@ -979,7 +979,7 @@ async function readPrivateJson(path: string, maxBytes: number): Promise<unknown>
     if (!info.isFile()) throw new Error("dashboard state path must be a regular file");
     const getuid = process.getuid;
     if (hasForeignPathOwner(info.uid, "owner-only", getuid?.())) throw new Error("dashboard state must be owner-owned");
-    if ((info.mode & 0o077) !== 0) throw new Error("dashboard state must be owner-only");
+    if (hasForbiddenExposure(info.mode, "private")) throw new Error("dashboard state must be owner-only");
     if (info.size > maxBytes) storedCorrupt();
     const buffer = Buffer.allocUnsafe(maxBytes + MAX_READ_SLACK_BYTES);
     let offset = 0;

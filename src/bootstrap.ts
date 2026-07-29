@@ -15,7 +15,7 @@ import { randomUUID } from "node:crypto";
 
 import { ensureServiceBearerFile } from "./api-auth.js";
 import { ensurePrivateDirectory, validatePrivateFileIfExists } from "./durability.js";
-import { hasForeignPathOwner } from "./path-ownership.js";
+import { hasForbiddenExposure, hasForeignPathOwner } from "./path-ownership.js";
 
 const MAX_AUTH_SEED_BYTES = 1024 * 1024;
 
@@ -121,7 +121,7 @@ function readPrivateAuthSeed(path: string, required: boolean): Buffer | undefine
     if (hasForeignPathOwner(info.uid, "owner-only", getuid?.())) {
       throw new Error("Pi auth seed must be owned by current user");
     }
-    if ((info.mode & 0o077) !== 0) throw new Error("Pi auth seed must be owner-only");
+    if (hasForbiddenExposure(info.mode, "private")) throw new Error("Pi auth seed must be owner-only");
     if (info.size === 0 || info.size > MAX_AUTH_SEED_BYTES) {
       throw new Error("Pi auth seed must be between 1 byte and 1 MiB");
     }

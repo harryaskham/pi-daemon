@@ -14,7 +14,7 @@ import type {
   SessionResourceSpec,
   SessionToolSpec,
 } from "./session-api.js";
-import { hasForeignPathOwner } from "./path-ownership.js";
+import { hasForbiddenExposure, hasForeignPathOwner } from "./path-ownership.js";
 
 export const PI_DAEMON_CONFIG_ENV = "PI_DAEMON_CONFIG" as const;
 export const PI_DAEMON_INSTANCE_ENV = "PI_DAEMON_INSTANCE" as const;
@@ -267,7 +267,7 @@ export async function loadPiDaemonConfig(options: {
       "configuration file must be owned by the current user or root",
     );
   }
-  if ((info.mode & 0o022) !== 0) {
+  if (hasForbiddenExposure(info.mode, "no-foreign-writers")) {
     throw new PiDaemonConfigError(
       "config_insecure_mode",
       "configuration file must not be group/world writable",

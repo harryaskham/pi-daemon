@@ -23,7 +23,7 @@ import {
   type HostToolAdapterResultFrame,
   type NeutralToolOperation,
 } from "./tool-adapter-protocol.js";
-import { hasForeignPathOwner } from "./path-ownership.js";
+import { hasForbiddenExposure, hasForeignPathOwner } from "./path-ownership.js";
 
 export const HOST_TOOL_NAMES = {
   "fs.list": "fs_list",
@@ -1000,8 +1000,8 @@ async function validatePrivateUnixSocket(path: string): Promise<void> {
       !socketInfo.isSocket() ||
       parentInfo.isSymbolicLink() ||
       !parentInfo.isDirectory() ||
-      (socketInfo.mode & 0o077) !== 0 ||
-      (parentInfo.mode & 0o077) !== 0
+      hasForbiddenExposure(socketInfo.mode, "private") ||
+      hasForbiddenExposure(parentInfo.mode, "private")
     ) {
       throw new Error("invalid");
     }

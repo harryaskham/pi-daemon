@@ -779,6 +779,8 @@ implementation order. This list is a human-readable crosswalk.
 - [x] `bd-95635b` — the tested ownership predicate adopted at all 43 guard call
   sites, with the census and an open-coded-guard invariant keeping it
   authoritative.
+- [x] `bd-568050` — the exposure policy adopted at all 40 mode-check call sites,
+  leaving no raw permission mask in `src/` outside the predicate.
 - [ ] `bd-4e10da` — future neutral persisted per-session cron/prompt scheduler
   and durable wakes; detailed alongside Dash in `web/PLAN.md`.
   - [x] `bd-6d96bb` — v1 schedule resource/schema/fixtures, bounded owner-private

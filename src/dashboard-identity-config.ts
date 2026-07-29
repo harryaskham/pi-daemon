@@ -19,7 +19,7 @@ import {
   type DashboardIdentityProvider,
   type StaticDashboardIdentity,
 } from "./dashboard-identity.js";
-import { hasForeignPathOwner } from "./path-ownership.js";
+import { hasForbiddenExposure, hasForeignPathOwner } from "./path-ownership.js";
 
 export const MAX_DASHBOARD_IDENTITY_PROVIDER_FILE_BYTES = 256 * 1024;
 
@@ -51,7 +51,7 @@ export async function loadDashboardIdentityProviderFile(path: string): Promise<D
       "dashboard identity provider file must be owned by the current user or root",
     );
   }
-  if ((info.mode & 0o022) !== 0) {
+  if (hasForbiddenExposure(info.mode, "no-foreign-writers")) {
     throw new PiDaemonConfigError(
       "identity_provider_insecure_mode",
       "dashboard identity provider file must not be group/world writable",

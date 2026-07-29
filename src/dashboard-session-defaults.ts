@@ -11,7 +11,7 @@ import {
   type DashboardSessionDraftSpec,
 } from "./dashboard-session-drafts.js";
 import type { SessionThinkingLevel } from "./session-api.js";
-import { hasForeignPathOwner } from "./path-ownership.js";
+import { hasForbiddenExposure, hasForeignPathOwner } from "./path-ownership.js";
 
 const MAX_PI_SETTINGS_BYTES = 1_048_576;
 const THINKING_LEVELS = new Set<SessionThinkingLevel>([
@@ -200,7 +200,7 @@ async function readPiModelDefaults(path: string): Promise<{
       "configured Pi settings file must be owned by the current user or root",
     );
   }
-  if ((info.mode & 0o022) !== 0) {
+  if (hasForbiddenExposure(info.mode, "no-foreign-writers")) {
     throw new DashboardSessionDefaultsError(
       "pi_settings_insecure_mode",
       "configured Pi settings file must not be group/world writable",

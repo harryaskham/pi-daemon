@@ -25,7 +25,7 @@ import {
 } from "./protocol-v2.js";
 import { NEUTRAL_TOOL_OPERATIONS } from "./tool-adapter-protocol.js";
 import { PI_DAEMON_VERSION } from "./version.js";
-import { hasForeignPathOwner } from "./path-ownership.js";
+import { hasForbiddenExposure, hasForeignPathOwner } from "./path-ownership.js";
 
 export interface ProtocolServerLimits {
   maxConnections: number;
@@ -627,7 +627,7 @@ async function validatePrivateDirectory(path: string, label: string): Promise<vo
   if (hasForeignPathOwner(info.uid, "owner-only", getuid?.())) {
     throw new Error(`${label} must be owned by the current user: ${path}`);
   }
-  if ((info.mode & 0o022) !== 0) {
+  if (hasForbiddenExposure(info.mode, "no-foreign-writers")) {
     throw new Error(`${label} must not be group/world writable: ${path}`);
   }
 }

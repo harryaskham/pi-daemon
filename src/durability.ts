@@ -19,7 +19,7 @@ import {
   TOOL_ADAPTER_LIMIT_BOUNDS,
   TOOL_ADAPTER_PROTOCOL_VERSION,
 } from "./tool-adapter-protocol.js";
-import { hasForeignPathOwner } from "./path-ownership.js";
+import { hasForbiddenExposure, hasForeignPathOwner } from "./path-ownership.js";
 
 export const DURABILITY_FORMAT_VERSION = 1 as const;
 
@@ -953,7 +953,7 @@ export async function ensurePrivateDirectory(
         path,
       });
     }
-    if ((info.mode & 0o077) !== 0 && options.repairOwnedMode === true) {
+    if (hasForbiddenExposure(info.mode, "private") && options.repairOwnedMode === true) {
       // The mode passed to mkdir only applies to directories this call
       // creates; it never tightens one that already exists. Ownership is
       // already proven above, so this only ever narrows a directory that is
@@ -973,7 +973,7 @@ export async function ensurePrivateDirectory(
         });
       }
     }
-    if ((info.mode & 0o077) !== 0) {
+    if (hasForbiddenExposure(info.mode, "private")) {
       throw new DurabilityError("insecure_state_path", `${label} must be owner-only`, {
         path,
         mode: info.mode & 0o777,
@@ -1002,7 +1002,7 @@ export async function validatePrivateFileIfExists(path: string, label: string): 
       path,
     });
   }
-  if ((info.mode & 0o077) !== 0) {
+  if (hasForbiddenExposure(info.mode, "private")) {
     throw new DurabilityError("insecure_state_path", `${label} must be owner-only`, {
       path,
       mode: info.mode & 0o777,

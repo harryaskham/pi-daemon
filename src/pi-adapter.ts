@@ -58,7 +58,7 @@ import {
   createHostToolDefinitions,
 } from "./tool-adapter-runtime.js";
 import type { HostToolAdapterDescriptor } from "./tool-adapter-protocol.js";
-import { hasForeignPathOwner } from "./path-ownership.js";
+import { hasForbiddenExposure, hasForeignPathOwner } from "./path-ownership.js";
 
 export interface PiSessionFactoryOptions {
   stateDir: string;
@@ -873,7 +873,7 @@ async function validateExplicitResourceAuthority(
       info.isSymbolicLink() ||
       (!info.isFile() && !info.isDirectory()) ||
       (hasForeignPathOwner(info.uid, "owner-or-root", getuid?.())) ||
-      (info.mode & 0o022) !== 0
+      hasForbiddenExposure(info.mode, "no-foreign-writers")
     ) {
       throw new PiAdapterError(
         "resource_policy_unavailable",
@@ -906,7 +906,7 @@ async function validateInstalledPackageResourceAuthority(
       info.isSymbolicLink() ||
       (!info.isFile() && !info.isDirectory()) ||
       (hasForeignPathOwner(info.uid, "owner-or-root", getuid?.())) ||
-      (info.mode & 0o022) !== 0
+      hasForbiddenExposure(info.mode, "no-foreign-writers")
     ) {
       throw new PiAdapterError(
         "installed_package_resource_invalid",
@@ -1129,7 +1129,7 @@ async function isOwnerControlledExternalSessionDirectory(
       "external Pi session directory must be owned by the current user",
     );
   }
-  if ((info.mode & 0o022) !== 0) {
+  if (hasForbiddenExposure(info.mode, "no-foreign-writers")) {
     throw new PiAdapterError(
       "insecure_session_path",
       "external Pi session directory must not be group/world writable",
@@ -1191,7 +1191,7 @@ async function materializeSessionManager(
         "Pi session file must be owned by the current user",
       );
     }
-    if (options.preserveExistingMode && (info.mode & 0o022) !== 0) {
+    if (options.preserveExistingMode && hasForbiddenExposure(info.mode, "no-foreign-writers")) {
       throw new PiAdapterError(
         "insecure_session_path",
         "external Pi session file must not be group/world writable",
@@ -1361,7 +1361,7 @@ function validatePrivateAuthFile(path: string): void {
   if (hasForeignPathOwner(info.uid, "owner-only", getuid?.())) {
     throw new PiAdapterError("insecure_auth_path", "Pi auth storage must be owned by current user");
   }
-  if ((info.mode & 0o077) !== 0) {
+  if (hasForbiddenExposure(info.mode, "private")) {
     throw new PiAdapterError("insecure_auth_path", "Pi auth storage must be owner-only");
   }
 }

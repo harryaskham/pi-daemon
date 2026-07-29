@@ -22,7 +22,7 @@ import {
   readPrivateJsonIfExists,
 } from "./durability.js";
 import { PI_DAEMON_VERSION } from "./version.js";
-import { hasForeignPathOwner } from "./path-ownership.js";
+import { hasForbiddenExposure, hasForeignPathOwner } from "./path-ownership.js";
 
 const RELEASE_API = "https://api.github.com/repos/harryaskham/pi-daemon/releases/latest";
 const RELEASE_ASSET_PREFIX = "harryaskham-pi-daemon-";
@@ -325,7 +325,7 @@ export class PiDaemonSelfUpdater {
           info.isSymbolicLink() ||
           !info.isDirectory() ||
           (hasForeignPathOwner(info.uid, "owner-only", process.getuid?.())) ||
-          (info.mode & 0o077) !== 0
+          hasForbiddenExposure(info.mode, "private")
         ) {
           throw new SelfUpdateError("update_lock_insecure", "self-update lock path is insecure");
         }
@@ -615,7 +615,7 @@ async function ensureOwnedBinDirectory(path: string): Promise<void> {
   if (hasForeignPathOwner(info.uid, "owner-only", process.getuid?.())) {
     throw new SelfUpdateError("update_bin_dir_insecure", "local bin path must be owned by current user");
   }
-  if ((info.mode & 0o022) !== 0) {
+  if (hasForbiddenExposure(info.mode, "no-foreign-writers")) {
     throw new SelfUpdateError("update_bin_dir_insecure", "local bin path must not be group/world writable");
   }
 }

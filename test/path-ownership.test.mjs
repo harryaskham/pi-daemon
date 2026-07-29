@@ -315,8 +315,16 @@ test("every mode mask in the source is accounted for by exposure policy", async 
   for (const entry of entries) {
     if (entry === "path-ownership.ts") continue;
     const source = await readFile(join(sourceRoot, entry), "utf8");
-    const private_ = (source.match(/0o077/g) ?? []).length;
-    const noForeignWriters = (source.match(/0o022/g) ?? []).length;
+    // Both shapes, for the same reason the ownership census counts both: an
+    // adopted call names its policy, and a raw mask written the old way must
+    // still be counted or it evades the census by being what the census exists
+    // to notice.
+    const named = [...source.matchAll(/"(private|no-foreign-writers)"/g)].map((m) => m[1]);
+    const private_ =
+      named.filter((policy) => policy === "private").length + (source.match(/0o077/g) ?? []).length;
+    const noForeignWriters =
+      named.filter((policy) => policy === "no-foreign-writers").length +
+      (source.match(/0o022/g) ?? []).length;
     if (private_ > 0 || noForeignWriters > 0) observed[entry] = { private: private_, noForeignWriters };
   }
   assert.deepEqual(
@@ -324,5 +332,24 @@ test("every mode mask in the source is accounted for by exposure policy", async 
     EXPOSURE_CENSUS,
     "a mode mask was added, removed, or changed: update the census and say why. " +
       "A secret path widening from 0o077 to 0o022 is a change of policy, not of formatting.",
+  );
+});
+
+test("no exposure decision is computed outside the tested predicate", async () => {
+  // The mode counterpart of the ownership invariant. A raw mask is a decision
+  // no test covers, and the census counts it precisely so this can name it.
+  const entries = (await readdir(sourceRoot)).filter((name) => name.endsWith(".ts")).sort();
+  const openCoded = [];
+  for (const entry of entries) {
+    if (entry === "path-ownership.ts") continue;
+    const source = await readFile(join(sourceRoot, entry), "utf8");
+    source.split("\n").forEach((line, index) => {
+      if (/0o077|0o022/.test(line)) openCoded.push(`${entry}:${index + 1} ${line.trim()}`);
+    });
+  }
+  assert.deepEqual(
+    openCoded,
+    [],
+    "these mask modes themselves instead of calling hasForbiddenExposure",
   );
 });

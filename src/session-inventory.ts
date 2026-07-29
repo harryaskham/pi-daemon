@@ -60,7 +60,7 @@ import type {
   SessionCatalogRecord,
   SessionCatalogStore,
 } from "./session-catalog.js";
-import { hasForeignPathOwner } from "./path-ownership.js";
+import { hasForbiddenExposure, hasForeignPathOwner } from "./path-ownership.js";
 
 export const SESSION_INVENTORY_FORMAT_VERSION = 1 as const;
 export const SESSION_INVENTORY_SEARCH_KEY_VERSION = 1 as const;
@@ -1214,7 +1214,7 @@ async function validateInventoryRoot(path: string): Promise<string> {
       "configured session inventory root must be owned by current user",
     );
   }
-  if ((info.mode & 0o022) !== 0) {
+  if (hasForbiddenExposure(info.mode, "no-foreign-writers")) {
     throw new SessionInventoryError(
       "insecure_inventory_root",
       "configured session inventory root must not be group/world writable",
@@ -1633,7 +1633,7 @@ function readInventoryHeadSnapshotSync(path: string, maxBytes: number): unknown 
     if (
       !info.isFile() ||
       (hasForeignPathOwner(info.uid, "owner-only", getuid?.())) ||
-      (info.mode & 0o077) !== 0
+      hasForbiddenExposure(info.mode, "private")
     ) {
       throw new SessionInventoryError(
         "insecure_inventory_head",
@@ -1701,7 +1701,7 @@ function readInventoryHeadSync(path: string, maxBytes: number): unknown | undefi
         "inventory hot head must be owned by current user",
       );
     }
-    if ((info.mode & 0o077) !== 0) {
+    if (hasForbiddenExposure(info.mode, "private")) {
       throw new SessionInventoryError(
         "insecure_inventory_head",
         "inventory hot head must be owner-only",

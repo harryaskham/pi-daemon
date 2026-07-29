@@ -18,7 +18,7 @@ import {
   type DashboardIdentityProvider,
   type DashboardPrincipal,
 } from "./dashboard-identity.js";
-import { hasForeignPathOwner } from "./path-ownership.js";
+import { hasForbiddenExposure, hasForeignPathOwner } from "./path-ownership.js";
 
 export const DASH_BROWSER_COOKIE = "pi-daemon-dash" as const;
 export const DASH_BROWSER_SECURE_COOKIE = "__Host-pi-daemon-dash" as const;
@@ -353,7 +353,7 @@ export async function ensureDashboardCredentialFile(path: string): Promise<boole
     !directoryInfo.isDirectory() ||
     directoryInfo.isSymbolicLink() ||
     (hasForeignPathOwner(directoryInfo.uid, "owner-only", getuid?.())) ||
-    (directoryInfo.mode & 0o077) !== 0
+    hasForbiddenExposure(directoryInfo.mode, "private")
   ) {
     throw new Error("dashboard credential directory must be an owner-only real directory");
   }
@@ -405,7 +405,7 @@ export function readPrivateDashboardCredentialFd(fd: number): string {
   if (hasForeignPathOwner(info.uid, "owner-only", getuid?.())) {
     throw new Error("dashboard credential descriptor file must be owned by the current user");
   }
-  if ((info.mode & 0o077) !== 0) {
+  if (hasForbiddenExposure(info.mode, "private")) {
     throw new Error("dashboard credential descriptor file must be owner-only");
   }
   if (info.size > MAX_RAW_CREDENTIAL_BYTES) {
@@ -441,7 +441,7 @@ export async function readPrivateDashboardCredential(path: string): Promise<stri
     if (hasForeignPathOwner(info.uid, "owner-only", getuid?.())) {
       throw new Error("dashboard credential file must be owned by the current user");
     }
-    if ((info.mode & 0o077) !== 0) {
+    if (hasForbiddenExposure(info.mode, "private")) {
       throw new Error("dashboard credential file must be owner-only");
     }
     if (info.size > MAX_RAW_CREDENTIAL_BYTES) {

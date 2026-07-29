@@ -3,7 +3,7 @@ import { constants, fstatSync, readSync } from "node:fs";
 import { open as openFile, realpath } from "node:fs/promises";
 import { createSecureContext } from "node:tls";
 
-import { hasForeignPathOwner } from "./path-ownership.js";
+import { hasForbiddenExposure, hasForeignPathOwner } from "./path-ownership.js";
 
 export const MAX_DASHBOARD_TLS_MATERIAL_BYTES = 1024 * 1024;
 export const MIN_DASHBOARD_TLS_RELOAD_INTERVAL_MS = 1_000;
@@ -125,7 +125,10 @@ async function readBoundedTlsFile(path: string, privateKey: boolean): Promise<Bu
         `Dashboard TLS ${privateKey ? "private-key" : "certificate"} file must be owner-controlled`,
       );
     }
-    if ((info.mode & (privateKey ? 0o077 : 0o022)) !== 0) {
+    // The certificate and the key differ: only the key must be unreadable by
+    // others, while the certificate merely must not be foreign-writable. One
+    // site, two policies, chosen per path rather than per module.
+    if (hasForbiddenExposure(info.mode, privateKey ? "private" : "no-foreign-writers")) {
       throw new Error(
         privateKey
           ? "Dashboard TLS private-key file must be owner-only"

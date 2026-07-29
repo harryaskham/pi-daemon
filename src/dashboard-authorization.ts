@@ -8,7 +8,7 @@ import {
   validateDashboardIdentityId,
   type DashboardPrincipal,
 } from "./dashboard-identity.js";
-import { hasForeignPathOwner } from "./path-ownership.js";
+import { hasForbiddenExposure, hasForeignPathOwner } from "./path-ownership.js";
 
 const AUTHORIZATION_FORMAT_VERSION = 1 as const;
 export const DEFAULT_DASHBOARD_AUTHORIZATION_MAX_POLICIES = 20_000;
@@ -765,7 +765,7 @@ async function readAuthorizationState(
     if (
       !info.isFile() ||
       (hasForeignPathOwner(info.uid, "owner-only", getuid?.())) ||
-      (info.mode & 0o077) !== 0 ||
+      hasForbiddenExposure(info.mode, "private") ||
       info.size < 1 ||
       info.size > limits.maxBytes
     ) {
@@ -1135,7 +1135,7 @@ async function ensurePrivateDirectory(path: string, description: string): Promis
     !info.isDirectory() ||
     info.isSymbolicLink() ||
     (hasForeignPathOwner(info.uid, "owner-only", getuid?.())) ||
-    (info.mode & 0o077) !== 0
+    hasForbiddenExposure(info.mode, "private")
   ) {
     throw new Error(`${description} must be an owner-only real directory`);
   }

@@ -12,7 +12,7 @@ import {
 } from "node:fs";
 import { dirname, join } from "node:path";
 
-import { hasForeignPathOwner } from "./path-ownership.js";
+import { hasForbiddenExposure, hasForeignPathOwner } from "./path-ownership.js";
 
 export const SERVICE_BEARER_ENV = "PI_DAEMON_BEARER_TOKEN";
 export const MIN_SERVICE_BEARER_BYTES = 16;
@@ -164,7 +164,7 @@ function readPrivateTokenFile(path: string): string {
     if (hasForeignPathOwner(info.uid, "owner-only", getuid?.())) {
       throw new Error("API bearer token file must be owned by the current user");
     }
-    if ((info.mode & 0o077) !== 0) {
+    if (hasForbiddenExposure(info.mode, "private")) {
       throw new Error("API bearer token file must be owner-only");
     }
     return readBoundedBearerFd(fd, info.size);

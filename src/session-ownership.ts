@@ -58,7 +58,7 @@ import {
   type SessionOwnershipStore,
 } from "./session-ownership-store.js";
 import { formatSessionSourceFingerprint } from "./source-fingerprint.js";
-import { hasForeignPathOwner } from "./path-ownership.js";
+import { hasForbiddenExposure, hasForeignPathOwner } from "./path-ownership.js";
 
 export const DIRECT_COOPT_POLICY_REF = DASH_DIRECT_COOPT_POLICY_REF;
 export const DEFAULT_OWNERSHIP_MAX_SOURCE_BYTES = 256 * 1024 * 1024;
@@ -985,7 +985,7 @@ async function inspectSessionFile(
       "session source must be owned by current user",
     );
   }
-  if ((info.mode & 0o022) !== 0) {
+  if (hasForbiddenExposure(info.mode, "no-foreign-writers")) {
     throw new SessionOwnershipError(
       "insecure_session_source",
       "session source must not be group/world writable",
@@ -1005,7 +1005,7 @@ async function inspectSessionFile(
     if (
       !openedInfo.isFile() ||
       (hasForeignPathOwner(openedInfo.uid, "owner-only", getuid?.())) ||
-      (openedInfo.mode & 0o022) !== 0
+      hasForbiddenExposure(openedInfo.mode, "no-foreign-writers")
     ) {
       throw new SessionOwnershipError(
         "insecure_session_source",
@@ -1253,7 +1253,7 @@ async function validatePrivateRoot(path: string): Promise<string> {
       "ownership root must be owned by current user",
     );
   }
-  if ((info.mode & 0o022) !== 0) {
+  if (hasForbiddenExposure(info.mode, "no-foreign-writers")) {
     throw new SessionOwnershipError(
       "insecure_ownership_root",
       "ownership root must not be group/world writable",
