@@ -26,7 +26,10 @@ test("Pages workflow uses the pinned Nix site build without Docker actions", asy
   assert.doesNotMatch(workflow, /jekyll-build-pages|docker\s+(?:pull|run)|uses:\s*docker/i);
   assert.match(workflow, /nix build \.#pages --print-build-logs/);
   assert.match(workflow, /- "flake\.nix"/);
-  assert.match(workflow, /actions\/upload-pages-artifact@v3/);
+  // The intent is the official artifact action on the Nix-built site, not one
+  // major version of it: keeping a literal `@v3` here made a routine action
+  // bump look like a product regression. Docker-freeness is asserted above.
+  assert.match(workflow, /actions\/upload-pages-artifact@v\d+/);
   assert.match(workflow, /runs-on: \[self-hosted, nix, x86_64-linux\]/);
   // Formatting-insensitive: the `pages` attribute must build with pandoc, but
   // its exact line layout belongs to the repository formatter, not this test.

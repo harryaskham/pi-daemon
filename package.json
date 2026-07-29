@@ -248,7 +248,7 @@
     "@agentclientprotocol/sdk": "1.2.0",
     "@earendil-works/pi-coding-agent": "0.80.6",
     "@earendil-works/pi-tui": "0.80.6",
-    "ws": "8.21.0",
+    "ws": "8.21.1",
     "yaml": "2.9.0"
   },
   "devDependencies": {

@@ -32,8 +32,8 @@ jobs:
     runs-on: [self-hosted, nix, x86_64-linux]
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/configure-pages@v5
+      - uses: actions/checkout@v7
+      - uses: actions/configure-pages@v6
         with:
           enablement: true
       - name: Build static site with pinned Nix toolchain
@@ -57,7 +57,7 @@ jobs:
           test -s _site/dashboard-session-draft.schema.json
           test -s _site/schedules/index.html
           test -s _site/schedule.schema.json
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: ./_site
 
@@ -71,4 +71,4 @@ jobs:
     steps:
       - name: Deploy GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
