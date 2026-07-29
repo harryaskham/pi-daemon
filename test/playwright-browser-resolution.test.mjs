@@ -120,17 +120,15 @@ test("an unknown browser revision asks for a reinstall rather than a version cha
   assert.match(result.message, /npm ci/);
 });
 
-test("the repository wires one documented Nix path for Dash browser acceptance", async () => {
-  const [flake, webPackage, justfile] = await Promise.all([
-    readRepositoryFile("flake.nix"),
-    readRepositoryFile("web/package.json"),
-    readRepositoryFile("Justfile"),
-  ]);
-
-  assert.match(flake, /e2e = pkgs\.mkShell/);
-  assert.match(flake, /PLAYWRIGHT_BROWSERS_PATH = "\$\{playwright\.browsers\}"/);
-  assert.match(flake, /PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = "1"/);
-  assert.match(flake, /PI_DAEMON_PLAYWRIGHT_DRIVER_VERSION = playwright\.version/);
+test("the npm scripts wire the browser suite behind its preflight", async () => {
+  // The e2e shell's own contract - which browsers it exports, that the download
+  // fallback is refused, and that the driver matches the npm pin - is asserted
+  // by evaluation in `nix flake check` (`nix/e2e-shell-check.nix`), not by
+  // matching flake.nix source text here. Source matching was a proxy for the
+  // property: it broke on a legitimate edit (bd-228b91) and survived a reformat
+  // by luck rather than construction (bd-58a7fa). This test keeps only what it
+  // can observe directly, which is the scripts themselves.
+  const webPackage = await readRepositoryFile("web/package.json");
 
   const scripts = JSON.parse(webPackage).scripts;
   // Assert the properties that matter, not the literal command line. Adding a
@@ -151,9 +149,6 @@ test("the repository wires one documented Nix path for Dash browser acceptance",
     `every stage must be non-empty, got: ${e2eNix}`,
   );
   assert.match(scripts["e2e:check"], /^node scripts\/check-playwright-browsers\.mjs\b/);
-
-  assert.match(justfile, /^dash-e2e \*ARGS:$/m);
-  assert.match(justfile, /nix develop \.#e2e --command npm run e2e:nix/);
 });
 
 test("the browser suite always writes a structured run record", () => {

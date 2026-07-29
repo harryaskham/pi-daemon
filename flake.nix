@@ -202,6 +202,24 @@
       home-manager-module = import ./nix/home-manager-module-check.nix {
         inherit self pkgs;
       };
+      # Asserts what the e2e shell actually exports, rather than matching
+      # `flake.nix` source text from the Node gate. Source matching is a proxy
+      # for the property: it broke once when a legitimate edit changed a string
+      # (bd-228b91) and it survived the alejandra reformat by luck rather than
+      # construction (bd-58a7fa).
+      #
+      # The browsers path is read with its string context discarded on purpose.
+      # Interpolating it directly would put the ~2.1 GiB Playwright closure in
+      # this check's build inputs, so a check that costs nothing today would
+      # fetch the whole bundle on every `nix flake check`. This asserts the
+      # shell's contract, not the bundle's contents; the bundle is exercised by
+      # the browser suite itself.
+      e2e-shell = import ./nix/e2e-shell-check.nix {
+        inherit pkgs;
+        shell = self.devShells.${system}.e2e;
+        webPackage = builtins.fromJSON (builtins.readFile ./web/package.json);
+        justfile = ./Justfile;
+      };
     });
 
     devShells = forAllSystems (system: let

@@ -164,6 +164,12 @@ python3 -c 'import json;d=json.load(open("web/test-results/run.json"));print(d["
 The reporter set lives in `web/playwright-reporters.mjs` so the wiring can be
 asserted structurally rather than by matching config source text.
 
+The shell's own contract — that it exports an audited browser bundle, refuses
+the download fallback, and carries a driver version equal to the
+`@playwright/test` pin — is asserted by evaluation in `nix flake check`
+(`nix/e2e-shell-check.nix`), so a dependency bump that breaks the pin fails the
+Nix lane rather than someone's first browser run.
+
 ## Scope
 
 CI runs the bounded `@smoke` subset on every push and pull request, from the
