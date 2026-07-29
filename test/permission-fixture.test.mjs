@@ -65,11 +65,31 @@ test("the fixtures whose assertions depend on a mode use the checked helper", as
   assert.match(bootstrap, /mkdirWithMode\(paths\.stateDir, 0o755\)/);
 });
 
-test("the convention is written down where a contributor will find it", async () => {
+test("the convention is written down, in the order review settled on", async () => {
   const contributing = await readFile(join(here, "..", "CONTRIBUTING.md"), "utf8");
-  assert.match(contributing, /## Negative controls/);
-  // The three forms, cheapest and most durable first.
-  assert.match(contributing, /checked-in/i);
-  assert.match(contributing, /precondition/i);
-  assert.match(contributing, /commit message/i);
+  const section = contributing.slice(
+    contributing.indexOf("## Negative controls"),
+    contributing.indexOf("## Nix formatting"),
+  );
+  assert.notEqual(section.length, 0, "the convention must be documented");
+
+  // The ordering is the substance: the precondition form goes first because it
+  // catches vacuity from an environment the author was never in, and the manual
+  // mutation goes last because it is exercised in the benign one.
+  const precondition = section.indexOf("Assert the precondition");
+  const negativeCase = section.indexOf("negative case against an extracted predicate");
+  const manual = section.indexOf("Record a manual mutation");
+  for (const [name, at] of [
+    ["precondition", precondition],
+    ["negative case", negativeCase],
+    ["manual mutation", manual],
+  ]) {
+    assert.notEqual(at, -1, `the ${name} form must be documented`);
+  }
+  assert.equal(precondition < negativeCase, true, "the precondition form comes first");
+  assert.equal(negativeCase < manual, true, "the manual mutation comes last");
+
+  // And the two costs of preferring direct observation, which are not obvious.
+  assert.match(section, /build inputs|closure/);
+  assert.match(section, /lane/);
 });

@@ -125,20 +125,42 @@ rather than a property.
 
 So demonstrate that the assertion can fail. In order of preference:
 
-1. **A checked-in negative case.** Where the predicate can be extracted, assert
-   that it rejects the broken shapes, in the same file. It never rots, and a
-   later change that hollows out the assertion fails visibly.
+1. **Assert the precondition the property depends on**, where it is checkable.
+   A fail-closed case that needs a group-readable file should prove the file is
+   group-readable before asserting the rejection — `test/permission-fixture.mjs`
+   sets a fixture's mode and then checks it. This form goes first because it
+   catches vacuity arising from an environment you were never in, which is the
+   failure you cannot enumerate. The helper fails loudly on a hardened runner,
+   a machine nobody on the project has.
+2. **Check in a negative case against an extracted predicate.** Where the
+   predicate can be pulled out, assert that it rejects the broken shapes, in the
+   same file, so a later change that hollows out the assertion fails visibly.
    `test/playwright-browser-resolution.test.mjs` checks in the four ways its
    pipeline could genuinely break.
-2. **A checked precondition.** Where the property is only observable end-to-end
-   but its precondition is not, assert the precondition. A fail-closed case that
-   needs a group-readable file should prove the file is group-readable before
-   asserting the rejection — that is what `test/permission-fixture.mjs` does, and
-   it fails in exactly the environment that would otherwise make the case
-   vacuous, which a one-off manual check on your own machine cannot.
-3. **A recorded manual mutation.** Otherwise, break the property, watch the test
-   fail, restore it, and name the mutation in the commit message. The record is
-   the point: without it the next editor cannot tell it was ever done.
+3. **Record a manual mutation.** Otherwise, break the property, watch the test
+   fail, restore it, and name the mutation in the commit message, so the next
+   editor can tell it was done.
+
+The two checked forms answer different questions and neither implies the other:
+a precondition proves the setup still establishes the situation the assertion
+needs, a negative case proves the predicate still rejects. Use both where both
+are cheap.
+
+Form 3 is last because of where it runs, not only because it leaves less behind.
+The mutation is exercised on the authoring machine, which is the benign
+environment: deliberately breaking the umask case under a permissive umask shows
+the assertion firing correctly, so the ritual passes and confirms a test that is
+vacuous elsewhere.
+
+Prefer observing an effect over asserting that the source contains a spelling of
+it — but check what the observation costs first. Interpolating a store path into
+a check derivation pulls that closure into the check's build inputs, so
+asserting a value such as `PLAYWRIGHT_BROWSERS_PATH` naively would add the 2.1
+GiB Playwright bundle to every `nix flake check`; discard the string context, or
+confine the check to attributes that carry no store path. Observation is also
+only free in a lane that can perform it — evaluating a devShell attribute needs
+Nix, and the Node gate deliberately has none — so preferring the stronger form
+sometimes means moving an assertion between lanes rather than rewriting it.
 
 This matters most for fail-closed and permission assertions, where a vacuous
 pass is a silent loss of security coverage rather than a missing test.

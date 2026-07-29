@@ -12,7 +12,7 @@ import { chmod, mkdir, stat, writeFile } from "node:fs/promises";
  * These helpers set the mode explicitly and then assert it, so the precondition
  * the assertion depends on is itself checked. When the environment will not
  * allow the mode, the fixture fails loudly rather than the test passing
- * vacuously. See CONTRIBUTING, "Negative controls".
+ * vacuously. See CONTRIBUTING, "Negative controls", where this is the first-preference form.
  */
 export async function assertFixtureMode(path, expected, what = "fixture path") {
   const actual = (await stat(path)).mode & 0o7777;
