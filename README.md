@@ -150,7 +150,7 @@ from Pi's normal owner-private auth file if present; `--auth-seed-file` selects 
 required source explicitly. Existing auth and bearer files are never overwritten
 or rotated.
 
-`serve` uses one process-global Pi `AuthStorage` and `ModelRegistry` from the
+`serve` uses one process-global Pi `ModelRuntime` and credential store from the
 configured `--agent-dir` while creating one `AgentSessionRuntime` with isolated
 session managers, settings, resource loaders, and rebound event subscriptions
 per logical session. Authenticated creation supports bounded typed Pi-equivalent

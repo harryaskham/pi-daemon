@@ -66,7 +66,7 @@ PD-001 through PD-012 implemented and tested a deliberately narrow substrate:
 
 - Node 22.19+ standalone executable source (`pi-daemon`).
 - Owner-only Unix-domain socket NDJSON protocol on Linux/macOS.
-- Shared `AuthStorage` and `ModelRegistry`.
+- Shared `ModelRuntime` and credential store.
 - Persistent or in-memory logical session slots.
 - Operations: handshake, open, wake/prompt, steer, follow-up, status, abort,
   close, and drain.
