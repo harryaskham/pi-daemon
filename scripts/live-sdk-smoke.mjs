@@ -106,9 +106,23 @@ try {
       },
     });
 
+  // Event delivery is explicit: no operation subscribes a connection
+  // implicitly (docs/protocol.md). Without this the report below counted zero
+  // events on every run and nothing failed, because a zero in a printed report
+  // is not an assertion (bd-c4314e).
+  const attach = (client, id) =>
+    client.request({
+      protocolVersion: "1.0",
+      requestId: `attach-${id}`,
+      operation: "attach",
+      sessionId: `live-${id}`,
+      generation: 1,
+      payload: {},
+    });
   const openedAt = performance.now();
   await Promise.all([open(firstClient, "live-a"), open(secondClient, "live-b")]);
   const openDurationMs = performance.now() - openedAt;
+  await Promise.all([attach(firstClient, "a"), attach(secondClient, "b")]);
   const eventCounts = { a: 0, b: 0 };
   firstClient.subscribe(() => {
     eventCounts.a += 1;
@@ -138,6 +152,12 @@ try {
     throw new Error(`isolation result mismatch: a=${JSON.stringify(aText)} b=${JSON.stringify(bText)}`);
   }
   if (calls.length !== 0) throw new Error(`observed ${calls.length} child-process calls`);
+  if (eventCounts.a === 0 || eventCounts.b === 0) {
+    throw new Error(
+      `attached sessions received no events: ${JSON.stringify(eventCounts)}. ` +
+        "A live turn must stream, and counting without asserting is how this went unnoticed.",
+    );
+  }
 
   process.stdout.write(
     `${JSON.stringify(

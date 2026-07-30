@@ -37,6 +37,8 @@ const client = await PiDaemonClient.connect({
 client.subscribe((event) => {
   if (event.event === "messageUpdate") console.log(event.data);
 });
+// This registers a local listener only. See the `attach` below, and
+// docs/protocol.md on explicit event delivery.
 
 await client.request({
   protocolVersion: "1.0",
@@ -57,6 +59,19 @@ await client.request({
       tools: "none"
     }
   }
+});
+
+// Registering a listener is not enough: event delivery is explicit, and no
+// operation subscribes a connection implicitly. Without this `attach` the
+// listener above never fires — measured at 0 events against a live model,
+// against 14 with it. `payload` is required and empty.
+await client.request({
+  protocolVersion: "1.0",
+  requestId: "attach-1",
+  operation: "attach",
+  sessionId: "worker-a",
+  generation: 1,
+  payload: {}
 });
 
 const response = await client.request({
