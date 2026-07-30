@@ -210,6 +210,7 @@
     "npm-shrinkwrap.json",
     "scripts/check-release.mjs",
     "scripts/live-sdk-smoke.mjs",
+    "scripts/live-wake-process-smoke.mjs",
     "CHANGELOG.md",
     "README.md",
     "SECURITY.md",
@@ -244,7 +245,8 @@
     "web:bundle-report": "npm run bundle:report --workspace @harryaskham/pi-daemon-dash",
     "test:manual:performance": "npm run build && PI_DAEMON_PERFORMANCE_BUDGETS=1 node --test --test-concurrency=1 test/transcript-projector.test.mjs test/dashboard-remote-backend.test.mjs test/shadow-tui-host.test.mjs test/virtual-terminal.test.mjs",
     "lock:repair-integrity": "node scripts/repair-lock-integrity.mjs",
-    "lock:repair-integrity:check": "node scripts/repair-lock-integrity.mjs --check"
+    "lock:repair-integrity:check": "node scripts/repair-lock-integrity.mjs --check",
+    "test:live:wake": "npm run build && node scripts/live-wake-process-smoke.mjs"
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "1.2.0",
