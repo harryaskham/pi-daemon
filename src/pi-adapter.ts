@@ -183,6 +183,22 @@ export class PiSessionFactory implements SessionFactory {
     );
   }
 
+  /**
+   * Latest call-time authentication failure, or undefined once a turn succeeds.
+   *
+   * Kept separate from `#authErrorCodes`, which records failures observed while
+   * *constructing* the runtime. Those are startup facts; this is a fact about
+   * whether calls currently work, and only this one can clear.
+   */
+  #callAuthFailure: string | undefined;
+
+  #recordCallAuthOutcome(failure: string | undefined): void {
+    // A fixed code rather than one derived from the provider's text: the
+    // message is untrusted third-party content and readiness is published, so
+    // the field says what happened without carrying it.
+    this.#callAuthFailure = failure === undefined ? undefined : "call_auth_failed";
+  }
+
   #recordAuthError(error: unknown): void {
     const code = safeReadinessErrorCode(error);
     if (!this.#authErrorCodes.includes(code)) this.#authErrorCodes.push(code);
@@ -218,13 +234,23 @@ export class PiSessionFactory implements SessionFactory {
     const authenticatedModels = available.filter((model) =>
       runtime.hasConfiguredAuth(model.provider),
     ).length;
+    // `authenticatedModels` counts models whose provider has a credential
+    // configured, which is not evidence that the credential works: one invalid
+    // key reported 53 authenticated models while every call failed 401
+    // (bd-b20415). A call-time failure is the only direct evidence available,
+    // so it degrades readiness and is reported alongside the startup codes.
+    const authErrorCodes = [
+      ...this.#authErrorCodes,
+      ...(this.#callAuthFailure === undefined ? [] : [this.#callAuthFailure]),
+    ];
     const result: PiFactoryReadiness = {
-      ready: registryError === undefined && authenticatedModels > 0,
+      ready:
+        registryError === undefined && authenticatedModels > 0 && this.#callAuthFailure === undefined,
       configuredProviderCount: this.#configuredProviderCount,
       availableModels: available.length,
       authenticatedModels,
-      authErrorCount: this.#authErrorCodes.length,
-      authErrorCodes: [...this.#authErrorCodes],
+      authErrorCount: authErrorCodes.length,
+      authErrorCodes,
     };
     if (registryError !== undefined) {
       result.modelRegistryErrorCode = safeReadinessErrorCode(registryError);
@@ -565,6 +591,7 @@ export class PiSessionFactory implements SessionFactory {
       const adapter = await PiSessionAdapter.create(runtime, {
         sessionRoot: canonicalSessionDir,
         validateCwd,
+        onTurnAuthOutcome: (failure) => this.#recordCallAuthOutcome(failure),
         ...(hostToolSession === undefined
           ? {}
           : { disposeSessionResources: () => hostToolSession.dispose() }),
@@ -586,10 +613,42 @@ export interface PiSessionIdentity {
   sessionFile?: string;
 }
 
+/**
+ * Whether a failed turn's provider message reports an authentication problem.
+ *
+ * Conservative on purpose: a false positive degrades a healthy host's
+ * readiness, so this matches only shapes that name authentication, and not
+ * quota, rate limiting, or content filtering, which say nothing about whether
+ * credentials work.
+ */
+export function isAuthenticationFailureMessage(message: string): boolean {
+  const text = message.toLowerCase();
+  if (/\b(429|quota|rate limit)\b/.test(text)) return false;
+  return (
+    /\b(401|403)\b/.test(text) ||
+    text.includes("authentication_error") ||
+    text.includes("authentication is not configured") ||
+    text.includes("invalid api key") ||
+    text.includes("invalid x-api-key") ||
+    text.includes("invalid subscription key") ||
+    text.includes("unauthorized") ||
+    text.includes("access denied")
+  );
+}
+
 export interface PiSessionAdapterOptions {
   sessionRoot: string;
   validateCwd: (cwd: string) => Promise<string>;
   disposeSessionResources?: () => Promise<void>;
+  /**
+   * Report the outcome of a completed turn's authentication.
+   *
+   * Readiness previously counted credentials that were *configured* and never
+   * credentials that *work*, so a host answered `ready: true` while every call
+   * failed 401 (bd-b20415). The adapter is the only place that sees a real
+   * call's result, so it reports it and the factory does the accounting.
+   */
+  onTurnAuthOutcome?: (failure: string | undefined) => void;
 }
 
 type SessionExtensionBindings = Parameters<AgentSession["bindExtensions"]>[0];
@@ -599,6 +658,7 @@ export class PiSessionAdapter implements SessionAdapter {
   readonly #sessionRoot: string;
   readonly #validateCwd: (cwd: string) => Promise<string>;
   readonly #disposeSessionResources: (() => Promise<void>) | undefined;
+  readonly #onTurnAuthOutcome: ((failure: string | undefined) => void) | undefined;
   #unsubscribe: (() => void) | undefined;
   #identityChangeHandler: ((identity: PiSessionIdentity) => Promise<void>) | undefined;
   #sessionNameChangeHandler: ((name: string) => Promise<void>) | undefined;
@@ -614,6 +674,7 @@ export class PiSessionAdapter implements SessionAdapter {
     this.#sessionRoot = options.sessionRoot;
     this.#validateCwd = options.validateCwd;
     this.#disposeSessionResources = options.disposeSessionResources;
+    this.#onTurnAuthOutcome = options.onTurnAuthOutcome;
     runtime.setBeforeSessionInvalidate(() => this.#invalidateSession());
     runtime.setRebindSession(async (session) => this.#bindSession(session, true, true));
   }
@@ -805,6 +866,27 @@ export class PiSessionAdapter implements SessionAdapter {
     }
   }
 
+  /**
+   * Tell the factory whether this turn's credentials worked.
+   *
+   * A turn that ends with `stopReason: "error"` carries the provider's own
+   * message; only an authentication or authorization shape counts, because a
+   * rate limit or a content filter says nothing about credentials. A turn that
+   * ends any other way is evidence the credentials do work, which is what lets
+   * readiness recover once they are fixed rather than latching red forever.
+   */
+  #reportTurnAuthOutcome(message: unknown): void {
+    if (this.#onTurnAuthOutcome === undefined) return;
+    if (typeof message !== "object" || message === null) return;
+    const record = message as { stopReason?: unknown; errorMessage?: unknown };
+    if (record.stopReason !== "error") {
+      this.#onTurnAuthOutcome(undefined);
+      return;
+    }
+    const text = typeof record.errorMessage === "string" ? record.errorMessage : "";
+    if (isAuthenticationFailureMessage(text)) this.#onTurnAuthOutcome(text);
+  }
+
   #invalidateSession(): void {
     this.#unsubscribe?.();
     this.#unsubscribe = undefined;
@@ -846,6 +928,7 @@ export class PiSessionAdapter implements SessionAdapter {
   }
 
   #onSessionEvent(event: AgentSessionEvent): void {
+    if (event.type === "turn_end") this.#reportTurnAuthOutcome(event.message);
     for (const listener of this.#rpcEventListeners) listener(event);
     const mapped = mapPiEvent(event);
     if (mapped !== undefined) this.#eventSink?.(mapped);

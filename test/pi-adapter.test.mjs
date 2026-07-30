@@ -1201,3 +1201,37 @@ test("an unresolvable model is refused at open rather than substituted", async (
     );
   }
 });
+test("authentication failures are distinguished from other call failures", async () => {
+  const { isAuthenticationFailureMessage } = await import("../dist/pi-adapter.js");
+
+  // Shapes observed from real providers, including the two in bd-b20415.
+  for (const message of [
+    '401 {"type":"error","error":{"type":"authentication_error","message":"invalid x-api-key"}}',
+    "Azure OpenAI API error (401): Access denied due to invalid subscription key or wrong API endpoint.",
+    "403 Forbidden",
+    "Unauthorized",
+    "Invalid API key provided",
+    "authentication is not configured for provider: anthropic",
+  ]) {
+    assert.equal(isAuthenticationFailureMessage(message), true, `should be an auth failure: ${message}`);
+  }
+
+  // Deliberately not auth failures. Degrading readiness on these would report a
+  // credential problem for a host whose credentials are fine, which is the same
+  // class of wrong answer the bead is about, in the opposite direction.
+  for (const message of [
+    "429 Too Many Requests",
+    "rate limit exceeded, please retry",
+    "quota exceeded for this model",
+    "content filtered by policy",
+    "500 Internal Server Error",
+    "socket hang up",
+    "",
+  ]) {
+    assert.equal(isAuthenticationFailureMessage(message), false, `should not be an auth failure: ${message}`);
+  }
+
+  // A 429 that also mentions authorization stays a rate limit: the quota check
+  // runs first on purpose, because retryable pressure is the more common case.
+  assert.equal(isAuthenticationFailureMessage("429 rate limit on authorized key"), false);
+});
