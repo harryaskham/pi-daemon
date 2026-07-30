@@ -1162,3 +1162,42 @@ test("real Pi SDK opens an isolated no-tools in-memory session without a model t
   assert.deepEqual(readiness.authErrorCodes, []);
   assert.equal("agentDir" in readiness, false);
 });
+
+test("an unresolvable model is refused at open rather than substituted", async () => {
+  const stateDir = await temporaryDirectory();
+  const agentDir = await temporaryDirectory();
+  const cwd = await temporaryDirectory();
+  const { credentials, modelRuntime, model } = await modelHarness();
+  const factory = new PiSessionFactory({
+    stateDir,
+    agentDir,
+    allowedRoots: [cwd],
+    credentials,
+    modelRuntime,
+  });
+
+  // Positive control: the harness model resolves, so the refusal below is not
+  // simply rejecting everything.
+  const opened = await factory.open(openRequest(cwd, model, "resolvable"));
+  assert.equal(opened.rpcSession().model.id, model.id);
+  await opened.dispose();
+
+  // An unknown provider, and a known provider with an unknown model, are both
+  // refused. Previously each fell through to the first available model, binding
+  // the session to something the client never named; `status` does not report
+  // the bound model, so the substitution was undetectable from the client side.
+  for (const unresolvable of [
+    { provider: "no-such-provider", id: "no-such-model" },
+    { provider: model.provider, id: "no-such-model-id" },
+  ]) {
+    await assert.rejects(
+      () => factory.open(openRequest(cwd, unresolvable, `bogus-${unresolvable.provider}`)),
+      (error) => {
+        assert.equal(error.code, "model_unavailable");
+        assert.match(error.message, /model not found: /);
+        assert.equal(error.message.includes(unresolvable.provider), true);
+        return true;
+      },
+    );
+  }
+});

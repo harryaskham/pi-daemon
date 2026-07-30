@@ -354,6 +354,17 @@ export class PiSessionFactory implements SessionFactory {
       request.model === undefined
         ? undefined
         : modelRuntime.getModel(request.model.provider, request.model.id);
+    if (request.model !== undefined && legacyModel === undefined) {
+      // Refuse at open rather than substituting. Falling through to the first
+      // available model would bind the session to something the client never
+      // named, and `status` does not report the bound model, so the client
+      // could not detect it — a typo would answer plausibly on the wrong model.
+      // docs/integration.md promises this refusal.
+      throw new PiAdapterError(
+        "model_unavailable",
+        `model not found: ${request.model.provider}/${request.model.id}`,
+      );
+    }
     const model =
       resolvedModel?.model ??
       legacyModel ??
