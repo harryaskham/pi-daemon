@@ -9,6 +9,22 @@ Pi Daemon is neutral infrastructure. Clients provide logical session IDs,
 generations, cwd/model/resource policy, and durable idempotency keys. The
 service has no Cacophony-specific request fields or credentials.
 
+## Prerequisite: credentials for the provider you name
+
+Opening a session validates that credentials exist for the provider named in
+`model`, before any turn is attempted. A client that names one the instance has
+no entry for is refused at `open`, not at `wake`:
+
+```
+ProtocolResponseError: failed to open logical session
+  cause: PiAdapterError: authentication is not configured for provider: <provider>
+```
+
+The daemon reads them from the agent directory it was started with, seeded as
+described in the [operator quickstart](quickstart). This is an instance-level
+prerequisite rather than a request field: the service holds no client
+credentials and the protocol carries none.
+
 ## JavaScript client
 
 ```js
