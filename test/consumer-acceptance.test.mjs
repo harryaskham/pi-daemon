@@ -76,6 +76,23 @@ test("a consumer opens many logical sessions without a process per session", asy
     assert.equal(response.ok, true, `open ${sessionId}: ${JSON.stringify(response.error ?? {})}`);
   }
 
+  // Attach is part of the documented consumer sequence and event delivery is
+  // explicit: registering a listener subscribes nothing (bd-c4314e). Exercise it
+  // here so a regression in the sequence a client actually follows fails in the
+  // credential-free gate; whether events then arrive needs a real turn, and is
+  // asserted in scripts/live-wake-process-smoke.mjs.
+  for (const sessionId of sessions) {
+    const attached = await client.request({
+      protocolVersion: "1.0",
+      requestId: `attach-${sessionId}`,
+      operation: "attach",
+      sessionId,
+      generation: 1,
+      payload: {},
+    });
+    assert.equal(attached.ok, true, `attach ${sessionId}: ${JSON.stringify(attached.error ?? {})}`);
+  }
+
   const afterOpens = await countDescendants(daemon.child.pid);
   if (baseline !== null && afterOpens !== null) {
     // The claim the whole design rests on: logical sessions are multiplexed into

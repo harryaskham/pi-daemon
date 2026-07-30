@@ -85,6 +85,8 @@ try {
 
   await waitForSocket(socketPath, child);
   client = await PiDaemonClient.connect({ socketPath });
+  const events = [];
+  client.subscribe((event) => events.push(event?.event ?? "unknown"));
   await client.handshake("live-wake-process-smoke");
 
   const openSession = async (sessionId) => {
@@ -124,7 +126,26 @@ try {
     assert.equal(woke.ok, true, `wake ${sessionId} #${turn}: ${JSON.stringify(woke.error ?? {})}`);
   };
 
+  // Event delivery is explicit: subscribing registers a local listener and
+  // nothing else, so a consumer that opens and wakes without attaching is
+  // silent, and that silence is indistinguishable from a model that produced
+  // no output (bd-c4314e). Attach, then assert events actually arrive during
+  // the real turns below — the credential-free acceptance can exercise the
+  // attach call but cannot produce the traffic.
+  const attach = async (sessionId) => {
+    const attached = await client.request({
+      protocolVersion: "1.0",
+      requestId: `attach-${sessionId}`,
+      operation: "attach",
+      sessionId,
+      generation: 1,
+      payload: {},
+    });
+    assert.equal(attached.ok, true, `attach ${sessionId}: ${JSON.stringify(attached.error ?? {})}`);
+  };
+
   await openSession("live-wake-a");
+  await attach("live-wake-a");
 
   const beforeWake = await countDescendants(child.pid);
   assert.notEqual(beforeWake, null, "this acceptance needs /proc to measure the daemon's process tree");
@@ -141,8 +162,16 @@ try {
     observations.push({ label: `after turn ${turn}`, count: await countDescendants(child.pid) });
   }
   await openSession("live-wake-b");
+  await attach("live-wake-b");
   await wake("live-wake-b", 1);
   observations.push({ label: "after a turn on a second session", count: await countDescendants(child.pid) });
+
+  assert.ok(
+    events.length > 0,
+    "no events arrived across four real turns on two attached sessions: a consumer " +
+      "following this sequence would be silent, and silence looks identical to a model " +
+      "that produced no output",
+  );
 
   for (const observation of observations) {
     assert.equal(
@@ -173,7 +202,8 @@ try {
   // about a healthy deployment.
   process.stdout.write(
     `live wake smoke: descendants steady at ${beforeWake} across ` +
-      `${observations.length - 1} real ${provider} turns over two sessions\n`,
+      `${observations.length - 1} real ${provider} turns over two sessions, ` +
+      `${events.length} events delivered\n`,
   );
 } finally {
   client?.close();
