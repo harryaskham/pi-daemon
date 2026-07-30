@@ -76,6 +76,13 @@
         installCheckPhase = ''
           "$out/bin/pi-daemon" version | grep -Fx 0.3.0
           "$out/bin/pi-daemon-rpc" --version | grep -Fx 0.3.0
+          # Consumer acceptance against the artifact rather than the working
+          # tree (bd-d54659): launch the installed wrapper as a service and
+          # drive the neutral client path through it. Every other protocol test
+          # runs from dist/ in the source tree, which cannot see a defect whose
+          # cause is the difference between that tree and what ships.
+          PI_DAEMON_PACKAGED_BIN="$out/bin/pi-daemon" \
+            ${pkgs.nodejs_24}/bin/node --test test/consumer-acceptance.test.mjs
         '';
 
         meta = {
