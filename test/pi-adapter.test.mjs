@@ -1235,3 +1235,31 @@ test("authentication failures are distinguished from other call failures", async
   // runs first on purpose, because retryable pressure is the more common case.
   assert.equal(isAuthenticationFailureMessage("429 rate limit on authorized key"), false);
 });
+
+test("the bound model is reported, and reports what answers rather than what was asked", async () => {
+  const stateDir = await temporaryDirectory();
+  const agentDir = await temporaryDirectory();
+  const cwd = await temporaryDirectory();
+  const { credentials, modelRuntime, model } = await modelHarness();
+  const factory = new PiSessionFactory({
+    stateDir,
+    agentDir,
+    allowedRoots: [cwd],
+    credentials,
+    modelRuntime,
+  });
+  const adapter = await factory.open(openRequest(cwd, model, "bound"));
+  try {
+    // Read from the live session, not from the open request: this is what makes
+    // a substitution detectable at all (bd-d18fe2), so echoing the request back
+    // would defeat the purpose of reporting it.
+    assert.deepEqual(adapter.boundModel(), { provider: model.provider, id: model.id });
+    assert.notEqual(adapter.rpcSession().model, undefined);
+    assert.equal(adapter.boundModel().id, adapter.rpcSession().model.id);
+  } finally {
+    await adapter.dispose();
+  }
+  // A disposed session reports nothing rather than throwing, so a snapshot taken
+  // during teardown degrades to omitting the field.
+  assert.equal(adapter.boundModel(), undefined);
+});

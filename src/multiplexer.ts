@@ -89,6 +89,14 @@ export interface PromptRequest {
 export interface SessionAdapter {
   prompt(request: PromptRequest): Promise<unknown>;
   identity?(): SessionConversationIdentity;
+  /**
+   * Provider and id of the model this session is actually bound to.
+   *
+   * Optional so credential-free test fakes need not implement it. Reported in
+   * `SessionSnapshot` so a consumer can confirm which model answered rather
+   * than inferring it from the event stream (bd-99577e).
+   */
+  boundModel?(): { provider: string; id: string } | undefined;
   setIdentityChangeHandler?(
     handler: ((identity: SessionConversationIdentity) => Promise<void>) | undefined,
   ): void;
@@ -126,6 +134,7 @@ export interface SessionSnapshot {
   queuedTurns: number;
   activeRequestId?: string;
   lastErrorCode?: string;
+  model?: { provider: string; id: string };
   lastUsedAt: string;
   idleForMs: number;
 }
@@ -2388,6 +2397,8 @@ function snapshot(slot: SessionSlot, now: number): SessionSnapshot {
   };
   if (slot.activeRequestId !== undefined) result.activeRequestId = slot.activeRequestId;
   if (slot.lastErrorCode !== undefined) result.lastErrorCode = slot.lastErrorCode;
+  const model = slot.adapter.boundModel?.();
+  if (model !== undefined) result.model = { provider: model.provider, id: model.id };
   return result;
 }
 

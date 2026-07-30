@@ -21,11 +21,18 @@
       "spec": {
         "cwd": "/srv/work/project-a",
         "name": "release-audit",
-        "target": { "mode": "new" },
-        "isolation": { "mode": "unisolated" }
+        "target": {
+          "mode": "new"
+        },
+        "isolation": {
+          "mode": "unisolated"
+        }
       },
       "environment": {
-        "keys": ["CI", "PROVIDER_TOKEN"],
+        "keys": [
+          "CI",
+          "PROVIDER_TOKEN"
+        ],
         "persistence": "memory-only",
         "provisioned": true
       },
@@ -40,6 +47,10 @@
       "sequence": 41,
       "queuedTurns": 1,
       "activeRequestId": "request-active",
+      "model": {
+        "provider": "anthropic",
+        "id": "claude-fable-5"
+      },
       "lastUsedAt": "2026-07-14T08:09:59.000Z",
       "idleForMs": 0
     },

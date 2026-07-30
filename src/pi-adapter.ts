@@ -717,6 +717,17 @@ export class PiSessionAdapter implements SessionAdapter {
     this.#runtime.session.setSessionName(name);
   }
 
+  /**
+   * Provider and id of the model this session is bound to, read from the live
+   * session rather than from the open request, so it reports what actually
+   * answers rather than what was asked for.
+   */
+  boundModel(): { provider: string; id: string } | undefined {
+    if (this.#disposed || this.#invalidated) return undefined;
+    const model = this.#runtime.session.model;
+    return model === undefined ? undefined : { provider: model.provider, id: model.id };
+  }
+
   rpcSession(): AgentSession {
     this.#assertOpen();
     return this.#runtime.session;

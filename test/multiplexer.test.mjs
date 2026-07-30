@@ -559,3 +559,34 @@ test("idle sweep evicts only expired inactive sessions and records metrics", asy
   assert.equal(status.uptimeMs, 100);
   assert.ok(status.memory.rss > 0);
 });
+
+test("status reports the bound model when the adapter exposes it, and omits it otherwise", async () => {
+  // The seam is optional so credential-free fakes need not implement it; a fake
+  // without boundModel must still produce a valid snapshot.
+  const bare = new Multiplexer({
+    factory: { async open() { return { async prompt() {}, async dispose() {} }; } },
+    hostInstanceId: "host-test",
+  });
+  await bare.open(openCommand("no-model"));
+  assert.equal("model" in bare.status("no-model"), false);
+  await bare.dispose(20);
+
+  const reporting = new Multiplexer({
+    factory: {
+      async open() {
+        return {
+          async prompt() {},
+          async dispose() {},
+          boundModel: () => ({ provider: "anthropic", id: "claude-fable-5" }),
+        };
+      },
+    },
+    hostInstanceId: "host-test",
+  });
+  await reporting.open(openCommand("with-model"));
+  assert.deepEqual(reporting.status("with-model").model, {
+    provider: "anthropic",
+    id: "claude-fable-5",
+  });
+  await reporting.dispose(20);
+});
