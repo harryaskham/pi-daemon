@@ -6,6 +6,7 @@
 // the credential-free remainder, and it runs against whichever executable
 // PI_DAEMON_PACKAGED_BIN names, so the Nix lane can point it at the artifact.
 import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
@@ -117,4 +118,36 @@ test("a consumer opens many logical sessions without a process per session", asy
 
   client.close();
   await stopDaemon(daemon.child);
+});
+
+test("the descendant walk finds descendants at all", { timeout: 30_000 }, async (t) => {
+  // Without this the acceptance above is vacuous in its most likely failure
+  // direction: if the /proc parsing broke, countDescendants would return 0 for
+  // every input and "no process per session" would hold no matter what the
+  // daemon did. Ported from the acceptance this consolidated (bd-c4c80b), whose
+  // own first attempt at this control was wrong — it spawned a child from the
+  // test process and expected the *daemon's* count to move, which proved only
+  // that the child was not a daemon descendant.
+  const baseline = await countDescendants(process.pid);
+  if (baseline === null) return; // Not Linux; the acceptance skips its count too.
+
+  const parent = spawn(
+    process.execPath,
+    [
+      "-e",
+      "const { spawn } = require('node:child_process'); spawn(process.execPath, ['-e', 'setTimeout(() => {}, 5000)'], { stdio: 'ignore' }); setTimeout(() => {}, 5000);",
+    ],
+    { stdio: "ignore" },
+  );
+  t.after(() => {
+    if (parent.exitCode === null && parent.signalCode === null) parent.kill("SIGKILL");
+  });
+  await new Promise((resolve) => setTimeout(resolve, 500));
+
+  const observed = await countDescendants(process.pid);
+  assert.ok(
+    observed >= baseline + 2,
+    `expected the child and its grandchild, went from ${baseline} to ${observed}: the walk must be ` +
+      "transitive, or a process spawned by something the daemon spawned would escape the acceptance",
+  );
 });
