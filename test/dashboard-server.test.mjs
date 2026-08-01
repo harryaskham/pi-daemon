@@ -30,6 +30,7 @@ import { loadPiDaemonConfig } from "../dist/config.js";
 import { DashboardServer, createDashboardServerFromConfig } from "../dist/dashboard-server.js";
 import { DashboardSettingsStore, DashboardWorkspaceStore } from "../dist/dashboard-store.js";
 import { loadDashboardTls } from "../dist/dashboard-tls.js";
+import { assertPackagedDashboardBuilt } from "./packaged-dashboard-fixture.mjs";
 import { assertOpensslAvailable, generateTlsPair } from "./tls-fixture.mjs";
 
 // Name the missing dependency once, up front, rather than letting each TLS case
@@ -1277,6 +1278,7 @@ test("workspace and UI settings routes persist only the authenticated workspace 
 });
 
 test("instance YAML constructs the same secure server without exposing a daemon bearer", async (t) => {
+  await assertPackagedDashboardBuilt();
   const root = await mkdtemp(join(tmpdir(), "pi-daemon-dashboard-config-"));
   t.after(async () => rm(root, { recursive: true, force: true }));
   const configDir = join(root, "config");

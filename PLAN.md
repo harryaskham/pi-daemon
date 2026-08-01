@@ -753,6 +753,8 @@ implementation order. This list is a human-readable crosswalk.
 - [x] `bd-5fbf37` — split SessionInventory root scanning/JSONL parsing,
   persisted snapshot codecs, and bounded query/search/cursor internals into
   focused modules behind the unchanged public API and persisted formats.
+- [x] `bd-1a9e5b` — fail packaged-SPA acceptances at an explicit missing-build
+  precondition naming `npm run build`, rather than a misleading `/dash/` 404.
 - [x] `bd-79902f` — load-proof recovery-deadline and first-launch socket waits:
   deterministic per-open and aggregate recovery cases plus a generous bootstrap
   hang bound that still fails a crashed daemon immediately.

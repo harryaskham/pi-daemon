@@ -25,6 +25,9 @@ the authoritative gate, and packaging, Nix, and release paths always run the
 full build, so nothing ships without the SPA. If `web/dist` has never been
 built, `build:src` says so and leaves `dist/dashboard` absent; run the full
 `npm run build` before anything that serves or asserts the packaged SPA.
+Packaged-SPA acceptances call `assertPackagedDashboardBuilt` first, so this
+remains a hard failure but names that remediation instead of surfacing later as
+an unexplained `/dash/` `404 !== 200`.
 
 Dash browser acceptance runs from its own shell, which supplies audited
 Playwright browsers instead of an unrunnable download:
