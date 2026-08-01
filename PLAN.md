@@ -750,6 +750,9 @@ implementation order. This list is a human-readable crosswalk.
 - [x] `bd-23110a` — neutral Dash HTTP routing extracted from the core API server
   behind a small router interface, preserving auth-before-routing, shared
   response bounds, and WebSocket admission.
+- [x] `bd-5fbf37` — split SessionInventory root scanning/JSONL parsing,
+  persisted snapshot codecs, and bounded query/search/cursor internals into
+  focused modules behind the unchanged public API and persisted formats.
 - [x] `bd-79902f` — load-proof recovery-deadline and first-launch socket waits:
   deterministic per-open and aggregate recovery cases plus a generous bootstrap
   hang bound that still fails a crashed daemon immediately.

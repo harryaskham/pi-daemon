@@ -57,7 +57,10 @@ const OWNERSHIP_CENSUS = {
   "self-update.ts": { ownerOnly: 2, ownerOrRoot: 0 },
   "server.ts": { ownerOnly: 2, ownerOrRoot: 0 },
   "session-cli.ts": { ownerOnly: 2, ownerOrRoot: 0 },
-  "session-inventory.ts": { ownerOnly: 5, ownerOrRoot: 0 },
+  // bd-5fbf37 moved these exact five owner-only decisions without changing
+  // policy: two persisted index/head checks and three root/source scan checks.
+  "session-inventory-persistence.ts": { ownerOnly: 2, ownerOrRoot: 0 },
+  "session-inventory-scanner.ts": { ownerOnly: 3, ownerOrRoot: 0 },
   "session-ownership.ts": { ownerOnly: 3, ownerOrRoot: 0 },
   "tool-adapter-runtime.ts": { ownerOnly: 2, ownerOrRoot: 0 },
   "transcript-projector.ts": { ownerOnly: 1, ownerOrRoot: 0 },
@@ -131,7 +134,11 @@ const EXPOSURE_CENSUS = {
   "self-update.ts": { private: 1, noForeignWriters: 1 },
   "server.ts": { private: 0, noForeignWriters: 1 },
   "session-cli.ts": { private: 2, noForeignWriters: 0 },
-  "session-inventory.ts": { private: 2, noForeignWriters: 1 },
+  // Same three exposure decisions, relocated by bd-5fbf37: the two owner-only
+  // persisted files stay private; the approved session root keeps permitting
+  // foreign reads while forbidding foreign writers.
+  "session-inventory-persistence.ts": { private: 2, noForeignWriters: 0 },
+  "session-inventory-scanner.ts": { private: 0, noForeignWriters: 1 },
   "session-ownership.ts": { private: 0, noForeignWriters: 3 },
   "tool-adapter-runtime.ts": { private: 2, noForeignWriters: 0 },
   "transcript-projector.ts": { private: 0, noForeignWriters: 1 },

@@ -74,6 +74,17 @@ collisions.
 
 ## Inventory and transcript bounds
 
+`SessionInventory` keeps its public API in `src/session-inventory.ts`, while its
+private critical paths are separated by responsibility: approved-root walking
+and descriptor-safe JSONL parsing in `session-inventory-scanner.ts`, authenticated
+hot-head/full-index codecs and validators in `session-inventory-persistence.ts`,
+and bounded filter/search/cursor/ordering logic in `session-inventory-query.ts`.
+Shared limits, persisted shapes, version constants, and typed errors live in
+`session-inventory-contract.ts`. The entry module re-exports the exact previous
+runtime/type surface; persisted magic values and byte layouts are unchanged.
+Request-path `list`/`getInfo` remain immutable in-memory operations and never
+scan the filesystem.
+
 Inventory query parameters are `limit`, opaque `cursor`, bounded `search`, CSV
 `sourceKind`/`runtime`, `unread`, and `modifiedAfter`. Transcript parameters are
 `limit`, opaque `cursor`, `direction`, `leafId`, and `fingerprint`. The

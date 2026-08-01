@@ -15,11 +15,17 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
+import * as sessionInventorySurface from "../dist/session-inventory.js";
 import {
+  DEFAULT_SESSION_INVENTORY_LIMITS,
+  SESSION_INVENTORY_FORMAT_VERSION,
+  SESSION_INVENTORY_SEARCH_KEY_VERSION,
+  SESSION_INVENTORY_SNAPSHOT_VERSION,
   SessionInventory,
   SessionInventoryError,
   resolveSessionInventoryConfig,
 } from "../dist/session-inventory.js";
+import * as sessionInventoryContract from "../dist/session-inventory-contract.js";
 import { formatSessionSourceFingerprint } from "../dist/source-fingerprint.js";
 
 class FakeCatalog {
@@ -31,6 +37,23 @@ class FakeCatalog {
     return structuredClone(this.records);
   }
 }
+
+test("focused inventory internals preserve the exact public runtime surface", () => {
+  assert.deepEqual(Object.keys(sessionInventorySurface).sort(), [
+    "DEFAULT_SESSION_INVENTORY_LIMITS",
+    "SESSION_INVENTORY_FORMAT_VERSION",
+    "SESSION_INVENTORY_SEARCH_KEY_VERSION",
+    "SESSION_INVENTORY_SNAPSHOT_VERSION",
+    "SessionInventory",
+    "SessionInventoryError",
+    "resolveSessionInventoryConfig",
+  ]);
+  assert.equal(SessionInventoryError, sessionInventoryContract.SessionInventoryError);
+  assert.equal(DEFAULT_SESSION_INVENTORY_LIMITS, sessionInventoryContract.DEFAULT_SESSION_INVENTORY_LIMITS);
+  assert.equal(SESSION_INVENTORY_FORMAT_VERSION, sessionInventoryContract.SESSION_INVENTORY_FORMAT_VERSION);
+  assert.equal(SESSION_INVENTORY_SEARCH_KEY_VERSION, sessionInventoryContract.SESSION_INVENTORY_SEARCH_KEY_VERSION);
+  assert.equal(SESSION_INVENTORY_SNAPSHOT_VERSION, sessionInventoryContract.SESSION_INVENTORY_SNAPSHOT_VERSION);
+});
 
 async function fixture(t) {
   const root = await mkdtemp(join(tmpdir(), "pi-daemon-inventory-"));
