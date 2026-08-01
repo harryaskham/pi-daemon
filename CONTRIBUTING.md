@@ -62,7 +62,12 @@ PI_DAEMON_PERFORMANCE_BUDGETS=1 just dash-e2e   # Dash browser budgets
 A budget missed on a busy shared host says nothing about the code, so do not
 add a bare wall-clock assertion to the standard suite; report it through
 `test/performance-budget.mjs`, `web/src/test/performance-budget.ts`, or
-`web/e2e/performance-budget.ts` instead. `test/deterministic-gate.test.mjs`
+`web/e2e/performance-budget.ts` instead. For any other bounded diagnostic that
+must remain visible when a Vitest test passes, use
+`web/src/test/test-diagnostic.ts`'s `reportTestDiagnostic`. It writes one bounded
+line through stderr because Vitest's default reporter hides passing `console.*`
+output; do not rediscover this by changing the global reporter or writing raw
+stderr independently. `test/deterministic-gate.test.mjs`
 enforces this across all three suites, so a new bare bound fails the gate rather
 than waiting for a busy host to expose it.
 

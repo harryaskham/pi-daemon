@@ -1,3 +1,5 @@
+import { reportTestDiagnostic } from "./test-diagnostic";
+
 /**
  * Browser-suite mirror of `test/performance-budget.mjs`.
  *
@@ -55,10 +57,9 @@ export function performanceBudgetOutcome(
  * Record a measured wall-clock value against its budget.
  *
  * Always emits the measurement so regressions stay observable in ordinary runs,
- * and only throws when budget enforcement is explicitly enabled. The line goes
- * to stderr rather than `console.*` because Vitest intercepts console output and
- * its default reporter hides it for passing tests, which would make the
- * unenforced diagnostic invisible in exactly the runs that need it.
+ * and only throws when budget enforcement is explicitly enabled. The shared
+ * test-diagnostic helper uses the project's supported stderr-first Vitest
+ * channel, keeping this visible for passing tests without changing reporters.
  */
 export function reportPerformanceBudget(
   label: string,
@@ -66,11 +67,6 @@ export function reportPerformanceBudget(
   budgetMs: number,
 ): void {
   const outcome = performanceBudgetOutcome(label, measuredMs, budgetMs);
-  const line = `performance-budget ${outcome.summary}\n`;
-  if (typeof process !== "undefined" && typeof process.stderr?.write === "function") {
-    process.stderr.write(line);
-  } else {
-    console.info(line.trimEnd());
-  }
+  reportTestDiagnostic(`performance-budget ${outcome.summary}`);
   if (outcome.failure !== undefined) throw new Error(outcome.failure);
 }

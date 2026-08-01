@@ -757,6 +757,8 @@ implementation order. This list is a human-readable crosswalk.
   precondition naming `npm run build`, rather than a misleading `/dash/` 404.
 - [x] `bd-b771c1` — fingerprint `src/**` into built `dist/` and warn (without
   skipping/failing) when the build-free `test:unit` loop uses stale output.
+- [x] `bd-0ab4f6` — standardize bounded stderr-first Vitest diagnostics so
+  passing-test measurements remain visible under the default reporter.
 - [x] `bd-79902f` — load-proof recovery-deadline and first-launch socket waits:
   deterministic per-open and aggregate recovery cases plus a generous bootstrap
   hang bound that still fails a crashed daemon immediately.

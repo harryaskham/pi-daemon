@@ -5,6 +5,7 @@ semantic versioning once a release tag is cut.
 
 ## 0.3.0 — 2026-07-29
 
+- give the Vitest web suite a supported passing-test diagnostic channel: `reportTestDiagnostic` writes one bounded line through stderr (with an injectable writer and non-Node console fallback), so measurements stay visible under the default reporter without every author rediscovering raw `process.stderr.write` or changing global reporter behavior
 - make the deliberately build-free `test:unit` loop distinguish stale `dist/` from a real failure: postbuild records a bounded deterministic SHA-256 over sorted `src/**`, and the unit wrapper warns (without skipping or failing) when the marker is missing, invalid, or no longer matches, pointing to `test:src`/`build:src`
 - make packaged-SPA acceptances fail at the missing-build precondition with an explicit `npm run build` remediation instead of misreporting the absent `dist/dashboard/index.html` as an unexplained `/dash/` `404 !== 200`; the check remains a failure, never a skip
 - split the 2,299-line SessionInventory implementation into focused contract, approved-root scanner/descriptor-safe JSONL parser, authenticated persistence codec, and bounded query/search/cursor modules behind the exact existing public API and persisted format, leaving request-path inventory reads filesystem-free
