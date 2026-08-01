@@ -45,46 +45,82 @@ const run = async (command, args, options = {}) =>
     ...options,
   });
 
-const writableNpmEnvironment = async (temporaryRoot) => {
-  const configuredCache = process.env.npm_config_cache ?? process.env.NPM_CONFIG_CACHE;
+const writableNpmEnvironment = async (
+  temporaryRoot,
+  sourceEnvironment = process.env,
+) => {
+  // npmConfigHook may copy buildNpmPackage's tarball cache to a writable
+  // directory. Writable does not mean it is a complete npm registry: it lacks
+  // the fresh packuments needed to resolve a newly published exact dependency,
+  // and `npm install --prefer-offline` then reports ETARGET for a version that
+  // the public registry does contain. The Nix package already validates its
+  // pinned dependency closure; stage that closure for the package smoke below.
+  if (sourceEnvironment.NIX_BUILD_TOP !== undefined) {
+    return { environment: sourceEnvironment, canInstallFromRegistryCache: false };
+  }
+  const configuredCache =
+    sourceEnvironment.npm_config_cache ?? sourceEnvironment.NPM_CONFIG_CACHE;
   if (configuredCache === undefined) {
-    return { environment: process.env, canInstallFromRegistryCache: true };
+    return { environment: sourceEnvironment, canInstallFromRegistryCache: true };
   }
   try {
     await access(configuredCache, constants.W_OK);
-    return { environment: process.env, canInstallFromRegistryCache: true };
+    return { environment: sourceEnvironment, canInstallFromRegistryCache: true };
   } catch {
     const writableCache = join(temporaryRoot, "npm-cache");
     await mkdir(writableCache, { recursive: true });
     return {
-      environment: { ...process.env, npm_config_cache: writableCache },
+      environment: { ...sourceEnvironment, npm_config_cache: writableCache },
       canInstallFromRegistryCache: false,
     };
   }
 };
 
+const publicRegistryInstallArgs = (tarball) => [
+  "install",
+  // Revalidate registry metadata instead of trusting a writable cache whose
+  // packument may predate an exact dependency version in the packed artifact.
+  "--prefer-online",
+  "--registry=https://registry.npmjs.org",
+  "--ignore-scripts",
+  "--no-audit",
+  "--no-fund",
+  "--no-save",
+  tarball,
+];
+
 const stagePackedPackageWithoutRegistry = async (tarball, consumer, temporaryRoot) => {
   const extracted = join(temporaryRoot, "extracted");
   await mkdir(extracted, { recursive: true });
   await run("tar", ["-xzf", tarball, "-C", extracted]);
+  const extractedPackage = join(extracted, "package");
   const packageRoot = join(consumer, "node_modules", "@harryaskham", "pi-daemon");
   await mkdir(join(consumer, "node_modules", "@harryaskham"), { recursive: true });
-  await cp(join(extracted, "package"), packageRoot, { recursive: true });
-  await symlink(
-    join(repositoryRoot, "node_modules", "@earendil-works"),
-    join(consumer, "node_modules", "@earendil-works"),
-    process.platform === "win32" ? "junction" : "dir",
+  await cp(extractedPackage, packageRoot, { recursive: true });
+
+  // Stage exactly the packed artifact's declared runtime dependencies from the
+  // closure npm ci already installed. The old hand list omitted `yaml`, so the
+  // Nix-only fallback passed until `pi-daemon version` imported config.js and
+  // then failed ERR_MODULE_NOT_FOUND. Deriving this from the packed manifest
+  // makes adding/removing a direct dependency update the smoke automatically.
+  const manifest = JSON.parse(
+    await readFile(join(extractedPackage, "package.json"), "utf8"),
   );
-  await symlink(
-    join(repositoryRoot, "node_modules", "@agentclientprotocol"),
-    join(consumer, "node_modules", "@agentclientprotocol"),
-    process.platform === "win32" ? "junction" : "dir",
-  );
-  await symlink(
-    join(repositoryRoot, "node_modules", "ws"),
-    join(consumer, "node_modules", "ws"),
-    process.platform === "win32" ? "junction" : "dir",
-  );
+  for (const dependency of Object.keys(manifest.dependencies ?? {})) {
+    const segments = dependency.split("/");
+    const source = join(repositoryRoot, "node_modules", ...segments);
+    const targetParent = join(
+      consumer,
+      "node_modules",
+      ...segments.slice(0, -1),
+    );
+    await mkdir(targetParent, { recursive: true });
+    await symlink(
+      source,
+      join(targetParent, segments.at(-1)),
+      process.platform === "win32" ? "junction" : "dir",
+    );
+  }
   await mkdir(join(consumer, "node_modules", ".bin"), { recursive: true });
   await symlink(
     "../@harryaskham/pi-daemon/dist/cli.js",
@@ -156,6 +192,31 @@ test("schema conformance uses the audited exact Ajv pin without $data", async ()
     assert.match(source, /new Ajv2020\(\{ allErrors: true, strict: true \}\)/);
     assert.doesNotMatch(source, /\$data\s*:/);
   }
+});
+
+test("package acceptance distinguishes a Nix tarball cache from a public registry", async (t) => {
+  const temporaryRoot = await mkdtemp(join(tmpdir(), "pi-daemon-npm-lane-"));
+  t.after(async () => rm(temporaryRoot, { recursive: true, force: true }));
+  const configuredCache = join(temporaryRoot, "writable-cache");
+  await mkdir(configuredCache);
+
+  const nix = await writableNpmEnvironment(temporaryRoot, {
+    ...process.env,
+    NIX_BUILD_TOP: "/build",
+    npm_config_cache: configuredCache,
+  });
+  assert.equal(nix.canInstallFromRegistryCache, false);
+
+  const node = await writableNpmEnvironment(temporaryRoot, {
+    ...process.env,
+    NIX_BUILD_TOP: undefined,
+    npm_config_cache: configuredCache,
+  });
+  assert.equal(node.canInstallFromRegistryCache, true);
+
+  const args = publicRegistryInstallArgs("package.tgz");
+  assert.equal(args.includes("--prefer-online"), true);
+  assert.equal(args.includes("--prefer-offline"), false);
 });
 
 test("the lockfile resolves and verifies every dependency against the public npm registry", async () => {
@@ -368,20 +429,11 @@ test(
       `${JSON.stringify({ name: "pi-daemon-package-consumer", private: true })}\n`,
     );
     if (canInstallFromRegistryCache) {
-      await run(
-        npmCommand,
-        [
-          "install",
-          "--prefer-offline",
-          "--registry=https://registry.npmjs.org",
-          "--ignore-scripts",
-          "--no-audit",
-          "--no-fund",
-          "--no-save",
-          tarball,
-        ],
-        { cwd: consumer, env: npmEnvironment, timeout: INSTALL_CHILD_TIMEOUT_MS },
-      );
+      await run(npmCommand, publicRegistryInstallArgs(tarball), {
+        cwd: consumer,
+        env: npmEnvironment,
+        timeout: INSTALL_CHILD_TIMEOUT_MS,
+      });
     } else {
       // buildNpmPackage exposes a read-only content cache without registry
       // packuments. Nix validates the installed dependency closure separately;
