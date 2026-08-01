@@ -224,7 +224,7 @@
     "prepack": "npm run build",
     "check": "tsc -p tsconfig.json --noEmit",
     "test": "npm run build && node --test --test-concurrency=1 test/*.test.mjs",
-    "test:unit": "node --test --test-concurrency=1 test/*.test.mjs",
+    "test:unit": "node scripts/source-dist-fingerprint.mjs && node --test --test-concurrency=1 test/*.test.mjs",
     "test:src": "npm run build:src && node --test --test-concurrency=1",
     "test:manual:inventory-performance": "npm run build && node --test test/manual/session-inventory-performance.test.mjs",
     "test:pi-sdk": "npm run build && node --test test/pi-sdk-compatibility.test.mjs",

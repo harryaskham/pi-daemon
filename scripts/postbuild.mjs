@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 import { chmod, copyFile, cp, mkdir, stat } from "node:fs/promises";
+import { writeSourceDistFingerprint } from "./source-dist-fingerprint.mjs";
+
 const root = new URL("..", import.meta.url);
 await mkdir(new URL("../dist", import.meta.url), { recursive: true });
 for (const bin of ["cli.js", "rpc-stdio-cli.js"]) {
@@ -36,3 +38,4 @@ for (const contract of [
 ]) {
   await copyFile(new URL(`../${contract}`, import.meta.url), new URL(`../dist/${contract}`, import.meta.url));
 }
+await writeSourceDistFingerprint();

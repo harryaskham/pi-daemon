@@ -22,7 +22,14 @@ npm run build:src                               # compile src/ without the SPA
 
 On this repository that is roughly 17 seconds instead of 46. `npm test` remains
 the authoritative gate, and packaging, Nix, and release paths always run the
-full build, so nothing ships without the SPA. If `web/dist` has never been
+full build, so nothing ships without the SPA. The deliberately build-free
+`test:unit` compares `src/**` with a bounded fingerprint written into `dist/` by
+postbuild; if they differ (or the marker is absent/invalid), it warns and points
+to `test:src` but still runs every requested test. The warning means failures may
+reflect stale compiled JavaScript rather than current TypeScript; it is not a
+test skip or a substitute for the final gate.
+
+If `web/dist` has never been
 built, `build:src` says so and leaves `dist/dashboard` absent; run the full
 `npm run build` before anything that serves or asserts the packaged SPA.
 Packaged-SPA acceptances call `assertPackagedDashboardBuilt` first, so this
