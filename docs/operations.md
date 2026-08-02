@@ -277,6 +277,41 @@ literal loopback address `127.0.0.1`. A non-loopback plaintext bind is refused u
 `--api-allow-insecure-http true` explicitly acknowledges trusted-network or TLS
 reverse-proxy handling.
 
+A supervisor can also enable the embedded Dashboard on the same `serve`
+process without generating a Pi Daemon YAML file:
+
+```console
+pi-daemon serve \
+  --socket "$XDG_RUNTIME_DIR/pi-daemon.sock" \
+  --state-dir "$HOME/.local/state/pi-daemon" \
+  --allow-root "$HOME/work" \
+  --api-enabled true --api-bind 127.0.0.1 --api-port 7463 \
+  --web-enabled true --web-bind 127.0.0.1 --web-port 7464
+```
+
+The web options are typed overrides, not a second service: the embedded
+Dashboard uses the same multiplexer, retained-session catalog, schedules and
+logical-session inventory as the Unix/API host. Precedence is explicit CLI over
+YAML over the existing defaults. `--web-enabled false` disables an enabling
+YAML block; unlike `--api-port`, `--web-port` alone does not enable a browser
+listener. With YAML omitted, web bind defaults to literal loopback and web port
+to `7464` after `--web-enabled true`. `serve` rejects an enabling override when
+YAML requests `web.mode: dedicated`; dedicated mode remains the separate
+`pi-daemon web` command and is never spawned implicitly.
+
+Bind, port, public-origin, proxy and TLS overrides pass through the same
+Dashboard validation as YAML and `pi-daemon web`, before the owner socket or any
+HTTP listener is published. Plaintext web remains loopback-only. API bearer
+sources and mutual exclusion are unchanged: bearer bytes are never accepted on
+argv, generated API and browser tokens remain owner-only regular files, and
+startup/status output reports only listener addresses and safe lifecycle state.
+
+Consumers should capability-gate these flags by pinning a Pi Daemon source
+revision that contains `bd-b05086`, or a release whose notes advertise embedded
+web CLI overrides. Do not infer support merely from protocol-v2 configured-open
+capabilities: service-launch CLI capability and session protocol capability are
+distinct contracts.
+
 When `--agent-dir` differs from Pi's normal agent directory and has no
 `auth.json`, first launch copies the normal owner-private `auth.json` once if it
 exists. `--auth-seed-file PATH` names a required source explicitly. The seed is

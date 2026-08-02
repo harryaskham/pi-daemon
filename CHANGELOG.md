@@ -3,6 +3,10 @@
 All notable changes to Pi Daemon are documented here. The project follows
 semantic versioning once a release tag is cut.
 
+## Unreleased
+
+- let `pi-daemon serve` enable or disable its embedded browser Dashboard through typed `--web-enabled`, `--web-bind` and `--web-port` overrides, with CLI-over-YAML precedence, loopback-safe defaults, pre-listener validation, unchanged bearer handling, and no hidden dedicated process
+
 ## 0.3.0 — 2026-07-29
 
 - make every root `web:*` npm wrapper preserve forwarded workspace-tool arguments through a bounded Node exec seam that inserts the inner `--` explicitly, so focused `--grep`/reporter flags and multiword values cannot be consumed as npm configuration and silently broaden a run

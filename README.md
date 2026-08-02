@@ -85,6 +85,13 @@ pi-daemon serve --socket /run/user/1000/pi-daemon.sock \
   --state-dir ~/.local/state/pi-daemon --allow-root ~/work \
   --api-bind 127.0.0.1 --api-port 7463
 
+# The same process can expose its embedded Dash on a distinct loopback port;
+# it shares the resident session catalog and never spawns `pi-daemon web`:
+pi-daemon serve --socket /run/user/1000/pi-daemon.sock \
+  --state-dir ~/.local/state/pi-daemon --allow-root ~/work \
+  --api-enabled true --api-bind 127.0.0.1 --api-port 7463 \
+  --web-enabled true --web-bind 127.0.0.1 --web-port 7464
+
 # Equivalent service values may come from
 # ~/.config/pi/daemon/INSTANCE/config.yaml; individual CLI flags override YAML.
 pi-daemon serve --config ~/.config/pi/daemon/work/config.yaml --instance work

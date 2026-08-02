@@ -523,6 +523,9 @@ process appears per wake.
   `hostToolAdapter`) is verifiable with the shipped CLI rather than hand-crafted
   NDJSON, with `--protocol-version` to pin one explicitly and unchanged v1 wire
   behavior for existing `handshake()` callers.
+- [x] `bd-b05086` Let one `serve` process enable or disable its embedded Dash
+  through typed CLI overrides, preserving socket-only omission, CLI-over-YAML
+  precedence, loopback-safe defaults, bearer secrecy and pre-listener failure.
 
 ## 18. Completed scaffold board (historical PD identifiers)
 

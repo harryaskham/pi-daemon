@@ -457,6 +457,9 @@ async function runServe(
       "api-token-fd",
       "api-allow-insecure-http",
       "public-origin",
+      "web-enabled",
+      "web-bind",
+      "web-port",
       "web-allow-insecure-http",
       "web-identity-provider-file",
       "trust-proxy-headers",
@@ -475,12 +478,29 @@ async function runServe(
     ...(cliInstance === undefined ? {} : { cliInstance }),
   });
   const config = loadedConfig.config;
+  const configuredWebMode = config.web?.mode ?? "embedded";
+  const cliWebEnabled = options.has("web-enabled")
+    ? booleanSetting(options, "web-enabled", undefined)!
+    : undefined;
+  if (cliWebEnabled === true && configuredWebMode !== "embedded") {
+    throw new CliUsageError(
+      "serve --web-enabled true requires embedded web mode; dedicated Dashboard mode runs through `pi-daemon web`",
+    );
+  }
   const embeddedWebEnabled =
-    config.web !== undefined &&
-    config.web.enabled !== false &&
-    (config.web.mode ?? "embedded") === "embedded";
+    cliWebEnabled ??
+    (config.web !== undefined &&
+      config.web.enabled !== false &&
+      configuredWebMode === "embedded");
+  const configuredWebBind = options.get("web-bind") ?? config.web?.bind;
+  const configuredWebPort = integerSetting(options, "web-port", config.web?.port, 0);
+  if (configuredWebPort !== undefined && configuredWebPort > 65_535) {
+    throw new CliUsageError("web-port must be between 0 and 65535");
+  }
   const embeddedTlsOverrides = dashboardTlsCliOverrides(options);
   const hasEmbeddedWebTransportOverride =
+    options.has("web-bind") ||
+    options.has("web-port") ||
     options.has("public-origin") ||
     options.has("web-allow-insecure-http") ||
     options.has("web-identity-provider-file") ||
@@ -705,7 +725,9 @@ async function runServe(
   // work must not expose a window where SIGTERM takes the default signal exit.
   const signalLatch = dependencies.waitForShutdown === undefined ? latchShutdownSignal() : undefined;
   try {
-    await server.start();
+    // Build and validate the embedded Dashboard before publishing any listener.
+    // In particular this ensures an invalid CLI bind/port/mode cannot leave the
+    // Unix or API surface briefly reachable during a failed startup.
     if (apiEnabled || embeddedWebEnabled) {
       dashboardRuntime = await EmbeddedDashboardServiceRuntime.create({
         loadedConfig,
@@ -729,6 +751,9 @@ async function runServe(
             ? { publicOrigin: requiredOption(options, "public-origin") }
             : {}),
           webOverrides: {
+            enabled: true,
+            ...(configuredWebBind === undefined ? {} : { bind: configuredWebBind }),
+            ...(configuredWebPort === undefined ? {} : { port: configuredWebPort }),
             ...(options.has("web-allow-insecure-http")
               ? {
                   allowInsecureHttp: booleanSetting(
@@ -763,6 +788,7 @@ async function runServe(
         });
       }
     }
+    await server.start();
     if (apiEnabled) {
       const loaded = loadServiceBearer({
         ...(apiTokenFile === undefined ? {} : { tokenFile: apiTokenFile }),
@@ -1163,6 +1189,7 @@ Usage:
                   [--api-enabled true|false] [--api-port PORT] [--api-bind HOST]
                   [--api-token-file PATH | --api-token-fd FD]
                   [--api-allow-insecure-http true|false]
+                  [--web-enabled true|false] [--web-bind HOST] [--web-port PORT]
                   [--public-origin URL] [--web-allow-insecure-http true|false]
                   [--web-identity-provider-file PATH]
                   [--trust-proxy-headers true|false]

@@ -28,6 +28,163 @@ async function freePort() {
   return address.port;
 }
 
+test("serve CLI can enable the embedded Dashboard when YAML omits web", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "pd-web-cli-"));
+  t.after(async () => rm(root, { recursive: true, force: true }));
+  const webPort = await freePort();
+  const work = join(root, "work");
+  const configDir = join(root, "config");
+  await Promise.all([
+    mkdir(work, { recursive: true, mode: 0o700 }),
+    mkdir(configDir, { recursive: true, mode: 0o700 }),
+  ]);
+  await writeFile(join(configDir, "auth.json"), "{}\n", { mode: 0o600 });
+  const configPath = join(configDir, "config.yaml");
+  await writeFile(configPath, `instance: embedded-cli-test
+stateDir: ../state
+socketPath: ../run/pi-daemon.sock
+agentDir: ../agent
+authSeedFile: ./auth.json
+allowedRoots: [../work]
+`, { mode: 0o600 });
+
+  const logs = [];
+  let fetched = false;
+  let callbackError;
+  const code = await runCli(
+    [
+      "serve",
+      "--config",
+      configPath,
+      "--instance",
+      "embedded-cli-test",
+      "--web-enabled",
+      "true",
+      "--web-bind",
+      "127.0.0.1",
+      "--web-port",
+      String(webPort),
+    ],
+    { stdout: () => {}, stderr: (line) => logs.push(line) },
+    {
+      factory: new EmptyFactory(),
+      waitForShutdown: async (shutdown) => {
+        try {
+          const response = await fetch(`http://127.0.0.1:${webPort}/dash/`);
+          assert.equal(response.status, 200);
+          fetched = true;
+        } catch (error) {
+          callbackError = error;
+        } finally {
+          await shutdown(500);
+        }
+      },
+    },
+  );
+  assertCliExitCode(code, 0, logs, "serve CLI embedded dashboard");
+  if (callbackError !== undefined) throw callbackError;
+  assert.equal(fetched, true);
+
+  // Omitting every web option preserves the historical socket-only behavior
+  // when YAML omits `web`.
+  const omittedLogs = [];
+  const omittedCode = await runCli(
+    ["serve", "--config", configPath, "--instance", "embedded-cli-test"],
+    { stdout: () => {}, stderr: (line) => omittedLogs.push(line) },
+    {
+      factory: new EmptyFactory(),
+      waitForShutdown: async (shutdown) => shutdown(500),
+    },
+  );
+  assertCliExitCode(omittedCode, 0, omittedLogs, "serve CLI web omission");
+  assert.ok(omittedLogs.some((line) => JSON.parse(line).dashboard?.enabled === false));
+});
+
+test("serve --web-enabled false overrides enabling YAML", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "pd-web-off-"));
+  t.after(async () => rm(root, { recursive: true, force: true }));
+  const webPort = await freePort();
+  const work = join(root, "work");
+  const configDir = join(root, "config");
+  await Promise.all([
+    mkdir(work, { recursive: true, mode: 0o700 }),
+    mkdir(configDir, { recursive: true, mode: 0o700 }),
+  ]);
+  await writeFile(join(configDir, "auth.json"), "{}\n", { mode: 0o600 });
+  const configPath = join(configDir, "config.yaml");
+  await writeFile(configPath, `instance: embedded-disable-test
+stateDir: ../state
+socketPath: ../run/pi-daemon.sock
+agentDir: ../agent
+authSeedFile: ./auth.json
+allowedRoots: [../work]
+web:
+  enabled: true
+  mode: embedded
+  bind: 127.0.0.1
+  port: ${webPort}
+`, { mode: 0o600 });
+
+  const logs = [];
+  const code = await runCli(
+    ["serve", "--config", configPath, "--instance", "embedded-disable-test", "--web-enabled", "false"],
+    { stdout: () => {}, stderr: (line) => logs.push(line) },
+    {
+      factory: new EmptyFactory(),
+      waitForShutdown: async (shutdown) => {
+        await assert.rejects(fetch(`http://127.0.0.1:${webPort}/dash/`));
+        await shutdown(500);
+      },
+    },
+  );
+  assertCliExitCode(code, 0, logs, "serve CLI disables embedded dashboard");
+  assert.ok(logs.some((line) => JSON.parse(line).dashboard?.enabled === false));
+});
+
+test("serve rejects invalid embedded web CLI options before publishing listeners", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "pd-web-bad-"));
+  t.after(async () => rm(root, { recursive: true, force: true }));
+  const work = join(root, "work");
+  const configDir = join(root, "config");
+  await Promise.all([
+    mkdir(work, { recursive: true, mode: 0o700 }),
+    mkdir(configDir, { recursive: true, mode: 0o700 }),
+  ]);
+  await writeFile(join(configDir, "auth.json"), "{}\n", { mode: 0o600 });
+  const configPath = join(configDir, "config.yaml");
+  const socketPath = join(root, "run", "pi-daemon.sock");
+  const writeConfig = async (webYaml = "") =>
+    writeFile(configPath, `instance: embedded-invalid-test
+stateDir: ../state
+socketPath: ../run/pi-daemon.sock
+agentDir: ../agent
+authSeedFile: ./auth.json
+allowedRoots: [../work]
+${webYaml}`, { mode: 0o600 });
+  const attempt = async (extraArgs) => {
+    let admitted = false;
+    const code = await runCli(
+      ["serve", "--config", configPath, "--instance", "embedded-invalid-test", ...extraArgs],
+      { stdout: () => {}, stderr: () => {} },
+      {
+        factory: new EmptyFactory(),
+        waitForShutdown: async () => {
+          admitted = true;
+        },
+      },
+    );
+    assert.notEqual(code, 0);
+    assert.equal(admitted, false);
+    await assert.rejects(stat(socketPath));
+  };
+
+  await writeConfig();
+  await attempt(["--web-enabled", "true", "--web-port", "65536"]);
+  await attempt(["--web-enabled", "true", "--web-bind", "0.0.0.0", "--web-port", "0"]);
+  await writeConfig("web:\n  enabled: true\n  mode: dedicated\n");
+  await attempt(["--web-enabled", "true"]);
+});
+
 test("serve starts and drains the packaged embedded Dashboard without exposing credentials", async (t) => {
   const root = await mkdtemp(join(tmpdir(), "pi-daemon-embedded-dash-"));
   t.after(async () => rm(root, { recursive: true, force: true }));
@@ -52,10 +209,8 @@ api:
   bind: 127.0.0.1
   port: ${apiPort}
 web:
-  enabled: true
+  enabled: false
   mode: embedded
-  bind: 127.0.0.1
-  port: ${webPort}
   inventory:
     roots: []
 `, { mode: 0o600 });
@@ -65,7 +220,19 @@ web:
   let index = "";
   let callbackError;
   const code = await runCli(
-    ["serve", "--config", configPath, "--instance", "embedded-test"],
+    [
+      "serve",
+      "--config",
+      configPath,
+      "--instance",
+      "embedded-test",
+      "--web-enabled",
+      "true",
+      "--web-bind",
+      "127.0.0.1",
+      "--web-port",
+      String(webPort),
+    ],
     { stdout: () => {}, stderr: (line) => logs.push(line) },
     {
       factory,
@@ -78,7 +245,9 @@ web:
         assert.match(index, /<div id="root"><\/div>/);
         assert.match(indexResponse.headers.get("content-security-policy"), /default-src 'none'/);
 
-        const apiToken = (await readFile(join(root, "state", "api-token"), "utf8")).trimEnd();
+        const apiTokenPath = join(root, "state", "api-token");
+        const apiToken = (await readFile(apiTokenPath, "utf8")).trimEnd();
+        assert.equal((await stat(apiTokenPath)).mode & 0o777, 0o600);
         const capabilitiesResponse = await fetch(
           `http://127.0.0.1:${apiPort}/v1/dashboard/capabilities`,
           { headers: { Authorization: `Bearer ${apiToken}` } },
@@ -227,7 +396,19 @@ web:
   });
   let admitted = false;
   const collisionCode = await runCli(
-    ["serve", "--config", configPath, "--instance", "embedded-test"],
+    [
+      "serve",
+      "--config",
+      configPath,
+      "--instance",
+      "embedded-test",
+      "--web-enabled",
+      "true",
+      "--web-bind",
+      "127.0.0.1",
+      "--web-port",
+      String(webPort),
+    ],
     { stdout: () => {}, stderr: () => {} },
     {
       factory: new EmptyFactory(),
