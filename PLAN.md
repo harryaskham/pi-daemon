@@ -759,6 +759,8 @@ implementation order. This list is a human-readable crosswalk.
   skipping/failing) when the build-free `test:unit` loop uses stale output.
 - [x] `bd-0ab4f6` — standardize bounded stderr-first Vitest diagnostics so
   passing-test measurements remain visible under the default reporter.
+- [x] `bd-8e7f56` — make every root `web:*` wrapper preserve forwarded inner
+  workspace-tool flags and multiword values instead of npm consuming them.
 - [x] `bd-79902f` — load-proof recovery-deadline and first-launch socket waits:
   deterministic per-open and aggregate recovery cases plus a generous bootstrap
   hang bound that still fails a crashed daemon immediately.

@@ -44,6 +44,11 @@ just dash-e2e         # whole suite, deliberate local acceptance
 just dash-e2e-smoke   # the bounded @smoke subset CI runs on every push
 ```
 
+All root `web:*` npm wrappers preserve forwarded tool arguments. For example,
+`npm run web:e2e:nix -- --grep 'dormant preview'` inserts the inner workspace
+argument boundary explicitly; npm cannot consume `--grep` as config and silently
+run the whole suite.
+
 See [`docs/dash-e2e.md`](docs/dash-e2e.md) for scenario filtering, the
 version-drift preflight, and wall-clock budget enforcement.
 

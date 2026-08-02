@@ -17,20 +17,21 @@ the audited nixpkgs browser bundle. No ad-hoc host packages are required.
 ## Run the suite
 
 ```bash
-# Whole suite.
-nix develop .#e2e --command npm run e2e:nix --workspace @harryaskham/pi-daemon-dash
+# Whole suite through the root convenience wrapper.
+nix develop .#e2e --command npm run web:e2e:nix
 
-# One scenario. Prefer a regex without literal spaces so argument forwarding
-# survives npm and just.
-nix develop .#e2e --command npm run e2e:nix --workspace @harryaskham/pi-daemon-dash -- --grep 'dormant.preview'
+# One scenario; root wrappers preserve the inner argument boundary and values.
+nix develop .#e2e --command npm run web:e2e:nix -- --grep 'dormant preview'
 
 # Same thing through the Justfile.
 just dash-e2e --grep 'dormant.preview'
 ```
 
-`npm run web:e2e:nix` runs the whole suite from the repository root. It does not
-forward extra Playwright arguments, because npm does not pass `--` through two
-levels of `npm run`; use the workspace form above when you need `--grep`.
+Root `web:*` convenience scripts forward trailing arguments through
+`scripts/run-web-workspace.mjs`, which inserts the inner npm `--` explicitly.
+Thus `npm run web:e2e:nix -- --grep 'dormant preview'` reaches Playwright as the
+three exact arguments `--grep`, `dormant preview`; npm never consumes the filter
+as configuration. The direct workspace form remains equivalent when useful.
 
 ## What the shell provides
 

@@ -267,7 +267,12 @@ test("the CI browser smoke subset is wired end to end and never selects an empty
   );
   assert.equal(
     rootManifest.scripts["web:e2e:smoke"],
-    "npm run e2e:smoke --workspace @harryaskham/pi-daemon-dash",
+    "node scripts/run-web-workspace.mjs e2e:smoke",
+  );
+  assert.doesNotMatch(
+    rootManifest.scripts["web:e2e:smoke"],
+    /npm run .*--workspace/,
+    "the nested npm form consumes forwarded Playwright flags as npm config",
   );
   assert.match(justfile, /dash-e2e-smoke:\n\s+nix develop \.#e2e --command npm run e2e:smoke/);
   const tagged = spec.match(/^test\("[^"]*@smoke"/gm) ?? [];

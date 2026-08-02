@@ -5,6 +5,7 @@ semantic versioning once a release tag is cut.
 
 ## 0.3.0 — 2026-07-29
 
+- make every root `web:*` npm wrapper preserve forwarded workspace-tool arguments through a bounded Node exec seam that inserts the inner `--` explicitly, so focused `--grep`/reporter flags and multiword values cannot be consumed as npm configuration and silently broaden a run
 - give the Vitest web suite a supported passing-test diagnostic channel: `reportTestDiagnostic` writes one bounded line through stderr (with an injectable writer and non-Node console fallback), so measurements stay visible under the default reporter without every author rediscovering raw `process.stderr.write` or changing global reporter behavior
 - make the deliberately build-free `test:unit` loop distinguish stale `dist/` from a real failure: postbuild records a bounded deterministic SHA-256 over sorted `src/**`, and the unit wrapper warns (without skipping or failing) when the marker is missing, invalid, or no longer matches, pointing to `test:src`/`build:src`
 - make packaged-SPA acceptances fail at the missing-build precondition with an explicit `npm run build` remediation instead of misreporting the absent `dist/dashboard/index.html` as an unexplained `/dash/` `404 !== 200`; the check remains a failure, never a skip
