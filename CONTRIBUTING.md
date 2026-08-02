@@ -121,7 +121,11 @@ having if it can actually answer.
 **Slow verification lives in its own workflow.** `ci.yml` is the fast lane and
 cancels superseded runs; `ci-macos.yml` has its own concurrency group and lets a
 push to `main` queue, so the slowest verification keeps its verdict instead of
-being killed by the next landing.
+being killed by the next landing. The load-sensitive service/process-tree proof
+lives in scheduled/manual `consumer-acceptance.yml`, not any push or install
+gate. The binfmt aarch64 closure publisher lives in `aarch64-cache.yml`; its
+active run is never cancelled, because a half-built run leaves consumers with no
+closure to substitute.
 
 They are separate because the first attempt at this put both in one workflow and
 merely scoped `cancel-in-progress` to pull requests. That deadlocked CI
@@ -131,7 +135,12 @@ it and dispatched no jobs at all — not a failure, no verdict of any kind, unti
 the next push replaced the pending run. Two rules follow.
 
 Do **not** put a slow or optional job in the fast lane's concurrency group and
-turn cancellation off to protect it. Give it its own workflow.
+turn cancellation off to protect it. Give it its own workflow. In particular,
+`test/acceptance/consumer-acceptance.test.mjs` stays outside
+`test/*.test.mjs` and the package `installCheck`; invoke its explicit npm script
+or its scheduled workflow instead. `test/ci-acceptance-boundaries.test.mjs`
+carries negative mutations for both that exclusion and the aarch64 exact-output
+publisher contract.
 
 Do **not** assume a job that never reports is flaky. Check that a runner
 carrying its labels is actually registered — `gh api repos/OWNER/REPO/actions/runners`

@@ -226,6 +226,8 @@
     "test": "npm run build && node --test --test-concurrency=1 test/*.test.mjs",
     "test:unit": "node scripts/source-dist-fingerprint.mjs && node --test --test-concurrency=1 test/*.test.mjs",
     "test:src": "npm run build:src && node --test --test-concurrency=1",
+    "test:consumer-acceptance": "npm run build && npm run test:consumer-acceptance:built",
+    "test:consumer-acceptance:built": "node --test --test-concurrency=1 test/acceptance/consumer-acceptance.test.mjs",
     "test:manual:inventory-performance": "npm run build && node --test test/manual/session-inventory-performance.test.mjs",
     "test:pi-sdk": "npm run build && node --test test/pi-sdk-compatibility.test.mjs",
     "test:live": "npm run build && node scripts/live-sdk-smoke.mjs",

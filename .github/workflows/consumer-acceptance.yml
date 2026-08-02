@@ -1,0 +1,145 @@
+name: Scheduled consumer acceptance
+
+# Process-tree and service-startup acceptance is intentionally not an install
+# gate. It runs on a real Linux host here, retains its diagnostics, and reports
+# a stable broken-on-main bead through the configured feedback hook when red.
+on:
+  schedule:
+    - cron: "17 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: scheduled-consumer-acceptance
+  cancel-in-progress: false
+
+jobs:
+  consumer:
+    name: Packaged consumer path
+    runs-on: [self-hosted, nix, x86_64-linux]
+    timeout-minutes: 60
+    environment: consumer-acceptance
+    steps:
+      - uses: actions/checkout@v7
+      - uses: cachix/install-nix-action@v31
+        with:
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: npm
+
+      - name: Prepare acceptance client
+        shell: bash
+        run: |
+          set -euo pipefail
+          log_dir="$RUNNER_TEMP/consumer-acceptance"
+          mkdir -p "$log_dir"
+          npm ci --ignore-scripts 2>&1 | tee "$log_dir/npm-ci.log"
+          npm run build 2>&1 | tee "$log_dir/source-build.log"
+
+      - name: Build the exact packaged target
+        id: package
+        shell: bash
+        run: |
+          set -euo pipefail
+          log_dir="$RUNNER_TEMP/consumer-acceptance"
+          output_file="$log_dir/package-output-path"
+          nix build --no-link --print-out-paths --print-build-logs \
+            '.#packages.x86_64-linux.pi-daemon' \
+            >"$output_file" 2> >(tee "$log_dir/package-build.log" >&2)
+          mapfile -t outputs < "$output_file"
+          if [[ "${#outputs[@]}" -ne 1 || "${outputs[0]}" != /nix/store/* ]]; then
+            echo '::error title=Unexpected package output::The exact package build must produce one Nix store path.'
+            exit 1
+          fi
+          echo "out=${outputs[0]}" >> "$GITHUB_OUTPUT"
+
+      - name: Exercise the installed service and neutral client
+        id: acceptance
+        continue-on-error: true
+        shell: bash
+        env:
+          PI_DAEMON_PACKAGED_BIN: ${{ steps.package.outputs.out }}/bin/pi-daemon
+        run: |
+          set -euo pipefail
+          npm run test:consumer-acceptance:built 2>&1 \
+            | tee "$RUNNER_TEMP/consumer-acceptance/consumer-acceptance.log"
+
+      - name: Report or dedupe a triage bead
+        if: steps.acceptance.outcome == 'failure'
+        shell: bash
+        env:
+          FEEDBACK_WEBHOOK_URL: ${{ secrets.PI_DAEMON_FEEDBACK_WEBHOOK_URL }}
+          FEEDBACK_WEBHOOK_TOKEN: ${{ secrets.PI_DAEMON_FEEDBACK_WEBHOOK_TOKEN }}
+        run: |
+          set -euo pipefail
+          log_dir="$RUNNER_TEMP/consumer-acceptance"
+          status_file="$log_dir/feedback-status.txt"
+          if [[ -z "$FEEDBACK_WEBHOOK_URL" || -z "$FEEDBACK_WEBHOOK_TOKEN" ]]; then
+            echo 'feedback credentials absent: set PI_DAEMON_FEEDBACK_WEBHOOK_URL and PI_DAEMON_FEEDBACK_WEBHOOK_TOKEN in the consumer-acceptance environment' \
+              | tee "$status_file"
+            echo '::warning title=Consumer acceptance feedback not configured::Failure logs will be retained; configure the dedicated environment secrets to file/dedupe a triage bead.'
+            exit 0
+          fi
+
+          payload="$log_dir/feedback-payload.json"
+          curl_config="$RUNNER_TEMP/pi-daemon-feedback-curl.conf"
+          export FEEDBACK_PAYLOAD="$payload" FEEDBACK_CURL_CONFIG="$curl_config"
+          node --input-type=module <<'NODE'
+          import { writeFile } from "node:fs/promises";
+
+          const runUrl = `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`;
+          const payload = {
+            title: "[broken-on-main] scheduled Pi Daemon consumer acceptance failing",
+            description: `The scheduled packaged consumer acceptance failed at ${runUrl}. Source revision: ${process.env.GITHUB_SHA}. Inspect the retained workflow artifact; no prompt, credential, or environment value is included here.`,
+            type: "bug",
+            priority: 1,
+            labels: ["test-failure", "broken-on-main", "ci", "consumer-acceptance"],
+          };
+          await writeFile(process.env.FEEDBACK_PAYLOAD, `${JSON.stringify(payload)}\n`, { mode: 0o600 });
+
+          const endpoint = process.env.FEEDBACK_WEBHOOK_URL;
+          const token = process.env.FEEDBACK_WEBHOOK_TOKEN;
+          if (/[\r\n]/.test(endpoint) || /[\r\n]/.test(token)) {
+            throw new Error("feedback credentials contain an invalid line break");
+          }
+          const parsedEndpoint = new URL(endpoint);
+          if (parsedEndpoint.protocol !== "https:" && parsedEndpoint.protocol !== "http:") {
+            throw new Error("feedback webhook URL must use HTTP or HTTPS");
+          }
+          const quote = (value) => value.replaceAll("\\", "\\\\").replaceAll('"', '\\"');
+          const config = [
+            'request = "POST"',
+            'header = "Content-Type: application/json"',
+            `header = "Authorization: Bearer ${quote(token)}"`,
+            `url = "${quote(endpoint)}"`,
+            "",
+          ].join("\n");
+          await writeFile(process.env.FEEDBACK_CURL_CONFIG, config, { mode: 0o600 });
+          NODE
+
+          trap 'rm -f "$curl_config"' EXIT
+          echo 'feedback delivery attempted' > "$status_file"
+          curl --fail-with-body --silent --show-error --retry 2 --retry-all-errors \
+            --max-time 30 --config "$curl_config" --data-binary "@$payload" \
+            > "$log_dir/feedback-response.json"
+          echo 'feedback delivered; the hook owns active-bead deduplication' > "$status_file"
+
+      - name: Retain bounded acceptance diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: consumer-acceptance-${{ github.run_id }}
+          path: ${{ runner.temp }}/consumer-acceptance
+          retention-days: 14
+          if-no-files-found: warn
+
+      - name: Preserve the acceptance verdict
+        if: steps.acceptance.outcome == 'failure'
+        shell: bash
+        run: |
+          echo '::error title=Scheduled consumer acceptance failed::See the retained artifact and triage feedback status.'
+          exit 1

@@ -65,11 +65,23 @@ The normal `npm test` suite additionally proves:
   redaction, extension trust, and API/body/frame capacity failures; and
 - exact Pi SDK/RPC compatibility inventories.
 
-`npm test` is the complete credential-free Node gate. `nix flake check` builds
-the pinned dependency closure, runs that suite in the package check, and verifies
-the package/app/install surface. On the constrained macOS host, acceptance uses
-`::1` for loopback tests to avoid unrelated Tailscale IPv4 `CLOSE_WAIT`
-exhaustion.
+`npm test` is the deterministic credential-free Node gate. `nix flake check`
+builds the pinned dependency closure, runs that suite in the package check, and
+verifies the package/app/install surface. Package install checks execute only
+the deterministic installed `pi-daemon version` and `pi-daemon-rpc --version`
+commands.
+
+The service-launch/process-tree consumer proof is deliberately separate because
+it depends on scheduler timing and observing a live descendant tree. Run it
+explicitly with `npm run test:consumer-acceptance`; the scheduled and manually
+dispatchable `.github/workflows/consumer-acceptance.yml` builds the exact
+x86_64-linux Nix package, points the client at its installed wrapper, retains
+logs, and reports a stable `broken-on-main` triage payload through the configured
+feedback webhook when it fails. It is not triggered by pushes or pull requests,
+so a load-sensitive consumer observation cannot make an ordinary source build,
+package build, or install red. On the constrained macOS host, continuous
+acceptance uses `::1` for loopback tests to avoid unrelated Tailscale IPv4
+`CLOSE_WAIT` exhaustion.
 
 ## Optional live-provider proof
 

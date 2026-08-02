@@ -44,8 +44,8 @@
         # prebuilt on x86_64 NixOS through binfmt and served from Attic. The full
         # Node suite is not QEMU-stable (RSS reports zero and bounded subprocess
         # tests exceed their real-hardware deadlines); Linux x86_64 and macOS CI
-        # remain the authoritative test gates. Installed binaries still run in
-        # doInstallCheck below on every platform.
+        # remain the authoritative test gates. Deterministic installed version
+        # checks still run in doInstallCheck below on every platform.
         doCheck = system != "aarch64-linux";
         checkPhase = ''
           runHook preCheck
@@ -76,13 +76,6 @@
         installCheckPhase = ''
           "$out/bin/pi-daemon" version | grep -Fx 0.3.0
           "$out/bin/pi-daemon-rpc" --version | grep -Fx 0.3.0
-          # Consumer acceptance against the artifact rather than the working
-          # tree (bd-d54659): launch the installed wrapper as a service and
-          # drive the neutral client path through it. Every other protocol test
-          # runs from dist/ in the source tree, which cannot see a defect whose
-          # cause is the difference between that tree and what ships.
-          PI_DAEMON_PACKAGED_BIN="$out/bin/pi-daemon" \
-            ${pkgs.nodejs_24}/bin/node --test test/consumer-acceptance.test.mjs
         '';
 
         meta = {

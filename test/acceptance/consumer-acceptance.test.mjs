@@ -1,16 +1,20 @@
-// Consumer acceptance for the neutral client path (bd-d54659).
+// Scheduled consumer acceptance for the neutral client path (bd-d54659,
+// bd-184815). It is deliberately outside test/*.test.mjs and package install
+// checks: launching a service and sampling its process tree are load-sensitive
+// integration work, not deterministic build/install acceptance.
 //
 // PLAN.md section "End-to-end consumer" calls for launching the packaged daemon
 // as a service, creating several logical agents, and proving no new process
 // appears per agent. The wake half needs credentials and stays opt-in; this is
 // the credential-free remainder, and it runs against whichever executable
-// PI_DAEMON_PACKAGED_BIN names, so the Nix lane can point it at the artifact.
+// PI_DAEMON_PACKAGED_BIN names, so the scheduled lane can point it at the exact
+// Nix artifact.
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
-import { PiDaemonClient } from "../dist/client.js";
+import { PiDaemonClient } from "../../dist/client.js";
 import {
   ACCEPTANCE_PROVIDER,
   countDescendants,
@@ -18,9 +22,9 @@ import {
   resolveDaemonCommand,
   startDaemon,
   stopDaemon,
-} from "./consumer-acceptance.mjs";
+} from "../consumer-acceptance.mjs";
 
-const repositoryRoot = fileURLToPath(new URL("..", import.meta.url));
+const repositoryRoot = fileURLToPath(new URL("../..", import.meta.url));
 
 function openRequest(sessionId, generation, cwd) {
   // The shape docs/integration.md publishes to consumers, kept literal so a

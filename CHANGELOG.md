@@ -5,6 +5,7 @@ semantic versioning once a release tag is cut.
 
 ## Unreleased
 
+- move process/timing-heavy packaged consumer acceptance out of continuous Node and package-install gates into an explicit scheduled/manual workflow with retained logs and feedback-backed broken-on-main triage, while a separate non-cancelling binfmt publisher pulls from and pushes the exact aarch64-linux package closure to signed private Attic for Nix-on-Droid consumers
 - let `pi-daemon serve` enable or disable its embedded browser Dashboard through typed `--web-enabled`, `--web-bind` and `--web-port` overrides, with CLI-over-YAML precedence, loopback-safe defaults, pre-listener validation, unchanged bearer handling, and no hidden dedicated process
 
 ## 0.3.0 — 2026-07-29

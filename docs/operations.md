@@ -640,24 +640,61 @@ build time. Node/npm can abort with `double free or corruption` when that build
 runs natively inside Nix-on-Droid, so Android devices must consume a prebuilt
 `aarch64-linux` closure rather than fall back to a local build.
 
-Build the exact locked flake package on an off-device NixOS host with
-`aarch64-linux` binfmt support, then push the output closure to the private
-Attic cache used by the devices:
+`.github/workflows/aarch64-cache.yml` is the normal publisher. Every accepted
+`main` revision (or an explicit workflow dispatch) gets a bounded job on a
+self-hosted `[self-hosted, nix, x86_64-linux]` runner. Its concurrency group does
+not cancel the active build when a newer revision lands. The job requires an
+enabled aarch64 binfmt registration, authenticates Attic in an isolated
+`XDG_CONFIG_HOME`, checks the destination cache, and runs `attic use` before the
+build. That adds the private signed substituter without removing
+`cache.nixos.org`; `require-sigs` remains enabled, so a bad or untrusted
+non-content-addressed closure fails instead of falling back to unsigned input.
+It builds exact `.#packages.aarch64-linux.pi-daemon`, executes both installed
+version commands under emulation, and passes the one output path returned by
+`nix build --no-link --print-out-paths` directly to `attic push -j1`.
+
+Create a protected GitHub environment named `pi-daemon-aarch64-cache` and set:
+
+- environment variable `PI_DAEMON_ATTIC_ENDPOINT`: the Attic API endpoint,
+  including `https://` (or a trusted-network `http://` endpoint);
+- environment variable `PI_DAEMON_ATTIC_CACHE`: the existing simple cache name;
+- environment secret `PI_DAEMON_ATTIC_TOKEN`: a least-privilege token with pull
+  and push access to that cache.
+
+Bootstrap the Attic cache once with an administrator outside GitHub Actions:
+create the cache, configure its intended visibility/retention, record the public
+signing key from `attic cache info SERVER:CACHE`, and issue the scoped CI token.
+Configure every Nix-on-Droid consumer with the cache's substitution URL and that
+exact public key in `trusted-public-keys` while retaining
+`https://cache.nixos.org/`. The CI token is publisher-only and must never be
+placed on a consumer. The self-hosted publisher needs Nix, `attic`,
+`extra-platforms = aarch64-linux`, and a working aarch64 binfmt interpreter.
+Workflow credentials are removed in an `always()` cleanup step; logs retain
+only the output path, public cache metadata, and command diagnostics.
+
+For a deliberate manual recovery, use the same sequence on an off-device NixOS
+host with binfmt and an isolated authenticated Attic configuration:
 
 ```console
-out=$(nix build --no-link --print-out-paths \
+attic login --set-default SERVER https://attic.example.invalid PULL_PUSH_TOKEN
+attic cache info SERVER:collective
+attic use SERVER:collective
+out=$(nix build --no-link --print-out-paths --option require-sigs true \
   github:harryaskham/pi-daemon/REV#packages.aarch64-linux.pi-daemon)
+"$out/bin/pi-daemon" version
+"$out/bin/pi-daemon-rpc" --version
 attic push -j1 SERVER:collective "$out"
 ```
 
 The aarch64 package still builds, prunes, and runs both installed version checks
 under emulation. The full Node test suite is intentionally gated on Linux
 x86_64 and macOS: under QEMU, RSS can report zero and bounded subprocess tests
-exceed their real-hardware deadlines. Skipping the emulated package check is not
-a native-Android fallback; cache population is required before switching Astra,
-SGU24, or another Nix-on-Droid consumer. A cache miss that starts `npm ci` on the
-device is an operational error—stop it, prebuild the same derivation off-device,
-push it, and retry the unchanged generation.
+exceed their real-hardware deadlines. The separate scheduled consumer
+acceptance is also not part of package installation. Skipping either under
+emulation is not a native-Android fallback; cache population is required before
+switching Astra, SGU24, or another Nix-on-Droid consumer. A cache miss that
+starts `npm ci` on the device is an operational error—stop it, prebuild the same
+derivation off-device, push it, and retry the unchanged generation.
 
 ## High-level session management
 

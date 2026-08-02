@@ -7,7 +7,7 @@
 // scripts/live-sdk-smoke.mjs already proves zero child-process calls, but it
 // does so in-process by patching node:child_process, which cannot see a process
 // the daemon's own runtime creates by another route. The consumer acceptance in
-// test/consumer-acceptance.test.mjs measures the real process tree, but stops
+// test/acceptance/consumer-acceptance.test.mjs measures the real process tree, but stops
 // at open because a wake needs credentials. This joins the two halves.
 //
 // Requires a provider credential and is therefore never part of the
