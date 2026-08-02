@@ -526,6 +526,9 @@ process appears per wake.
 - [x] `bd-b05086` Let one `serve` process enable or disable its embedded Dash
   through typed CLI overrides, preserving socket-only omission, CLI-over-YAML
   precedence, loopback-safe defaults, bearer secrecy and pre-listener failure.
+- [x] `bd-94ea1d` Detect PID/listener-healthy but HTTP-dead API and dedicated
+  Dash services with content-free semantic readiness, staged startup diagnostics,
+  one latched exact-instance recovery, and bounded native-supervisor escalation.
 
 ## 18. Completed scaffold board (historical PD identifiers)
 

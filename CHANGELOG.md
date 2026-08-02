@@ -5,6 +5,7 @@ semantic versioning once a release tag is cut.
 
 ## Unreleased
 
+- add semantic Home Manager supervision for API-enabled instances: a separate persistent watchdog distinguishes expected HTTP responses from PID/listener existence, records slow responses without restarting, skips dependent Dash load when the API is degraded, and permits one exact-instance graceful recovery per failure epoch with audited bounded launchd escalation; dedicated Dash gains a content-free fresh-backend `/dash/readyz`, and staged startup logs identify which recovery/listener boundary delayed readiness
 - move process/timing-heavy packaged consumer acceptance out of continuous Node and package-install gates into an explicit scheduled/manual workflow with retained logs and feedback-backed broken-on-main triage, while a separate non-cancelling binfmt publisher pulls from and pushes the exact aarch64-linux package closure to signed private Attic for Nix-on-Droid consumers
 - let `pi-daemon serve` enable or disable its embedded browser Dashboard through typed `--web-enabled`, `--web-bind` and `--web-port` overrides, with CLI-over-YAML precedence, loopback-safe defaults, pre-listener validation, unchanged bearer handling, and no hidden dedicated process
 

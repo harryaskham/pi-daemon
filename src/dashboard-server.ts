@@ -158,6 +158,8 @@ export interface DashboardServerOptions {
     maxStaticBytes?: number;
   };
   streamHandler?: DashboardStreamHandler;
+  /** Fresh dependency check for the content-free supervisor readiness route. */
+  readinessCheck?: () => Promise<void>;
   metrics?: HostMetrics;
 }
 
@@ -193,6 +195,7 @@ export interface DashboardServerFromConfigOptions {
     serverInstanceId: string;
     limits: DashboardLimits;
   }) => DashboardStreamHandler;
+  readinessCheck?: () => Promise<void>;
   webOverrides?: Partial<PiDaemonWebConfig>;
 }
 
@@ -237,6 +240,7 @@ export class DashboardServer {
   #tlsReloadTimer: NodeJS.Timeout | undefined;
   #tlsReloadRunning = false;
   readonly #streamHandler: DashboardStreamHandler | undefined;
+  readonly #readinessCheck: (() => Promise<void>) | undefined;
   readonly #server: HttpServer | HttpsServer;
   readonly #webSocketServer: WebSocketServer;
   readonly #upgradeSockets = new Set<Duplex>();
@@ -337,6 +341,7 @@ export class DashboardServer {
         });
     this.controllerCoordinator = options.controllerCoordinator ?? new DashboardControllerCoordinator();
     this.#streamHandler = options.streamHandler;
+    this.#readinessCheck = options.readinessCheck;
     const requestHandler = (request: IncomingMessage, response: ServerResponse): void => {
       void this.#handleRequest(request, response);
     };
@@ -516,6 +521,25 @@ export class DashboardServer {
             ...securityHeaders(),
             "Cache-Control": "no-store, max-age=0",
           });
+          response.end();
+          return;
+        }
+        if (url.pathname === "/dash/readyz") {
+          try {
+            await this.#readinessCheck?.();
+            if (timedOut || response.headersSent) return;
+            response.writeHead(204, {
+              ...securityHeaders(),
+              "Cache-Control": "no-store, max-age=0",
+            });
+          } catch {
+            if (timedOut || response.headersSent) return;
+            response.writeHead(503, {
+              ...securityHeaders(),
+              "Cache-Control": "no-store, max-age=0",
+              Connection: "close",
+            });
+          }
           response.end();
           return;
         }
@@ -1806,6 +1830,9 @@ export async function createDashboardServerFromConfig(
     serverInstanceId,
     limits: dashboardLimits,
     ...(streamHandler === undefined ? {} : { streamHandler }),
+    ...(options.readinessCheck === undefined
+      ? {}
+      : { readinessCheck: options.readinessCheck }),
   });
 }
 

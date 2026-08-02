@@ -33,6 +33,14 @@ import { createMultiplexerSchedulerGateway, SchedulerRuntime } from "./scheduler
 import { FileScheduleStore } from "./schedule-store.js";
 import { ProtocolServer } from "./server.js";
 import {
+  FileServiceWatchdogStore,
+  NativeSupervisorRecovery,
+  ServiceWatchdog,
+  type ServiceWatchdogStore,
+  type WatchdogRecovery,
+  type WatchdogSupervisor,
+} from "./service-watchdog.js";
+import {
   SessionCliUsageError,
   runHighLevelCli,
   type SessionCliDependencies,
@@ -51,6 +59,8 @@ export interface CliIo {
 export interface CliDependencies extends SessionCliDependencies {
   factory?: SessionFactory;
   selfUpdater?: PiDaemonSelfUpdater;
+  watchdogStore?: ServiceWatchdogStore;
+  watchdogRecovery?: WatchdogRecovery;
   waitForShutdown?: (shutdown: () => Promise<void>) => Promise<void>;
 }
 
@@ -86,6 +96,8 @@ export async function runCli(
         return await runServe(args, io, dependencies);
       case "web":
         return await runWeb(args, io, dependencies);
+      case "watchdog":
+        return await runWatchdog(args, io, dependencies);
       case "update":
         return await runSelfUpdate(["run", ...args], io, dependencies);
       case "self-update":
@@ -185,6 +197,134 @@ async function runSelfUpdate(
         : await updater.run();
   io.stdout(`${JSON.stringify(result, null, 2)}\n`);
   return 0;
+}
+
+async function runWatchdog(
+  args: string[],
+  io: CliIo,
+  dependencies: CliDependencies,
+): Promise<number> {
+  const options = parseOptions(
+    args,
+    new Set([
+      "instance",
+      "api-url",
+      "web-url",
+      "web-authority",
+      "state-file",
+      "supervisor",
+      "interval-ms",
+      "probe-timeout-ms",
+      "degraded-after-ms",
+      "failure-threshold",
+      "graceful-timeout-ms",
+      "once",
+    ]),
+  );
+  const instance = requiredOption(options, "instance");
+  const rawSupervisor = requiredOption(options, "supervisor");
+  if (!["launchd", "systemd", "supervisord"].includes(rawSupervisor)) {
+    throw new CliUsageError("--supervisor must be launchd, systemd, or supervisord");
+  }
+  const supervisor = rawSupervisor as WatchdogSupervisor;
+  const intervalMs = integerSetting(options, "interval-ms", 30_000, 1_000)!;
+  const probeTimeoutMs = integerSetting(options, "probe-timeout-ms", 5_000, 100)!;
+  const degradedAfterMs = integerSetting(options, "degraded-after-ms", 2_000, 1)!;
+  const failureThreshold = integerSetting(options, "failure-threshold", 2, 1)!;
+  const gracefulTimeoutMs = integerSetting(
+    options,
+    "graceful-timeout-ms",
+    30_000,
+    1_000,
+  )!;
+  const once = booleanSetting(options, "once", false) ?? false;
+  const watchdog = new ServiceWatchdog({
+    instance,
+    api: {
+      component: "api",
+      url: requiredOption(options, "api-url"),
+      expectedStatus: 401,
+    },
+    ...(options.has("web-url")
+      ? {
+          web: {
+            component: "web" as const,
+            url: requiredOption(options, "web-url"),
+            expectedStatus: 204,
+            ...(options.has("web-authority")
+              ? { authority: requiredOption(options, "web-authority") }
+              : {}),
+          },
+        }
+      : {}),
+    store:
+      dependencies.watchdogStore ??
+      new FileServiceWatchdogStore(requiredOption(options, "state-file")),
+    recovery:
+      dependencies.watchdogRecovery ??
+      new NativeSupervisorRecovery({
+        instance,
+        supervisor,
+        gracefulTimeoutMs,
+      }),
+    probeTimeoutMs,
+    degradedAfterMs,
+    failureThreshold,
+  });
+  const logger = new JsonLineLogger(io.stderr, {
+    component: "pi-daemon-watchdog",
+    instance,
+    supervisor,
+  });
+  const cycle = async (): Promise<Awaited<ReturnType<ServiceWatchdog["cycle"]>>> => {
+    const state = await watchdog.cycle();
+    for (const component of ["api", "web"] as const) {
+      const value = state.components[component];
+      if (value === undefined) continue;
+      logger.write(
+        value.lastProbe.phase === "healthy" ? "info" : "warn",
+        "pi_daemon_watchdog_probe",
+        {
+          target: component,
+          phase: value.lastProbe.phase,
+          latencyMs: value.lastProbe.latencyMs,
+          ...(value.lastProbe.statusCode === undefined
+            ? {}
+            : { statusCode: value.lastProbe.statusCode }),
+          ...(value.lastProbe.errorCode === undefined
+            ? {}
+            : { errorCode: value.lastProbe.errorCode }),
+          consecutiveFailures: value.consecutiveFailures,
+          recoveryAttempted: value.recoveryAttempted,
+          ...(value.lastRecovery === undefined ? {} : { lastRecovery: value.lastRecovery }),
+        },
+      );
+    }
+    return state;
+  };
+
+  if (once) {
+    const state = await cycle();
+    io.stdout(`${JSON.stringify(state, null, 2)}\n`);
+    return state.phase === "healthy" ? 0 : 75;
+  }
+
+  const signalLatch = latchShutdownSignal();
+  try {
+    while (true) {
+      try {
+        await cycle();
+      } catch (error) {
+        logger.write("error", "pi_daemon_watchdog_cycle_failed", {
+          errorCode: safeCliErrorCode(error),
+        });
+      }
+      const next = await waitForIntervalOrSignal(signalLatch.signal, intervalMs);
+      if (next !== "interval") return 0;
+    }
+  } finally {
+    signalLatch.dispose();
+  }
 }
 
 async function runProbe(args: string[], io: CliIo): Promise<number> {
@@ -332,13 +472,21 @@ async function runWeb(
   const signalLatch = dependencies.waitForShutdown === undefined ? latchShutdownSignal() : undefined;
   let server: DashboardServer | undefined;
   try {
+    const backendStage = beginStartupStage(logger, "remote_api_capabilities");
     const capabilities = await backend.capabilities();
+    backendStage({ dashVersion: capabilities.apiVersion });
+    const serverStage = beginStartupStage(logger, "dashboard_runtime");
     server = await createDashboardServerFromConfig({
       loadedConfig,
       stateDir,
       backend,
       serverInstanceId: `dedicated-${loadedConfig.instance}`,
       streamHandlerFactory: createDashboardStreamHandler,
+      // Unlike RemoteDashboardBackend.capabilities(), this must remain fresh:
+      // the supervisor route detects an API that disappeared after Dash start.
+      readinessCheck: async () => {
+        await client.request("GET", "/v1/capabilities", { timeoutMs: 5_000 });
+      },
       webOverrides: {
         enabled: true,
         mode: "dedicated",
@@ -371,7 +519,10 @@ async function runWeb(
       },
       ...(publicOrigin === undefined ? {} : { publicOrigin }),
     });
+    serverStage();
+    const listenerStage = beginStartupStage(logger, "dashboard_listener");
     const address = await server.start();
+    listenerStage();
     logger.write("info", "pi_daemon_web_ready", {
       instance: loadedConfig.instance,
       host: address.host,
@@ -571,6 +722,8 @@ async function runServe(
     configuredAuthSeedFile === undefined && agentDir !== defaultAgentDir
       ? join(defaultAgentDir, "auth.json")
       : configuredAuthSeedFile;
+  const logger = new JsonLineLogger(io.stderr, { component: "pi-daemon" });
+  const bootstrapStage = beginStartupStage(logger, "path_bootstrap");
   const bootstrap = await bootstrapServicePaths({
     stateDir,
     socketPath,
@@ -579,11 +732,11 @@ async function runServe(
     ...(authSeedFile === undefined ? {} : { authSeedFile }),
     authSeedRequired: configuredAuthSeedFile !== undefined,
   });
+  bootstrapStage({ auth: bootstrap.auth, bearerCreated: bootstrap.bearerCreated });
 
   const durability = new FileDurabilityStore({ stateDir });
   const catalog = new FileSessionCatalog({ stateDir });
   const tickets = new MutationTicketController(new FileMutationTicketStore({ stateDir }));
-  const logger = new JsonLineLogger(io.stderr, { component: "pi-daemon" });
   const idleSessionTtlMs =
     integerSetting(
       options,
@@ -637,6 +790,7 @@ async function runServe(
       ),
     },
   });
+  const recoveryStage = beginStartupStage(logger, "session_recovery");
   const recovery = await multiplexer.recover({
     queuedReplay: "background",
     ...optionalSetting(
@@ -658,6 +812,12 @@ async function runServe(
       ),
     ),
   });
+  recoveryStage({
+    retainedSessions: recovery.catalog.length,
+    restoredSessions: recovery.opened.length,
+    recoveryFailures: recovery.failures.length,
+  });
+  const scheduleStage = beginStartupStage(logger, "schedule_recovery");
   const scheduleStore = new FileScheduleStore({ stateDir });
   const scheduleImports = await importConfiguredSchedules({
     loadedConfig,
@@ -669,6 +829,7 @@ async function runServe(
     gateway: createMultiplexerSchedulerGateway(multiplexer),
   });
   await scheduler.start();
+  scheduleStage({ importedSchedules: scheduleImports.imported });
   const rpcAttachments = apiEnabled ? new RpcAttachmentManager(multiplexer) : undefined;
   let dashboardRuntime: EmbeddedDashboardServiceRuntime | undefined;
   let dashboardServer: DashboardServer | undefined;
@@ -729,6 +890,7 @@ async function runServe(
     // In particular this ensures an invalid CLI bind/port/mode cannot leave the
     // Unix or API surface briefly reachable during a failed startup.
     if (apiEnabled || embeddedWebEnabled) {
+      const dashboardRuntimeStage = beginStartupStage(logger, "dashboard_runtime");
       dashboardRuntime = await EmbeddedDashboardServiceRuntime.create({
         loadedConfig,
         stateDir,
@@ -739,6 +901,9 @@ async function runServe(
         schedules: scheduleStore,
         scheduler,
         ...(rpcAttachments === undefined ? {} : { rpcAttachments }),
+      });
+      dashboardRuntimeStage({
+        inventoryInitialized: dashboardRuntime.inventory.status().initialized,
       });
       if (embeddedWebEnabled) {
         dashboardServer = await createDashboardServerFromConfig({
@@ -788,7 +953,9 @@ async function runServe(
         });
       }
     }
+    const controlListenerStage = beginStartupStage(logger, "control_listener");
     await server.start();
+    controlListenerStage();
     if (apiEnabled) {
       const loaded = loadServiceBearer({
         ...(apiTokenFile === undefined ? {} : { tokenFile: apiTokenFile }),
@@ -811,9 +978,15 @@ async function runServe(
             config.api?.allowInsecureHttp,
           ) ?? false,
       });
+      const apiListenerStage = beginStartupStage(logger, "api_listener");
       apiAddress = await apiServer.start();
+      apiListenerStage();
     }
-    dashboardAddress = await dashboardServer?.start();
+    if (dashboardServer !== undefined) {
+      const dashboardListenerStage = beginStartupStage(logger, "dashboard_listener");
+      dashboardAddress = await dashboardServer.start();
+      dashboardListenerStage();
+    }
   } catch (error) {
     signalLatch?.dispose();
     scheduler.beginDrain();
@@ -961,6 +1134,39 @@ async function runServe(
     }
   }
   return 0;
+}
+
+async function waitForIntervalOrSignal(
+  signal: Promise<"SIGTERM" | "SIGINT">,
+  intervalMs: number,
+): Promise<"SIGTERM" | "SIGINT" | "interval"> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      signal,
+      new Promise<"interval">((resolveInterval) => {
+        timer = setTimeout(() => resolveInterval("interval"), intervalMs);
+      }),
+    ]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
+function beginStartupStage(
+  logger: JsonLineLogger,
+  stage: string,
+): (fields?: Record<string, unknown>) => void {
+  const startedAt = Date.now();
+  logger.write("info", "pi_daemon_startup_stage", { stage, state: "started" });
+  return (fields = {}) => {
+    logger.write("info", "pi_daemon_startup_stage", {
+      stage,
+      state: "completed",
+      elapsedMs: Math.max(0, Date.now() - startedAt),
+      ...fields,
+    });
+  };
 }
 
 function safeCliErrorCode(error: unknown): string {
@@ -1204,6 +1410,12 @@ Usage:
                 [--tls-cert-file PATH | --tls-cert-fd FD]
                 [--tls-key-file PATH | --tls-key-fd FD] [--tls-reload-ms N]
                 [--api-allow-insecure-http true|false]
+  pi-daemon watchdog --instance NAME --supervisor launchd|systemd|supervisord
+                     --api-url URL --state-file PATH [--web-url URL]
+                     [--web-authority HOST[:PORT]] [--interval-ms N]
+                     [--probe-timeout-ms N] [--degraded-after-ms N]
+                     [--failure-threshold N] [--graceful-timeout-ms N]
+                     [--once true|false]
   pi-daemon probe --socket PATH [--timeout-ms N] [--protocol-version 1.0|2.0]
   pi-daemon request --socket PATH --json REQUEST [--timeout-ms N]
   pi-daemon session list|show|create|update|delete [options]
@@ -1221,6 +1433,7 @@ Usage:
 Commands:
   serve    Start the owner-local Unix-socket service and optional embedded Dash.
   web      Start a dedicated Dash over the authenticated remote backend.
+  watchdog Probe API/Dash semantics and perform one latched instance-scoped recovery.
   probe    Perform a version/capability handshake. Negotiates the highest
            supported protocol version by default, so v2 capabilities such as
            configuredOpen and sessionDir are visible; pin one with

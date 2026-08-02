@@ -361,7 +361,23 @@ web:
         assert.equal(logs.join("").includes(webToken), false);
         assert.equal(logs.join("").includes(apiToken), false);
 
-        const ready = logs.map((line) => JSON.parse(line)).find((entry) => entry.event === "pi_daemon_ready");
+        const parsedLogs = logs.map((line) => JSON.parse(line));
+        const ready = parsedLogs.find((entry) => entry.event === "pi_daemon_ready");
+        const startupStages = parsedLogs
+          .filter((entry) => entry.event === "pi_daemon_startup_stage")
+          .map((entry) => `${entry.stage}:${entry.state}`);
+        for (const stage of [
+          "path_bootstrap",
+          "session_recovery",
+          "schedule_recovery",
+          "dashboard_runtime",
+          "control_listener",
+          "api_listener",
+          "dashboard_listener",
+        ]) {
+          assert.ok(startupStages.includes(`${stage}:started`), `${stage} must identify its start`);
+          assert.ok(startupStages.includes(`${stage}:completed`), `${stage} must identify completion`);
+        }
         assert.deepEqual(ready.dashboard, {
           enabled: true,
           host: "127.0.0.1",

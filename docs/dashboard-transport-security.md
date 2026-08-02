@@ -136,8 +136,12 @@ same options are available in instance YAML for embedded mode.
 
 `GET` or `HEAD /dash/healthz` is a content-free, no-store transport health probe.
 It still requires exact Host and proxy-header validation, but no browser login,
-and returns `204` only after the listener is ready. It reveals no session,
-inventory, credential, path, certificate, or backend data.
+and returns `204` only after the listener is ready. `/dash/readyz` has the same
+content-free authority boundary and additionally awaits one fresh dedicated API
+capability request: it returns `204` when the backend responds and an empty `503`
+when it does not. Embedded Dash has no remote dependency, so its ready route is
+identical to transport health. Neither route reveals session, inventory,
+credential, path, certificate, or backend data.
 
 Transport failure is fail-closed:
 

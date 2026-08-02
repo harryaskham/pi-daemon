@@ -272,6 +272,7 @@
     else eval.config.systemd.user.services;
   normalAlpha = normalServices."pi-daemon-alpha";
   normalAlphaWeb = normalServices."pi-daemon-web-alpha";
+  normalAlphaWatchdog = normalServices."pi-daemon-watchdog-alpha";
   normalBeta = normalServices."pi-daemon-beta";
   normalAlphaCommand =
     if pkgs.stdenv.isDarwin
@@ -289,6 +290,10 @@
     if pkgs.stdenv.isDarwin
     then builtins.concatStringsSep " " normalAlphaWeb.config.ProgramArguments
     else normalAlphaWeb.Service.ExecStart;
+  normalAlphaWatchdogCommand =
+    if pkgs.stdenv.isDarwin
+    then builtins.concatStringsSep " " normalAlphaWatchdog.config.ProgramArguments
+    else normalAlphaWatchdog.Service.ExecStart;
   normalBetaCommand =
     if pkgs.stdenv.isDarwin
     then builtins.concatStringsSep " " normalBeta.config.ProgramArguments
@@ -311,6 +316,10 @@
   supervisorAlphaWeb =
     if pkgs.stdenv.isLinux
     then evalSupervisord.config.supervisord.programs."pi-daemon-web-alpha"
+    else null;
+  supervisorAlphaWatchdog =
+    if pkgs.stdenv.isLinux
+    then evalSupervisord.config.supervisord.programs."pi-daemon-watchdog-alpha"
     else null;
 in
   assert assertionsOk;
@@ -366,6 +375,19 @@ in
       printf '%s\n' ${lib.escapeShellArg normalAlphaWebCommand} | grep -F -- '/run/secrets/pi-alpha-dash-key'
       printf '%s\n' ${lib.escapeShellArg normalAlphaWebCommand} | grep -F -- '--tls-reload-ms 15000'
       printf '%s\n' ${lib.escapeShellArg normalAlphaWebCommand} | grep -F -- '/home/tester/.state/pi-alpha-web'
+      printf '%s\n' ${lib.escapeShellArg normalAlphaWatchdogCommand} | grep -F -- 'watchdog'
+      printf '%s\n' ${lib.escapeShellArg normalAlphaWatchdogCommand} | grep -F -- '--supervisor'
+      printf '%s\n' ${lib.escapeShellArg normalAlphaWatchdogCommand} | grep -F -- '--api-url'
+      printf '%s\n' ${lib.escapeShellArg normalAlphaWatchdogCommand} | grep -F -- 'http://127.0.0.1:17463/'
+      printf '%s\n' ${lib.escapeShellArg normalAlphaWatchdogCommand} | grep -F -- '--web-url'
+      printf '%s\n' ${lib.escapeShellArg normalAlphaWatchdogCommand} | grep -F -- 'https://127.0.0.1:17465/dash/readyz'
+      printf '%s\n' ${lib.escapeShellArg normalAlphaWatchdogCommand} | grep -F -- '--web-authority'
+      printf '%s\n' ${lib.escapeShellArg normalAlphaWatchdogCommand} | grep -F -- 'dash.example.test'
+      printf '%s\n' ${lib.escapeShellArg normalAlphaWatchdogCommand} | grep -F -- '/home/tester/.state/pi-alpha/watchdog-v1.json'
+      ${lib.optionalString pkgs.stdenv.isLinux ''
+        test ${lib.escapeShellArg normalAlpha.Service.TimeoutStopSec} = 30000ms
+        test ${lib.escapeShellArg normalAlphaWeb.Service.TimeoutStopSec} = 30000ms
+      ''}
       if printf '%s\n' ${lib.escapeShellArg normalBetaCommand} | grep -F -- '--api-token-file'; then
         echo 'default managed bearer must not enter argv' >&2
         exit 1
@@ -375,6 +397,9 @@ in
         test ${lib.escapeShellArg supervisorAlpha.autorestart} = true
         printf '%s\n' ${lib.escapeShellArg supervisorAlphaWeb.command} | grep -F -- '17465'
         test ${lib.escapeShellArg supervisorAlphaWeb.autorestart} = true
+        test ${lib.escapeShellArg (toString supervisorAlphaWeb.stopwaitsecs)} = 30
+        printf '%s\n' ${lib.escapeShellArg supervisorAlphaWatchdog.command} | grep -F -- 'supervisord'
+        test ${lib.escapeShellArg supervisorAlphaWatchdog.autorestart} = true
       ''}
       touch "$out"
     ''

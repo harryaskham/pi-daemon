@@ -47,6 +47,7 @@ export * from "./schedule-config.js";
 export * from "./schedule-store.js";
 export * from "./scheduler-runtime.js";
 export * from "./server.js";
+export * from "./service-watchdog.js";
 export * from "./source-fingerprint.js";
 export * from "./session-api.js";
 export * from "./self-update.js";

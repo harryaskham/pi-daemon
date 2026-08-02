@@ -127,8 +127,9 @@ sources. Native TLS is required for a non-loopback bind, enforces matching SNI,
 Host, Origin and optional loopback proxy evidence, emits HSTS with Secure
 `__Host-` cookies, and atomically reloads valid file-backed pairs while retaining
 the last good context on failure. `GET|HEAD /dash/healthz` is a content-free
-no-store transport probe. Certificate/key bytes never enter YAML, argv, Nix
-store values, status, or logs. See
+no-store transport probe; `/dash/readyz` additionally performs one fresh,
+bounded dedicated-backend check while revealing no backend data. Certificate/key
+bytes never enter YAML, argv, Nix store values, status, or logs. See
 [Dashboard transport security](docs/dashboard-transport-security.md).
 
 Every browser HTTP, inventory, ticket, draft, schedule, Rich, and TUI boundary
@@ -246,7 +247,11 @@ use `nixpkgs.follows` so Pi Daemon shares their own evaluated package set. A
 Cacophony node can therefore consume the reproducible package without copying
 service source into Cacophony. The Home Manager module creates independently
 named user services through systemd on Linux, launchd on Darwin, or conditional
-supervisord on nix-on-droid; see [Operations](docs/operations.md#home-manager-service-instances).
+supervisord on nix-on-droid. API-enabled instances also receive a separate
+semantic watchdog by default: it distinguishes HTTP responses from a mere PID or
+listener, records slow responses without restarting, and permits one exact-instance
+recovery per failure epoch rather than forming a restart storm. See
+[Operations](docs/operations.md#home-manager-service-instances).
 An opt-in stable service shim can prefer verified atomic releases from
 `~/.local/bin/pi-daemon` while retaining the immutable Nix package as fallback,
 so subsequent `pi-daemon update` runs do not require a full system rebuild; see

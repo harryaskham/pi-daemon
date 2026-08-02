@@ -149,6 +149,7 @@ async function fixture(t, overrides = {}) {
     ...(overrides.tls === undefined ? {} : { tls: overrides.tls }),
     limits,
     ...(overrides.streamHandler === undefined ? {} : { streamHandler: overrides.streamHandler }),
+    ...(overrides.readinessCheck === undefined ? {} : { readinessCheck: overrides.readinessCheck }),
   });
   const address = await server.start();
   t.after(async () => server.stop());
@@ -344,6 +345,28 @@ test("loads bounded owner-controlled TLS file and descriptor sources", async (t)
     await certHandle.close();
     await keyHandle.close();
   }
+});
+
+test("content-free readiness distinguishes a live listener from an unavailable backend", async (t) => {
+  let backendAvailable = true;
+  const direct = await fixture(t, {
+    readinessCheck: async () => {
+      if (!backendAvailable) throw new Error("fixture backend unavailable");
+    },
+  });
+  const health = await fetch(`${direct.origin}/dash/healthz`);
+  const ready = await fetch(`${direct.origin}/dash/readyz`);
+  assert.equal(health.status, 204);
+  assert.equal(ready.status, 204);
+  assert.equal(await ready.text(), "");
+
+  backendAvailable = false;
+  const stillListening = await fetch(`${direct.origin}/dash/healthz`);
+  const unavailable = await fetch(`${direct.origin}/dash/readyz`);
+  assert.equal(stillListening.status, 204);
+  assert.equal(unavailable.status, 503);
+  assert.equal(await unavailable.text(), "");
+  assert.equal(unavailable.headers.get("cache-control"), "no-store, max-age=0");
 });
 
 test("native HTTPS enforces SNI, HSTS, secure cookies, downgrade and proxy authority", async (t) => {

@@ -78,7 +78,7 @@ test("dedicated web CLI authenticates remotely and serves only browser credentia
       return;
     }
     authenticatedRequests += 1;
-    if (request.url !== "/v1/dashboard/capabilities") {
+    if (!["/v1/dashboard/capabilities", "/v1/capabilities"].includes(request.url)) {
       response.writeHead(404, { "Content-Type": "application/json" });
       response.end(JSON.stringify({ error: { code: "not_found", message: "not found", retryable: false } }));
       return;
@@ -151,6 +151,14 @@ web:
         assert.equal(response.status, 200);
         assert.match(response.body, /<div id="root"><\/div>/);
         assert.equal(response.headers["strict-transport-security"], "max-age=31536000");
+        const supervisorReady = await httpsCall({ port: webPort, path: "/dash/readyz" });
+        assert.equal(supervisorReady.status, 204);
+        await new Promise((resolve) => upstream.close(() => resolve()));
+        const backendUnavailable = await httpsCall({ port: webPort, path: "/dash/readyz" });
+        assert.equal(backendUnavailable.status, 503);
+        assert.equal(backendUnavailable.body, "");
+        const transportStillHealthy = await httpsCall({ port: webPort, path: "/dash/healthz" });
+        assert.equal(transportStillHealthy.status, 204);
         const webTokenPath = join(root, "daemon-state", "dedicated-web", "web-token");
         await assert.rejects(readFile(webTokenPath, "utf8"), { code: "ENOENT" });
         const loginBody = JSON.stringify({
@@ -186,6 +194,6 @@ web:
     },
   );
   assertCliExitCode(code, 0, logs, "dash serve dedicated");
-  assert.equal(authenticatedRequests, 1);
+  assert.equal(authenticatedRequests, 2);
   await assert.rejects(fetch(`http://127.0.0.1:${webPort}/dash/`));
 });

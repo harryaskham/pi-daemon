@@ -127,6 +127,14 @@ authentication, or recovery readiness is degraded; inspect `journalctl --user
 -u pi-daemon-operator` on Linux or the configured stdout/stderr logs on Darwin
 before admitting sessions.
 
+Because this instance enables its API, Home Manager also starts the independent
+`pi-daemon-watchdog-operator` service (Darwin label
+`com.pi-daemon.watchdog.operator`). It probes for semantic HTTP responses rather
+than trusting the PID/listener. Slow responses are recorded as degraded without
+recovery; two hard failures permit one exact-instance graceful restart and then
+latch degraded until a successful response, preventing load-driven restart
+storms. Its owner-private decision is `STATE_DIR/watchdog-v1.json`.
+
 ## 3. Call the authenticated API without a bearer in argv
 
 The helper below passes the authorization header to `curl` through a private

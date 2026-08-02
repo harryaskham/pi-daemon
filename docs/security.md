@@ -65,7 +65,7 @@ project code or tools.
 - forwarded authority is never inferred: RFC `Forwarded` is rejected, and exact `X-Forwarded-Host`/`Proto`/`Port` evidence is accepted only from loopback after explicit trust
 - HTTPS public origins emit HSTS and use a `Secure` `__Host-` browser cookie; non-loopback HTTP origins require an explicit development override and still cannot enable a remote plaintext listener
 - certificate and private-key bytes are bounded, never enter YAML/argv/Nix store/status/logs, and file targets are owner-controlled with owner-only private-key mode
-- content-free `/dash/healthz` still enforces Host/proxy authority and reveals no session, credential, path, certificate, or backend state
+- content-free `/dash/healthz` and fresh-backend `/dash/readyz` still enforce Host/proxy authority and reveal no session, credential, path, certificate, or backend state; readiness is expressed only as 204/503
 - packaged Dash assets are hash-named and regular/non-writable, with traversal/symlink rejection and a deny-by-default CSP
 - Dash workspace/settings files are owner-only, atomic, bounded, revision/ETag checked, and UI overlays cannot mutate service authority
 - lazy Dash session drafts use a separate owner-private atomic store; create/get/cancel and owner-default resolution perform no runtime/model/tool work, private first-message content never enters browser resources, and prompt-submitting crash/cancel races become indeterminate rather than replayed

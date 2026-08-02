@@ -120,6 +120,48 @@
         default = 5;
         description = "Delay before the native supervisor restarts a failed foreground daemon.";
       };
+      watchdog = {
+        enable = lib.mkOption {
+          type = lib.types.bool;
+          default = config.api.enable;
+          description = "Run an external semantic HTTP watchdog when the API is enabled. It records degraded latency and permits only one recovery attempt until a healthy response resets the latch.";
+        };
+        intervalMs = lib.mkOption {
+          type = lib.types.ints.positive;
+          default = 30000;
+          description = "Delay between semantic API/Dash watchdog probes.";
+        };
+        probeTimeoutMs = lib.mkOption {
+          type = lib.types.ints.positive;
+          default = 5000;
+          description = "Per-probe response deadline. Consecutive failures are required before recovery.";
+        };
+        degradedAfterMs = lib.mkOption {
+          type = lib.types.ints.positive;
+          default = 2000;
+          description = "Successful responses slower than this are recorded as degraded without triggering recovery.";
+        };
+        failureThreshold = lib.mkOption {
+          type = lib.types.ints.positive;
+          default = 2;
+          description = "Consecutive hard failures required before the one-shot recovery attempt.";
+        };
+        gracefulTimeoutMs = lib.mkOption {
+          type = lib.types.ints.positive;
+          default = 30000;
+          description = "Bound for graceful supervisor termination before native forced escalation.";
+        };
+        stdoutLog = lib.mkOption {
+          type = lib.types.str;
+          default = "${config.stateDir}/pi-daemon-watchdog.log";
+          description = "Semantic watchdog launchd/supervisord stdout log path.";
+        };
+        stderrLog = lib.mkOption {
+          type = lib.types.str;
+          default = "${config.stateDir}/pi-daemon-watchdog.err.log";
+          description = "Semantic watchdog launchd/supervisord stderr log path.";
+        };
+      };
       stdoutLog = lib.mkOption {
         type = lib.types.str;
         default = "${config.stateDir}/pi-daemon.log";
@@ -411,20 +453,84 @@
 
   serviceName = name: "pi-daemon-${name}";
   webServiceName = name: "pi-daemon-web-${name}";
+  watchdogServiceName = name: "pi-daemon-watchdog-${name}";
   dedicatedWebEnv = name: instance:
     (serviceEnv name instance)
     // {
       PI_DAEMON_WEB_STATE_DIR = instance.dedicatedWeb.stateDir;
     };
   enabledDedicatedWebInstances = lib.filterAttrs (_: instance: instance.dedicatedWeb.enable) enabledInstances;
+  enabledWatchdogInstances = lib.filterAttrs (_: instance: instance.watchdog.enable) enabledInstances;
   enabledList = lib.attrValues enabledInstances;
   enabledApiInstances = lib.filter (instance: instance.api.enable) enabledList;
   enabledDedicatedWebList = lib.attrValues enabledDedicatedWebInstances;
+  enabledWatchdogList = lib.attrValues enabledWatchdogInstances;
   enabledConfigInstances = lib.filter (instance: instance.configFile != null) enabledList;
   effectiveApiTokenFile = instance:
     if instance.api.tokenFile == null
     then "${instance.stateDir}/api-token"
     else instance.api.tokenFile;
+  watchdogWebUrl = instance: let
+    host =
+      if instance.dedicatedWeb.bind == "0.0.0.0"
+      then "127.0.0.1"
+      else if instance.dedicatedWeb.bind == "::"
+      then "::1"
+      else instance.dedicatedWeb.bind;
+    renderedHost =
+      if lib.hasInfix ":" host
+      then "[${host}]"
+      else host;
+    scheme =
+      if instance.dedicatedWeb.tls.certFile == null
+      then "http"
+      else "https";
+  in "${scheme}://${renderedHost}:${toString instance.dedicatedWeb.port}/dash/readyz";
+  publicOriginAuthority = instance: let
+    match =
+      if instance.dedicatedWeb.publicOrigin == null
+      then null
+      else builtins.match "^https?://([^/]+)$" instance.dedicatedWeb.publicOrigin;
+  in
+    if match == null
+    then null
+    else builtins.head match;
+  watchdogArgs = supervisor: name: instance:
+    [
+      runtimeExecutable
+      "watchdog"
+      "--instance"
+      name
+      "--supervisor"
+      supervisor
+      "--api-url"
+      "${apiClientUrl instance}/"
+      "--state-file"
+      "${instance.stateDir}/watchdog-v1.json"
+      "--interval-ms"
+      (toString instance.watchdog.intervalMs)
+      "--probe-timeout-ms"
+      (toString instance.watchdog.probeTimeoutMs)
+      "--degraded-after-ms"
+      (toString instance.watchdog.degradedAfterMs)
+      "--failure-threshold"
+      (toString instance.watchdog.failureThreshold)
+      "--graceful-timeout-ms"
+      (toString instance.watchdog.gracefulTimeoutMs)
+    ]
+    ++ lib.optionals instance.dedicatedWeb.enable [
+      "--web-url"
+      (watchdogWebUrl instance)
+    ]
+    ++ lib.optionals (
+      instance.dedicatedWeb.enable
+      && publicOriginAuthority instance != null
+    ) [
+      "--web-authority"
+      (publicOriginAuthority instance)
+    ];
+  watchdogCommand = supervisor: name: instance:
+    lib.concatStringsSep " " (map lib.escapeShellArg (watchdogArgs supervisor name instance));
   unique = values: builtins.length values == builtins.length (lib.unique values);
   protectedExtraArgs = [
     "--config"
@@ -523,6 +629,21 @@ in {
           })
           enabledInstances)
         ++ (lib.mapAttrsToList (name: instance: {
+            assertion = !instance.watchdog.enable || instance.api.enable;
+            message = "services.pi-daemon.instances.${name}: api.enable is required for the semantic watchdog";
+          })
+          enabledInstances)
+        ++ (lib.mapAttrsToList (name: instance: {
+            assertion =
+              instance.watchdog.intervalMs
+              >= 1000
+              && instance.watchdog.probeTimeoutMs >= 100
+              && instance.watchdog.gracefulTimeoutMs >= 1000
+              && instance.watchdog.degradedAfterMs <= instance.watchdog.probeTimeoutMs;
+            message = "services.pi-daemon.instances.${name}: watchdog requires intervalMs >= 1000, probeTimeoutMs >= 100, gracefulTimeoutMs >= 1000, and degradedAfterMs <= probeTimeoutMs";
+          })
+          enabledInstances)
+        ++ (lib.mapAttrsToList (name: instance: {
             assertion = !instance.dedicatedWeb.enable || instance.api.enable;
             message = "services.pi-daemon.instances.${name}: api.enable is required for dedicatedWeb";
           })
@@ -576,6 +697,7 @@ in {
             assertion = unique (
               (map (instance: instance.stdoutLog) enabledList)
               ++ (map (instance: instance.dedicatedWeb.stdoutLog) enabledDedicatedWebList)
+              ++ (map (instance: instance.watchdog.stdoutLog) enabledWatchdogList)
             );
             message = "enabled Pi Daemon and dedicated Dash services must use unique stdoutLog values";
           }
@@ -583,6 +705,7 @@ in {
             assertion = unique (
               (map (instance: instance.stderrLog) enabledList)
               ++ (map (instance: instance.dedicatedWeb.stderrLog) enabledDedicatedWebList)
+              ++ (map (instance: instance.watchdog.stderrLog) enabledWatchdogList)
             );
             message = "enabled Pi Daemon and dedicated Dash services must use unique stderrLog values";
           }
@@ -621,6 +744,8 @@ in {
               run install -d -m 700 ${lib.escapeShellArg (builtins.dirOf instance.socketPath)}
               run install -d -m 700 ${lib.escapeShellArg (builtins.dirOf instance.stdoutLog)}
               run install -d -m 700 ${lib.escapeShellArg (builtins.dirOf instance.stderrLog)}
+              run install -d -m 700 ${lib.escapeShellArg (builtins.dirOf instance.watchdog.stdoutLog)}
+              run install -d -m 700 ${lib.escapeShellArg (builtins.dirOf instance.watchdog.stderrLog)}
             ''
           ))
         enabledInstances)
@@ -650,6 +775,7 @@ in {
               ExecStart = command name instance;
               Restart = "always";
               RestartSec = instance.restartSec;
+              TimeoutStopSec = "${toString instance.watchdog.gracefulTimeoutMs}ms";
               UMask = "0077";
               StandardOutput = "journal";
               StandardError = "journal";
@@ -672,6 +798,7 @@ in {
               ExecStart = dedicatedWebCommand name instance;
               Restart = "always";
               RestartSec = instance.restartSec;
+              TimeoutStopSec = "${toString instance.watchdog.gracefulTimeoutMs}ms";
               UMask = "0077";
               StandardOutput = "journal";
               StandardError = "journal";
@@ -679,7 +806,33 @@ in {
             };
             Install.WantedBy = ["default.target"];
           })
-        enabledDedicatedWebInstances);
+        enabledDedicatedWebInstances)
+        // (lib.mapAttrs' (name: instance:
+          lib.nameValuePair (watchdogServiceName name) {
+            Unit = {
+              Description = "Pi Daemon semantic watchdog ${name}";
+              Documentation = "https://github.com/harryaskham/pi-daemon";
+              After =
+                ["${serviceName name}.service"]
+                ++ lib.optionals instance.dedicatedWeb.enable ["${webServiceName name}.service"];
+              Wants =
+                ["${serviceName name}.service"]
+                ++ lib.optionals instance.dedicatedWeb.enable ["${webServiceName name}.service"];
+            };
+            Service = {
+              Type = "simple";
+              Environment = lib.mapAttrsToList (key: value: "${key}=${value}") (serviceEnv name instance);
+              ExecStart = watchdogCommand "systemd" name instance;
+              Restart = "always";
+              RestartSec = instance.restartSec;
+              UMask = "0077";
+              StandardOutput = "journal";
+              StandardError = "journal";
+              SyslogIdentifier = watchdogServiceName name;
+            };
+            Install.WantedBy = ["default.target"];
+          })
+        enabledWatchdogInstances);
     })
 
     (lib.mkIf isDarwin {
@@ -715,7 +868,23 @@ in {
               StandardErrorPath = instance.dedicatedWeb.stderrLog;
             };
           })
-        enabledDedicatedWebInstances);
+        enabledDedicatedWebInstances)
+        // (lib.mapAttrs' (name: instance:
+          lib.nameValuePair (watchdogServiceName name) {
+            enable = true;
+            config = {
+              Label = "com.pi-daemon.watchdog.${name}";
+              ProgramArguments = watchdogArgs "launchd" name instance;
+              EnvironmentVariables = serviceEnv name instance;
+              RunAtLoad = true;
+              KeepAlive = true;
+              ThrottleInterval = instance.restartSec;
+              ProcessType = "Background";
+              StandardOutPath = instance.watchdog.stdoutLog;
+              StandardErrorPath = instance.watchdog.stderrLog;
+            };
+          })
+        enabledWatchdogInstances);
     })
 
     (lib.mkIf isLinux (lib.optionalAttrs hasSupervisord {
@@ -728,6 +897,8 @@ in {
             );
             autorestart = "true";
             startsecs = 0;
+            stopsignal = "TERM";
+            stopwaitsecs = builtins.div (instance.watchdog.gracefulTimeoutMs + 999) 1000;
             stdout_logfile = instance.stdoutLog;
             stderr_logfile = instance.stderrLog;
           })
@@ -740,10 +911,24 @@ in {
             );
             autorestart = "true";
             startsecs = 0;
+            stopsignal = "TERM";
+            stopwaitsecs = builtins.div (instance.watchdog.gracefulTimeoutMs + 999) 1000;
             stdout_logfile = instance.dedicatedWeb.stdoutLog;
             stderr_logfile = instance.dedicatedWeb.stderrLog;
           })
-        enabledDedicatedWebInstances);
+        enabledDedicatedWebInstances)
+        // (lib.mapAttrs' (name: instance:
+          lib.nameValuePair (watchdogServiceName name) {
+            command = watchdogCommand "supervisord" name instance;
+            environment = lib.concatStringsSep "," (
+              lib.mapAttrsToList (key: value: "${key}=\"${value}\"") (serviceEnv name instance)
+            );
+            autorestart = "true";
+            startsecs = 0;
+            stdout_logfile = instance.watchdog.stdoutLog;
+            stderr_logfile = instance.watchdog.stderrLog;
+          })
+        enabledWatchdogInstances);
     }))
   ]);
 }

@@ -373,6 +373,10 @@ terminates quietly with status 0; unrelated stream errors remain fatal.
 
 The service emits structured JSON lifecycle logs to stderr. It never logs
 prompts, model output, credentials, or private state/agent/workload paths.
+`pi_daemon_startup_stage` emits `started` before each potentially long recovery,
+schedule, Dashboard-runtime, and listener boundary, then `completed` with a
+bounded elapsed time. If startup takes minutes, the last started stage identifies
+the delay without exposing a path or configuration value.
 `pi_daemon_listening_degraded` means the transport is available but recovery or
 provider readiness is incomplete/degraded; `pi_daemon_ready` is emitted only
 when all bounded recovery work settles without an indeterminate/failure state.
@@ -428,6 +432,55 @@ Cacophony's `cacophony.service` / `com.cacophony.lifecycle` identities.
 systemctl --user status pi-daemon-work
 launchctl print "gui/$UID/com.pi-daemon.work"
 supervisorctl status pi-daemon-work
+```
+
+An API-enabled instance also enables `pi-daemon-watchdog-work` /
+`com.pi-daemon.watchdog.work` by default. This is a separate, small Node process,
+so it can detect a daemon event loop that still owns a PID and listening socket
+but emits no HTTP response. Every interval it expects the API root's exact
+unauthenticated `401`; for dedicated Dash it then expects content-free
+`/dash/readyz` `204`, which makes one fresh authenticated backend capability
+request rather than trusting the cached startup capability.
+
+The defaults probe every 30 seconds with a 5-second deadline. A semantic response
+over 2 seconds is **degraded latency**, not a restart trigger. Two consecutive
+hard failures trigger one recovery of only the generated instance service. The
+watchdog persists the attempt before invoking the supervisor in
+`STATE_DIR/watchdog-v1.json`; it will not try again while the component remains
+unhealthy. Any later semantic success clears that latch and starts a new failure
+epoch. This makes disk/load pressure visible without producing a restart storm
+or doubling backend load: when the API is slow or failed, the dependent Dash
+probe is skipped.
+
+Systemd and supervisord use their exact service names and a bounded 30-second
+TERM stop timeout. Launchd first records the exact job PID, sends TERM to the
+exact `gui/$UID/com.pi-daemon[.web].NAME` target, and polls both semantic health
+and that PID. An exited or changed PID proves graceful drain; the watchdog leaves
+a load-delayed replacement alone even if it has not bound yet. Only the same
+stuck PID may receive one recorded `kickstart -k` escalation. Probe and recovery
+records contain component, phase, latency,
+status/error code, supervisor, duration, and whether escalation occurred—never
+URLs, bearer values, response bodies, or private paths. Tune or disable this
+per instance only when another external semantic supervisor owns the same duty:
+
+```nix
+services.pi-daemon.instances.work.watchdog = {
+  enable = true;
+  intervalMs = 30000;
+  probeTimeoutMs = 5000;
+  degradedAfterMs = 2000;
+  failureThreshold = 2;
+  gracefulTimeoutMs = 30000;
+};
+```
+
+Inspect the independent service and its persisted decision instead of inferring
+health from the daemon PID:
+
+```console
+systemctl --user status pi-daemon-watchdog-work
+launchctl print "gui/$UID/com.pi-daemon.watchdog.work"
+supervisorctl status pi-daemon-watchdog-work
 ```
 
 Enabled instances must use unique explicit `configFile`, `stateDir`,
@@ -542,7 +595,10 @@ Home Manager exposes the same paths at
 SOPS outputs, never PEM literals. Valid file-backed pairs rotate atomically and
 a failed/partial rotation retains the last working context. The content-free
 `GET|HEAD /dash/healthz` probe returns 204 only after exact Host and configured
-proxy-authority checks. Reverse proxies may set
+proxy-authority checks and proves only the browser listener. `/dash/readyz`
+performs the same authority checks and additionally returns 204 only after a
+fresh dedicated API capability request; it returns an empty 503 while the API is
+unavailable. Reverse proxies may set
 `dedicatedWeb.trustProxyHeaders = true`; supplied forwarded host/protocol/port
 must then exactly match `publicOrigin` and arrive from loopback. See
 [Dashboard transport security](dashboard-transport-security) for downgrade,
