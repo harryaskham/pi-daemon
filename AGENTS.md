@@ -33,7 +33,10 @@ Cacophony is a client, not a dependency.
 1. Keep the provisional `PLAN.md` Beads section current.
 2. Make incremental commits referencing `PD-...` lines.
 3. Run focused Node tests while developing; `npm test` and `nix flake check` are
-   final repository gates.
+   final repository gates. After rebasing across `package.json`,
+   `package-lock.json`, or `npm-shrinkwrap.json` changes, refresh the exact lock
+   with `npm ci --ignore-scripts` before classifying new-package/type-contract
+   errors as broken main.
 4. Direct pushes to `main` are temporarily operator-authorized for the sole
    bootstrap owner. Preserve clean history and never force-push.
 5. Do not weaken tests or security policy to make a slice pass.

@@ -32,6 +32,30 @@ test skip or a substitute for the final gate.
 If `web/dist` has never been
 built, `build:src` says so and leaves `dist/dashboard` absent; run the full
 `npm run build` before anything that serves or asserts the packaged SPA.
+
+### After a dependency-changing rebase
+
+A rebase updates tracked lock metadata, not the existing `node_modules` tree.
+If it crosses changes to `package.json`, `package-lock.json`, or
+`npm-shrinkwrap.json`, an unresolved new import or a type-contract error in code
+you did not touch is an install-state question before it is evidence that main
+is broken. This has twice presented as a bad landed SDK/API change while the
+checkout still had the previous exact SDK installed.
+
+Compare the installed version with the reviewed manifest/lock, refresh from the
+exact lock without lifecycle scripts, and rerun the smallest failing check:
+
+```bash
+node -e 'console.log(require("./node_modules/<dependency>/package.json").version)'
+npm ci --ignore-scripts
+npm run check   # or the narrower command that originally failed
+```
+
+If the manifest or lock omits the dependency/version, that remains a source
+change owned by the bead that changed it. If the exact clean install still
+fails, retain that stderr and route the failure normally. The point is not to
+explain away a real regression; it is to avoid telling a peer their landed work
+is broken when only the reporter's untracked install tree is stale.
 Packaged-SPA acceptances call `assertPackagedDashboardBuilt` first, so this
 remains a hard failure but names that remediation instead of surfacing later as
 an unexplained `/dash/` `404 !== 200`.

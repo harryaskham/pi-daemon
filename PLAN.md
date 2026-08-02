@@ -764,6 +764,8 @@ implementation order. This list is a human-readable crosswalk.
   passing-test measurements remain visible under the default reporter.
 - [x] `bd-8e7f56` — make every root `web:*` wrapper preserve forwarded inner
   workspace-tool flags and multiword values instead of npm consuming them.
+- [x] `bd-2c6d58` — document the exact-lock refresh/check after dependency-
+  changing rebases before stale `node_modules` is called broken main.
 - [x] `bd-79902f` — load-proof recovery-deadline and first-launch socket waits:
   deterministic per-open and aggregate recovery cases plus a generous bootstrap
   hang bound that still fails a crashed daemon immediately.
