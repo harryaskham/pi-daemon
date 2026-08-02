@@ -56,6 +56,11 @@ export interface SchedulerAdmissionGateway {
   isDraining?(): boolean;
 }
 
+export type SchedulerStore = Pick<
+  FileScheduleStore,
+  "recover" | "list" | "get" | "updateRuntimeState"
+>;
+
 export interface SchedulerRuntimeStatus {
   running: boolean;
   draining: boolean;
@@ -85,7 +90,7 @@ interface PendingOverlap {
  * can never blindly replay work that might already have been accepted.
  */
 export class SchedulerRuntime {
-  readonly #store: FileScheduleStore;
+  readonly #store: SchedulerStore;
   readonly #gateway: SchedulerAdmissionGateway;
   readonly #clock: SchedulerClock;
   readonly #activeBySession = new Map<string, Set<string>>();
@@ -98,7 +103,7 @@ export class SchedulerRuntime {
   #tail: Promise<void> = Promise.resolve();
   #settlements = new Set<Promise<void>>();
 
-  constructor(options: { store: FileScheduleStore; gateway: SchedulerAdmissionGateway; clock?: SchedulerClock }) {
+  constructor(options: { store: SchedulerStore; gateway: SchedulerAdmissionGateway; clock?: SchedulerClock }) {
     this.#store = options.store;
     this.#gateway = options.gateway;
     this.#clock = options.clock ?? systemSchedulerClock;

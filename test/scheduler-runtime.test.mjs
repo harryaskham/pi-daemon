@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
+import { SCHEDULE_CONTRACT_VERSION } from "../dist/schedule-contract.js";
 import { FileScheduleStore } from "../dist/schedule-store.js";
 import { SchedulerRuntime, nextCronOccurrence } from "../dist/scheduler-runtime.js";
 
@@ -37,6 +38,55 @@ class FakeClock {
     }
     this.monotonic = target;
     this.now = wallStartedAt + wallMs;
+  }
+}
+
+class MemorySchedulerStore {
+  record;
+  runtimeWrites = 0;
+  #now;
+
+  constructor(now) { this.#now = now; }
+
+  async recover() {
+    return { schedules: await this.list(), quarantined: [], scannedBytes: 0 };
+  }
+
+  async create(value) {
+    assert.equal(this.record, undefined);
+    const timestamp = this.#now().toISOString();
+    this.record = {
+      ...structuredClone(value),
+      contractVersion: SCHEDULE_CONTRACT_VERSION,
+      revision: 0,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+    return structuredClone(this.record);
+  }
+
+  async list(sessionRef) {
+    if (this.record === undefined || (sessionRef !== undefined && this.record.sessionRef !== sessionRef)) return [];
+    return [structuredClone(this.record)];
+  }
+
+  async get(scheduleId) {
+    return this.record?.scheduleId === scheduleId ? structuredClone(this.record) : undefined;
+  }
+
+  async updateRuntimeState(scheduleId, expectedRevision, state) {
+    assert.equal(this.record?.scheduleId, scheduleId);
+    assert.equal(this.record.revision, expectedRevision);
+    const next = structuredClone(this.record);
+    next.revision += 1;
+    next.updatedAt = this.#now().toISOString();
+    if (state.nextTriggerAt === undefined) delete next.nextTriggerAt;
+    else next.nextTriggerAt = state.nextTriggerAt;
+    if (state.lastTrigger === undefined) delete next.lastTrigger;
+    else next.lastTrigger = structuredClone(state.lastTrigger);
+    this.record = next;
+    this.runtimeWrites += 1;
+    return structuredClone(next);
   }
 }
 
@@ -198,8 +248,12 @@ test("backward wall-clock correction and restart do not repeat a decided instant
   restarted.stop();
 });
 
-test("long fake-clock soak keeps timers, overlap state and retained memory bounded", async (t) => {
-  const { clock, store } = await fixture(t, "2026-07-20T00:00:30.000Z");
+test("long fake-clock soak keeps timers, overlap state, runtime writes and retained memory bounded", async () => {
+  const clock = new FakeClock("2026-07-20T00:00:30.000Z");
+  // Durability/crash ordering is exercised by the file-backed cases above.
+  // This 200-minute timer/memory soak must not issue hundreds of fsyncs into a
+  // constrained Nix build sandbox just to exercise an orthogonal property.
+  const store = new MemorySchedulerStore(() => new Date(clock.wallNow()));
   await store.create(definition({ cron: "* * * * *", jitterMs: 0 }));
   const admission = gateway();
   const runtime = new SchedulerRuntime({ store, gateway: admission, clock });
@@ -214,5 +268,6 @@ test("long fake-clock soak keeps timers, overlap state and retained memory bound
   assert.equal(runtime.status().activeAdmissions, 0);
   assert.equal(runtime.status().queuedOverlaps, 0);
   assert.equal((await store.list()).length, 1);
+  assert.ok(store.runtimeWrites >= 200 && store.runtimeWrites <= 3 * 200 + 1);
   runtime.stop();
 });

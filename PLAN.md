@@ -529,6 +529,9 @@ process appears per wake.
 - [x] `bd-94ea1d` Detect PID/listener-healthy but HTTP-dead API and dedicated
   Dash services with content-free semantic readiness, staged startup diagnostics,
   one latched exact-instance recovery, and bounded native-supervisor escalation.
+- [x] `bd-72c0dd` Keep the 200-minute scheduler timer/memory soak off the
+  crash-safe filesystem path already covered by durability cases, while retaining
+  an explicit bounded runtime-write assertion and the exact Nix package gate.
 
 ## 18. Completed scaffold board (historical PD identifiers)
 
