@@ -20,7 +20,7 @@ function triggerBlock(workflow) {
   return workflow.slice(start, end);
 }
 
-function assertAcceptanceBoundaries({ manifest, flake, ci, macos, scheduled, aarch64 }) {
+function assertAcceptanceBoundaries({ manifest, flake, ci, macos, scheduled, closure }) {
   assert.match(manifest.scripts.test, /test\/\*\.test\.mjs/);
   assert.doesNotMatch(manifest.scripts.test, /consumer-acceptance/);
   assert.doesNotMatch(manifest.scripts["test:unit"], /consumer-acceptance/);
@@ -48,41 +48,60 @@ function assertAcceptanceBoundaries({ manifest, flake, ci, macos, scheduled, aar
   assert.match(scheduled, /actions\/upload-artifact@v4/);
   assert.match(scheduled, /if: always\(\)/);
 
-  assert.match(aarch64, /runs-on: \[self-hosted, nix, x86_64-linux\]/);
-  assert.match(aarch64, /timeout-minutes: 120/);
-  assert.match(aarch64, /environment: pi-daemon-aarch64-cache/);
-  assert.match(aarch64, /cancel-in-progress: false/);
-  assert.match(aarch64, /vars\.PI_DAEMON_ATTIC_ENDPOINT/);
-  assert.match(aarch64, /vars\.PI_DAEMON_ATTIC_CACHE/);
-  assert.match(aarch64, /secrets\.PI_DAEMON_ATTIC_TOKEN/);
-  assert.match(aarch64, /attic login --set-default pi-daemon-ci/);
-  assert.match(aarch64, /attic cache info "pi-daemon-ci:\$\{ATTIC_CACHE\}"/);
-  assert.match(aarch64, /attic use "pi-daemon-ci:\$\{ATTIC_CACHE\}"/);
-  assert.match(aarch64, /'\.#packages\.aarch64-linux\.pi-daemon'/);
-  assert.match(aarch64, /--option require-sigs true/);
-  assert.match(aarch64, /cache\.nixos\.org/);
-  assert.match(aarch64, /expectedAttic/);
-  assert.match(aarch64, /PACKAGE_OUT: \$\{\{ steps\.build\.outputs\.out \}\}/);
-  assert.match(aarch64, /attic push -j1 "pi-daemon-ci:\$\{ATTIC_CACHE\}" "\$PACKAGE_OUT"/);
-  assert.match(aarch64, /Remove Attic credentials\n\s+if: always\(\)/);
+  assert.match(closure, /runs-on: \$\{\{ matrix\.runner \}\}/);
+  assert.match(closure, /environment: pi-daemon-aarch64-cache/);
+  assert.match(closure, /group: pi-daemon-closure-\$\{\{ matrix\.system \}\}/);
+  assert.match(closure, /cancel-in-progress: false/);
+  assert.match(closure, /fail-fast: false/);
+  for (const system of ["aarch64-linux", "x86_64-linux", "aarch64-darwin", "x86_64-darwin"]) {
+    assert.match(closure, new RegExp(`system: ${system}`));
+  }
+  assert.match(closure, /runner: \[self-hosted, nix, x86_64-linux\]/);
+  assert.match(closure, /runner: \[self-hosted, macos\]/);
+  assert.match(closure, /TARGET_SYSTEM: \$\{\{ matrix\.system \}\}/);
+  assert.match(closure, /XDG_CONFIG_HOME: \$\{\{ runner\.temp \}\}\/pi-daemon-closure-\$\{\{ matrix\.system \}\}-xdg/);
+  assert.match(closure, /extra-platforms/);
+  assert.match(closure, /TARGET_EXECUTION" == binfmt/);
+  assert.match(closure, /\/proc\/sys\/fs\/binfmt_misc\/\*aarch64\*/);
+  assert.match(closure, /vars\.PI_DAEMON_ATTIC_ENDPOINT/);
+  assert.match(closure, /vars\.PI_DAEMON_ATTIC_CACHE/);
+  assert.match(closure, /secrets\.PI_DAEMON_ATTIC_TOKEN/);
+  assert.doesNotMatch(closure, /PI_DAEMON_FEEDBACK/);
+  assert.match(flake, /closurePublisher = pkgs\.mkShell \{/);
+  assert.match(flake, /packages = commonPackages \+\+ \[pkgs\.attic-client\]/);
+  assert.doesNotMatch(closure, /nixpkgs#attic-client|command -v attic|ATTIC_BIN/);
+  assert.doesNotMatch(closure, /\bmapfile\b/);
+  assert.match(closure, /export CURRENT_SYSTEM="\$current_system"/);
+  assert.match(closure, /nix develop \.#closurePublisher --command attic --version/);
+  assert.match(closure, /nix develop \.#closurePublisher --command attic login --set-default pi-daemon-ci/);
+  assert.match(closure, /nix develop \.#closurePublisher --command attic cache info "pi-daemon-ci:\$\{ATTIC_CACHE\}"/);
+  assert.match(closure, /nix develop \.#closurePublisher --command attic use "pi-daemon-ci:\$\{ATTIC_CACHE\}"/);
+  assert.match(closure, /"\.\#packages\.\$\{TARGET_SYSTEM\}\.pi-daemon"/);
+  assert.match(closure, /--option require-sigs true/);
+  assert.match(closure, /cache\.nixos\.org/);
+  assert.match(closure, /expectedAttic/);
+  assert.match(closure, /PACKAGE_OUT: \$\{\{ steps\.build\.outputs\.out \}\}/);
+  assert.match(closure, /nix develop \.#closurePublisher --command attic push -j1 "pi-daemon-ci:\$\{ATTIC_CACHE\}" "\$PACKAGE_OUT"/);
+  assert.match(closure, /closure-cache-\$\{\{ matrix\.system \}\}-\$\{\{ github\.run_id \}\}/);
+  assert.match(closure, /Remove Attic credentials\n\s+if: always\(\)/);
 
-  const login = aarch64.indexOf("attic login --set-default");
-  const use = aarch64.indexOf('attic use "pi-daemon-ci:${ATTIC_CACHE}"');
-  const build = aarch64.indexOf("'.#packages.aarch64-linux.pi-daemon'");
-  const push = aarch64.indexOf('attic push -j1 "pi-daemon-ci:${ATTIC_CACHE}" "$PACKAGE_OUT"');
-  assert.ok(login < use && use < build && build < push, "Attic must be additive before the exact build and push");
+  const login = closure.indexOf("nix develop .#closurePublisher --command attic login --set-default");
+  const use = closure.indexOf('nix develop .#closurePublisher --command attic use "pi-daemon-ci:${ATTIC_CACHE}"');
+  const build = closure.indexOf('".#packages.${TARGET_SYSTEM}.pi-daemon"');
+  const push = closure.indexOf('nix develop .#closurePublisher --command attic push -j1 "pi-daemon-ci:${ATTIC_CACHE}" "$PACKAGE_OUT"');
+  assert.ok(login < use && use < build && build < push, "Attic must be additive before each exact build and push");
 }
 
 const sources = async () => {
-  const [manifest, flake, ci, macos, scheduled, aarch64] = await Promise.all([
+  const [manifest, flake, ci, macos, scheduled, closure] = await Promise.all([
     readFile(join(repositoryRoot, "package.json"), "utf8").then(JSON.parse),
     readFile(join(repositoryRoot, "flake.nix"), "utf8"),
     readFile(join(repositoryRoot, ".github/workflows/ci.yml"), "utf8"),
     readFile(join(repositoryRoot, ".github/workflows/ci-macos.yml"), "utf8"),
     readFile(join(repositoryRoot, ".github/workflows/consumer-acceptance.yml"), "utf8"),
-    readFile(join(repositoryRoot, ".github/workflows/aarch64-cache.yml"), "utf8"),
+    readFile(join(repositoryRoot, ".github/workflows/closure-cache.yml"), "utf8"),
   ]);
-  return { manifest, flake, ci, macos, scheduled, aarch64 };
+  return { manifest, flake, ci, macos, scheduled, closure };
 };
 
 test("consumer acceptance is scheduled rather than a continuous build or install gate", async () => {
@@ -123,12 +142,26 @@ test("CI boundary checks reject regressions in every asserted direction", async 
       },
     },
     {
-      name: "publisher builds the host package instead of aarch64-linux",
+      name: "publisher drops Darwin x86 from the supported matrix",
       value: {
         ...actual,
-        aarch64: actual.aarch64.replaceAll(
-          "'.#packages.aarch64-linux.pi-daemon'",
-          "'.#packages.x86_64-linux.pi-daemon'",
+        closure: actual.closure.replace("system: x86_64-darwin", "system: omitted-darwin"),
+      },
+    },
+    {
+      name: "publisher shell stops supplying the pinned Attic client",
+      value: {
+        ...actual,
+        flake: actual.flake.replace("[pkgs.attic-client]", "[pkgs.hello]"),
+      },
+    },
+    {
+      name: "publisher builds the host package instead of the matrix target",
+      value: {
+        ...actual,
+        closure: actual.closure.replace(
+          '".#packages.${TARGET_SYSTEM}.pi-daemon"',
+          '".#packages.x86_64-linux.pi-daemon"',
         ),
       },
     },
@@ -136,9 +169,9 @@ test("CI boundary checks reject regressions in every asserted direction", async 
       name: "publisher pushes something other than the captured exact output",
       value: {
         ...actual,
-        aarch64: actual.aarch64.replace(
-          'attic push -j1 "pi-daemon-ci:${ATTIC_CACHE}" "$PACKAGE_OUT"',
-          'attic push -j1 "pi-daemon-ci:${ATTIC_CACHE}" ".#pi-daemon"',
+        closure: actual.closure.replace(
+          'nix develop .#closurePublisher --command attic push -j1 "pi-daemon-ci:${ATTIC_CACHE}" "$PACKAGE_OUT"',
+          'nix develop .#closurePublisher --command attic push -j1 "pi-daemon-ci:${ATTIC_CACHE}" ".#pi-daemon"',
         ),
       },
     },

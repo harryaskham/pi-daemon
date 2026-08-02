@@ -532,6 +532,9 @@ process appears per wake.
 - [x] `bd-72c0dd` Keep the 200-minute scheduler timer/memory soak off the
   crash-safe filesystem path already covered by durability cases, while retaining
   an explicit bounded runtime-write assertion and the exact Nix package gate.
+- [x] `bd-9de467` Publish exact signed Attic closures for all four supported
+  Linux/Darwin systems with target-scoped non-cancelling jobs, explicit execution
+  capability checks, and a repository-pinned Attic publisher shell.
 
 ## 18. Completed scaffold board (historical PD identifiers)
 

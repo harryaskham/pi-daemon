@@ -688,28 +688,51 @@ migration window. Removing the provider and restarting restores exact
 single-owner behavior. Moving between embedded and dedicated mode is a separate
 offline state-directory migration—provider configuration does not copy state.
 
-## Nix-on-Droid cache bootstrap
+## Supported-system closure cache and Nix-on-Droid bootstrap
 
 Pi Daemon remains a Node service even though the interactive Pi CLI can be
 packaged as a Bun binary. Its pinned SDK dependencies are installed by npm at
 build time. Node/npm can abort with `double free or corruption` when that build
 runs natively inside Nix-on-Droid, so Android devices must consume a prebuilt
-`aarch64-linux` closure rather than fall back to a local build.
+`aarch64-linux` closure rather than fall back to a local build. The same signed
+cache also avoids rebuilding the large pinned SDK/npm closure on ordinary Linux
+and Darwin consumers.
 
-`.github/workflows/aarch64-cache.yml` is the normal publisher. Every accepted
-`main` revision (or an explicit workflow dispatch) gets a bounded job on a
-self-hosted `[self-hosted, nix, x86_64-linux]` runner. Its concurrency group does
-not cancel the active build when a newer revision lands. The job requires an
-enabled aarch64 binfmt registration, authenticates Attic in an isolated
+`.github/workflows/closure-cache.yml` is the normal publisher. Every accepted
+`main` revision (or explicit workflow dispatch) starts a fail-independent matrix
+for all systems exported by the flake:
+
+| target | runner labels | execution requirement |
+| --- | --- | --- |
+| `aarch64-linux` | `self-hosted, nix, x86_64-linux` | `extra-platforms` plus enabled aarch64 binfmt |
+| `x86_64-linux` | `self-hosted, nix, x86_64-linux` | native |
+| `aarch64-darwin` | `self-hosted, macos` | native on the normal Apple Silicon publisher |
+| `x86_64-darwin` | `self-hosted, macos` | native or declared `extra-platforms` execution (normally Rosetta) |
+
+Concurrency is target-scoped and never cancels an active publisher, so a slow
+Darwin closure neither blocks nor cancels Linux and a later landing cannot leave
+a target half-published. Each job verifies `builtins.currentSystem`; a non-native
+target must appear in effective `extra-platforms`, and Linux ARM additionally
+requires a live binfmt registration. A mislabelled or unprepared runner fails
+before authentication/build with the target and missing capability rather than
+silently publishing its host system.
+
+The flake's dedicated `devShells.<system>.closurePublisher` includes
+`pkgs.attic-client` from the repository-pinned nixpkgs input. Every workflow
+Attic operation runs as `nix develop .#closurePublisher --command attic ...`;
+publisher correctness never depends on a mutable host `PATH`, host install, or
+ad-hoc package bootstrap. It authenticates in a target-specific isolated
 `XDG_CONFIG_HOME`, checks the destination cache, and runs `attic use` before the
 build. That adds the private signed substituter without removing
 `cache.nixos.org`; `require-sigs` remains enabled, so a bad or untrusted
 non-content-addressed closure fails instead of falling back to unsigned input.
-It builds exact `.#packages.aarch64-linux.pi-daemon`, executes both installed
-version commands under emulation, and passes the one output path returned by
-`nix build --no-link --print-out-paths` directly to `attic push -j1`.
+It builds exact `.#packages.$TARGET_SYSTEM.pi-daemon`, requires exactly one Nix
+store output, records its closure size, executes both installed version commands
+on the configured execution path, and passes only that captured output to
+`attic push -j1`. Target-labelled logs are retained for 14 days.
 
-Create a protected GitHub environment named `pi-daemon-aarch64-cache` and set:
+The protected GitHub environment remains named `pi-daemon-aarch64-cache` for
+credential compatibility even though the publisher is now multi-platform. Set:
 
 - environment variable `PI_DAEMON_ATTIC_ENDPOINT`: the Attic API endpoint,
   including `https://` (or a trusted-network `http://` endpoint);
@@ -717,40 +740,41 @@ Create a protected GitHub environment named `pi-daemon-aarch64-cache` and set:
 - environment secret `PI_DAEMON_ATTIC_TOKEN`: a least-privilege token with pull
   and push access to that cache.
 
-Bootstrap the Attic cache once with an administrator outside GitHub Actions:
-create the cache, configure its intended visibility/retention, record the public
-signing key from `attic cache info SERVER:CACHE`, and issue the scoped CI token.
-Configure every Nix-on-Droid consumer with the cache's substitution URL and that
-exact public key in `trusted-public-keys` while retaining
-`https://cache.nixos.org/`. The CI token is publisher-only and must never be
-placed on a consumer. The self-hosted publisher needs Nix, `attic`,
-`extra-platforms = aarch64-linux`, and a working aarch64 binfmt interpreter.
-Workflow credentials are removed in an `always()` cleanup step; logs retain
-only the output path, public cache metadata, and command diagnostics.
+The consumer-acceptance feedback webhook/token is unrelated and is not read by
+this workflow. Bootstrap the Attic cache once with an administrator outside
+GitHub Actions: create the cache, configure visibility/retention, record the
+public signing key from `attic cache info SERVER:CACHE`, and issue the scoped CI
+token. Configure consumers with the substitution URL and exact public key in
+`trusted-public-keys` while retaining `https://cache.nixos.org/`; publisher
+tokens must never be placed on consumers. Publishers need Nix and the declared
+target execution support; the workflow supplies its pinned Attic client through
+the declared publisher shell. Workflow credentials are removed by an `always()` step, and logs never retain
+the token or private Attic config.
 
-For a deliberate manual recovery, use the same sequence on an off-device NixOS
-host with binfmt and an isolated authenticated Attic configuration:
+For deliberate manual recovery, use the same sequence on a host capable of
+executing the exact target:
 
 ```console
+TARGET_SYSTEM=aarch64-linux
 attic login --set-default SERVER https://attic.example.invalid PULL_PUSH_TOKEN
 attic cache info SERVER:collective
 attic use SERVER:collective
 out=$(nix build --no-link --print-out-paths --option require-sigs true \
-  github:harryaskham/pi-daemon/REV#packages.aarch64-linux.pi-daemon)
+  "github:harryaskham/pi-daemon/REV#packages.$TARGET_SYSTEM.pi-daemon")
 "$out/bin/pi-daemon" version
 "$out/bin/pi-daemon-rpc" --version
 attic push -j1 SERVER:collective "$out"
 ```
 
-The aarch64 package still builds, prunes, and runs both installed version checks
-under emulation. The full Node test suite is intentionally gated on Linux
-x86_64 and macOS: under QEMU, RSS can report zero and bounded subprocess tests
-exceed their real-hardware deadlines. The separate scheduled consumer
-acceptance is also not part of package installation. Skipping either under
-emulation is not a native-Android fallback; cache population is required before
-switching Astra, SGU24, or another Nix-on-Droid consumer. A cache miss that
-starts `npm ci` on the device is an operational error—stop it, prebuild the same
-derivation off-device, push it, and retry the unchanged generation.
+The aarch64-linux package still builds, prunes, and runs both installed version
+checks under emulation. Its full Node test suite remains intentionally gated on
+native Linux x86_64 and macOS: under QEMU, RSS can report zero and bounded
+subprocess tests exceed their real-hardware deadlines. The separate scheduled
+consumer acceptance is also not part of package installation. Cache population
+is required before switching Astra, SGU24, or another Nix-on-Droid consumer. A
+cache miss that starts `npm ci` on a device is an operational error—stop it,
+prebuild the same derivation off-device, push it, and retry the unchanged
+generation.
 
 ## High-level session management
 

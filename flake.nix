@@ -242,6 +242,11 @@
           echo "pi-daemon dev shell: Node $(node --version), npm $(npm --version)"
         '';
       };
+      # Closure publication must never depend on a mutable runner PATH or host
+      # install. CI and operators enter this pinned shell for every Attic call.
+      closurePublisher = pkgs.mkShell {
+        packages = commonPackages ++ [pkgs.attic-client];
+      };
       # Dash browser acceptance. The npm-downloaded Chromium cannot start on
       # NixOS or other library-strict hosts, so this shell supplies the audited
       # nixpkgs browser bundle instead of ad-hoc host packages. The npm

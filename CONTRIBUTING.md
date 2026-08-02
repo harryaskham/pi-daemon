@@ -123,9 +123,12 @@ cancels superseded runs; `ci-macos.yml` has its own concurrency group and lets a
 push to `main` queue, so the slowest verification keeps its verdict instead of
 being killed by the next landing. The load-sensitive service/process-tree proof
 lives in scheduled/manual `consumer-acceptance.yml`, not any push or install
-gate. The binfmt aarch64 closure publisher lives in `aarch64-cache.yml`; its
-active run is never cancelled, because a half-built run leaves consumers with no
-closure to substitute.
+gate. The supported-system Attic publisher lives in `closure-cache.yml`; each
+target has its own non-cancelling concurrency group, because a half-built run
+leaves that platform's consumers with no closure to substitute while unrelated
+platform publishers must continue independently. Every Attic call runs through
+`nix develop .#closurePublisher --command attic`; do not restore a runner PATH
+check or ad-hoc package bootstrap.
 
 They are separate because the first attempt at this put both in one workflow and
 merely scoped `cancel-in-progress` to pull requests. That deadlocked CI
@@ -139,8 +142,8 @@ turn cancellation off to protect it. Give it its own workflow. In particular,
 `test/acceptance/consumer-acceptance.test.mjs` stays outside
 `test/*.test.mjs` and the package `installCheck`; invoke its explicit npm script
 or its scheduled workflow instead. `test/ci-acceptance-boundaries.test.mjs`
-carries negative mutations for both that exclusion and the aarch64 exact-output
-publisher contract.
+carries negative mutations for both that exclusion and the supported-system
+matrix/exact-output publisher contract.
 
 Do **not** assume a job that never reports is flaky. Check that a runner
 carrying its labels is actually registered — `gh api repos/OWNER/REPO/actions/runners`
