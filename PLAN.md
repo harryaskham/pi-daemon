@@ -784,6 +784,8 @@ implementation order. This list is a human-readable crosswalk.
 - [x] `bd-184815` — move load-sensitive consumer process acceptance out of
   continuous package/install gates into scheduled feedback-backed triage, and
   publish the exact emulated aarch64-linux closure through signed private Attic.
+- [x] `bd-8dd127` — add scoped happy-dom component tests to the standard web
+  gate while retaining Node semantics for pure/source tests.
 - [x] `bd-79902f` — load-proof recovery-deadline and first-launch socket waits:
   deterministic per-open and aggregate recovery cases plus a generous bootstrap
   hang bound that still fails a crashed daemon immediately.

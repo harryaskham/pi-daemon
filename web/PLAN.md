@@ -1253,7 +1253,10 @@ environment, and credentials.
   Ctrl-Shift-h/j/k/l focus-preserving swaps;
 - settings precedence, mutable allowlist, revision, and reset;
 - theme inheritance/validation/contrast; and
-- transcript live/persisted deduplication and replay-gap reconciliation.
+- transcript live/persisted deduplication and replay-gap reconciliation; and
+- scoped `.dom.test.tsx` component behavior under exact-pinned happy-dom,
+  including layout primitives and real interaction wiring, while pure/source
+  tests retain Node semantics rather than moving the whole suite into a DOM.
 
 ### 23.2 Backend conformance
 

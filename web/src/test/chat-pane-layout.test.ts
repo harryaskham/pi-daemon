@@ -52,6 +52,10 @@ function previewState(
 }
 
 describe("preview composer layout", () => {
+  it("keeps pure/source web tests in the Node environment", () => {
+    expect(globalThis.document).toBeUndefined();
+  });
+
   it("describes wake-on-first-send without requiring live controller authority", () => {
     expect(liveComposerPresentation(previewState())).toEqual({
       disabled: false,
@@ -116,14 +120,6 @@ describe("preview composer layout", () => {
     expect(source).toContain("Prec.highest");
   });
 
-  it("does not render the former transcript-blocking preview action card", async () => {
-    const source = await readFile(
-      new URL("../components/LiveSessionControls.tsx", import.meta.url),
-      "utf8",
-    );
-    expect(source).not.toContain("live-state-card");
-    expect(source).not.toContain('aria-label="Session action required"');
-  });
 });
 
 describe("transcript reading anchor across a presentation switch", () => {

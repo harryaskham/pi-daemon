@@ -76,6 +76,14 @@ run the whole suite.
 See [`docs/dash-e2e.md`](docs/dash-e2e.md) for scenario filtering, the
 version-drift preflight, and wall-clock budget enforcement.
 
+Web unit tests stay in the Node environment by default. A component test that
+needs DOM/layout primitives opts in per file with
+`// @vitest-environment happy-dom` and uses a `.dom.test.tsx` name; do not switch
+the whole suite, because pure tests legitimately use Node file URLs and other
+server semantics. Keep the scope at component behavior rather than recreating
+Playwright scenarios. `happy-dom` is exact-pinned and the standard web gate runs
+these tests.
+
 Wall-clock performance budgets are deliberately excluded from the deterministic
 gate, in the Node, web unit, and browser suites: the measurements always run and
 are reported, but the numeric bound is asserted only when
