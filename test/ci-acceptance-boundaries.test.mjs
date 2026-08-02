@@ -83,18 +83,27 @@ function assertAcceptanceBoundaries({ manifest, flake, ci, macos, scheduled, clo
   assert.match(actionlintConfig, /- nix/);
   assert.match(actionlintConfig, /- x86_64-linux/);
   assert.doesNotMatch(closure, /nixpkgs#attic-client|command -v attic|ATTIC_BIN/);
-  assert.doesNotMatch(closure, /\bmapfile\b/);
+  assert.doesNotMatch(closure, /\b(?:awk|cat|mapfile)\b/);
+  assert.match(closure, /nix store ping --json/);
+  assert.match(closure, /store\.trusted !== 1 && store\.trusted !== true/);
   assert.match(closure, /export CURRENT_SYSTEM="\$current_system"/);
   assert.match(closure, /nix develop \.#closurePublisher --command attic --version/);
   assert.match(closure, /nix develop \.#closurePublisher --command attic login --set-default pi-daemon-ci/);
   assert.match(closure, /nix develop \.#closurePublisher --command attic cache info "pi-daemon-ci:\$\{ATTIC_CACHE\}"/);
   assert.match(closure, /nix develop \.#closurePublisher --command attic use "pi-daemon-ci:\$\{ATTIC_CACHE\}"/);
+  assert.match(closure, /ATTIC_SUBSTITUTER=\$attic_substituter/);
   assert.match(closure, /"\.\#packages\.\$\{TARGET_SYSTEM\}\.pi-daemon"/);
   assert.match(closure, /--option require-sigs true/);
   assert.match(closure, /cache\.nixos\.org/);
   assert.match(closure, /expectedAttic/);
   assert.match(closure, /PACKAGE_OUT: \$\{\{ steps\.build\.outputs\.out \}\}/);
   assert.match(closure, /nix develop \.#closurePublisher --command attic push -j1 "pi-daemon-ci:\$\{ATTIC_CACHE\}" "\$PACKAGE_OUT"/);
+  assert.match(closure, /nix copy --option require-sigs true/);
+  assert.match(closure, /--from "\$ATTIC_SUBSTITUTER"/);
+  assert.match(closure, /--to "\$hydration_store"/);
+  assert.match(closure, /canonical_runner_temp="\$\(cd "\$RUNNER_TEMP" && pwd -P\)"/);
+  assert.match(closure, /nix path-info --store "\$hydration_store" "\$PACKAGE_OUT"/);
+  assert.match(closure, /attic-hydrated-output/);
   assert.match(closure, /closure-cache-\$\{\{ matrix\.system \}\}-\$\{\{ github\.run_id \}\}/);
   assert.match(closure, /Remove Attic credentials\n\s+if: always\(\)/);
 
@@ -102,7 +111,8 @@ function assertAcceptanceBoundaries({ manifest, flake, ci, macos, scheduled, clo
   const use = closure.indexOf('nix develop .#closurePublisher --command attic use "pi-daemon-ci:${ATTIC_CACHE}"');
   const build = closure.indexOf('".#packages.${TARGET_SYSTEM}.pi-daemon"');
   const push = closure.indexOf('nix develop .#closurePublisher --command attic push -j1 "pi-daemon-ci:${ATTIC_CACHE}" "$PACKAGE_OUT"');
-  assert.ok(login < use && use < build && build < push, "Attic must be additive before each exact build and push");
+  const hydrate = closure.indexOf("nix copy --option require-sigs true");
+  assert.ok(login < use && use < build && build < push && push < hydrate, "Attic must be additive before each exact build, push, and signed hydration");
 }
 
 const sources = async () => {
@@ -180,6 +190,13 @@ test("CI boundary checks reject regressions in every asserted direction", async 
       },
     },
     {
+      name: "publisher stops proving effective daemon trust",
+      value: {
+        ...actual,
+        closure: actual.closure.replace("nix store ping --json", "nix config show --json"),
+      },
+    },
+    {
       name: "publisher builds the host package instead of the matrix target",
       value: {
         ...actual,
@@ -187,6 +204,13 @@ test("CI boundary checks reject regressions in every asserted direction", async 
           '".#packages.${TARGET_SYSTEM}.pi-daemon"',
           '".#packages.x86_64-linux.pi-daemon"',
         ),
+      },
+    },
+    {
+      name: "publisher hydrates from the local store instead of Attic",
+      value: {
+        ...actual,
+        closure: actual.closure.replace('--from "$ATTIC_SUBSTITUTER"', '--from local'),
       },
     },
     {

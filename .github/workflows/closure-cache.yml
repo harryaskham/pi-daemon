@@ -79,14 +79,21 @@ jobs:
           export CURRENT_SYSTEM="$current_system"
           echo "CURRENT_SYSTEM=$current_system" >> "$GITHUB_ENV"
           nix config show --json > "$RUNNER_TEMP/nix-config-before-attic-$TARGET_SYSTEM.json"
-          node --input-type=module - "$RUNNER_TEMP/nix-config-before-attic-$TARGET_SYSTEM.json" <<'NODE'
+          nix store ping --json > "$RUNNER_TEMP/nix-store-trust-$TARGET_SYSTEM.json"
+          node --input-type=module - \
+            "$RUNNER_TEMP/nix-config-before-attic-$TARGET_SYSTEM.json" \
+            "$RUNNER_TEMP/nix-store-trust-$TARGET_SYSTEM.json" <<'NODE'
           import { readFile } from "node:fs/promises";
           const config = JSON.parse(await readFile(process.argv[2], "utf8"));
+          const store = JSON.parse(await readFile(process.argv[3], "utf8"));
           const target = process.env.TARGET_SYSTEM;
           const current = process.env.CURRENT_SYSTEM;
           const extraPlatforms = config["extra-platforms"]?.value ?? [];
           if (target !== current && !extraPlatforms.includes(target)) {
             throw new Error(`Nix cannot execute ${target}: current system is ${current} and extra-platforms does not include the target`);
+          }
+          if (store.trusted !== 1 && store.trusted !== true) {
+            throw new Error("the closure publisher must be a trusted Nix store client before configuring restricted cache credentials and signing keys");
           }
           NODE
 
@@ -116,6 +123,8 @@ jobs:
           nix develop .#closurePublisher --command attic cache info "pi-daemon-ci:${ATTIC_CACHE}" \
             | tee "$RUNNER_TEMP/attic-cache-info-$TARGET_SYSTEM.log"
           nix develop .#closurePublisher --command attic use "pi-daemon-ci:${ATTIC_CACHE}"
+          attic_substituter="${ATTIC_ENDPOINT%/}/${ATTIC_CACHE}"
+          echo "ATTIC_SUBSTITUTER=$attic_substituter" >> "$GITHUB_ENV"
 
           # `attic use` must be additive: cache.nixos.org remains available and
           # Nix must continue rejecting unsigned/untrusted non-CA store paths.
@@ -153,8 +162,13 @@ jobs:
             --option require-sigs true \
             ".#packages.${TARGET_SYSTEM}.pi-daemon" \
             >"$output_file" 2> >(tee "$log_dir/build.log" >&2)
-          output_count="$(awk 'END { print NR }' "$output_file")"
-          package_out="$(cat "$output_file")"
+          output_count=0
+          package_out=""
+          while IFS= read -r output_path || [[ -n "$output_path" ]]; do
+            [[ -n "$output_path" ]] || continue
+            output_count=$((output_count + 1))
+            package_out="$output_path"
+          done < "$output_file"
           if [[ "$output_count" -ne 1 || "$package_out" != /nix/store/* ]]; then
             echo "::error title=Unexpected $TARGET_SYSTEM package output::The exact package build must produce one Nix store path."
             exit 1
@@ -182,6 +196,32 @@ jobs:
           set -euo pipefail
           nix develop .#closurePublisher --command attic push -j1 "pi-daemon-ci:${ATTIC_CACHE}" "$PACKAGE_OUT" \
             2>&1 | tee "$RUNNER_TEMP/closure-cache-$TARGET_SYSTEM/attic-push.log"
+
+      - name: Hydrate the exact signed closure from Attic
+        shell: bash
+        env:
+          PACKAGE_OUT: ${{ steps.build.outputs.out }}
+        run: |
+          set -euo pipefail
+          log_dir="$RUNNER_TEMP/closure-cache-$TARGET_SYSTEM"
+          canonical_runner_temp="$(cd "$RUNNER_TEMP" && pwd -P)"
+          hydration_root="$canonical_runner_temp/attic-hydration-$TARGET_SYSTEM"
+          hydration_store="local?root=$hydration_root"
+          mkdir -p "$hydration_root"
+          nix copy --option require-sigs true \
+            --from "$ATTIC_SUBSTITUTER" \
+            --to "$hydration_store" \
+            "$PACKAGE_OUT" \
+            2> >(tee "$log_dir/attic-hydration.log" >&2)
+          hydrated_out=""
+          IFS= read -r hydrated_out < <(
+            nix path-info --store "$hydration_store" "$PACKAGE_OUT"
+          )
+          if [[ "$hydrated_out" != "$PACKAGE_OUT" || ! -x "$hydration_root$PACKAGE_OUT/bin/pi-daemon" ]]; then
+            echo '::error title=Attic hydration did not reproduce the exact output::The signed cache must hydrate the captured package into an empty isolated local store.'
+            exit 1
+          fi
+          printf '%s\n' "$hydrated_out" > "$log_dir/attic-hydrated-output"
           {
             echo "### Pi Daemon $TARGET_SYSTEM closure"
             echo "- source: \`${GITHUB_SHA}\`"
@@ -189,16 +229,17 @@ jobs:
             echo "- cache: \`${ATTIC_CACHE}\`"
             echo "- execution: \`${TARGET_EXECUTION}\` from \`${CURRENT_SYSTEM}\`"
             echo '- verification: both installed version commands executed'
-            echo '- trust: signed Attic substitution with Nix require-sigs enabled'
+            echo '- trust: exact output rehydrated from Attic into an empty local store with require-sigs enabled'
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Remove Attic credentials
         if: always()
         shell: bash
         run: |
-          rm -rf "$XDG_CONFIG_HOME"
+          rm -rf "$XDG_CONFIG_HOME" "$RUNNER_TEMP/attic-hydration-$TARGET_SYSTEM"
           rm -f "$RUNNER_TEMP/nix-config-before-attic-$TARGET_SYSTEM.json" \
             "$RUNNER_TEMP/nix-config-with-attic-$TARGET_SYSTEM.json" \
+            "$RUNNER_TEMP/nix-store-trust-$TARGET_SYSTEM.json" \
             "$RUNNER_TEMP/attic-cache-info-$TARGET_SYSTEM.log"
 
       - name: Retain closure publisher logs

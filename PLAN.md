@@ -538,6 +538,9 @@ process appears per wake.
 - [x] `bd-0a55be` Keep target-private publisher config in step-scoped runner
   context and gate every workflow with pinned actionlint so invalid job-level
   expressions cannot produce another zero-job run.
+- [x] `bd-70271a` Remove ambient output-parser dependencies, require effective
+  Nix daemon trust, and rehydrate each exact post-push closure from Attic under
+  signature enforcement before claiming a substitution receipt.
 
 ## 18. Completed scaffold board (historical PD identifiers)
 

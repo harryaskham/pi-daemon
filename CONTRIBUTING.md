@@ -130,7 +130,10 @@ platform publishers must continue independently. Every Attic call runs through
 `nix develop .#closurePublisher --command attic`; do not restore a runner PATH
 check or ad-hoc package bootstrap. Run `nix build .#checks.<system>.workflow-syntax`
 when editing workflows; the pinned actionlint check catches invalid GitHub
-expression contexts before a workflow can fail with zero jobs.
+expression contexts before a workflow can fail with zero jobs. Closure
+publishers must also prove effective trusted-store status and rehydrate their exact output
+from Attic; a client config dump or successful local build is not a substitution
+receipt.
 
 They are separate because the first attempt at this put both in one workflow and
 merely scoped `cancel-in-progress` to pull requests. That deadlocked CI

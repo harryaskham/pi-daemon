@@ -713,9 +713,13 @@ Concurrency is target-scoped and never cancels an active publisher, so a slow
 Darwin closure neither blocks nor cancels Linux and a later landing cannot leave
 a target half-published. Each job verifies `builtins.currentSystem`; a non-native
 target must appear in effective `extra-platforms`, and Linux ARM additionally
-requires a live binfmt registration. A mislabelled or unprepared runner fails
-before authentication/build with the target and missing capability rather than
-silently publishing its host system.
+requires a live binfmt registration. The workflow also requires `nix store ping
+--json` to report an effectively trusted client before it configures restricted
+netrc/signing/substituter settings; an untrusted runner fails actionably instead
+of treating client-side `nix config show` as daemon trust. Trust is a reviewed
+runner materialization property, never an ad-hoc workflow mutation. A mislabelled
+or unprepared runner fails before authentication/build rather than silently
+publishing its host system.
 
 The flake's dedicated `devShells.<system>.closurePublisher` includes
 `pkgs.attic-client` from the repository-pinned nixpkgs input. Every workflow
@@ -725,12 +729,18 @@ ad-hoc package bootstrap. The first executable step writes a target-specific
 `XDG_CONFIG_HOME` from step-scoped `$RUNNER_TEMP` into `$GITHUB_ENV`—GitHub does
 not permit `runner.*` in job-level `env`. It then authenticates, checks the
 destination cache, and runs `attic use` before the build. That adds the private
-signed substituter without removing `cache.nixos.org`; `require-sigs` remains enabled, so a bad or untrusted
-non-content-addressed closure fails instead of falling back to unsigned input.
-It builds exact `.#packages.$TARGET_SYSTEM.pi-daemon`, requires exactly one Nix
-store output, records its closure size, executes both installed version commands
-on the configured execution path, and passes only that captured output to
-`attic push -j1`. Target-labelled logs are retained for 14 days.
+signed substituter without removing `cache.nixos.org`; `require-sigs` remains
+enabled, so a bad or untrusted non-content-addressed closure fails instead of
+falling back to unsigned input.
+It builds exact `.#packages.$TARGET_SYSTEM.pi-daemon`, parses exactly one output
+using Bash alone, records its closure size, executes both installed version
+commands on the configured execution path, and passes only that captured output
+to `attic push -j1`. After push, it copies the exact output **from the Attic URL**
+into an empty target-private local Nix store rooted under the physical
+(`pwd -P`) runner temp path, with `require-sigs` enabled, and requires
+`nix path-info` plus the installed executable to match. Only that
+rehydration is a signed-substitution receipt; a successful local build or
+client-side config dump is not. Target-labelled logs are retained for 14 days.
 
 The protected GitHub environment remains named `pi-daemon-aarch64-cache` for
 credential compatibility even though the publisher is now multi-platform. Set:
@@ -747,10 +757,11 @@ GitHub Actions: create the cache, configure visibility/retention, record the
 public signing key from `attic cache info SERVER:CACHE`, and issue the scoped CI
 token. Configure consumers with the substitution URL and exact public key in
 `trusted-public-keys` while retaining `https://cache.nixos.org/`; publisher
-tokens must never be placed on consumers. Publishers need Nix and the declared
-target execution support; the workflow supplies its pinned Attic client through
-the declared publisher shell. Workflow credentials are removed by an `always()`
-step, and logs never retain the token or private Attic config. The flake's `workflow-syntax` check runs the
+tokens must never be placed on consumers. Publishers need Nix, effective trusted
+client status, and the declared target execution support; the workflow supplies
+its pinned Attic client through the declared publisher shell. Workflow
+credentials are removed by an `always()` step, and logs never retain the token
+or private Attic config. The flake's `workflow-syntax` check runs the
 repository-pinned `actionlint` over every workflow, while source negative tests
 specifically reject `runner.*` returning to closure-publisher job-level `env`.
 
