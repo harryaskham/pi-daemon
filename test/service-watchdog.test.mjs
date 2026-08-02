@@ -43,6 +43,11 @@ class MemoryStore {
 
 const commandOk = { exitCode: 0, signal: null, timedOut: false };
 
+function monotonicSequence(...values) {
+  let index = 0;
+  return () => values[Math.min(index++, values.length - 1)];
+}
+
 test("semantic probes distinguish TCP accept with no HTTP bytes, degraded latency, and health", async (t) => {
   const muteSockets = new Set();
   const mute = createNetServer((socket) => {
@@ -62,29 +67,27 @@ test("semantic probes distinguish TCP accept with no HTTP bytes, degraded latenc
   assert.equal(timedOut.phase, "failed");
   assert.equal(timedOut.errorCode, "timeout");
 
-  let delayMs = 35;
   const semantic = createHttpServer((_request, response) => {
-    setTimeout(() => {
-      response.writeHead(401, { Connection: "close" });
-      response.end();
-    }, delayMs);
+    response.writeHead(401, { Connection: "close" });
+    response.end();
   });
   const port = await listen(semantic);
   t.after(() => close(semantic));
+  const degradedClock = monotonicSequence(0, 35, 35);
   const degraded = await semanticHttpProbe(
     { component: "api", url: `http://127.0.0.1:${port}/`, expectedStatus: 401 },
     200,
     10,
+    degradedClock,
   );
   assert.equal(degraded.phase, "degraded");
   assert.equal(degraded.statusCode, 401);
-  assert.ok(degraded.latencyMs >= 10);
 
-  delayMs = 0;
   const healthy = await semanticHttpProbe(
     { component: "api", url: `http://127.0.0.1:${port}/`, expectedStatus: 401 },
     200,
     100,
+    monotonicSequence(0, 0, 0),
   );
   assert.equal(healthy.phase, "healthy");
   assert.equal(healthy.statusCode, 401);

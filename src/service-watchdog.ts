@@ -387,8 +387,9 @@ export async function semanticHttpProbe(
   target: WatchdogProbeTarget,
   timeoutMs: number,
   degradedAfterMs: number,
+  monotonicNow: () => number = () => performance.now(),
 ): Promise<WatchdogProbeResult> {
-  const startedAt = performance.now();
+  const startedAt = monotonicNow();
   let url: URL;
   try {
     url = validatedProbeUrl(target.url);
@@ -396,7 +397,7 @@ export async function semanticHttpProbe(
     return {
       component: target.component,
       phase: "failed",
-      latencyMs: elapsed(startedAt),
+      latencyMs: elapsed(startedAt, monotonicNow),
       errorCode: "invalid_probe_url",
     };
   }
@@ -408,7 +409,7 @@ export async function semanticHttpProbe(
       settled = true;
       resolveProbe({
         component: target.component,
-        latencyMs: elapsed(startedAt),
+        latencyMs: elapsed(startedAt, monotonicNow),
         ...result,
       });
     };
@@ -433,7 +434,7 @@ export async function semanticHttpProbe(
         (response) => {
           const statusCode = response.statusCode ?? 0;
           response.resume();
-          const latencyMs = elapsed(startedAt);
+          const latencyMs = elapsed(startedAt, monotonicNow);
           settle(
             statusCode !== target.expectedStatus
               ? { phase: "failed", statusCode, errorCode: "unexpected_status" }
@@ -761,8 +762,11 @@ function positiveInteger(value: number, label: string): number {
   return value;
 }
 
-function elapsed(startedAt: number): number {
-  return Math.max(0, Math.round((performance.now() - startedAt) * 100) / 100);
+function elapsed(
+  startedAt: number,
+  monotonicNow: () => number = () => performance.now(),
+): number {
+  return Math.max(0, Math.round((monotonicNow() - startedAt) * 100) / 100);
 }
 
 function delay(milliseconds: number): Promise<void> {
