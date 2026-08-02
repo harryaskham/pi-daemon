@@ -20,7 +20,13 @@ function triggerBlock(workflow) {
   return workflow.slice(start, end);
 }
 
-function assertAcceptanceBoundaries({ manifest, flake, ci, macos, scheduled, closure }) {
+function closureJobEnv(workflow) {
+  const match = workflow.match(/\n    env:\n([\s\S]*?)\n    steps:/);
+  assert.ok(match, "closure publisher must declare a bounded job environment");
+  return match[1];
+}
+
+function assertAcceptanceBoundaries({ manifest, flake, ci, macos, scheduled, closure, actionlintConfig }) {
   assert.match(manifest.scripts.test, /test\/\*\.test\.mjs/);
   assert.doesNotMatch(manifest.scripts.test, /consumer-acceptance/);
   assert.doesNotMatch(manifest.scripts["test:unit"], /consumer-acceptance/);
@@ -59,7 +65,8 @@ function assertAcceptanceBoundaries({ manifest, flake, ci, macos, scheduled, clo
   assert.match(closure, /runner: \[self-hosted, nix, x86_64-linux\]/);
   assert.match(closure, /runner: \[self-hosted, macos\]/);
   assert.match(closure, /TARGET_SYSTEM: \$\{\{ matrix\.system \}\}/);
-  assert.match(closure, /XDG_CONFIG_HOME: \$\{\{ runner\.temp \}\}\/pi-daemon-closure-\$\{\{ matrix\.system \}\}-xdg/);
+  assert.doesNotMatch(closureJobEnv(closure), /\$\{\{ runner\./);
+  assert.match(closure, /echo "XDG_CONFIG_HOME=\$RUNNER_TEMP\/pi-daemon-closure-\$TARGET_SYSTEM-xdg" >> "\$GITHUB_ENV"/);
   assert.match(closure, /extra-platforms/);
   assert.match(closure, /TARGET_EXECUTION" == binfmt/);
   assert.match(closure, /\/proc\/sys\/fs\/binfmt_misc\/\*aarch64\*/);
@@ -68,7 +75,13 @@ function assertAcceptanceBoundaries({ manifest, flake, ci, macos, scheduled, clo
   assert.match(closure, /secrets\.PI_DAEMON_ATTIC_TOKEN/);
   assert.doesNotMatch(closure, /PI_DAEMON_FEEDBACK/);
   assert.match(flake, /closurePublisher = pkgs\.mkShell \{/);
-  assert.match(flake, /packages = commonPackages \+\+ \[pkgs\.attic-client\]/);
+  assert.match(flake, /packages = commonPackages \+\+ \[pkgs\.actionlint pkgs\.attic-client\]/);
+  assert.match(flake, /workflow-syntax =\s+pkgs\.runCommand/);
+  assert.match(flake, /nativeBuildInputs = \[pkgs\.actionlint\]/);
+  assert.match(flake, /actionlint -config-file \$\{\.\/\.github\/actionlint\.yaml\}/);
+  assert.match(actionlintConfig, /self-hosted-runner:/);
+  assert.match(actionlintConfig, /- nix/);
+  assert.match(actionlintConfig, /- x86_64-linux/);
   assert.doesNotMatch(closure, /nixpkgs#attic-client|command -v attic|ATTIC_BIN/);
   assert.doesNotMatch(closure, /\bmapfile\b/);
   assert.match(closure, /export CURRENT_SYSTEM="\$current_system"/);
@@ -93,15 +106,16 @@ function assertAcceptanceBoundaries({ manifest, flake, ci, macos, scheduled, clo
 }
 
 const sources = async () => {
-  const [manifest, flake, ci, macos, scheduled, closure] = await Promise.all([
+  const [manifest, flake, ci, macos, scheduled, closure, actionlintConfig] = await Promise.all([
     readFile(join(repositoryRoot, "package.json"), "utf8").then(JSON.parse),
     readFile(join(repositoryRoot, "flake.nix"), "utf8"),
     readFile(join(repositoryRoot, ".github/workflows/ci.yml"), "utf8"),
     readFile(join(repositoryRoot, ".github/workflows/ci-macos.yml"), "utf8"),
     readFile(join(repositoryRoot, ".github/workflows/consumer-acceptance.yml"), "utf8"),
     readFile(join(repositoryRoot, ".github/workflows/closure-cache.yml"), "utf8"),
+    readFile(join(repositoryRoot, ".github/actionlint.yaml"), "utf8"),
   ]);
-  return { manifest, flake, ci, macos, scheduled, closure };
+  return { manifest, flake, ci, macos, scheduled, closure, actionlintConfig };
 };
 
 test("consumer acceptance is scheduled rather than a continuous build or install gate", async () => {
@@ -152,7 +166,17 @@ test("CI boundary checks reject regressions in every asserted direction", async 
       name: "publisher shell stops supplying the pinned Attic client",
       value: {
         ...actual,
-        flake: actual.flake.replace("[pkgs.attic-client]", "[pkgs.hello]"),
+        flake: actual.flake.replace("[pkgs.actionlint pkgs.attic-client]", "[pkgs.actionlint pkgs.hello]"),
+      },
+    },
+    {
+      name: "publisher restores forbidden runner context at job scope",
+      value: {
+        ...actual,
+        closure: actual.closure.replace(
+          "      ATTIC_ENDPOINT: ${{ vars.PI_DAEMON_ATTIC_ENDPOINT }}",
+          "      XDG_CONFIG_HOME: ${{ runner.temp }}/bad\n      ATTIC_ENDPOINT: ${{ vars.PI_DAEMON_ATTIC_ENDPOINT }}",
+        ),
       },
     },
     {

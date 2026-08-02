@@ -721,10 +721,11 @@ The flake's dedicated `devShells.<system>.closurePublisher` includes
 `pkgs.attic-client` from the repository-pinned nixpkgs input. Every workflow
 Attic operation runs as `nix develop .#closurePublisher --command attic ...`;
 publisher correctness never depends on a mutable host `PATH`, host install, or
-ad-hoc package bootstrap. It authenticates in a target-specific isolated
-`XDG_CONFIG_HOME`, checks the destination cache, and runs `attic use` before the
-build. That adds the private signed substituter without removing
-`cache.nixos.org`; `require-sigs` remains enabled, so a bad or untrusted
+ad-hoc package bootstrap. The first executable step writes a target-specific
+`XDG_CONFIG_HOME` from step-scoped `$RUNNER_TEMP` into `$GITHUB_ENV`—GitHub does
+not permit `runner.*` in job-level `env`. It then authenticates, checks the
+destination cache, and runs `attic use` before the build. That adds the private
+signed substituter without removing `cache.nixos.org`; `require-sigs` remains enabled, so a bad or untrusted
 non-content-addressed closure fails instead of falling back to unsigned input.
 It builds exact `.#packages.$TARGET_SYSTEM.pi-daemon`, requires exactly one Nix
 store output, records its closure size, executes both installed version commands
@@ -748,8 +749,10 @@ token. Configure consumers with the substitution URL and exact public key in
 `trusted-public-keys` while retaining `https://cache.nixos.org/`; publisher
 tokens must never be placed on consumers. Publishers need Nix and the declared
 target execution support; the workflow supplies its pinned Attic client through
-the declared publisher shell. Workflow credentials are removed by an `always()` step, and logs never retain
-the token or private Attic config.
+the declared publisher shell. Workflow credentials are removed by an `always()`
+step, and logs never retain the token or private Attic config. The flake's `workflow-syntax` check runs the
+repository-pinned `actionlint` over every workflow, while source negative tests
+specifically reject `runner.*` returning to closure-publisher job-level `env`.
 
 For deliberate manual recovery, use the same sequence on a host capable of
 executing the exact target:

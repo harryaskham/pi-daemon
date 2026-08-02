@@ -202,6 +202,15 @@
       home-manager-module = import ./nix/home-manager-module-check.nix {
         inherit self pkgs;
       };
+      workflow-syntax =
+        pkgs.runCommand "pi-daemon-workflow-syntax" {
+          nativeBuildInputs = [pkgs.actionlint];
+        } ''
+          for workflow in ${./.github/workflows}/*.yml; do
+            actionlint -config-file ${./.github/actionlint.yaml} "$workflow"
+          done
+          touch "$out"
+        '';
       # Asserts what the e2e shell actually exports, rather than matching
       # `flake.nix` source text from the Node gate. Source matching is a proxy
       # for the property: it broke once when a legitimate edit changed a string
@@ -245,7 +254,7 @@
       # Closure publication must never depend on a mutable runner PATH or host
       # install. CI and operators enter this pinned shell for every Attic call.
       closurePublisher = pkgs.mkShell {
-        packages = commonPackages ++ [pkgs.attic-client];
+        packages = commonPackages ++ [pkgs.actionlint pkgs.attic-client];
       };
       # Dash browser acceptance. The npm-downloaded Chromium cannot start on
       # NixOS or other library-strict hosts, so this shell supplies the audited

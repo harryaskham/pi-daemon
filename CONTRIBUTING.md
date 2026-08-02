@@ -128,7 +128,9 @@ target has its own non-cancelling concurrency group, because a half-built run
 leaves that platform's consumers with no closure to substitute while unrelated
 platform publishers must continue independently. Every Attic call runs through
 `nix develop .#closurePublisher --command attic`; do not restore a runner PATH
-check or ad-hoc package bootstrap.
+check or ad-hoc package bootstrap. Run `nix build .#checks.<system>.workflow-syntax`
+when editing workflows; the pinned actionlint check catches invalid GitHub
+expression contexts before a workflow can fail with zero jobs.
 
 They are separate because the first attempt at this put both in one workflow and
 merely scoped `cancel-in-progress` to pull requests. That deadlocked CI

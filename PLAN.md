@@ -535,6 +535,9 @@ process appears per wake.
 - [x] `bd-9de467` Publish exact signed Attic closures for all four supported
   Linux/Darwin systems with target-scoped non-cancelling jobs, explicit execution
   capability checks, and a repository-pinned Attic publisher shell.
+- [x] `bd-0a55be` Keep target-private publisher config in step-scoped runner
+  context and gate every workflow with pinned actionlint so invalid job-level
+  expressions cannot produce another zero-job run.
 
 ## 18. Completed scaffold board (historical PD identifiers)
 

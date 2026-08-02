@@ -1,0 +1,4 @@
+self-hosted-runner:
+  labels:
+    - nix
+    - x86_64-linux
