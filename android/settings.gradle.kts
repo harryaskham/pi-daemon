@@ -20,6 +20,7 @@ include(":sdk-core")
 include(":sdk-testing")
 include(":sdk-workspace-ui")
 include(":sdk-session-ui")
+include(":sdk-android-integration")
 
 if (providers.gradleProperty("piDroidAndroidApp").orNull == "true") {
   include(":app")

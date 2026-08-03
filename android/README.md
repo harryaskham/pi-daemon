@@ -108,10 +108,11 @@ history.
 
 ## Module boundary
 
-`sdk-core`, `sdk-testing`, `sdk-workspace-ui`, and `sdk-session-ui` participate
-in the fast JVM build. `sdk-workspace-ui` contains only local recursive
-workspace policy and fixture proof; `sdk-session-ui` contains only readonly
-fixture/cache projection and rendering. `app` and `play-receipt` are conditional,
-manual-release-only modules for the no-network internal fixture AAB. Interactive
-session commands, Android integration, and real network/storage implementations
-remain reserved for their separate implementation beads.
+`sdk-core`, `sdk-testing`, `sdk-workspace-ui`, `sdk-session-ui`, and
+`sdk-android-integration` participate in the fast JVM build. `sdk-workspace-ui`
+contains local recursive workspace policy and fixture proof; `sdk-session-ui`
+contains canonical session projection/rendering; and `sdk-android-integration`
+currently contains only pure notification/background policy and reducer
+contracts. `app` and `play-receipt` are conditional manual-release modules.
+Android lifecycle adapters, live monitoring transport, widgets/floats/share, and
+real network/storage implementations remain reserved for separate beads.
