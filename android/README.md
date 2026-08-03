@@ -15,14 +15,16 @@ upload in this scaffold.
 - Kotlin: 2.4.10
 - Compose Multiplatform: 1.11.1, with the Kotlin Compose compiler plugin at
   2.4.10
-- Android Gradle Plugin catalog pin for later Android modules: 9.4.0
+- Android Gradle Plugin: 9.3.1 (current stable; the earlier 9.4.0 scaffold pin
+  was still an unpublished preview and could not resolve from Google Maven)
 - Java toolchain: 21, supplied by `nix develop .#android`
 - kotlinx.serialization JSON: 1.11.0
 - JUnit: 6.1.2
 
-The AGP aliases are pinned but not applied yet. Applying them would turn the
-ordinary contract lane into an Android SDK build, which belongs to a later
-module owner and the nightly/manual lane.
+AGP and Play publishing are applied only when `-PpiDroidAndroidApp=true` adds
+the release-only modules. The ordinary contract lane therefore keeps its exact
+JVM-only behavior and never downloads an Android SDK, starts an emulator, signs
+an AAB, or contacts Google Play.
 
 ## Commands
 
@@ -72,6 +74,13 @@ artifact tree rather than product history. An optional first-frame diagnostic is
 available through `PI_DROID_FIXTURE_DIAGNOSTICS=1`; its timing and recomposition
 count are measurements, never standard gate bounds.
 
+The separate `nix develop .#androidRelease` shell pins API 36, build-tools 36,
+the x86_64 Google APIs system image/emulator, JDK 21, bundletool, SOPS and
+ssh-to-age. It is the only shell that accepts the Android SDK license and unfree
+packages, following explicit operator approval; ordinary shells retain their
+free-package policy. See `app/README.md` for the two-phase signed internal release
+command and evidence contract.
+
 ## Readonly session fixture and image proof
 
 `sdk-session-ui` projects the neutral inventory, information, and transcript
@@ -102,6 +111,7 @@ history.
 `sdk-core`, `sdk-testing`, `sdk-workspace-ui`, and `sdk-session-ui` participate
 in the fast JVM build. `sdk-workspace-ui` contains only local recursive
 workspace policy and fixture proof; `sdk-session-ui` contains only readonly
-fixture/cache projection and rendering. The application, interactive session
-commands, Android integration, real network/storage implementations, and release
-modules remain reserved for their separate implementation beads.
+fixture/cache projection and rendering. `app` and `play-receipt` are conditional,
+manual-release-only modules for the no-network internal fixture AAB. Interactive
+session commands, Android integration, and real network/storage implementations
+remain reserved for their separate implementation beads.

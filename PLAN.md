@@ -118,8 +118,10 @@ The completed product adds, without removing the existing NDJSON mode:
   SDK views. The detailed multi-host, canonical-cache, split/tab workspace,
   pairing, notifications, floating-window, widget/share, security, Play
   distribution, and staged delivery design is in
-  [`docs/pi-droid-plan.md`](docs/pi-droid-plan.md). Android implementation and
-  bead expansion wait for plan review plus encrypted signing-material readiness.
+  [`docs/pi-droid-plan.md`](docs/pi-droid-plan.md). Staged Android implementation
+  is active: encrypted signing readiness, JVM SDK/UI foundations, and the first
+  no-network fixture AAB on Play internal have landed their acceptance receipts;
+  live daemon connectivity and later Android surfaces remain separate beads.
 
 ## 5. Runtime architecture
 

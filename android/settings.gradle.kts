@@ -20,3 +20,8 @@ include(":sdk-core")
 include(":sdk-testing")
 include(":sdk-workspace-ui")
 include(":sdk-session-ui")
+
+if (providers.gradleProperty("piDroidAndroidApp").orNull == "true") {
+  include(":app")
+  include(":play-receipt")
+}

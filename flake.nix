@@ -259,6 +259,16 @@
 
     devShells = forAllSystems (system: let
       pkgs = import nixpkgs {inherit system;};
+      # Google licenses the Android SDK/emulator as unfree. Keep that allowance
+      # isolated to the explicit heavy release shell; ordinary shells continue
+      # to evaluate against the default free-package policy.
+      androidPkgs = import nixpkgs {
+        inherit system;
+        config = {
+          allowUnfree = true;
+          android_sdk.accept_license = true;
+        };
+      };
       playwright = pkgs.playwright-driver;
       commonPackages = [
         pkgs.nodejs_24
@@ -281,6 +291,15 @@
         pkgs.libxrender
         pkgs.libxtst
       ];
+      androidReleaseSdk = androidPkgs.androidenv.composeAndroidPackages {
+        platformVersions = ["36"];
+        buildToolsVersions = ["36.0.0"];
+        includeEmulator = true;
+        includeSystemImages = true;
+        systemImageTypes = ["google_apis"];
+        abiVersions = ["x86_64"];
+        includeNDK = false;
+      };
     in {
       default = pkgs.mkShell {
         packages = commonPackages;
@@ -319,6 +338,29 @@
         LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath androidComposeRuntimeLibraries;
         shellHook = ''
           echo "pi-droid contract shell: Java $(java -version 2>&1 | head -1), Node $(node --version)"
+        '';
+      };
+      # Heavy Android SDK/emulator/signing/Play tooling is opt-in and absent
+      # from ordinary PR/main checks. It is used only by the manual internal
+      # release workflow and explicit operator runs.
+      androidRelease = pkgs.mkShell {
+        packages =
+          commonPackages
+          ++ [
+            androidReleaseSdk.androidsdk
+            pkgs.bundletool
+            pkgs.jdk21
+            pkgs.ktlint
+            pkgs.python3
+            pkgs.sops
+            pkgs.ssh-to-age
+            pkgs.unzip
+          ];
+        ANDROID_HOME = "${androidReleaseSdk.androidsdk}/libexec/android-sdk";
+        ANDROID_SDK_ROOT = "${androidReleaseSdk.androidsdk}/libexec/android-sdk";
+        JAVA_HOME = "${pkgs.jdk21}/lib/openjdk";
+        shellHook = ''
+          echo "pi-droid release shell: Android API 36, build-tools 36.0.0, Java $(java -version 2>&1 | head -1)"
         '';
       };
     });

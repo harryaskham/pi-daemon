@@ -1,0 +1,74 @@
+name: Pi Droid internal release
+
+on:
+  workflow_dispatch:
+    inputs:
+      versionCode:
+        description: Monotonic Play version code
+        required: true
+        default: "1"
+        type: string
+      versionName:
+        description: Bounded internal release name
+        required: true
+        default: 0.3.0-internal.1
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pi-droid-play-internal
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Signed AAB to Play internal
+    environment: google-play-internal
+    runs-on: [self-hosted, nix, x86_64-linux]
+    timeout-minutes: 90
+    env:
+      PI_DROID_PLAY_TRACK: internal
+      PI_DROID_SOPS_AGE_KEY_FILE: ${{ secrets.PI_DROID_SOPS_AGE_KEY_FILE }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: cachix/install-nix-action@v31
+        with:
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: gradle/actions/setup-gradle@v5
+        with:
+          cache-read-only: true
+      - name: Verify emulator capability
+        run: test -r /dev/kvm -a -w /dev/kvm
+      - name: Build, verify, and screenshot signed AAB
+        run: |
+          nix develop .#androidRelease --command \
+            android/build-logic/release-internal.sh \
+            --version-code '${{ inputs.versionCode }}' \
+            --version-name '${{ inputs.versionName }}' \
+            --artifacts "$RUNNER_TEMP/pi-droid-release" \
+            --prepare-only
+      - name: Verify prepared evidence before Play mutation
+        run: |
+          test -f "$RUNNER_TEMP/pi-droid-release/pi-droid-release.aab"
+          test -f "$RUNNER_TEMP/pi-droid-release/mapping.txt"
+          test -f "$RUNNER_TEMP/pi-droid-release/sha256sums.txt"
+          test -d "$RUNNER_TEMP/pi-droid-release/screenshots"
+      - name: Publish exact prepared AAB to internal only
+        run: |
+          nix develop .#androidRelease --command \
+            android/build-logic/release-internal.sh \
+            --version-code '${{ inputs.versionCode }}' \
+            --version-name '${{ inputs.versionName }}' \
+            --artifacts "$RUNNER_TEMP/pi-droid-release" \
+            --upload-prepared
+      - name: Verify remote Play receipt
+        run: test -f "$RUNNER_TEMP/pi-droid-release/play-internal-receipt.json"
+      - name: Retain signed internal release evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: pi-droid-internal-${{ inputs.versionCode }}
+          path: ${{ runner.temp }}/pi-droid-release
+          if-no-files-found: warn
+          retention-days: 30

@@ -5,8 +5,8 @@ title: Pi Droid Android client plan
 
 # Pi Droid Android client plan
 
-Status: architecture plan for review; no Android implementation beads or release
-key material have been created in this repository yet.
+Status: staged implementation active; encrypted release material, JVM SDK/UI
+foundations, and the first no-network fixture AAB on Play internal are complete.
 
 Package/application ID: `com.harryaskham.pidroid`  
 Product name: **Pi Droid**  
@@ -683,6 +683,15 @@ prerequisite does not make ordinary Android PR CI build the Node package.
 VersionCode must be monotonic and explicit. A deterministic mapping from stable
 Pi Daemon semver may be used only with tested range/overflow policy; otherwise a
 committed Android release counter is bumped as part of the tag preparation.
+
+The first internal fixture release was uploaded on 2026-08-03 as
+`com.harryaskham.pidroid` version code 1 (`0.3.0-internal.1`) with the exact
+preregistered certificate. Play verification edit `11366480557777285731`
+confirmed completed release 1 on `internal`; the uploaded AAB SHA-256 is
+`d9b2e9fb569bb936d81764eeb5d16b21ce49a9ad810e63dfb6f5ba0ebc2144c3`.
+Bundletool manifest inspection confirmed the early fixture app requests no
+`INTERNET` permission. This proves signing, packaging, emulated install and the
+internal delivery path only; it does not claim a live Pi Daemon connection.
 
 ## 19. Testing and acceptance
 
