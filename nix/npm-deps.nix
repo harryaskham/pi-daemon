@@ -1,26 +1,51 @@
-# Hash oracle for the pinned `npmDepsHash` in flake.nix.
+# Exact fixed-output npm dependency cache shared by the package build, CI cache
+# pre-materialization, and the hash oracle.
 #
-# `buildNpmPackage` derives its npm dependency cache from the lock file alone,
-# so the fixed-output hash is a pure function of `package-lock.json` and the
-# fetcher version. Reproducing that here from a minimal source lets
-# `scripts/refresh-npm-deps-hash.mjs` compute the exact expected hash without
-# rebuilding the package, without editing flake.nix mid-run, and without
-# needing the working tree to be committed first.
-#
-# `flake.nix` deliberately keeps owning the real build. `nix flake check` proves
-# the two agree: the `npm-deps-hash` check fails if this oracle and the pinned
-# hash ever diverge.
+# `prefetch-npm-deps` already retries request-level network errors, but a whole
+# tarball transfer can still exhaust that internal budget (for example curl 92
+# HTTP/2 framing failures). The outer wrapper retries only a narrow reviewed set
+# of transport failures. Integrity, package identity, lock, and all unknown
+# failures remain immediate and the fixed-output hash remains authoritative.
 {
   pkgs,
   lockfile ? ../package-lock.json,
   fetcherVersion ? 2,
   hash,
-}:
-pkgs.fetchNpmDeps {
-  name = "pi-daemon-npm-deps-oracle";
-  src = pkgs.runCommand "pi-daemon-npm-lock" {} ''
-    mkdir -p "$out"
-    cp ${lockfile} "$out/package-lock.json"
-  '';
-  inherit fetcherVersion hash;
-}
+  name ? "pi-daemon-npm-deps",
+  maxAttempts ? 3,
+  initialBackoffSecs ? 2,
+}: let
+  base = pkgs.fetchNpmDeps {
+    inherit name fetcherVersion hash;
+    src = pkgs.runCommand "pi-daemon-npm-lock" {} ''
+      mkdir -p "$out"
+      cp ${lockfile} "$out/package-lock.json"
+    '';
+  };
+in
+  base.overrideAttrs (_old: {
+    # The output is an opaque fixed-output npm cache. Generic fixup recursively
+    # scans it for host references and shebangs but cannot improve its integrity;
+    # the recursive output hash already commits every byte. Skipping fixup keeps
+    # pre-materialization bounded while any content drift still fails the hash.
+    dontFixup = true;
+    buildPhase = ''
+      runHook preBuild
+
+      if [[ -f npm-shrinkwrap.json ]]; then
+        srcLockfile="npm-shrinkwrap.json"
+      elif [[ -f package-lock.json ]]; then
+        srcLockfile="package-lock.json"
+      else
+        echo "npm dependency source has no package-lock.json or npm-shrinkwrap.json" >&2
+        exit 1
+      fi
+
+      export outputHash=${pkgs.lib.escapeShellArg hash}
+      export PI_DAEMON_NPM_FETCH_MAX_ATTEMPTS=${toString maxAttempts}
+      export PI_DAEMON_NPM_FETCH_INITIAL_BACKOFF_SECS=${toString initialBackoffSecs}
+      ${../scripts/prefetch-npm-deps-retry.sh} "$srcLockfile" "$out"
+
+      runHook postBuild
+    '';
+  })

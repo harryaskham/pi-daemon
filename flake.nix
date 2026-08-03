@@ -29,13 +29,17 @@
 
     packages = forAllSystems (system: let
       pkgs = import nixpkgs {inherit system;};
+      npmDeps = import ./nix/npm-deps.nix {
+        inherit pkgs;
+        hash = npmDepsHash;
+      };
       package = pkgs.buildNpmPackage {
         pname = "pi-daemon";
         version = "0.3.0";
         src = ./.;
 
         nodejs = pkgs.nodejs_24;
-        inherit npmDepsHash;
+        inherit npmDeps;
         npmDepsFetcherVersion = 2;
         nativeBuildInputs = [pkgs.makeWrapper pkgs.openssl];
 
@@ -169,6 +173,7 @@
     in {
       default = package;
       pi-daemon = package;
+      npm-deps = npmDeps;
       inherit pages;
     });
 
@@ -198,6 +203,7 @@
       npm-deps-hash = import ./nix/npm-deps.nix {
         inherit pkgs;
         hash = npmDepsHash;
+        name = "pi-daemon-npm-deps-oracle";
       };
       home-manager-module = import ./nix/home-manager-module-check.nix {
         inherit self pkgs;

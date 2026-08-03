@@ -701,6 +701,13 @@ runs natively inside Nix-on-Droid, so Android devices must consume a prebuilt
 cache also avoids rebuilding the large pinned SDK/npm closure on ordinary Linux
 and Darwin consumers.
 
+Release staging may pre-materialize only the exact fixed-output npm cache with
+`nix build .#npm-deps`. The derivation retries at most three times, and only for
+reviewed transient transport classes such as curl 92 HTTP/2 framing or timeout;
+integrity, identity, lock, and unknown failures remain immediate. Once the path
+is in the Nix store or a trusted substituter, `nix build --offline .#npm-deps`
+is the no-registry readiness proof before the full package build.
+
 `.github/workflows/closure-cache.yml` is the normal publisher. Every accepted
 `main` revision (or explicit workflow dispatch) starts a fail-independent matrix
 for all systems exported by the flake:

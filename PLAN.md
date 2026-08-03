@@ -552,6 +552,9 @@ process appears per wake.
   after build while preserving empty-store signed hydration.
 - [x] `bd-90c177` Explicitly disable `install-nix-action`'s trusted-user default
   so a fresh runner path cannot silently grant root-equivalent trust.
+- [x] `bd-94a9d2` Export the exact npm fixed-output cache for release
+  pre-materialization and bound only transient registry transport retries while
+  preserving immediate integrity failure and the canonical recursive hash.
 
 ## 18. Completed scaffold board (historical PD identifiers)
 

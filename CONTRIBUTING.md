@@ -193,6 +193,13 @@ then fetches only the dependency cache, so a genuine mismatch reports the exact
 replacement hash without waiting for a full build. The marker is a staleness
 signal only; `npmDepsHash` remains the value Nix actually verifies.
 
+`packages.<system>.npm-deps` exposes that exact fixed-output cache for explicit
+pre-materialization. Its wrapper retries only recognized transient transport
+failures three times and never retries integrity or unknown failures. Keep the
+retry classifier narrow and its negative integrity test intact. A release lane
+may prebuild `.#npm-deps`; once cached, `nix build --offline .#npm-deps` is the
+hermetic readiness proof before the full package build.
+
 When a grouped dependency pull request goes red on that fast check, pull the
 branch, run the refresh command, and push the updated `flake.nix`.
 

@@ -233,7 +233,7 @@ source language; built JavaScript and declarations are emitted under `dist/`.
 ## Nix consumer contract
 
 The checked-in flake exposes `packages.default`, `packages.pi-daemon`,
-`apps.default`, `apps.pi-daemon`, `apps.pi-daemon-rpc`,
+`packages.npm-deps`, `apps.default`, `apps.pi-daemon`, `apps.pi-daemon-rpc`,
 `homeManagerModules.default` (`homeManagerModules.pi-daemon`), package/site/module
 checks, and `devShells.default` on Linux and macOS:
 
@@ -244,9 +244,13 @@ inputs.pi-daemon.inputs.nixpkgs.follows = "nixpkgs";
 
 The standalone lock follows the fleet's warm nixpkgs baseline; consumers should
 use `nixpkgs.follows` so Pi Daemon shares their own evaluated package set. A
-Cacophony node can therefore consume the reproducible package without copying
-service source into Cacophony. The Home Manager module creates independently
-named user services through systemd on Linux, launchd on Darwin, or conditional
+release lane can pre-materialize the exact fixed-output npm cache with
+`nix build .#npm-deps`; once cached, the same command with `--offline` proves no
+ambient registry is needed. First materialization retries only recognized
+transient transport failures and still fails integrity/identity errors
+immediately. A Cacophony node can therefore consume the reproducible package
+without copying service source into Cacophony. The Home Manager module creates
+independently named user services through systemd on Linux, launchd on Darwin, or conditional
 supervisord on nix-on-droid. API-enabled instances also receive a separate
 semantic watchdog by default: it distinguishes HTTP responses from a mere PID or
 listener, records slow responses without restarting, and permits one exact-instance

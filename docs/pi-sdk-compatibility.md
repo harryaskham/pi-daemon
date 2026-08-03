@@ -59,6 +59,17 @@ is the only witness, which is why the script accepts only
 does not populate npm's offline cache correctly for those nested shrinkwrap
 entries; downgrading the fetcher makes `npm ci` request uncached Pi tarballs.
 
+The exact fixed-output cache is also exported as `packages.<system>.npm-deps`.
+Release staging can run `nix build .#npm-deps` before the package build; after
+that output is in the Nix store or a trusted binary cache,
+`nix build --offline .#npm-deps` requires no registry. First materialization has
+an outer three-attempt bound around the pinned fetcher, but only reviewed
+transport failures such as curl 92 HTTP/2 framing and timeouts retry. Integrity,
+package identity, lock, and unknown failures stop immediately. Structured lines
+name the tarball, transport class, attempt/max, backoff, and whether a partial
+cache was retained or removed; credentials and response bodies are never added.
+The recursive fixed-output hash remains the final byte-for-byte authority.
+
 ## Upgrade procedure
 
 1. Read the Pi release notes plus complete SDK, RPC, extension, settings,

@@ -66,7 +66,9 @@ test("the pinned npm dependency hash is a single source of truth with a lock mar
   const pins = flake.match(/npmDepsHash = "sha256-[A-Za-z0-9+/=]+";/g) ?? [];
   assert.equal(pins.length, 1, "npmDepsHash must be defined exactly once");
   assert.match(flake, /^\s*# npm-deps-lock: sha256-[A-Za-z0-9+/=]+$/m);
-  assert.match(flake, /^\s*inherit npmDepsHash;$/m);
+  assert.match(flake, /npmDeps = import \.\/nix\/npm-deps\.nix \{\s*\n\s*inherit pkgs;\s*\n\s*hash = npmDepsHash;/);
+  assert.match(flake, /^\s*inherit npmDeps;$/m);
+  assert.match(flake, /^\s*npm-deps = npmDeps;$/m);
   assert.match(flake, /npm-deps-hash = import \.\/nix\/npm-deps\.nix \{/);
   assert.match(flake, /npmDepsFetcherVersion = 2;/);
 });
@@ -78,7 +80,11 @@ test("the flake check reuses the pinned hash rather than repeating the literal",
   ]);
   assert.match(flake, /npm-deps-hash = import \.\/nix\/npm-deps\.nix \{\s*\n\s*inherit pkgs;\s*\n\s*hash = npmDepsHash;/);
   assert.match(oracle, /fetchNpmDeps/);
-  assert.match(oracle, /inherit fetcherVersion hash;/);
+  assert.match(oracle, /inherit name fetcherVersion hash;/);
+  assert.match(oracle, /base\.overrideAttrs/);
+  assert.match(oracle, /dontFixup = true/);
+  assert.match(oracle, /PI_DAEMON_NPM_FETCH_MAX_ATTEMPTS/);
+  assert.match(oracle, /prefetch-npm-deps-retry\.sh/);
 });
 
 test("the refresh script is wired into npm scripts, the Justfile, and Node CI", async () => {
