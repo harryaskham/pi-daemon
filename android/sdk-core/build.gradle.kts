@@ -2,6 +2,7 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
   alias(libs.plugins.kotlin.jvm)
+  `java-library`
 }
 
 kotlin {
@@ -18,8 +19,10 @@ kotlin {
 }
 
 dependencies {
-  implementation(libs.kotlinx.serialization.json)
+  api(libs.kotlinx.coroutines.core)
+  api(libs.kotlinx.serialization.json)
   testImplementation(libs.junit.jupiter)
+  testImplementation(libs.kotlinx.coroutines.test)
   testRuntimeOnly(libs.junit.platform.launcher)
 }
 
