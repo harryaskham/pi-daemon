@@ -192,13 +192,18 @@ jobs:
           nix develop .#closurePublisher --command attic login --set-default pi-daemon-ci "$ATTIC_ENDPOINT" "$ATTIC_TOKEN"
           nix develop .#closurePublisher --command attic cache info "pi-daemon-ci:${ATTIC_CACHE}" \
             | tee "$RUNNER_TEMP/attic-cache-info-$TARGET_SYSTEM.log"
-          nix develop .#closurePublisher --command attic push -j1 "pi-daemon-ci:${ATTIC_CACHE}" "$PACKAGE_OUT" \
+          # bd-833b3e: publish the ENTIRE closure. Attic's default upstream
+          # filter omits paths already available from public caches; that is good
+          # for storage efficiency but makes an Attic-only empty-store hydration
+          # impossible. The acceptance contract is a self-contained signed
+          # closure, so deliberately override the filter.
+          nix develop .#closurePublisher --command attic push -j1 --ignore-upstream-cache-filter "pi-daemon-ci:${ATTIC_CACHE}" "$PACKAGE_OUT" \
             2>&1 | tee "$RUNNER_TEMP/closure-cache-$TARGET_SYSTEM/attic-push.log"
           # Public signed reads are host-declared. Remove push credentials before
           # the hydration step so private-read auth cannot pass accidentally.
           rm -rf "$XDG_CONFIG_HOME"
 
-      - name: Hydrate the exact signed output path from Attic
+      - name: Hydrate the exact signed closure from Attic
         shell: bash
         env:
           PACKAGE_OUT: ${{ steps.build.outputs.out }}
@@ -209,12 +214,11 @@ jobs:
           hydration_root="$canonical_runner_temp/attic-hydration-$TARGET_SYSTEM"
           hydration_store="local?root=$hydration_root"
           mkdir -p "$hydration_root"
-          # bd-833b3e: prove the exact uploaded output NAR, not ownership of
-          # every transitive dependency. Attic intentionally leaves public
-          # dependencies in upstream caches (the push reports them as
-          # "in upstream"), so recursive copy from Attic alone asks it for
-          # paths it never duplicated and fails despite a successful push.
-          nix copy --no-recursive --option require-sigs true \
+          # bd-833b3e: recursive copy is intentional. The preceding push uses
+          # --ignore-upstream-cache-filter so Attic must own every reference of
+          # the exact output; empty-store hydration proves the self-contained
+          # signed closure rather than only the root NAR.
+          nix copy --option require-sigs true \
             --from "$ATTIC_SUBSTITUTER" \
             --to "$hydration_store" \
             "$PACKAGE_OUT" \
@@ -224,7 +228,7 @@ jobs:
             nix path-info --store "$hydration_store" "$PACKAGE_OUT"
           )
           if [[ "$hydrated_out" != "$PACKAGE_OUT" || ! -x "$hydration_root$PACKAGE_OUT/bin/pi-daemon" ]]; then
-            echo '::error title=Attic hydration did not reproduce the exact output path::The signed cache must hydrate the captured output NAR into an empty isolated local store.'
+            echo '::error title=Attic hydration did not reproduce the exact output closure::The signed cache must hydrate the captured package and every reference into an empty isolated local store.'
             exit 1
           fi
           printf '%s\n' "$hydrated_out" > "$log_dir/attic-hydrated-output"
@@ -235,13 +239,16 @@ jobs:
             echo "- cache: \`${ATTIC_CACHE}\`"
             echo "- execution: \`${TARGET_EXECUTION}\` from \`${CURRENT_SYSTEM}\`"
             echo '- verification: both installed version commands executed'
-            echo '- trust: exact output path rehydrated non-recursively from Attic into an empty local store with require-sigs enabled; public transitive dependencies remain in signed upstream caches'
+            echo '- trust: exact self-contained closure rehydrated recursively from Attic into an empty local store with require-sigs enabled'
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Remove Attic credentials
         if: always()
         shell: bash
         run: |
+          # Nix local-store objects are read-only; restore owner write bits so
+          # cleanup does not fail with Permission denied after hydration errors.
+          chmod -R u+w "$RUNNER_TEMP/attic-hydration-$TARGET_SYSTEM" 2>/dev/null || true
           rm -rf "$XDG_CONFIG_HOME" "$RUNNER_TEMP/attic-hydration-$TARGET_SYSTEM"
           rm -f "$RUNNER_TEMP/nix-config-before-attic-$TARGET_SYSTEM.json" \
             "$RUNNER_TEMP/nix-store-trust-$TARGET_SYSTEM.json" \
