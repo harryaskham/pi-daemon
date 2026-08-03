@@ -43,7 +43,6 @@ jobs:
     env:
       ATTIC_ENDPOINT: ${{ vars.PI_DAEMON_ATTIC_ENDPOINT }}
       ATTIC_CACHE: ${{ vars.PI_DAEMON_ATTIC_CACHE }}
-      ATTIC_TOKEN: ${{ secrets.PI_DAEMON_ATTIC_TOKEN }}
       TARGET_SYSTEM: ${{ matrix.system }}
       TARGET_EXECUTION: ${{ matrix.execution }}
     steps:
@@ -71,10 +70,6 @@ jobs:
             echo '::error title=Closure cache name is not configured::Set PI_DAEMON_ATTIC_CACHE to a simple Attic cache name.'
             exit 1
           fi
-          if [[ -z "$ATTIC_TOKEN" ]]; then
-            echo '::error title=Closure cache token is not configured::Set PI_DAEMON_ATTIC_TOKEN in the pi-daemon-aarch64-cache environment.'
-            exit 1
-          fi
           current_system="$(nix eval --raw --impure --expr builtins.currentSystem)"
           export CURRENT_SYSTEM="$current_system"
           echo "CURRENT_SYSTEM=$current_system" >> "$GITHUB_ENV"
@@ -92,10 +87,37 @@ jobs:
           if (target !== current && !extraPlatforms.includes(target)) {
             throw new Error(`Nix cannot execute ${target}: current system is ${current} and extra-platforms does not include the target`);
           }
-          if (store.trusted !== 1 && store.trusted !== true) {
-            throw new Error("the closure publisher must be a trusted Nix store client before configuring restricted cache credentials and signing keys");
+          // bd-833b3e: Linux self-hosted runner units share one `github-runner`
+          // Unix user across repositories. Nix documents trusted-users as
+          // root-equivalent, so the publisher must prove this generic principal
+          // stays UNTRUSTED rather than demand the privilege.
+          if (process.env.RUNNER_OS === "Linux" && (store.trusted === 1 || store.trusted === true)) {
+            throw new Error("the shared github-runner principal is unexpectedly a trusted Nix client; revoke broad runner trust before publishing");
+          }
+          const normalizeUrl = (value) => {
+            const url = new URL(value);
+            url.search = "";
+            url.hash = "";
+            return url.toString().replace(/\/$/, "");
+          };
+          const substituters = config.substituters?.value ?? [];
+          if (!substituters.some((value) => normalizeUrl(value) === "https://cache.nixos.org")) {
+            throw new Error("the host Nix configuration dropped cache.nixos.org instead of adding the signed Attic cache");
+          }
+          const expectedAttic = normalizeUrl(`${process.env.ATTIC_ENDPOINT.replace(/\/$/, "")}/${process.env.ATTIC_CACHE}`);
+          if (!substituters.some((value) => normalizeUrl(value) === expectedAttic)) {
+            throw new Error(`the exact Attic cache ${expectedAttic} is not declared by the host Nix configuration`);
+          }
+          const trustedKeys = config["trusted-public-keys"]?.value ?? [];
+          if (!trustedKeys.some((value) => value.startsWith("collective:"))) {
+            throw new Error("the host Nix configuration does not declare a collective cache signing key");
+          }
+          if (config["require-sigs"]?.value !== true) {
+            throw new Error("Nix signature verification must remain enabled");
           }
           NODE
+          attic_substituter="${ATTIC_ENDPOINT%/}/${ATTIC_CACHE}"
+          echo "ATTIC_SUBSTITUTER=$attic_substituter" >> "$GITHUB_ENV"
 
           if [[ "$TARGET_EXECUTION" == binfmt && "$TARGET_SYSTEM" == aarch64-linux && "$current_system" != aarch64-linux ]]; then
             found_binfmt=false
@@ -110,45 +132,6 @@ jobs:
               exit 1
             fi
           fi
-
-      - name: Add the signed private Attic substituter
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p "$XDG_CONFIG_HOME"
-          chmod 700 "$XDG_CONFIG_HOME"
-          # Keep credentials in an isolated config that the final cleanup
-          # removes. GitHub masks the secret argument; no command prints it.
-          nix develop .#closurePublisher --command attic login --set-default pi-daemon-ci "$ATTIC_ENDPOINT" "$ATTIC_TOKEN"
-          nix develop .#closurePublisher --command attic cache info "pi-daemon-ci:${ATTIC_CACHE}" \
-            | tee "$RUNNER_TEMP/attic-cache-info-$TARGET_SYSTEM.log"
-          nix develop .#closurePublisher --command attic use "pi-daemon-ci:${ATTIC_CACHE}"
-          attic_substituter="${ATTIC_ENDPOINT%/}/${ATTIC_CACHE}"
-          echo "ATTIC_SUBSTITUTER=$attic_substituter" >> "$GITHUB_ENV"
-
-          # `attic use` must be additive: cache.nixos.org remains available and
-          # Nix must continue rejecting unsigned/untrusted non-CA store paths.
-          nix config show --json > "$RUNNER_TEMP/nix-config-with-attic-$TARGET_SYSTEM.json"
-          node --input-type=module - "$RUNNER_TEMP/nix-config-with-attic-$TARGET_SYSTEM.json" <<'NODE'
-          import { readFile } from "node:fs/promises";
-          const config = JSON.parse(await readFile(process.argv[2], "utf8"));
-          const substituters = config.substituters?.value ?? [];
-          const normalizeUrl = (value) => {
-            const url = new URL(value);
-            url.search = "";
-            url.hash = "";
-            return url.toString().replace(/\/$/, "");
-          };
-          const hasNixos = substituters.some((value) => normalizeUrl(value) === "https://cache.nixos.org");
-          if (!hasNixos) throw new Error("attic use replaced cache.nixos.org instead of adding a substituter");
-          const expectedAttic = normalizeUrl(`${process.env.ATTIC_ENDPOINT.replace(/\/$/, "")}/${process.env.ATTIC_CACHE}`);
-          if (!substituters.some((value) => normalizeUrl(value) === expectedAttic)) {
-            throw new Error("the configured Attic cache is absent from effective Nix substituters");
-          }
-          if (config["require-sigs"]?.value !== true) {
-            throw new Error("Nix signature verification must remain enabled");
-          }
-          NODE
 
       - name: Build the exact ${{ matrix.system }} package
         id: build
@@ -188,14 +171,29 @@ jobs:
             "$PACKAGE_OUT/bin/pi-daemon-rpc" --version | grep -Fx 0.3.0
           } | tee "$RUNNER_TEMP/closure-cache-$TARGET_SYSTEM/version-checks.log"
 
-      - name: Push the exact output closure to Attic
+      - name: Authenticate and push the exact output closure to Attic
         shell: bash
         env:
           PACKAGE_OUT: ${{ steps.build.outputs.out }}
+          # Push-only credential: repository build and signed hydration never
+          # receive this environment value or the generated Attic config.
+          ATTIC_TOKEN: ${{ secrets.PI_DAEMON_ATTIC_TOKEN }}
         run: |
           set -euo pipefail
+          if [[ -z "$ATTIC_TOKEN" ]]; then
+            echo '::error title=Closure cache token is not configured::Set PI_DAEMON_ATTIC_TOKEN in the pi-daemon-aarch64-cache environment.'
+            exit 1
+          fi
+          mkdir -p "$XDG_CONFIG_HOME"
+          chmod 700 "$XDG_CONFIG_HOME"
+          nix develop .#closurePublisher --command attic login --set-default pi-daemon-ci "$ATTIC_ENDPOINT" "$ATTIC_TOKEN"
+          nix develop .#closurePublisher --command attic cache info "pi-daemon-ci:${ATTIC_CACHE}" \
+            | tee "$RUNNER_TEMP/attic-cache-info-$TARGET_SYSTEM.log"
           nix develop .#closurePublisher --command attic push -j1 "pi-daemon-ci:${ATTIC_CACHE}" "$PACKAGE_OUT" \
             2>&1 | tee "$RUNNER_TEMP/closure-cache-$TARGET_SYSTEM/attic-push.log"
+          # Public signed reads are host-declared. Remove push credentials before
+          # the hydration step so private-read auth cannot pass accidentally.
+          rm -rf "$XDG_CONFIG_HOME"
 
       - name: Hydrate the exact signed closure from Attic
         shell: bash
@@ -238,7 +236,6 @@ jobs:
         run: |
           rm -rf "$XDG_CONFIG_HOME" "$RUNNER_TEMP/attic-hydration-$TARGET_SYSTEM"
           rm -f "$RUNNER_TEMP/nix-config-before-attic-$TARGET_SYSTEM.json" \
-            "$RUNNER_TEMP/nix-config-with-attic-$TARGET_SYSTEM.json" \
             "$RUNNER_TEMP/nix-store-trust-$TARGET_SYSTEM.json" \
             "$RUNNER_TEMP/attic-cache-info-$TARGET_SYSTEM.log"
 

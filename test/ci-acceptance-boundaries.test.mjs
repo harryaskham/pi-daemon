@@ -72,7 +72,9 @@ function assertAcceptanceBoundaries({ manifest, flake, ci, macos, scheduled, clo
   assert.match(closure, /\/proc\/sys\/fs\/binfmt_misc\/\*aarch64\*/);
   assert.match(closure, /vars\.PI_DAEMON_ATTIC_ENDPOINT/);
   assert.match(closure, /vars\.PI_DAEMON_ATTIC_CACHE/);
-  assert.match(closure, /secrets\.PI_DAEMON_ATTIC_TOKEN/);
+  assert.doesNotMatch(closureJobEnv(closure), /PI_DAEMON_ATTIC_TOKEN/);
+  assert.equal((closure.match(/secrets\.PI_DAEMON_ATTIC_TOKEN/g) ?? []).length, 1);
+  assert.match(closure, /ATTIC_TOKEN: \$\{\{ secrets\.PI_DAEMON_ATTIC_TOKEN \}\}/);
   assert.doesNotMatch(closure, /PI_DAEMON_FEEDBACK/);
   assert.match(flake, /closurePublisher = pkgs\.mkShell \{/);
   assert.match(flake, /packages = commonPackages \+\+ \[pkgs\.actionlint pkgs\.attic-client\]/);
@@ -85,17 +87,21 @@ function assertAcceptanceBoundaries({ manifest, flake, ci, macos, scheduled, clo
   assert.doesNotMatch(closure, /nixpkgs#attic-client|command -v attic|ATTIC_BIN/);
   assert.doesNotMatch(closure, /\b(?:awk|cat|mapfile)\b/);
   assert.match(closure, /nix store ping --json/);
-  assert.match(closure, /store\.trusted !== 1 && store\.trusted !== true/);
+  assert.match(closure, /process\.env\.RUNNER_OS === "Linux"/);
+  assert.match(closure, /store\.trusted === 1 \|\| store\.trusted === true/);
+  assert.match(closure, /shared github-runner principal is unexpectedly a trusted Nix client/);
   assert.match(closure, /export CURRENT_SYSTEM="\$current_system"/);
   assert.match(closure, /nix develop \.#closurePublisher --command attic --version/);
   assert.match(closure, /nix develop \.#closurePublisher --command attic login --set-default pi-daemon-ci/);
   assert.match(closure, /nix develop \.#closurePublisher --command attic cache info "pi-daemon-ci:\$\{ATTIC_CACHE\}"/);
-  assert.match(closure, /nix develop \.#closurePublisher --command attic use "pi-daemon-ci:\$\{ATTIC_CACHE\}"/);
+  assert.doesNotMatch(closure, /nix develop \.#closurePublisher --command attic use/);
   assert.match(closure, /ATTIC_SUBSTITUTER=\$attic_substituter/);
   assert.match(closure, /"\.\#packages\.\$\{TARGET_SYSTEM\}\.pi-daemon"/);
   assert.match(closure, /--option require-sigs true/);
   assert.match(closure, /cache\.nixos\.org/);
   assert.match(closure, /expectedAttic/);
+  assert.match(closure, /exact Attic cache .* is not declared by the host Nix configuration/);
+  assert.match(closure, /collective cache signing key/);
   assert.match(closure, /PACKAGE_OUT: \$\{\{ steps\.build\.outputs\.out \}\}/);
   assert.match(closure, /nix develop \.#closurePublisher --command attic push -j1 "pi-daemon-ci:\$\{ATTIC_CACHE\}" "\$PACKAGE_OUT"/);
   assert.match(closure, /nix copy --option require-sigs true/);
@@ -107,12 +113,13 @@ function assertAcceptanceBoundaries({ manifest, flake, ci, macos, scheduled, clo
   assert.match(closure, /closure-cache-\$\{\{ matrix\.system \}\}-\$\{\{ github\.run_id \}\}/);
   assert.match(closure, /Remove Attic credentials\n\s+if: always\(\)/);
 
-  const login = closure.indexOf("nix develop .#closurePublisher --command attic login --set-default");
-  const use = closure.indexOf('nix develop .#closurePublisher --command attic use "pi-daemon-ci:${ATTIC_CACHE}"');
+  const trustBoundary = closure.indexOf("shared github-runner principal is unexpectedly a trusted Nix client");
   const build = closure.indexOf('".#packages.${TARGET_SYSTEM}.pi-daemon"');
+  const login = closure.indexOf("nix develop .#closurePublisher --command attic login --set-default");
   const push = closure.indexOf('nix develop .#closurePublisher --command attic push -j1 "pi-daemon-ci:${ATTIC_CACHE}" "$PACKAGE_OUT"');
+  const credentialRemoval = closure.indexOf('rm -rf "$XDG_CONFIG_HOME"', push);
   const hydrate = closure.indexOf("nix copy --option require-sigs true");
-  assert.ok(login < use && use < build && build < push && push < hydrate, "Attic must be additive before each exact build, push, and signed hydration");
+  assert.ok(trustBoundary < build && build < login && login < push && push < credentialRemoval && credentialRemoval < hydrate, "untrusted-client proof and exact build must precede push-only credentials, cleanup, and signed hydration");
 }
 
 const sources = async () => {
@@ -190,10 +197,30 @@ test("CI boundary checks reject regressions in every asserted direction", async 
       },
     },
     {
-      name: "publisher stops proving effective daemon trust",
+      name: "publisher stops proving the shared Linux runner remains untrusted",
       value: {
         ...actual,
-        closure: actual.closure.replace("nix store ping --json", "nix config show --json"),
+        closure: actual.closure.replace("store.trusted === 1 || store.trusted === true", "store.trusted !== 1 && store.trusted !== true"),
+      },
+    },
+    {
+      name: "publisher restores the Attic secret to job scope",
+      value: {
+        ...actual,
+        closure: actual.closure.replace(
+          "      ATTIC_ENDPOINT: ${{ vars.PI_DAEMON_ATTIC_ENDPOINT }}",
+          "      ATTIC_TOKEN: ${{ secrets.PI_DAEMON_ATTIC_TOKEN }}\n      ATTIC_ENDPOINT: ${{ vars.PI_DAEMON_ATTIC_ENDPOINT }}",
+        ),
+      },
+    },
+    {
+      name: "publisher dynamically restores attic use",
+      value: {
+        ...actual,
+        closure: actual.closure.replace(
+          "          attic_substituter=",
+          "          nix develop .#closurePublisher --command attic use \"pi-daemon-ci:${ATTIC_CACHE}\"\n          attic_substituter=",
+        ),
       },
     },
     {

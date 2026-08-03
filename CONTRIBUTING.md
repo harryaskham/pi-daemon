@@ -136,12 +136,13 @@ target has its own non-cancelling concurrency group, because a half-built run
 leaves that platform's consumers with no closure to substitute while unrelated
 platform publishers must continue independently. Every Attic call runs through
 `nix develop .#closurePublisher --command attic`; do not restore a runner PATH
-check or ad-hoc package bootstrap. Run `nix build .#checks.<system>.workflow-syntax`
-when editing workflows; the pinned actionlint check catches invalid GitHub
-expression contexts before a workflow can fail with zero jobs. Closure
-publishers must also prove effective trusted-store status and rehydrate their exact output
-from Attic; a client config dump or successful local build is not a substitution
-receipt.
+check or ad-hoc package bootstrap. Run
+`nix build .#checks.<system>.workflow-syntax` when editing workflows; the pinned
+actionlint check catches invalid GitHub expression contexts before a workflow can
+fail with zero jobs. The shared Linux publisher must prove it remains untrusted;
+exact Attic endpoint/signing keys are host-declared, `attic use` is forbidden,
+and the push token is step-scoped after build. Exact signed rehydration—not a
+client config dump or successful local build—is the substitution receipt.
 
 They are separate because the first attempt at this put both in one workflow and
 merely scoped `cancel-in-progress` to pull requests. That deadlocked CI

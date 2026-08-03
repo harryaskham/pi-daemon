@@ -716,13 +716,15 @@ Concurrency is target-scoped and never cancels an active publisher, so a slow
 Darwin closure neither blocks nor cancels Linux and a later landing cannot leave
 a target half-published. Each job verifies `builtins.currentSystem`; a non-native
 target must appear in effective `extra-platforms`, and Linux ARM additionally
-requires a live binfmt registration. The workflow also requires `nix store ping
---json` to report an effectively trusted client before it configures restricted
-netrc/signing/substituter settings; an untrusted runner fails actionably instead
-of treating client-side `nix config show` as daemon trust. Trust is a reviewed
-runner materialization property, never an ad-hoc workflow mutation. A mislabelled
-or unprepared runner fails before authentication/build rather than silently
-publishing its host system.
+requires a live binfmt registration. Linux publishers also prove the shared
+`github-runner` principal remains **untrusted**: Nix documents `trusted-users` as
+root-equivalent, and that Unix account serves multiple repositories. Host Nix
+configuration must already declare `cache.nixos.org`, the exact Attic endpoint,
+a `collective:` signing key, and `require-sigs = true`. The workflow neither
+requests daemon trust nor mutates substituters. A broad trust grant, missing
+signed-read declaration, mislabelled runner, or unavailable execution platform
+fails before credentials/build rather than silently widening authority or
+publishing the host system.
 
 The flake's dedicated `devShells.<system>.closurePublisher` includes
 `pkgs.attic-client` from the repository-pinned nixpkgs input. Every workflow
@@ -730,16 +732,17 @@ Attic operation runs as `nix develop .#closurePublisher --command attic ...`;
 publisher correctness never depends on a mutable host `PATH`, host install, or
 ad-hoc package bootstrap. The first executable step writes a target-specific
 `XDG_CONFIG_HOME` from step-scoped `$RUNNER_TEMP` into `$GITHUB_ENV`—GitHub does
-not permit `runner.*` in job-level `env`. It then authenticates, checks the
-destination cache, and runs `attic use` before the build. That adds the private
-signed substituter without removing `cache.nixos.org`; `require-sigs` remains
-enabled, so a bad or untrusted non-content-addressed closure fails instead of
-falling back to unsigned input.
+not permit `runner.*` in job-level `env`. That directory remains empty through
+repository build and version verification. The workflow never runs `attic use`;
+all cache READ authority is exact, signed, and host-declared.
+
 It builds exact `.#packages.$TARGET_SYSTEM.pi-daemon`, parses exactly one output
-using Bash alone, records its closure size, executes both installed version
-commands on the configured execution path, and passes only that captured output
-to `attic push -j1`. After push, it copies the exact output **from the Attic URL**
-into an empty target-private local Nix store rooted under the physical
+using Bash alone, records its closure size, and executes both installed version
+commands. Only the later push step receives `PI_DAEMON_ATTIC_TOKEN`: it logs in,
+checks cache identity, pushes that captured output with `attic push -j1`, and
+removes the generated Attic config before hydration. After push, it copies the
+exact output **from the Attic URL** into an empty target-private local Nix store
+rooted under the physical
 (`pwd -P`) runner temp path, with `require-sigs` enabled, and requires
 `nix path-info` plus the installed executable to match. Only that
 rehydration is a signed-substitution receipt; a successful local build or
@@ -751,17 +754,19 @@ credential compatibility even though the publisher is now multi-platform. Set:
 - environment variable `PI_DAEMON_ATTIC_ENDPOINT`: the Attic API endpoint,
   including `https://` (or a trusted-network `http://` endpoint);
 - environment variable `PI_DAEMON_ATTIC_CACHE`: the existing simple cache name;
-- environment secret `PI_DAEMON_ATTIC_TOKEN`: a least-privilege token with pull
-  and push access to that cache.
+- environment secret `PI_DAEMON_ATTIC_TOKEN`: a least-privilege push token,
+  exposed only to the authenticate/push step. Signed cache reads must work
+  without it.
 
 The consumer-acceptance feedback webhook/token is unrelated and is not read by
 this workflow. Bootstrap the Attic cache once with an administrator outside
 GitHub Actions: create the cache, configure visibility/retention, record the
 public signing key from `attic cache info SERVER:CACHE`, and issue the scoped CI
-token. Configure consumers with the substitution URL and exact public key in
-`trusted-public-keys` while retaining `https://cache.nixos.org/`; publisher
-tokens must never be placed on consumers. Publishers need Nix, effective trusted
-client status, and the declared target execution support; the workflow supplies
+token. Configure consumers and publishers with the exact substitution URL and
+public key in declarative host `substituters`/`trusted-public-keys` while
+retaining `https://cache.nixos.org/`; publisher tokens must never be placed on
+consumers or build steps. The shared Linux runner must remain untrusted.
+Publishers need Nix and declared target execution support; the workflow supplies
 its pinned Attic client through the declared publisher shell. Workflow
 credentials are removed by an `always()` step, and logs never retain the token
 or private Attic config. The flake's `workflow-syntax` check runs the
@@ -775,7 +780,7 @@ executing the exact target:
 TARGET_SYSTEM=aarch64-linux
 attic login --set-default SERVER https://attic.example.invalid PULL_PUSH_TOKEN
 attic cache info SERVER:collective
-attic use SERVER:collective
+# The signed endpoint/key must already be declared by host Nix configuration.
 out=$(nix build --no-link --print-out-paths --option require-sigs true \
   "github:harryaskham/pi-daemon/REV#packages.$TARGET_SYSTEM.pi-daemon")
 "$out/bin/pi-daemon" version
