@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+  android:description="@string/pidroid_collection_widget_description"
+  android:initialLayout="@layout/pidroid_widget_collection"
+  android:minHeight="160dp"
+  android:minWidth="240dp"
+  android:previewLayout="@layout/pidroid_widget_collection"
+  android:resizeMode="horizontal|vertical"
+  android:updatePeriodMillis="0"
+  android:widgetCategory="home_screen" />

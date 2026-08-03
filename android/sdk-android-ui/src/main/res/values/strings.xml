@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <string name="pidroid_widget_description">Pinned Pi Droid session status</string>
+  <string name="pidroid_collection_widget_description">Pi Droid session collection</string>
+  <string name="pidroid_collection_widget_title">PI DROID · SESSIONS</string>
+  <string name="pidroid_widget_unavailable">Open Pi Droid to select a session</string>
+  <string name="pidroid_widget_stale">Stale</string>
+</resources>

@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+  android:id="@+id/widget_collection_root"
+  android:layout_width="match_parent"
+  android:layout_height="match_parent"
+  android:background="#111A27"
+  android:orientation="vertical"
+  android:padding="16dp">
+  <TextView
+    android:id="@+id/widget_collection_title"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:text="@string/pidroid_collection_widget_title"
+    android:textColor="#88D5E7"
+    android:textSize="12sp"
+    android:textStyle="bold" />
+  <ListView
+    android:id="@+id/widget_collection_list"
+    android:layout_width="match_parent"
+    android:layout_height="0dp"
+    android:layout_weight="1"
+    android:paddingTop="8dp" />
+  <TextView
+    android:id="@+id/widget_collection_freshness"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:paddingTop="8dp"
+    android:textColor="#E9CB88"
+    android:textSize="12sp" />
+</LinearLayout>

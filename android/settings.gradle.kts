@@ -25,4 +25,5 @@ include(":sdk-android-integration")
 if (providers.gradleProperty("piDroidAndroidApp").orNull == "true") {
   include(":app")
   include(":play-receipt")
+  include(":sdk-android-ui")
 }
