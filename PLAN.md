@@ -544,6 +544,8 @@ process appears per wake.
 - [x] `bd-dda8b8` Keep the shared Linux runner untrusted, require host-declared
   exact signed reads, remove dynamic `attic use`, and expose the push token only
   after build while preserving empty-store signed hydration.
+- [x] `bd-90c177` Explicitly disable `install-nix-action`'s trusted-user default
+  so a fresh runner path cannot silently grant root-equivalent trust.
 
 ## 18. Completed scaffold board (historical PD identifiers)
 

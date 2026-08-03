@@ -718,9 +718,11 @@ a target half-published. Each job verifies `builtins.currentSystem`; a non-nativ
 target must appear in effective `extra-platforms`, and Linux ARM additionally
 requires a live binfmt registration. Linux publishers also prove the shared
 `github-runner` principal remains **untrusted**: Nix documents `trusted-users` as
-root-equivalent, and that Unix account serves multiple repositories. Host Nix
-configuration must already declare `cache.nixos.org`, the exact Attic endpoint,
-a `collective:` signing key, and `require-sigs = true`. The workflow neither
+root-equivalent, and that Unix account serves multiple repositories.
+`cachix/install-nix-action` defaults `set_as_trusted_user` to true, so this
+workflow explicitly sets it to `false`; a fresh install path cannot silently
+reverse the guard. Host Nix configuration must already declare
+`cache.nixos.org`, the exact Attic endpoint, a `collective:` signing key, and `require-sigs = true`. The workflow neither
 requests daemon trust nor mutates substituters. A broad trust grant, missing
 signed-read declaration, mislabelled runner, or unavailable execution platform
 fails before credentials/build rather than silently widening authority or

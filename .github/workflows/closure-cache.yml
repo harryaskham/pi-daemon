@@ -50,6 +50,9 @@ jobs:
       - uses: cachix/install-nix-action@v31
         with:
           github_access_token: ${{ secrets.GITHUB_TOKEN }}
+          # The shared runner principal serves multiple repositories. Nix
+          # trusted-users is root-equivalent, so never let setup grant it trust.
+          set_as_trusted_user: false
 
       - name: Validate repository-pinned publisher shell
         shell: bash

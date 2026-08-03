@@ -139,7 +139,8 @@ platform publishers must continue independently. Every Attic call runs through
 check or ad-hoc package bootstrap. Run
 `nix build .#checks.<system>.workflow-syntax` when editing workflows; the pinned
 actionlint check catches invalid GitHub expression contexts before a workflow can
-fail with zero jobs. The shared Linux publisher must prove it remains untrusted;
+fail with zero jobs. The shared Linux publisher must prove it remains untrusted,
+and its Nix setup action must explicitly retain `set_as_trusted_user: false`;
 exact Attic endpoint/signing keys are host-declared, `attic use` is forbidden,
 and the push token is step-scoped after build. Exact signed rehydration—not a
 client config dump or successful local build—is the substitution receipt.

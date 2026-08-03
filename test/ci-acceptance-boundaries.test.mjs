@@ -56,6 +56,7 @@ function assertAcceptanceBoundaries({ manifest, flake, ci, macos, scheduled, clo
 
   assert.match(closure, /runs-on: \$\{\{ matrix\.runner \}\}/);
   assert.match(closure, /environment: pi-daemon-aarch64-cache/);
+  assert.match(closure, /cachix\/install-nix-action@v31[\s\S]*?set_as_trusted_user: false/);
   assert.match(closure, /group: pi-daemon-closure-\$\{\{ matrix\.system \}\}/);
   assert.match(closure, /cancel-in-progress: false/);
   assert.match(closure, /fail-fast: false/);
@@ -184,6 +185,13 @@ test("CI boundary checks reject regressions in every asserted direction", async 
       value: {
         ...actual,
         flake: actual.flake.replace("[pkgs.actionlint pkgs.attic-client]", "[pkgs.actionlint pkgs.hello]"),
+      },
+    },
+    {
+      name: "Nix setup restores root-equivalent trust for the shared runner",
+      value: {
+        ...actual,
+        closure: actual.closure.replace("set_as_trusted_user: false", "set_as_trusted_user: true"),
       },
     },
     {
