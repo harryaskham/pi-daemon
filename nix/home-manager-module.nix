@@ -9,6 +9,11 @@
   isDarwin = pkgs.stdenv.isDarwin;
   isLinux = pkgs.stdenv.isLinux;
   hasSupervisord = (options ? supervisord) && (options.supervisord ? programs);
+  supervisordProgramOptions =
+    if hasSupervisord
+    then options.supervisord.programs.type.getSubOptions ["supervisord" "programs" "<name>"]
+    else {};
+  supportsSupervisordStopwaitsecs = supervisordProgramOptions ? stopwaitsecs;
   homeDirectory = config.home.homeDirectory;
   enabledInstances = lib.filterAttrs (_: instance: instance.enable) cfg.instances;
   dashboardIdentityModule = {config, ...}: {
@@ -890,32 +895,36 @@ in {
     (lib.mkIf isLinux (lib.optionalAttrs hasSupervisord {
       supervisord.programs =
         (lib.mapAttrs' (name: instance:
-          lib.nameValuePair (serviceName name) {
-            command = command name instance;
-            environment = lib.concatStringsSep "," (
-              lib.mapAttrsToList (key: value: "${key}=\"${value}\"") (serviceEnv name instance)
-            );
-            autorestart = "true";
-            startsecs = 0;
-            stopsignal = "TERM";
-            stopwaitsecs = builtins.div (instance.watchdog.gracefulTimeoutMs + 999) 1000;
-            stdout_logfile = instance.stdoutLog;
-            stderr_logfile = instance.stderrLog;
-          })
+          lib.nameValuePair (serviceName name) ({
+              command = command name instance;
+              environment = lib.concatStringsSep "," (
+                lib.mapAttrsToList (key: value: "${key}=\"${value}\"") (serviceEnv name instance)
+              );
+              autorestart = "true";
+              startsecs = 0;
+              stopsignal = "TERM";
+              stdout_logfile = instance.stdoutLog;
+              stderr_logfile = instance.stderrLog;
+            }
+            // lib.optionalAttrs supportsSupervisordStopwaitsecs {
+              stopwaitsecs = builtins.div (instance.watchdog.gracefulTimeoutMs + 999) 1000;
+            }))
         enabledInstances)
         // (lib.mapAttrs' (name: instance:
-          lib.nameValuePair (webServiceName name) {
-            command = dedicatedWebCommand name instance;
-            environment = lib.concatStringsSep "," (
-              lib.mapAttrsToList (key: value: "${key}=\"${value}\"") (dedicatedWebEnv name instance)
-            );
-            autorestart = "true";
-            startsecs = 0;
-            stopsignal = "TERM";
-            stopwaitsecs = builtins.div (instance.watchdog.gracefulTimeoutMs + 999) 1000;
-            stdout_logfile = instance.dedicatedWeb.stdoutLog;
-            stderr_logfile = instance.dedicatedWeb.stderrLog;
-          })
+          lib.nameValuePair (webServiceName name) ({
+              command = dedicatedWebCommand name instance;
+              environment = lib.concatStringsSep "," (
+                lib.mapAttrsToList (key: value: "${key}=\"${value}\"") (dedicatedWebEnv name instance)
+              );
+              autorestart = "true";
+              startsecs = 0;
+              stopsignal = "TERM";
+              stdout_logfile = instance.dedicatedWeb.stdoutLog;
+              stderr_logfile = instance.dedicatedWeb.stderrLog;
+            }
+            // lib.optionalAttrs supportsSupervisordStopwaitsecs {
+              stopwaitsecs = builtins.div (instance.watchdog.gracefulTimeoutMs + 999) 1000;
+            }))
         enabledDedicatedWebInstances)
         // (lib.mapAttrs' (name: instance:
           lib.nameValuePair (watchdogServiceName name) {

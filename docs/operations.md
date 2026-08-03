@@ -452,8 +452,11 @@ epoch. This makes disk/load pressure visible without producing a restart storm
 or doubling backend load: when the API is slow or failed, the dependent Dash
 probe is skipped.
 
-Systemd and supervisord use their exact service names and a bounded 30-second
-TERM stop timeout. Launchd first records the exact job PID, sends TERM to the
+Systemd uses its exact service name and the configured bounded 30-second TERM
+stop timeout. Supervisord receives the same rounded `stopwaitsecs` only when the
+imported typed program schema exposes that option; current Nix-on-Droid schemas
+without it evaluate successfully and retain supervisord's own default rather
+than failing module evaluation on an unknown key. Launchd first records the exact job PID, sends TERM to the
 exact `gui/$UID/com.pi-daemon[.web].NAME` target, and polls both semantic health
 and that PID. An exited or changed PID proves graceful drain; the watchdog leaves
 a load-delayed replacement alone even if it has not bound yet. Only the same

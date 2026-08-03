@@ -36,12 +36,74 @@
     };
     config._module.args.lib = lib // {hm.dag.entryAfter = _deps: value: value;};
   };
-  supervisordStub = {lib, ...}: {
+  supervisordProgramModule = supportsStopwaitsecs: {lib, ...}: {
+    options =
+      {
+        command = lib.mkOption {type = lib.types.str;};
+        directory = lib.mkOption {
+          type = lib.types.str;
+          default = "/";
+        };
+        environment = lib.mkOption {
+          type = lib.types.either (lib.types.attrsOf lib.types.str) lib.types.str;
+          default = {};
+        };
+        path = lib.mkOption {
+          type = lib.types.listOf lib.types.package;
+          default = [];
+        };
+        autostart = lib.mkOption {
+          type = lib.types.bool;
+          default = true;
+        };
+        autorestart = lib.mkOption {
+          type = lib.types.either lib.types.bool (lib.types.enum ["true" "false" "unexpected"]);
+          default = true;
+        };
+        startsecs = lib.mkOption {
+          type = lib.types.int;
+          default = 1;
+        };
+        stopsignal = lib.mkOption {
+          type = lib.types.str;
+          default = "TERM";
+        };
+        stopasgroup = lib.mkOption {
+          type = lib.types.bool;
+          default = true;
+        };
+        killasgroup = lib.mkOption {
+          type = lib.types.bool;
+          default = true;
+        };
+        redirect_stderr = lib.mkOption {
+          type = lib.types.bool;
+          default = true;
+        };
+        stdout_logfile = lib.mkOption {
+          type = lib.types.nullOr lib.types.str;
+          default = null;
+        };
+        stderr_logfile = lib.mkOption {
+          type = lib.types.nullOr lib.types.str;
+          default = null;
+        };
+      }
+      // lib.optionalAttrs supportsStopwaitsecs {
+        stopwaitsecs = lib.mkOption {
+          type = lib.types.int;
+          default = 10;
+        };
+      };
+  };
+  supervisordStubFor = supportsStopwaitsecs: {lib, ...}: {
     options.supervisord.programs = lib.mkOption {
-      type = lib.types.attrsOf lib.types.anything;
+      type = lib.types.attrsOf (lib.types.submodule (supervisordProgramModule supportsStopwaitsecs));
       default = {};
     };
   };
+  supervisordStub = supervisordStubFor false;
+  supervisordStopwaitsecsStub = supervisordStubFor true;
   testPackage = pkgs.writeShellScriptBin "pi-daemon" ''
     exit 0
   '';
@@ -259,6 +321,15 @@
       instanceConfig
     ];
   };
+  evalSupervisordWithStopwaitsecs = lib.evalModules {
+    specialArgs = {inherit pkgs;};
+    modules = [
+      baseStubs
+      supervisordStopwaitsecsStub
+      self.homeManagerModules.pi-daemon
+      instanceConfig
+    ];
+  };
   assertionsOk = builtins.all (entry: entry.assertion) eval.config.assertions;
   collisionDetected = !(builtins.all (entry: entry.assertion) evalCollision.config.assertions);
   configCollisionDetected = !(builtins.all (entry: entry.assertion) evalConfigCollision.config.assertions);
@@ -320,6 +391,14 @@
   supervisorAlphaWatchdog =
     if pkgs.stdenv.isLinux
     then evalSupervisord.config.supervisord.programs."pi-daemon-watchdog-alpha"
+    else null;
+  supervisorAlphaWithStopwaitsecs =
+    if pkgs.stdenv.isLinux
+    then evalSupervisordWithStopwaitsecs.config.supervisord.programs."pi-daemon-alpha"
+    else null;
+  supervisorAlphaWebWithStopwaitsecs =
+    if pkgs.stdenv.isLinux
+    then evalSupervisordWithStopwaitsecs.config.supervisord.programs."pi-daemon-web-alpha"
     else null;
 in
   assert assertionsOk;
@@ -397,7 +476,18 @@ in
         test ${lib.escapeShellArg supervisorAlpha.autorestart} = true
         printf '%s\n' ${lib.escapeShellArg supervisorAlphaWeb.command} | grep -F -- '17465'
         test ${lib.escapeShellArg supervisorAlphaWeb.autorestart} = true
-        test ${lib.escapeShellArg (toString supervisorAlphaWeb.stopwaitsecs)} = 30
+        test ${lib.escapeShellArg (
+          if supervisorAlpha ? stopwaitsecs
+          then "true"
+          else "false"
+        )} = false
+        test ${lib.escapeShellArg (
+          if supervisorAlphaWeb ? stopwaitsecs
+          then "true"
+          else "false"
+        )} = false
+        test ${lib.escapeShellArg (toString supervisorAlphaWithStopwaitsecs.stopwaitsecs)} = 30
+        test ${lib.escapeShellArg (toString supervisorAlphaWebWithStopwaitsecs.stopwaitsecs)} = 30
         printf '%s\n' ${lib.escapeShellArg supervisorAlphaWatchdog.command} | grep -F -- 'supervisord'
         test ${lib.escapeShellArg supervisorAlphaWatchdog.autorestart} = true
       ''}

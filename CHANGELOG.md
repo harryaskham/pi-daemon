@@ -13,6 +13,7 @@ semantic versioning once a release tag is cut.
 
 ## 0.3.0 — 2026-07-29
 
+- capability-gate supervisord `stopwaitsecs` in the Home Manager module: current typed Nix-on-Droid schemas that lack the option now evaluate and use supervisord's default, while future schemas exposing it receive the rounded configured graceful timeout; replace the permissive module-test stub with strict old/new schemas
 - add an exact-pinned, per-file happy-dom Vitest environment for real web component regression tests in the standard gate while pure/source tests remain in Node; replace the LiveSessionControls source-string proxy with mounted preview rendering and controller-click assertions, including ResizeObserver/layout primitive availability
 - document the post-rebase exact-lock check in both agent and contributor workflows: when npm dependency metadata changed and untouched contracts report old types/missing imports, compare the installed version and run `npm ci --ignore-scripts` before misclassifying a stale untracked `node_modules` tree as broken main; real manifest/lock omissions still route to their owner
 - make every root `web:*` npm wrapper preserve forwarded workspace-tool arguments through a bounded Node exec seam that inserts the inner `--` explicitly, so focused `--grep`/reporter flags and multiword values cannot be consumed as npm configuration and silently broaden a run
