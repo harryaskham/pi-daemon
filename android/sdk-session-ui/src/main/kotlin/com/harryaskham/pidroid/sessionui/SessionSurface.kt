@@ -69,15 +69,21 @@ private val SessionColors =
     error = NordRed,
   )
 
+public enum class SessionSurfaceChrome {
+  READONLY,
+  INTERACTIVE,
+}
+
 /**
- * Reusable readonly Pi Daemon session view. It consumes already-decoded inert state and exposes no
- * credential, transport, command, controller, composer, TUI, tree, or extension-action surface.
+ * Reusable Pi Daemon session view. It consumes already-decoded inert state; [chrome] changes only
+ * presentation wording/banner space and never adds transport or command authority by itself.
  */
 @Composable
 public fun SessionSurface(
   state: SessionSurfaceState,
   layout: SessionSurfaceLayout,
   modifier: Modifier = Modifier,
+  chrome: SessionSurfaceChrome = SessionSurfaceChrome.READONLY,
 ) {
   val density = LocalDensity.current
   CompositionLocalProvider(LocalDensity provides Density(density.density, layout.fontScale)) {
@@ -87,12 +93,13 @@ public fun SessionSurface(
           modifier
             .fillMaxSize()
             .semantics {
-              contentDescription = "Readonly session ${state.session.title} on ${state.host.displayName}"
+              contentDescription =
+                "${if (chrome == SessionSurfaceChrome.READONLY) "Readonly" else "Interactive"} session ${state.session.title} on ${state.host.displayName}"
             },
         color = NordCanvas,
       ) {
         Column(Modifier.fillMaxSize()) {
-          SessionTopBar(state)
+          SessionTopBar(state, chrome)
           if (layout.formFactor == SessionSurfaceFormFactor.TABLET) {
             Row(
               modifier = Modifier.fillMaxSize().padding(layout.contentPaddingDp.dp),
@@ -103,7 +110,12 @@ public fun SessionSurface(
                 selectedId = state.session.inventoryId,
                 modifier = Modifier.width(layout.inventoryWidthDp.dp).fillMaxHeight(),
               )
-              SessionContent(state, layout, Modifier.weight(1f).fillMaxHeight())
+              SessionContent(
+                state,
+                layout,
+                Modifier.weight(1f).fillMaxHeight(),
+                showReadonlyBanner = chrome == SessionSurfaceChrome.READONLY,
+              )
             }
           } else {
             Column(
@@ -111,7 +123,12 @@ public fun SessionSurface(
               verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
               CompactInventory(state.inventory, state.session.inventoryId)
-              SessionContent(state, layout, Modifier.weight(1f).fillMaxWidth())
+              SessionContent(
+                state,
+                layout,
+                Modifier.weight(1f).fillMaxWidth(),
+                showReadonlyBanner = chrome == SessionSurfaceChrome.READONLY,
+              )
             }
           }
         }
@@ -121,7 +138,10 @@ public fun SessionSurface(
 }
 
 @Composable
-private fun SessionTopBar(state: SessionSurfaceState) {
+private fun SessionTopBar(
+  state: SessionSurfaceState,
+  chrome: SessionSurfaceChrome,
+) {
   Row(
     modifier = Modifier.fillMaxWidth().height(72.dp).padding(horizontal = 18.dp),
     verticalAlignment = Alignment.CenterVertically,
@@ -129,7 +149,13 @@ private fun SessionTopBar(state: SessionSurfaceState) {
   ) {
     Box(Modifier.size(12.dp).clip(CircleShape).background(freshnessColor(state.host.freshness)))
     Column(Modifier.weight(1f)) {
-      Text("PI DROID · READONLY", color = NordAccent, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.4.sp)
+      Text(
+        "PI DROID · ${chrome.name}",
+        color = NordAccent,
+        fontSize = 11.sp,
+        fontWeight = FontWeight.Bold,
+        letterSpacing = 1.4.sp,
+      )
       Text(
         state.session.title,
         color = NordPrimary,
@@ -268,10 +294,13 @@ private fun SessionContent(
   state: SessionSurfaceState,
   layout: SessionSurfaceLayout,
   modifier: Modifier,
+  showReadonlyBanner: Boolean,
 ) {
   Column(modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
     SessionInfoCard(state.session)
-    ReadonlyBanner()
+    if (showReadonlyBanner) {
+      ReadonlyBanner()
+    }
     TranscriptList(state.records, layout, Modifier.weight(1f).fillMaxWidth())
   }
 }

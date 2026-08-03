@@ -28,6 +28,7 @@ class SessionSurfaceComposeSemanticsTest {
     composeRule.onNodeWithContentDescription("Host Workstation, Reconnecting · 2s").assertIsDisplayed()
     composeRule.onNodeWithContentDescription("Transcript user entry:entry-user-01").assertExists()
     composeRule.onNodeWithContentDescription("Readonly surface; commands unavailable").assertExists()
+    composeRule.onNodeWithContentDescription("Session prompt composer").assertDoesNotExist()
     composeRule.onNodeWithText("Send").assertDoesNotExist()
     composeRule.onNodeWithText("Acquire control").assertDoesNotExist()
   }
