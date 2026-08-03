@@ -8,6 +8,7 @@ import { promisify } from "node:util";
 
 const run = promisify(execFile);
 const retryScript = new URL("../scripts/prefetch-npm-deps-retry.sh", import.meta.url).pathname;
+const npmDepsNix = new URL("../nix/npm-deps.nix", import.meta.url).pathname;
 
 async function fixture(t, mode) {
   const root = await mkdtemp(join(tmpdir(), "pi-daemon-npm-retry-"));
@@ -87,6 +88,18 @@ async function exists(path) {
     throw error;
   }
 }
+
+test("Nix build invokes the retry script through pinned bash, not its env shebang", async () => {
+  const source = await readFile(npmDepsNix, "utf8");
+  assert.match(
+    source,
+    /\$\{pkgs\.bash\}\/bin\/bash \$\{\.\.\/scripts\/prefetch-npm-deps-retry\.sh\}/,
+  );
+  assert.doesNotMatch(
+    source,
+    /^\s*\$\{\.\.\/scripts\/prefetch-npm-deps-retry\.sh\}/m,
+  );
+});
 
 test("recognized HTTP/2 transport failure retries and reuses the bounded output cache", async (t) => {
   const h = await fixture(t, "transient-success");

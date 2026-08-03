@@ -44,7 +44,10 @@ in
       export outputHash=${pkgs.lib.escapeShellArg hash}
       export PI_DAEMON_NPM_FETCH_MAX_ATTEMPTS=${toString maxAttempts}
       export PI_DAEMON_NPM_FETCH_INITIAL_BACKOFF_SECS=${toString initialBackoffSecs}
-      ${../scripts/prefetch-npm-deps-retry.sh} "$srcLockfile" "$out"
+      # bd-833b3e: execute through the pinned Nix bash. Calling the source
+      # script directly delegates to `#!/usr/bin/env bash`, but `/usr/bin/env`
+      # does not exist inside the Nix build sandbox (hosted jobs fail 126).
+      ${pkgs.bash}/bin/bash ${../scripts/prefetch-npm-deps-retry.sh} "$srcLockfile" "$out"
 
       runHook postBuild
     '';
