@@ -267,6 +267,17 @@
         # cannot, so `npm test` needs it on PATH.
         pkgs.openssl
       ];
+      androidComposeRuntimeLibraries = pkgs.lib.optionals pkgs.stdenv.isLinux [
+        pkgs.libGL
+        pkgs.fontconfig
+        pkgs.freetype
+        pkgs.libx11
+        pkgs.libxcursor
+        pkgs.libxi
+        pkgs.libxrandr
+        pkgs.libxrender
+        pkgs.libxtst
+      ];
     in {
       default = pkgs.mkShell {
         packages = commonPackages;
@@ -297,8 +308,12 @@
       # checksum-verified Gradle wrapper. Full Android SDK/emulator and release
       # tooling belong to nightly/manual/tag lanes, never this shell.
       android = pkgs.mkShell {
-        packages = commonPackages ++ [pkgs.jdk21 pkgs.ktlint];
+        packages =
+          commonPackages
+          ++ [pkgs.jdk21 pkgs.ktlint]
+          ++ pkgs.lib.optionals pkgs.stdenv.isLinux [pkgs.xorg-server];
         JAVA_HOME = "${pkgs.jdk21}/lib/openjdk";
+        LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath androidComposeRuntimeLibraries;
         shellHook = ''
           echo "pi-droid contract shell: Java $(java -version 2>&1 | head -1), Node $(node --version)"
         '';

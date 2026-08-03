@@ -47,5 +47,8 @@ jobs:
         run: |
           nix develop .#android --command bash -euo pipefail -c \
             "find android -type f \\( -name '*.kt' -o -name '*.kts' \\) -print0 | xargs -0 ktlint --relative"
-      - name: Run pure JVM contract tests
-        run: nix develop .#android --command ./android/gradlew -p android --no-daemon check
+      - name: Run JVM contract and Compose semantics tests
+        run: |
+          nix develop .#android --command \
+            android/build-logic/run-with-xvfb.sh \
+            ./android/gradlew -p android --no-daemon check

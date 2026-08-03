@@ -370,6 +370,14 @@ host/session keys, pane presentation state, geometry, and freshness-safe cursors
 Unknown future fields are ignored only where the version contract permits;
 corrupt workspaces quarantine to safe defaults.
 
+The Stage A `sdk-workspace-ui` checkpoint implements that local model as
+serializable immutable JVM types with bounded pure transforms, deterministic v1
+migration, seeded property tests, and corruption quarantine. Its stateless
+Compose Desktop fixture consumes the same projection/reducer to prove adaptive
+phone/tablet/foldable structure and accessibility without applying the Android
+plugin or implementing a host, transport, or live session UI. Raw fixture images
+are opt-in Cacophony session evidence, never product artefacts.
+
 Phone UI projects the same model into one focused pane plus tab switcher. Tablet,
 foldable, DeX/desktop, and external displays render multiple panes. A collapsible
 sidebar becomes a drawer on narrow screens and supports combined-host inventory,

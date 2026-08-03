@@ -18,3 +18,4 @@ rootProject.name = "pi-droid"
 
 include(":sdk-core")
 include(":sdk-testing")
+include(":sdk-workspace-ui")
