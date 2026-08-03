@@ -41,7 +41,10 @@
         nodejs = pkgs.nodejs_24;
         inherit npmDeps;
         npmDepsFetcherVersion = 2;
-        nativeBuildInputs = [pkgs.makeWrapper pkgs.openssl];
+        # bd-833b3e: npm retry tests execute a Bash fixture. NixOS/sandbox has
+        # no /bin/bash and does not export BASH, so put the pinned Nix Bash on
+        # the package check PATH rather than making JavaScript guess a host path.
+        nativeBuildInputs = [pkgs.makeWrapper pkgs.openssl pkgs.bash];
 
         npmBuildScript = "build";
         # Nix-on-Droid cannot safely run npm, so aarch64-linux artifacts are

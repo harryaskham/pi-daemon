@@ -9,6 +9,7 @@ import { promisify } from "node:util";
 const run = promisify(execFile);
 const retryScript = new URL("../scripts/prefetch-npm-deps-retry.sh", import.meta.url).pathname;
 const npmDepsNix = new URL("../nix/npm-deps.nix", import.meta.url).pathname;
+const flakeNix = new URL("../flake.nix", import.meta.url).pathname;
 
 async function fixture(t, mode) {
   const root = await mkdtemp(join(tmpdir(), "pi-daemon-npm-retry-"));
@@ -94,10 +95,18 @@ async function exists(path) {
   }
 }
 
-test("retry fixture uses the execution environment Bash rather than /bin/bash", async () => {
-  const source = await readFile(new URL(import.meta.url), "utf8");
+test("retry fixture uses pinned Nix Bash instead of /bin/bash", async () => {
+  const [source, flake] = await Promise.all([
+    readFile(new URL(import.meta.url), "utf8"),
+    readFile(flakeNix, "utf8"),
+  ]);
   assert.doesNotMatch(source, /run\("\/bin\/bash"/);
   assert.match(source, /process\.env\.BASH \|\| "bash"/);
+  assert.match(
+    flake,
+    /nativeBuildInputs = \[pkgs\.makeWrapper pkgs\.openssl pkgs\.bash\]/,
+    "Nix package checks must put pinned Bash on PATH",
+  );
 });
 
 test("Nix build invokes the retry script through pinned bash, not its env shebang", async () => {
