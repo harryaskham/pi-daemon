@@ -55,6 +55,16 @@ nix-fmt:
 nix-fmt-check:
     nix fmt -- --check flake.nix nix/
 
+# Regenerate the committed, deterministic Pi Droid Kotlin contract metadata.
+android-contracts-generate:
+    node android/build-logic/generate-protocol-models.mjs
+
+# Fast Pi Droid lane: no Android SDK, emulator, APK, AAB, or signing material.
+android-check:
+    nix develop .#android --command node --test test/android-contract-generation.test.mjs
+    nix develop .#android --command bash -euo pipefail -c "find android -type f \\( -name '*.kt' -o -name '*.kts' \\) -print0 | xargs -0 ktlint --relative"
+    nix develop .#android --command ./android/gradlew -p android --no-daemon check
+
 # Focused Node test loop: compiles src/ only and reuses the existing Dash SPA.
 # e.g. `just test-src test/session-api.test.mjs`. Use `npm test` as the gate.
 test-src *ARGS:

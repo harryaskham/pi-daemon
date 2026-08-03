@@ -10,5 +10,14 @@ trim_trailing_whitespace = true
 indent_style = space
 indent_size = 2
 
+[*.{kt,kts}]
+indent_style = space
+indent_size = 2
+
+# Generated contracts are byte-checked against their offline generator. Lint
+# handwritten Kotlin and Gradle scripts; do not restyle generated metadata.
+[android/sdk-core/src/generated/**/*.kt]
+ktlint_standard = disabled
+
 [*.md]
 trim_trailing_whitespace = false

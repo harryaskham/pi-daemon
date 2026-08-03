@@ -202,6 +202,23 @@
       home-manager-module = import ./nix/home-manager-module-check.nix {
         inherit self pkgs;
       };
+      # The ordinary Pi Droid gate is deliberately source/JVM-only: schema and
+      # fixture drift must fail without fetching an Android SDK, emulator, APK,
+      # AAB, signing material, or Play tooling.
+      android-contract-generation =
+        pkgs.runCommand "pi-droid-generated-contracts" {
+          nativeBuildInputs = [pkgs.ktlint pkgs.nodejs_24];
+          src = self;
+        } ''
+          cp -R "$src" source
+          chmod -R u+w source
+          cd source
+          node android/build-logic/generate-protocol-models.mjs --check
+          node --test test/android-contract-generation.test.mjs
+          find android -type f \( -name '*.kt' -o -name '*.kts' \) -print0 \
+            | xargs -0 ktlint --relative
+          touch "$out"
+        '';
       workflow-syntax =
         pkgs.runCommand "pi-daemon-workflow-syntax" {
           nativeBuildInputs = [pkgs.actionlint];
@@ -268,6 +285,16 @@
         PI_DAEMON_PLAYWRIGHT_DRIVER_VERSION = playwright.version;
         shellHook = ''
           echo "pi-daemon dash e2e shell: Node $(node --version), Nix playwright-driver ${playwright.version}"
+        '';
+      };
+      # Fast Android contract development uses only the pinned JVM and the
+      # checksum-verified Gradle wrapper. Full Android SDK/emulator and release
+      # tooling belong to nightly/manual/tag lanes, never this shell.
+      android = pkgs.mkShell {
+        packages = commonPackages ++ [pkgs.jdk21 pkgs.ktlint];
+        JAVA_HOME = "${pkgs.jdk21}/lib/openjdk";
+        shellHook = ''
+          echo "pi-droid contract shell: Java $(java -version 2>&1 | head -1), Node $(node --version)"
         '';
       };
     });

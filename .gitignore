@@ -20,3 +20,5 @@ secrets/*.p12
 secrets/*service-account*.json
 android/keystore.properties
 android/local.properties
+android/.gradle/
+android/**/build/

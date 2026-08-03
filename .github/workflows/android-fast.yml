@@ -1,0 +1,51 @@
+name: Pi Droid fast contracts
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "android/**"
+      - "fixtures/**/*.json"
+      - "*.schema.json"
+      - "*.openapi.json"
+      - "test/android-contract-generation.test.mjs"
+      - "flake.nix"
+      - ".github/workflows/android-fast.yml"
+  pull_request:
+    paths:
+      - "android/**"
+      - "fixtures/**/*.json"
+      - "*.schema.json"
+      - "*.openapi.json"
+      - "test/android-contract-generation.test.mjs"
+      - "flake.nix"
+      - ".github/workflows/android-fast.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pi-droid-fast-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contracts:
+    name: Generated contracts and JVM tests
+    runs-on: [self-hosted, nix, x86_64-linux]
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: cachix/install-nix-action@v31
+        with:
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: gradle/actions/setup-gradle@v5
+        with:
+          cache-read-only: ${{ github.ref != 'refs/heads/main' }}
+      - name: Verify deterministic generated Kotlin
+        run: nix develop .#android --command node --test test/android-contract-generation.test.mjs
+      - name: Check handwritten Kotlin and Gradle formatting
+        run: |
+          nix develop .#android --command bash -euo pipefail -c \
+            "find android -type f \\( -name '*.kt' -o -name '*.kts' \\) -print0 | xargs -0 ktlint --relative"
+      - name: Run pure JVM contract tests
+        run: nix develop .#android --command ./android/gradlew -p android --no-daemon check
