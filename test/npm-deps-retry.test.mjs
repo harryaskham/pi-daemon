@@ -11,6 +11,14 @@ const retryScript = new URL("../scripts/prefetch-npm-deps-retry.sh", import.meta
 const npmDepsNix = new URL("../nix/npm-deps.nix", import.meta.url).pathname;
 const flakeNix = new URL("../flake.nix", import.meta.url).pathname;
 
+async function resolveBash() {
+  if (process.env.BASH?.startsWith("/")) return process.env.BASH;
+  const result = await run("bash", ["-c", 'printf %s "$BASH"']);
+  const bash = result.stdout.trim();
+  assert.match(bash, /^\//, "resolved Bash must be an absolute path for a shebang");
+  return bash;
+}
+
 async function fixture(t, mode) {
   const root = await mkdtemp(join(tmpdir(), "pi-daemon-npm-retry-"));
   t.after(() => rm(root, { recursive: true, force: true }));
@@ -18,8 +26,9 @@ async function fixture(t, mode) {
   const lockfile = join(root, "package-lock.json");
   const output = join(root, "output");
   const fake = join(root, "prefetch-npm-deps");
+  const bash = await resolveBash();
   await writeFile(lockfile, "{}\n");
-  await writeFile(fake, `#!/usr/bin/env bash
+  await writeFile(fake, `#!${bash}
 set -euo pipefail
 count=0
 if [[ -f "$FAKE_COUNT_FILE" ]]; then count="$(<"$FAKE_COUNT_FILE")"; fi
@@ -101,6 +110,9 @@ test("retry fixture uses pinned Nix Bash instead of /bin/bash", async () => {
     readFile(flakeNix, "utf8"),
   ]);
   assert.doesNotMatch(source, /run\("\/bin\/bash"/);
+  assert.doesNotMatch(source, /#!\/usr\/bin\/env bash/);
+  assert.match(source, /const bash = await resolveBash\(\)/);
+  assert.match(source, /`#!\$\{bash\}\n/);
   assert.match(source, /process\.env\.BASH \|\| "bash"/);
   assert.match(
     flake,
