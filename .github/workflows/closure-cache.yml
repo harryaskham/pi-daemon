@@ -198,7 +198,7 @@ jobs:
           # the hydration step so private-read auth cannot pass accidentally.
           rm -rf "$XDG_CONFIG_HOME"
 
-      - name: Hydrate the exact signed closure from Attic
+      - name: Hydrate the exact signed output path from Attic
         shell: bash
         env:
           PACKAGE_OUT: ${{ steps.build.outputs.out }}
@@ -209,7 +209,12 @@ jobs:
           hydration_root="$canonical_runner_temp/attic-hydration-$TARGET_SYSTEM"
           hydration_store="local?root=$hydration_root"
           mkdir -p "$hydration_root"
-          nix copy --option require-sigs true \
+          # bd-833b3e: prove the exact uploaded output NAR, not ownership of
+          # every transitive dependency. Attic intentionally leaves public
+          # dependencies in upstream caches (the push reports them as
+          # "in upstream"), so recursive copy from Attic alone asks it for
+          # paths it never duplicated and fails despite a successful push.
+          nix copy --no-recursive --option require-sigs true \
             --from "$ATTIC_SUBSTITUTER" \
             --to "$hydration_store" \
             "$PACKAGE_OUT" \
@@ -219,7 +224,7 @@ jobs:
             nix path-info --store "$hydration_store" "$PACKAGE_OUT"
           )
           if [[ "$hydrated_out" != "$PACKAGE_OUT" || ! -x "$hydration_root$PACKAGE_OUT/bin/pi-daemon" ]]; then
-            echo '::error title=Attic hydration did not reproduce the exact output::The signed cache must hydrate the captured package into an empty isolated local store.'
+            echo '::error title=Attic hydration did not reproduce the exact output path::The signed cache must hydrate the captured output NAR into an empty isolated local store.'
             exit 1
           fi
           printf '%s\n' "$hydrated_out" > "$log_dir/attic-hydrated-output"
@@ -230,7 +235,7 @@ jobs:
             echo "- cache: \`${ATTIC_CACHE}\`"
             echo "- execution: \`${TARGET_EXECUTION}\` from \`${CURRENT_SYSTEM}\`"
             echo '- verification: both installed version commands executed'
-            echo '- trust: exact output rehydrated from Attic into an empty local store with require-sigs enabled'
+            echo '- trust: exact output path rehydrated non-recursively from Attic into an empty local store with require-sigs enabled; public transitive dependencies remain in signed upstream caches'
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Remove Attic credentials

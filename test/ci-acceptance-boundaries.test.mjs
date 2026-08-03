@@ -105,7 +105,7 @@ function assertAcceptanceBoundaries({ manifest, flake, ci, macos, scheduled, clo
   assert.match(closure, /collective cache signing key/);
   assert.match(closure, /PACKAGE_OUT: \$\{\{ steps\.build\.outputs\.out \}\}/);
   assert.match(closure, /nix develop \.#closurePublisher --command attic push -j1 "pi-daemon-ci:\$\{ATTIC_CACHE\}" "\$PACKAGE_OUT"/);
-  assert.match(closure, /nix copy --option require-sigs true/);
+  assert.match(closure, /nix copy --no-recursive --option require-sigs true/);
   assert.match(closure, /--from "\$ATTIC_SUBSTITUTER"/);
   assert.match(closure, /--to "\$hydration_store"/);
   assert.match(closure, /canonical_runner_temp="\$\(cd "\$RUNNER_TEMP" && pwd -P\)"/);
@@ -119,7 +119,7 @@ function assertAcceptanceBoundaries({ manifest, flake, ci, macos, scheduled, clo
   const login = closure.indexOf("nix develop .#closurePublisher --command attic login --set-default");
   const push = closure.indexOf('nix develop .#closurePublisher --command attic push -j1 "pi-daemon-ci:${ATTIC_CACHE}" "$PACKAGE_OUT"');
   const credentialRemoval = closure.indexOf('rm -rf "$XDG_CONFIG_HOME"', push);
-  const hydrate = closure.indexOf("nix copy --option require-sigs true");
+  const hydrate = closure.indexOf("nix copy --no-recursive --option require-sigs true");
   assert.ok(trustBoundary < build && build < login && login < push && push < credentialRemoval && credentialRemoval < hydrate, "untrusted-client proof and exact build must precede push-only credentials, cleanup, and signed hydration");
 }
 
@@ -239,6 +239,13 @@ test("CI boundary checks reject regressions in every asserted direction", async 
           '".#packages.${TARGET_SYSTEM}.pi-daemon"',
           '".#packages.x86_64-linux.pi-daemon"',
         ),
+      },
+    },
+    {
+      name: "publisher restores recursive hydration and demands upstream dependencies from Attic",
+      value: {
+        ...actual,
+        closure: actual.closure.replace("nix copy --no-recursive --option require-sigs true", "nix copy --option require-sigs true"),
       },
     },
     {
