@@ -4,8 +4,9 @@ This directory contains the Stage A build, generated-contract, and local
 workspace foundation for Pi Droid. The ordinary fast lane remains JVM-only: it
 builds the protocol modules plus an immutable recursive workspace model and a
 fixture-backed Compose Desktop projection for semantics and visual proof. There
-is no Android SDK download, live session UI, emulator, APK, AAB, signing-key
-materialization, network transport, or Play upload in this scaffold.
+is no Android SDK download, interactive or transport-backed session UI,
+emulator, APK, AAB, signing-key materialization, network transport, or Play
+upload in this scaffold.
 
 ## Pinned toolchain
 
@@ -71,10 +72,36 @@ artifact tree rather than product history. An optional first-frame diagnostic is
 available through `PI_DROID_FIXTURE_DIAGNOSTICS=1`; its timing and recomposition
 count are measurements, never standard gate bounds.
 
+## Readonly session fixture and image proof
+
+`sdk-session-ui` projects the neutral inventory, information, and transcript
+fixtures into a Cacophony-neutral readonly `SessionSurface`. It receives decoded
+host/cache state only—never a bearer or transport—and exposes no composer,
+controller, wake, TUI, tree, or extension command. Stable record keys back a
+bounded lazy transcript; reconnecting, stale, resyncing, and offline cache state
+remain visible.
+
+The same Compose test artifact writes exact 430x932 phone and 1280x800 tablet
+proofs only when an output directory is requested:
+
+```console
+env -u DISPLAY PI_DROID_SESSION_SCREENSHOT_DIR="$PWD/artifacts/pi-droid-session" \
+  nix develop .#android --command \
+  android/build-logic/run-with-xvfb.sh \
+  ./android/gradlew -p android --no-daemon \
+    :sdk-session-ui:test \
+    --tests com.harryaskham.pidroid.sessionui.SessionSurfaceScreenshotArtifactTest \
+    --rerun-tasks
+```
+
+Keep these PNGs in the Cacophony session/image artifact tree, not product
+history.
+
 ## Module boundary
 
-`sdk-core`, `sdk-testing`, and `sdk-workspace-ui` participate in the fast JVM
-build. `sdk-workspace-ui` contains only the local recursive workspace, adaptive
-shell policy, non-live fixture renderer, and screenshot harness. The application,
-live session UI, Android integration, transport, credentials, and release
+`sdk-core`, `sdk-testing`, `sdk-workspace-ui`, and `sdk-session-ui` participate
+in the fast JVM build. `sdk-workspace-ui` contains only local recursive
+workspace policy and fixture proof; `sdk-session-ui` contains only readonly
+fixture/cache projection and rendering. The application, interactive session
+commands, Android integration, real network/storage implementations, and release
 modules remain reserved for their separate implementation beads.
