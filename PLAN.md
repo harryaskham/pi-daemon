@@ -698,7 +698,7 @@ implementation order. This list is a human-readable crosswalk.
   launchd, and conditional supervisord.
 - [x] `bd-fb3b32` — version/tag/changelog/package/Nix release invariants.
 - [x] `bd-e53e76` — self-hosted CI runner policy (operational maintenance).
-- [ ] `bd-acf2d3` — draft: make automated npm dependency updates Nix-aware.
+- [x] `bd-acf2d3` — make automated npm dependency updates Nix-aware.
 
 ### Post-completion operator surfaces
 
