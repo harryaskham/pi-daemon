@@ -26,4 +26,5 @@ dependencyLocking {
 
 tasks.test {
   useJUnitPlatform()
+  systemProperty("piDaemon.repositoryRoot", rootProject.rootDir.parentFile.absolutePath)
 }
