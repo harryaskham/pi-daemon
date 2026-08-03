@@ -1,0 +1,14 @@
+# Android signing and Play publishing secrets are committed only as SOPS-encrypted files.
+# Mirrors the Cacophony companion Android pattern: Harry's local age recipient plus
+# the Cacophony caco/caco-work recipients can decrypt materialized release secrets.
+keys:
+  - &harry age1rpdpkka2uffc9mh2vuz4ufaavg4mfkk38l02j03va5kz0qg3a9eqgr2t50
+  - &caco age1t6aq3gfyxzkschf8ad5py3sl387qs3852dkmtm49rjwywdzda9jqge3v0n
+  - &caco-work age1pasks4rvvm8mzqkkcaeuhyga37a9gm284appshw5hd7qel6vhvdqrp4wz5
+creation_rules:
+  - path_regex: secrets/.*\.sops\.ya?ml$
+    key_groups:
+      - age:
+          - *harry
+          - *caco
+          - *caco-work

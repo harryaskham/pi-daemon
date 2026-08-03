@@ -114,6 +114,12 @@ The completed product adds, without removing the existing NDJSON mode:
 - Cluster-wide host placement.
 - Cacophony deployment, agent lifecycle mapping, and its `pico-daemon` adapter.
 - Native Rust agent loop (tracked separately in Cacophony as `bd-5b0910`).
+- **Pi Droid**, the independent first-party Android client and reusable Android
+  SDK views. The detailed multi-host, canonical-cache, split/tab workspace,
+  pairing, notifications, floating-window, widget/share, security, Play
+  distribution, and staged delivery design is in
+  [`docs/pi-droid-plan.md`](docs/pi-droid-plan.md). Android implementation and
+  bead expansion wait for plan review plus encrypted signing-material readiness.
 
 ## 5. Runtime architecture
 

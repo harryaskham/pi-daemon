@@ -12,3 +12,11 @@ playwright-report/
 test-results/
 .pi-daemon-state/
 .cacophony/agent/
+
+# Pi Droid release secrets: only *.sops.yaml ciphertext belongs in git.
+secrets/*.jks
+secrets/*.keystore
+secrets/*.p12
+secrets/*service-account*.json
+android/keystore.properties
+android/local.properties
