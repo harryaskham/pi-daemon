@@ -67,7 +67,12 @@ esac
 
 async function invoke(fixture) {
   try {
-    const result = await run("/bin/bash", [retryScript, fixture.lockfile, fixture.output], {
+    // bd-833b3e: `/bin/bash` does not exist in NixOS or in the Nix test
+    // sandbox. Use the shell the execution environment actually provides; Nix
+    // exports BASH as an exact store path, and ordinary hosts resolve `bash`
+    // from PATH. The production Nix call site separately pins `${pkgs.bash}`.
+    const bash = process.env.BASH || "bash";
+    const result = await run(bash, [retryScript, fixture.lockfile, fixture.output], {
       env: fixture.env,
     });
     return { code: 0, output: `${result.stdout}${result.stderr}` };
@@ -88,6 +93,12 @@ async function exists(path) {
     throw error;
   }
 }
+
+test("retry fixture uses the execution environment Bash rather than /bin/bash", async () => {
+  const source = await readFile(new URL(import.meta.url), "utf8");
+  assert.doesNotMatch(source, /run\("\/bin\/bash"/);
+  assert.match(source, /process\.env\.BASH \|\| "bash"/);
+});
 
 test("Nix build invokes the retry script through pinned bash, not its env shebang", async () => {
   const source = await readFile(npmDepsNix, "utf8");
