@@ -620,6 +620,26 @@ A mismatch stops release; do not create a replacement key after Play
 pre-registration. The package/application ID is fixed to
 `com.harryaskham.pidroid`.
 
+### Hermetic Pi/npm dependency prerequisite
+
+Pi Daemon main `fc14511` (`bd-94a9d2`) exposes the exact fixed-output npm cache
+as `packages.<system>.npm-deps`. Android tag/nightly workflows that also need the
+Pi Daemon Node package use this contract instead of redownloading registry state:
+
+```console
+nix build .#npm-deps
+nix build --offline .#npm-deps
+```
+
+The offline build is the proof that the cached dependency closure is registry
+independent. First materialization retries at most three times and only for the
+reviewed curl-92/framing/timeout/DNS/connection/HTTP-502-to-504 transport
+classes, with typed tarball, attempt, backoff, and cleanup receipts. Integrity,
+identity, lock, HTTP/2 404, and unknown failures are immediate. The full Pi
+Daemon package consumes the same path, fetcher version 2, and unchanged recursive
+hash. Android app dependencies remain separately locked by Gradle/Nix; this
+prerequisite does not make ordinary Android PR CI build the Node package.
+
 ### CI lanes
 
 **Normal PR/main (fast, Android paths only):**
