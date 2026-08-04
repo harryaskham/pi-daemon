@@ -129,7 +129,7 @@ private class SessionCollectionFactory(
       )
       views.setOnClickFillInIntent(
         R.id.widget_collection_row,
-        Intent(Intent.ACTION_VIEW, PiDroidDeepLinkCodec.encode(projection.selection.session)),
+        Intent(Intent.ACTION_VIEW, PiDroidDeepLinkCodec.encode(projection.selection.session).toAndroidDeepLink()),
       )
     }
   }
@@ -177,12 +177,22 @@ private fun pinnedViews(
         PendingIntent.getActivity(
           context,
           appWidgetId,
-          Intent(Intent.ACTION_VIEW, PiDroidDeepLinkCodec.encode(projection.selection.session)).setPackage(context.packageName),
+          Intent(Intent.ACTION_VIEW, PiDroidDeepLinkCodec.encode(projection.selection.session).toAndroidDeepLink())
+            .setPackage(context.packageName),
           PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         ),
       )
     }
   }
+
+internal fun java.net.URI.toAndroidDeepLink(): Uri {
+  require(scheme == PiDroidDeepLinkCodec.DEEP_LINK_SCHEME)
+  require(host == "host" && userInfo == null && port == -1)
+  require(rawQuery == null && rawFragment == null)
+  val segments = rawPath.split('/').filter(String::isNotEmpty)
+  require(segments.size == 3 && segments[1] == "session")
+  return Uri.parse(toASCIIString())
+}
 
 private fun openAppTemplate(
   context: Context,

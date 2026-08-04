@@ -84,8 +84,10 @@ class AndroidUiContractTest {
     assertEquals(selection, PiDroidDeepLinkCodec.decode(link, setOf(selection)))
     assertNull(PiDroidDeepLinkCodec.decode(link, emptySet()))
     assertNull(PiDroidDeepLinkCodec.decode(java.net.URI("https://host/workstation/session/session-01"), setOf(selection)))
+    assertNull(PiDroidDeepLinkCodec.decode(java.net.URI("pidroid://user@host/workstation/session/session-01"), setOf(selection)))
     assertNull(PiDroidDeepLinkCodec.decode(java.net.URI("pidroid://host/workstation/arbitrary/session-01"), setOf(selection)))
     assertNull(PiDroidDeepLinkCodec.decode(java.net.URI("pidroid://host/workstation/session/session-01?bearer=secret"), setOf(selection)))
+    assertNull(PiDroidDeepLinkCodec.decode(java.net.URI("pidroid://host/workstation/session/session-01#fragment"), setOf(selection)))
 
     val shortcut = SessionShortcut.create(selection, "Build monitor")
     assertEquals(selection, PiDroidDeepLinkCodec.decode(shortcut.deepLink, setOf(selection)))
@@ -190,6 +192,19 @@ class AndroidUiContractTest {
         0,
       )
     }
+  }
+
+  @Test
+  fun `Android intent boundaries convert neutral links once and remain package scoped`() {
+    val shortcutSource = androidUiFile("src/main/kotlin/com/harryaskham/pidroid/androidui/AndroidSessionShortcutPublisher.kt").readText()
+    val widgetSource = androidUiFile("src/main/kotlin/com/harryaskham/pidroid/androidui/AndroidWidgets.kt").readText()
+
+    assertEquals(1, Regex("\\.toAndroidDeepLink\\(\\)").findAll(shortcutSource).count())
+    assertEquals(3, Regex("\\.toAndroidDeepLink\\(\\)").findAll(widgetSource).count(), "two callsites plus one extension declaration")
+    assertEquals(1, Regex("Uri\\.parse\\(toASCIIString\\(\\)\\)").findAll(widgetSource).count())
+    assertTrue(".setPackage(applicationContext.packageName)" in shortcutSource)
+    assertTrue(".setPackage(context.packageName)" in widgetSource)
+    assertTrue("openAppTemplate(context, appWidgetId)" in widgetSource)
   }
 
   @Test

@@ -24,7 +24,7 @@ public class AndroidSessionShortcutPublisher(
           .setShortLabel(shortcut.label)
           .setLongLabel(shortcut.label)
           .setIntent(
-            Intent(Intent.ACTION_VIEW, shortcut.deepLink)
+            Intent(Intent.ACTION_VIEW, shortcut.deepLink.toAndroidDeepLink())
               .setPackage(applicationContext.packageName),
           ).build()
       }
