@@ -1,0 +1,208 @@
+From c9e6647c9a2d72a2be4f83870f10e8d28ea83677 Mon Sep 17 00:00:00 2001
+From: Harry Askham <harryaskham@gmail.com>
+Date: Wed, 24 Jun 2026 01:12:52 +0100
+Subject: [PATCH] bd-8364c6: surface canonical-fetch key failure as a Critical
+ operator-action (no auto-key-switch)
+
+Operator decision (bd-8364c6 caco choice, selected: 'Surface louder, no
+auto-key-switch'): a persistently-failing canonical fetch -- the live wedge
+class where the configured core.sshCommand key hangs/fails on github ssh so
+every (already-bounded: 45s refresh / 180s reint) fetch fails -> the mirror
+drifts for hours -> fleet reints block -- was only surfaced as a degraded-health
+feed event the operator could miss, and the daemon could not recover (no key
+fallback, by design per the decision: do NOT silently switch keys).
+
+Fix: on newly_degraded (PERSISTENT_FETCH_FAILURE_THRESHOLD consecutive
+canonical-fetch failures, once per transition), the refresh loop now ALSO
+persists a Critical NotificationRecord + Notification feed event via the
+CheckoutHookContext store -- a high-priority operator-action alert ('fix the
+canonical fetch key/auth') labelled operator-action + canonical-checkout. No
+auto-key-switch: the daemon does not change keys; the operator fixes the
+configured key, then the mirror refreshes next cycle. The fetch timeouts are
+already comprehensive (bd-5ef3ea/bd-fd5def), so this adds the missing LOUD
+surfacing, not a timeout.
+
+Pure build_canonical_fetch_failure_notification + thin async emit wrapper;
++ unit test build_canonical_fetch_failure_notification_is_critical_operator_action_bd_8364c6.
+---
+ crates/caco-daemon/src/checkout.rs | 150 +++++++++++++++++++++++++++++
+ 1 file changed, 150 insertions(+)
+
+diff --git a/crates/caco-daemon/src/checkout.rs b/crates/caco-daemon/src/checkout.rs
+index f39ed606a..cc2f80f8f 100644
+--- a/crates/caco-daemon/src/checkout.rs
++++ b/crates/caco-daemon/src/checkout.rs
+@@ -1104,6 +1104,25 @@ impl CheckoutManager {
+                         }
+                     }
+ 
++                    // bd-8364c6: louder operator-action alert (a Critical
++                    // notification) on a newly-degraded canonical fetch, so a
++                    // persistently-failing fetch (e.g. a broken / hung canonical
++                    // SSH key like the bd-8364c6 wedge) is surfaced as an
++                    // operator-action ("fix the key") rather than only a
++                    // degraded-health feed event the operator may miss. Operator
++                    // decision (bd-8364c6 choice): surface louder, NO
++                    // auto-key-switch -- the daemon does not silently change
++                    // keys; the operator fixes the configured key. Keyed on
++                    // newly_degraded so it fires once per degradation transition.
++                    if let Some(ref ctx) = hook_ctx {
++                        for (project, failures, last_error) in &newly_degraded {
++                            emit_canonical_fetch_failure_notification(
++                                ctx, project, *failures, last_error,
++                            )
++                            .await;
++                        }
++                    }
++
+                     // bd-e3b10f: Surface silently-stalled fetch schedulers — an
+                     // initialized checkout whose last successful fetch is older
+                     // than CANONICAL_FETCH_STALL_THRESHOLD with NO fetch error to
+@@ -7260,6 +7279,99 @@ pub struct CheckoutHookContext {
+     pub profile_discovery_notify: Option<Arc<tokio::sync::Notify>>,
+ }
+ 
++/// bd-8364c6: build the Critical operator-action notification record + its feed
++/// event for a persistently-failing canonical fetch. Pure (no IO) so the alert
++/// content (Critical level, operator-action label, the project/failure detail,
++/// the no-auto-key-switch statement) is unit-testable without a store.
++fn build_canonical_fetch_failure_notification(
++    node_name: &str,
++    project: &str,
++    consecutive_failures: u32,
++    last_error: &str,
++) -> (
++    crate::notifications::NotificationRecord,
++    crate::feed::FeedEvent,
++) {
++    let title = format!("Canonical fetch failing for {project}");
++    let body = format!(
++        "The canonical checkout fetch for {project} has failed {consecutive_failures} \
++consecutive times: {last_error}\n\nThe canonical mirror is now drifting: its `main` ages \
++vs true GitHub, and every agent checkout (origin = the mirror) inherits the stale `main`, \
++which blocks fleet reintegrations. The daemon does NOT auto-switch SSH keys. ACTION: fix \
++the canonical fetch key / auth for this project (e.g. a broken or hung core.sshCommand \
++key), then the mirror refreshes on the next cycle."
++    );
++    let source = "checkout-refresh";
++    let sender = format!("{node_name}:daemon:canonical_fetch_failure");
++    let rec = crate::notifications::NotificationRecord::new(node_name, &title, source)
++        .with_level(crate::notifications::NotificationLevel::Critical)
++        .with_project(project)
++        .with_body(&body)
++        .with_labels(vec![
++            "canonical-checkout".to_string(),
++            "fetch-failure".to_string(),
++            "operator-action".to_string(),
++            "daemon-resilience".to_string(),
++            "bd-8364c6".to_string(),
++        ]);
++    let payload = serde_json::json!({
++        "notification_id": rec.id,
++        "title": title,
++        "body": body,
++        "project": project,
++        "level": "critical",
++        "source": source,
++        "labels": rec.labels,
++        "consecutive_failures": consecutive_failures,
++        "last_error": last_error,
++    });
++    let feed_event = crate::feed::FeedEvent::new(
++        node_name,
++        crate::feed::EventType::Notification,
++        &sender,
++        payload,
++    )
++    .with_project(project);
++    (rec, feed_event)
++}
++
++/// bd-8364c6: persist a Critical operator-action notification when a project's
++/// canonical fetch has failed `PERSISTENT_FETCH_FAILURE_THRESHOLD` consecutive
++/// times (e.g. a broken / hung canonical SSH key like the bd-8364c6 wedge).
++///
++/// This is the "surface louder, no auto-key-switch" operator decision
++/// (bd-8364c6 choice, selected by the operator): the daemon does NOT silently
++/// switch SSH keys; it raises a high-priority operator-action alert so the
++/// operator fixes the configured key before the stale mirror blocks fleet
++/// reintegrations. Mirrors the notification persist path used elsewhere (append
++/// a `Notification` feed event + insert the notification record). The caller
++/// keys this on `newly_degraded` (once per degradation transition), so it does
++/// not spam every refresh cycle. Best-effort: a persist failure is logged, not
++/// propagated, so it never wedges the refresh loop.
++async fn emit_canonical_fetch_failure_notification(
++    ctx: &CheckoutHookContext,
++    project: &str,
++    consecutive_failures: u32,
++    last_error: &str,
++) {
++    let (rec, feed_event) = build_canonical_fetch_failure_notification(
++        &ctx.node_name,
++        project,
++        consecutive_failures,
++        last_error,
++    );
++    let mut store = ctx.store.lock().await;
++    if let Err(e) = store.append_event(&feed_event) {
++        crate::elog!("bd-8364c6: canonical-fetch-failure feed append failed for {project}: {e}");
++        return;
++    }
++    if let Err(e) = crate::notifications::insert_notification(store.db(), &rec) {
++        crate::elog!(
++            "bd-8364c6: canonical-fetch-failure notification insert failed for {project}: {e}"
++        );
++    }
++}
++
+ #[cfg(test)]
+ mod tests {
+     use super::*;
+@@ -7268,6 +7380,44 @@ mod tests {
+     use std::fs;
+     use tempfile::tempdir;
+ 
++    /// bd-8364c6: the canonical-fetch-failure alert (operator decision: surface
++    /// louder, no auto-key-switch) must be a Critical operator-action
++    /// notification naming the project + failure count, and must state that the
++    /// daemon does NOT auto-switch keys (so the operator fixes the key).
++    #[test]
++    fn build_canonical_fetch_failure_notification_is_critical_operator_action_bd_8364c6() {
++        let (rec, feed_event) = build_canonical_fetch_failure_notification(
++            "test-node",
++            "proj-x",
++            5,
++            "ssh: connect to host github.com port 22: Operation timed out",
++        );
++        assert!(
++            matches!(rec.level, crate::notifications::NotificationLevel::Critical),
++            "bd-8364c6: canonical-fetch-failure alert must be Critical (surface louder)"
++        );
++        assert_eq!(rec.project.as_deref(), Some("proj-x"));
++        assert!(
++            rec.labels.iter().any(|l| l == "operator-action"),
++            "bd-8364c6: must carry the operator-action label (not just degraded-health)"
++        );
++        assert!(rec.labels.iter().any(|l| l == "bd-8364c6"));
++        let body = rec.body.as_deref().unwrap_or_default();
++        assert!(
++            body.contains("proj-x") && body.contains('5'),
++            "bd-8364c6: body must name the project + the consecutive-failure count"
++        );
++        assert!(
++            body.contains("does NOT auto-switch"),
++            "bd-8364c6: body must state no auto-key-switch (the operator fixes the key)"
++        );
++        assert_eq!(feed_event.project.as_deref(), Some("proj-x"));
++        assert!(matches!(
++            feed_event.event_type,
++            crate::feed::EventType::Notification
++        ));
++    }
++
+     /// bd-fd5def: every managed daemon git subprocess must skip Git-LFS smudge
+     /// (the daemon keeps LFS as pointers and never reads the bytes), so a fetch
+     /// can never hang pulling static/bgs LFS over degraded egress (bd-a9874a).
+-- 
+2.53.0
+

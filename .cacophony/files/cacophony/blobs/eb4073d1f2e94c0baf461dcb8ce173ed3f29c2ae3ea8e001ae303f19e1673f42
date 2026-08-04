@@ -1,0 +1,327 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><style>
+:root{
+  --canvas:#0B0E14; --glass:rgba(255,255,255,.055); --glass2:rgba(255,255,255,.09);
+  --stroke:rgba(255,255,255,.10); --stroke2:rgba(255,255,255,.16);
+  --t1:#EAEFF7; --t2:#9DA9BC; --t3:#6A7587;
+  --frost:#88C0D0; --frostd:#5E81AC; --purple:#B48EAD; --green:#A3BE8C; --yellow:#EBCB8B; --red:#BF616A;
+  --aurora:linear-gradient(120deg,#8FE3D6 0%,#88C0D0 28%,#5E81AC 60%,#B48EAD 100%);
+}
+*{box-sizing:border-box;margin:0;padding:0;font-family:'Noto Sans','DejaVu Sans',system-ui,sans-serif;-webkit-font-smoothing:antialiased;}
+body{background:
+  radial-gradient(1100px 700px at 12% -5%,rgba(136,192,208,.16),transparent 60%),
+  radial-gradient(1000px 800px at 105% 20%,rgba(180,142,173,.16),transparent 55%),
+  radial-gradient(900px 700px at 50% 115%,rgba(94,129,172,.16),transparent 60%),
+  #06080C;
+  padding:54px 54px 60px;color:var(--t1);}
+.board{display:flex;flex-direction:column;gap:34px;width:1392px;}
+.boardhead{display:flex;align-items:flex-end;justify-content:space-between;}
+.brand{display:flex;align-items:center;gap:16px;}
+.mark{width:54px;height:54px;border-radius:16px;background:var(--aurora);box-shadow:0 8px 30px rgba(136,192,208,.45);display:flex;align-items:center;justify-content:center;}
+.mark svg{width:30px;height:30px;}
+.btitle{font-size:33px;font-weight:800;letter-spacing:-1.1px;}
+.btitle .accent{background:var(--aurora);-webkit-background-clip:text;background-clip:text;color:transparent;}
+.bsub{font-size:14.5px;color:var(--t2);margin-top:4px;letter-spacing:.1px;}
+.badge{font-size:12px;font-weight:700;letter-spacing:1.4px;color:#0B0E14;background:var(--aurora);padding:8px 15px;border-radius:999px;box-shadow:0 6px 22px rgba(136,192,208,.4);}
+
+/* ── design system panel ── */
+.dspanel{background:var(--glass);border:1px solid var(--stroke);border-radius:26px;padding:24px 26px;backdrop-filter:blur(22px);
+  box-shadow:0 24px 60px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.10);display:grid;grid-template-columns:1.15fr 1fr 1.25fr;gap:30px;}
+.dscol h4{font-size:11px;letter-spacing:2px;color:var(--t3);font-weight:800;text-transform:uppercase;margin-bottom:15px;}
+.swatches{display:flex;flex-wrap:wrap;gap:10px;}
+.sw{width:74px;}
+.sw i{display:block;height:42px;border-radius:12px;border:1px solid var(--stroke);box-shadow:inset 0 1px 0 rgba(255,255,255,.12);}
+.sw span{display:block;font-size:10.5px;color:var(--t2);margin-top:6px;font-weight:600;}
+.sw small{display:block;font-size:9px;color:var(--t3);font-family:'DejaVu Sans Mono',monospace;}
+.typecol .ds{letter-spacing:-1px;font-weight:800;font-size:30px;line-height:1.1;}
+.typecol .ti{font-weight:700;font-size:18px;margin-top:9px;}
+.typecol .bd{font-weight:400;font-size:13.5px;color:var(--t2);margin-top:8px;}
+.typecol .mt{font-weight:600;font-size:11px;color:var(--t3);letter-spacing:.6px;margin-top:7px;text-transform:uppercase;}
+.kit{display:flex;flex-direction:column;gap:13px;}
+.kitrow{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+.pill{font-size:11px;font-weight:700;padding:5px 11px;border-radius:999px;display:inline-flex;align-items:center;gap:6px;}
+.pdot{width:7px;height:7px;border-radius:50%;}
+.glow-g{box-shadow:0 0 14px rgba(163,190,140,.6);}
+.btn{font-size:12.5px;font-weight:700;padding:10px 18px;border-radius:14px;}
+.btn.primary{background:var(--aurora);color:#0B0E14;box-shadow:0 8px 22px rgba(136,192,208,.4);}
+.btn.ghost{background:var(--glass2);color:var(--t1);border:1px solid var(--stroke2);}
+.prow{display:flex;align-items:center;gap:12px;background:var(--glass2);border:1px solid var(--stroke);border-radius:16px;padding:11px 13px;position:relative;overflow:hidden;}
+.rail{position:absolute;left:0;top:0;bottom:0;width:4px;}
+
+/* ── phones ── */
+.phones{display:flex;gap:30px;}
+.col{display:flex;flex-direction:column;align-items:center;gap:14px;}
+.cap{font-size:13px;color:var(--t2);font-weight:600;letter-spacing:.3px;}
+.cap b{color:var(--frost);}
+.phone{width:362px;height:784px;border-radius:46px;padding:11px;background:linear-gradient(#1a1f29,#0c0f16);
+  box-shadow:0 40px 90px rgba(0,0,0,.6),0 0 0 2px rgba(255,255,255,.05),inset 0 1px 0 rgba(255,255,255,.10);}
+.scr{position:relative;width:100%;height:100%;border-radius:36px;overflow:hidden;background:var(--canvas);display:flex;flex-direction:column;}
+.scr::before{content:"";position:absolute;inset:0;background:
+  radial-gradient(420px 280px at 80% -8%,rgba(136,192,208,.22),transparent 60%),
+  radial-gradient(420px 320px at -10% 30%,rgba(180,142,173,.18),transparent 60%);pointer-events:none;}
+.sb{position:relative;height:44px;display:flex;align-items:center;justify-content:space-between;padding:0 26px;font-size:13px;font-weight:600;color:var(--t1);}
+.sb .r{display:flex;gap:7px;align-items:center;}
+.body{position:relative;flex:1;overflow:hidden;padding:6px 18px 0;}
+.eyebrow{font-size:10.5px;letter-spacing:2.2px;font-weight:800;color:var(--frost);opacity:.92;}
+.h1{font-size:27px;font-weight:800;letter-spacing:-.9px;color:#fff;margin-top:5px;line-height:1.12;}
+.h1 .sm{display:block;font-size:13px;font-weight:500;color:var(--t2);letter-spacing:0;margin-top:6px;}
+.chip{font-size:11px;font-weight:700;padding:6px 11px;border-radius:999px;background:var(--glass2);border:1px solid var(--stroke);display:inline-flex;align-items:center;gap:6px;color:var(--t1);}
+.card{position:relative;background:var(--glass);border:1px solid var(--stroke);border-radius:22px;backdrop-filter:blur(18px);
+  box-shadow:0 16px 40px rgba(0,0,0,.4),inset 0 1px 0 rgba(255,255,255,.10);padding:16px;}
+.hero{position:relative;border-radius:24px;overflow:hidden;padding:17px 18px 14px;
+  background:linear-gradient(135deg,rgba(143,227,214,.20),rgba(94,129,172,.16) 55%,rgba(180,142,173,.20));
+  border:1px solid var(--stroke2);box-shadow:0 18px 46px rgba(0,0,0,.45),inset 0 1px 0 rgba(255,255,255,.16);}
+.hero .lbl{font-size:11px;letter-spacing:1.4px;font-weight:800;color:#dfeaf2;text-transform:uppercase;opacity:.9;}
+.spark{height:54px;margin:8px 0 4px;}
+.statrow{display:flex;gap:10px;}
+.stat{flex:1;}
+.stat .n{font-size:25px;font-weight:800;letter-spacing:-.6px;color:#fff;}
+.stat .l{font-size:10.5px;color:#cdd7e3;letter-spacing:.5px;text-transform:uppercase;margin-top:1px;}
+.stat.hot .n{color:#fff;}
+.glowpill{box-shadow:0 0 16px rgba(143,227,214,.55);}
+.sect{font-size:12px;font-weight:800;letter-spacing:1.4px;color:var(--t3);text-transform:uppercase;margin:17px 2px 11px;}
+.pr{position:relative;display:flex;align-items:center;gap:13px;background:var(--glass);border:1px solid var(--stroke);border-radius:18px;padding:13px 14px 13px 17px;overflow:hidden;box-shadow:0 10px 26px rgba(0,0,0,.3);}
+.pr .rail{width:4px;}
+.pr .ico{width:38px;height:38px;border-radius:12px;flex:none;display:flex;align-items:center;justify-content:center;}
+.pr .ico svg{width:20px;height:20px;}
+.pr .tt{flex:1;min-width:0;}
+.pr .tt .a{font-size:14px;font-weight:700;color:var(--t1);}
+.pr .tt .b{font-size:11.5px;color:var(--t2);margin-top:2px;}
+.act{font-size:11.5px;font-weight:800;padding:8px 13px;border-radius:11px;background:var(--aurora);color:#0B0E14;flex:none;box-shadow:0 6px 16px rgba(136,192,208,.4);}
+.av{width:38px;height:38px;border-radius:50%;background:var(--aurora);flex:none;display:flex;align-items:center;justify-content:center;font-weight:800;color:#0B0E14;font-size:14px;box-shadow:0 0 0 2px rgba(255,255,255,.12);}
+/* nav */
+.nav{position:relative;height:74px;background:rgba(11,14,20,.72);backdrop-filter:blur(24px);border-top:1px solid var(--stroke);
+  display:flex;align-items:center;justify-content:space-around;padding:0 14px 8px;}
+.ni{display:flex;flex-direction:column;align-items:center;gap:4px;color:var(--t3);font-size:10px;font-weight:600;}
+.ni svg{width:23px;height:23px;}
+.ni.on{color:var(--frost);}
+.fab{width:54px;height:54px;border-radius:18px;background:var(--aurora);display:flex;align-items:center;justify-content:center;margin-top:-26px;box-shadow:0 12px 30px rgba(136,192,208,.5);}
+.fab svg{width:26px;height:26px;}
+/* chat */
+.idhdr{position:relative;display:flex;align-items:center;gap:12px;padding:8px 2px 14px;}
+.bk{width:34px;height:34px;border-radius:11px;background:var(--glass2);border:1px solid var(--stroke);display:flex;align-items:center;justify-content:center;flex:none;}
+.bk svg{width:18px;height:18px;}
+.day{align-self:center;font-size:11px;color:var(--t3);font-weight:600;margin:4px auto 14px;background:var(--glass);border:1px solid var(--stroke);padding:4px 12px;border-radius:999px;width:max-content;}
+.who{font-size:11px;font-weight:800;color:var(--frost);margin:0 0 5px 4px;letter-spacing:.2px;}
+.bub{max-width:80%;padding:11px 14px;border-radius:18px;font-size:13.5px;line-height:1.5;margin-bottom:11px;box-shadow:0 8px 22px rgba(0,0,0,.34);}
+.bub.them{background:var(--glass2);border:1px solid var(--stroke);color:var(--t1);border-bottom-left-radius:6px;}
+.bub.me{background:linear-gradient(135deg,rgba(136,192,208,.30),rgba(94,129,172,.30));border:1px solid var(--stroke2);color:#fff;border-bottom-right-radius:6px;margin-left:auto;}
+.bub.stream{border-color:rgba(180,142,173,.5);}
+.tdots{display:inline-flex;gap:5px;align-items:center;}
+.tdots i{width:7px;height:7px;border-radius:50%;background:var(--purple);box-shadow:0 0 10px rgba(180,142,173,.8);}
+.tdots i:nth-child(2){opacity:.7}.tdots i:nth-child(3){opacity:.4}
+.abar{position:relative;display:flex;gap:9px;padding:8px 0 14px;}
+.abtn{flex:1;text-align:center;font-size:12.5px;font-weight:700;padding:13px;border-radius:15px;background:var(--glass2);border:1px solid var(--stroke);color:var(--t1);}
+.abtn.pri{background:var(--aurora);color:#0B0E14;border:none;box-shadow:0 10px 24px rgba(136,192,208,.45);}
+/* work */
+.seg{position:relative;display:flex;background:var(--glass);border:1px solid var(--stroke);border-radius:15px;padding:5px;gap:4px;margin-bottom:14px;}
+.seg div{flex:1;text-align:center;font-size:12px;padding:9px 4px;border-radius:11px;color:var(--t2);font-weight:600;}
+.seg div.on{background:var(--aurora);color:#0B0E14;font-weight:800;box-shadow:0 6px 16px rgba(136,192,208,.4);}
+.bd{position:relative;display:flex;align-items:center;gap:12px;background:var(--glass);border:1px solid var(--stroke);border-radius:18px;padding:14px 14px 14px 17px;margin-bottom:11px;overflow:hidden;box-shadow:0 10px 26px rgba(0,0,0,.3);}
+.bd .pdt{width:11px;height:11px;border-radius:50%;flex:none;}
+.bd .tt{flex:1;min-width:0;}
+.bd .tt .a{font-size:13.5px;font-weight:700;color:var(--t1);}
+.bd .tt .b{font-size:11px;color:var(--t2);margin-top:3px;display:flex;gap:6px;align-items:center;flex-wrap:wrap;}
+.lchip{font-size:9.5px;font-weight:700;padding:3px 7px;border-radius:7px;background:var(--glass2);border:1px solid var(--stroke);color:var(--t2);}
+.av2{width:28px;height:28px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:11px;color:#0B0E14;}
+.foot{margin-top:14px;color:var(--t3);font-size:12px;letter-spacing:.2px;text-align:center;}
+.foot b{color:var(--frost);}
+</style></head>
+<body>
+<div class="board">
+
+  <div class="boardhead">
+    <div class="brand">
+      <div class="mark"><svg viewBox="0 0 24 24" fill="none"><path d="M4 14c2-6 6-9 8-9s2 4 0 7-2 5 0 6 5-1 8-4" stroke="#0B0E14" stroke-width="2.2" stroke-linecap="round"/></svg></div>
+      <div>
+        <div class="btitle">Cacophony for Android — <span class="accent">Aurora Glass</span></div>
+        <div class="bsub">A premium, depth-and-materials direction · glassmorphism · one signature aurora accent · glow-on-live · figma-grade · self-rendered on pocket4 (chromium)</div>
+      </div>
+    </div>
+    <div class="badge">WOW DIRECTION · v1</div>
+  </div>
+
+  <!-- DESIGN SYSTEM -->
+  <div class="dspanel">
+    <div class="dscol">
+      <h4>Color tokens</h4>
+      <div class="swatches">
+        <div class="sw"><i style="background:#0B0E14"></i><span>Canvas</span><small>#0B0E14</small></div>
+        <div class="sw"><i style="background:rgba(255,255,255,.06)"></i><span>Glass</span><small>wht 6%</small></div>
+        <div class="sw"><i style="background:rgba(255,255,255,.10)"></i><span>Glass+</span><small>wht 10%</small></div>
+        <div class="sw"><i style="background:linear-gradient(120deg,#8FE3D6,#88C0D0,#5E81AC,#B48EAD)"></i><span>Aurora</span><small>signature</small></div>
+        <div class="sw"><i style="background:#A3BE8C"></i><span>Running</span><small>#A3BE8C</small></div>
+        <div class="sw"><i style="background:#EBCB8B"></i><span>Waiting</span><small>#EBCB8B</small></div>
+        <div class="sw"><i style="background:#BF616A"></i><span>Alert</span><small>#BF616A</small></div>
+        <div class="sw"><i style="background:#B48EAD"></i><span>Pico</span><small>#B48EAD</small></div>
+      </div>
+    </div>
+    <div class="dscol typecol">
+      <h4>Type scale</h4>
+      <div class="ds">Display 800</div>
+      <div class="ti">Title · 700</div>
+      <div class="bd">Body · 400 — calm, legible context text at generous line-height.</div>
+      <div class="mt">Meta · 600 · tracked</div>
+    </div>
+    <div class="dscol">
+      <h4>Component kit</h4>
+      <div class="kit">
+        <div class="kitrow">
+          <span class="pill glow-g" style="background:rgba(163,190,140,.16);color:#A3BE8C"><span class="pdot" style="background:#A3BE8C"></span>running</span>
+          <span class="pill" style="background:rgba(235,203,139,.16);color:#EBCB8B"><span class="pdot" style="background:#EBCB8B"></span>waiting</span>
+          <span class="pill" style="background:rgba(180,142,173,.18);color:#B48EAD"><span class="pdot" style="background:#B48EAD"></span>streaming</span>
+        </div>
+        <div class="kitrow">
+          <span class="btn primary">Primary</span><span class="btn ghost">Secondary</span>
+        </div>
+        <div class="prow"><span class="rail" style="background:linear-gradient(#8FE3D6,#B48EAD)"></span>
+          <span class="av2" style="background:linear-gradient(120deg,#88C0D0,#B48EAD);width:30px;height:30px">A</span>
+          <div style="flex:1"><div style="font-size:12.5px;font-weight:700">PriorityRow</div><div style="font-size:10.5px;color:var(--t2)">accent rail · title · meta · trailing</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PHONES -->
+  <div class="phones">
+
+    <!-- HOME -->
+    <div class="col">
+      <div class="cap">Home · <b>needs-you cockpit</b></div>
+      <div class="phone"><div class="scr">
+        <div class="sb"><span>9:41</span><span class="r">
+          <svg width="17" height="12" viewBox="0 0 17 12" fill="#EAEFF7"><rect x="0" y="7" width="3" height="5" rx="1"/><rect x="4.5" y="4.5" width="3" height="7.5" rx="1"/><rect x="9" y="2" width="3" height="10" rx="1"/><rect x="13.5" y="0" width="3" height="12" rx="1" opacity=".4"/></svg>
+          <svg width="16" height="12" viewBox="0 0 16 12" fill="none"><path d="M1 4.5C4-.5 12-.5 15 4.5" stroke="#EAEFF7" stroke-width="1.6" stroke-linecap="round"/><path d="M4 7.5c2.4-3 5.6-3 8 0" stroke="#EAEFF7" stroke-width="1.6" stroke-linecap="round"/><circle cx="8" cy="10.5" r="1.3" fill="#EAEFF7"/></svg>
+          <svg width="24" height="12" viewBox="0 0 24 12" fill="none"><rect x="1" y="1" width="20" height="10" rx="3" stroke="#EAEFF7" stroke-width="1.4"/><rect x="3" y="3" width="14" height="6" rx="1.5" fill="#A3BE8C"/><rect x="22" y="4" width="1.6" height="4" rx="1" fill="#EAEFF7"/></svg>
+        </span></div>
+        <div class="body">
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;padding:8px 2px 14px">
+            <div><div class="eyebrow">POCKET4 · CACOPHONY</div><div class="h1">Good evening, Harry<span class="sm">6 agents running · board burning down</span></div></div>
+            <span class="chip" style="margin-top:18px"><span class="pdot" style="width:7px;height:7px;border-radius:50%;background:#A3BE8C;box-shadow:0 0 8px #A3BE8C"></span>Embedded</span>
+          </div>
+
+          <div class="hero">
+            <div style="display:flex;justify-content:space-between;align-items:center"><span class="lbl">Fleet pulse · last hour</span><span style="font-size:11px;color:#dfeaf2;font-weight:700">▲ steady</span></div>
+            <svg class="spark" width="100%" viewBox="0 0 300 54" preserveAspectRatio="none">
+              <defs><linearGradient id="sg" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#8FE3D6" stop-opacity=".55"/><stop offset="1" stop-color="#8FE3D6" stop-opacity="0"/></linearGradient></defs>
+              <path d="M0 40 L26 36 52 38 78 28 104 31 130 20 156 24 182 14 208 19 234 10 260 16 300 8" fill="none" stroke="#8FE3D6" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M0 40 L26 36 52 38 78 28 104 31 130 20 156 24 182 14 208 19 234 10 260 16 300 8 L300 54 L0 54 Z" fill="url(#sg)"/>
+              <circle cx="300" cy="8" r="3.6" fill="#fff"/></svg>
+            <div class="statrow">
+              <div class="stat"><div class="n">12</div><div class="l">Agents</div></div>
+              <div class="stat"><div class="n">80</div><div class="l">Beads</div></div>
+              <div class="stat hot"><div class="n" style="display:inline-flex;align-items:center;gap:7px">1 <span class="pdot glowpill" style="width:9px;height:9px;border-radius:50%;background:#8FE3D6"></span></div><div class="l" style="color:#fff">Choices</div></div>
+            </div>
+          </div>
+
+          <div class="sect">Needs you</div>
+          <div class="pr" style="margin-bottom:11px"><span class="rail" style="background:linear-gradient(#8FE3D6,#B48EAD);box-shadow:0 0 16px rgba(143,227,214,.7)"></span>
+            <span class="ico" style="background:rgba(136,192,208,.18)"><svg viewBox="0 0 24 24" fill="none"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z" stroke="#8FE3D6" stroke-width="1.8" stroke-linejoin="round"/><path d="M9 12l2 2 4-4.5" stroke="#8FE3D6" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+            <div class="tt"><div class="a">Approve release rollout?</div><div class="b">choice · v1.2.1318 → internal testing</div></div>
+            <span class="act">Resolve</span></div>
+          <div class="pr" style="margin-bottom:11px"><span class="rail" style="background:#88C0D0"></span>
+            <span class="ico" style="background:rgba(136,192,208,.14)"><svg viewBox="0 0 24 24" fill="none"><path d="M4 6h16v10H8l-4 3V6z" stroke="#88C0D0" stroke-width="1.8" stroke-linejoin="round"/></svg></span>
+            <div class="tt"><div class="a">caco-ctrl · 2 new</div><div class="b">"ms-dev is sole Play owner now…"</div></div>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="#6A7587" stroke-width="2" stroke-linecap="round"/></svg></div>
+          <div class="pr"><span class="rail" style="background:#BF616A"></span>
+            <span class="ico" style="background:rgba(191,97,106,.16)"><svg viewBox="0 0 24 24" fill="none"><path d="M12 8v5M12 16.5v.5" stroke="#BF616A" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="12" r="9" stroke="#BF616A" stroke-width="1.7"/></svg></span>
+            <div class="tt"><div class="a">caco-web-1 blocked</div><div class="b">waiting on bd-71f8 · 14m</div></div>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="#6A7587" stroke-width="2" stroke-linecap="round"/></svg></div>
+        </div>
+        <div class="nav">
+          <div class="ni on"><svg viewBox="0 0 24 24" fill="none"><path d="M4 11l8-7 8 7M6 9.5V20h12V9.5" stroke="#88C0D0" stroke-width="1.9" stroke-linejoin="round"/></svg>Home</div>
+          <div class="ni"><svg viewBox="0 0 24 24" fill="none"><path d="M4 6h16v10H8l-4 3V6z" stroke="#6A7587" stroke-width="1.9" stroke-linejoin="round"/></svg>Talk</div>
+          <div class="fab"><svg viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="#0B0E14" stroke-width="2.6" stroke-linecap="round"/></svg></div>
+          <div class="ni"><svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="3.4" stroke="#6A7587" stroke-width="1.9"/><path d="M5 20c1.4-3.6 12.6-3.6 14 0" stroke="#6A7587" stroke-width="1.9" stroke-linecap="round"/></svg>Agents</div>
+          <div class="ni"><svg viewBox="0 0 24 24" fill="none"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z" stroke="#6A7587" stroke-width="1.9" stroke-linejoin="round"/></svg>Work</div>
+        </div>
+      </div></div>
+    </div>
+
+    <!-- AGENT DETAIL / PICO HERO -->
+    <div class="col">
+      <div class="cap">Agent Detail · <b>pico conversation hero</b></div>
+      <div class="phone"><div class="scr">
+        <div class="sb"><span>9:41</span><span class="r">
+          <svg width="17" height="12" viewBox="0 0 17 12" fill="#EAEFF7"><rect x="0" y="7" width="3" height="5" rx="1"/><rect x="4.5" y="4.5" width="3" height="7.5" rx="1"/><rect x="9" y="2" width="3" height="10" rx="1"/><rect x="13.5" y="0" width="3" height="12" rx="1" opacity=".4"/></svg>
+          <svg width="24" height="12" viewBox="0 0 24 12" fill="none"><rect x="1" y="1" width="20" height="10" rx="3" stroke="#EAEFF7" stroke-width="1.4"/><rect x="3" y="3" width="14" height="6" rx="1.5" fill="#A3BE8C"/><rect x="22" y="4" width="1.6" height="4" rx="1" fill="#EAEFF7"/></svg>
+        </span></div>
+        <div class="body" style="display:flex;flex-direction:column">
+          <div class="idhdr">
+            <span class="bk"><svg viewBox="0 0 24 24" fill="none"><path d="M15 6l-6 6 6 6" stroke="#EAEFF7" stroke-width="2" stroke-linecap="round"/></svg></span>
+            <span class="av">a0</span>
+            <div style="flex:1"><div style="font-size:15.5px;font-weight:800;color:#fff;letter-spacing:-.2px">caco-android-po4-0</div>
+              <div style="font-size:11.5px;color:var(--t2);margin-top:2px;display:flex;gap:8px;align-items:center"><span class="pill glow-g" style="background:rgba(163,190,140,.16);color:#A3BE8C;padding:3px 8px"><span class="pdot" style="background:#A3BE8C"></span>running</span><span>pocket4 · opus</span></div></div>
+          </div>
+          <div class="chip" style="align-self:flex-start;margin:0 0 10px 2px;border-color:rgba(180,142,173,.4)"><span class="pdot" style="width:6px;height:6px;border-radius:50%;background:#B48EAD"></span>bd-e3b6c5 · agent-display</div>
+          <div class="day">Today</div>
+          <div style="flex:1;overflow:hidden">
+            <div class="who">harry</div>
+            <div class="bub them">make android beautiful — C-suite WOW, not a CLI mirror ✨</div>
+            <div class="bub me">On it. Aurora-glass direction: depth, one signature accent, glow-on-live. Rendering now.</div>
+            <div class="who" style="color:#B48EAD">caco-android-po4-0</div>
+            <div class="bub them stream"><span class="tdots"><i></i><i></i><i></i></span> &nbsp;composing the Home cockpit hero…</div>
+          </div>
+          <div class="abar">
+            <span class="abtn pri">Message</span><span class="abtn">Nudge</span><span class="abtn">Pause</span>
+          </div>
+        </div>
+        <div class="nav">
+          <div class="ni"><svg viewBox="0 0 24 24" fill="none"><path d="M4 11l8-7 8 7M6 9.5V20h12V9.5" stroke="#6A7587" stroke-width="1.9" stroke-linejoin="round"/></svg>Home</div>
+          <div class="ni"><svg viewBox="0 0 24 24" fill="none"><path d="M4 6h16v10H8l-4 3V6z" stroke="#6A7587" stroke-width="1.9" stroke-linejoin="round"/></svg>Talk</div>
+          <div class="fab"><svg viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="#0B0E14" stroke-width="2.6" stroke-linecap="round"/></svg></div>
+          <div class="ni on"><svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="3.4" stroke="#88C0D0" stroke-width="1.9"/><path d="M5 20c1.4-3.6 12.6-3.6 14 0" stroke="#88C0D0" stroke-width="1.9" stroke-linecap="round"/></svg>Agents</div>
+          <div class="ni"><svg viewBox="0 0 24 24" fill="none"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z" stroke="#6A7587" stroke-width="1.9" stroke-linejoin="round"/></svg>Work</div>
+        </div>
+      </div></div>
+    </div>
+
+    <!-- WORK / BEADS -->
+    <div class="col">
+      <div class="cap">Work · <b>triage-first board</b></div>
+      <div class="phone"><div class="scr">
+        <div class="sb"><span>9:41</span><span class="r">
+          <svg width="17" height="12" viewBox="0 0 17 12" fill="#EAEFF7"><rect x="0" y="7" width="3" height="5" rx="1"/><rect x="4.5" y="4.5" width="3" height="7.5" rx="1"/><rect x="9" y="2" width="3" height="10" rx="1"/><rect x="13.5" y="0" width="3" height="12" rx="1" opacity=".4"/></svg>
+          <svg width="24" height="12" viewBox="0 0 24 12" fill="none"><rect x="1" y="1" width="20" height="10" rx="3" stroke="#EAEFF7" stroke-width="1.4"/><rect x="3" y="3" width="14" height="6" rx="1.5" fill="#A3BE8C"/><rect x="22" y="4" width="1.6" height="4" rx="1" fill="#EAEFF7"/></svg>
+        </span></div>
+        <div class="body">
+          <div style="display:flex;align-items:flex-end;justify-content:space-between;padding:8px 2px 14px">
+            <div><div class="eyebrow">PROJECT · CACOPHONY</div><div class="h1" style="font-size:25px">Work</div></div>
+            <span class="chip" style="margin-bottom:3px">80 ready</span>
+          </div>
+          <div class="seg"><div class="on">Ready</div><div>Mine</div><div>In&nbsp;progress</div><div>All</div></div>
+
+          <div class="bd"><span class="rail" style="background:#BF616A;box-shadow:0 0 14px rgba(191,97,106,.6)"></span>
+            <span class="pdt" style="background:#BF616A;box-shadow:0 0 10px #BF616A"></span>
+            <div class="tt"><div class="a">Embedded daemon ttyd wiring</div><div class="b">bd-76cb45 <span class="lchip">android</span><span class="lchip">terminal</span></div></div>
+            <span class="av2" style="background:linear-gradient(120deg,#88C0D0,#5E81AC)">m1</span></div>
+
+          <div class="bd"><span class="rail" style="background:#88C0D0"></span>
+            <span class="pdt" style="background:#88C0D0"></span>
+            <div class="tt"><div class="a">Wear OS OTA freshness lane</div><div class="b">bd-5bbbda <span class="lchip">companion</span><span class="lchip">ota</span></div></div>
+            <span class="av2" style="background:linear-gradient(120deg,#A3BE8C,#88C0D0)">m0</span></div>
+
+          <div class="bd"><span class="rail" style="background:#A3BE8C"></span>
+            <span class="pdt" style="background:#A3BE8C"></span>
+            <div class="tt"><div class="a">SSH multi-port forwarding</div><div class="b">bd-503a29 <span class="lchip">android</span><span class="lchip">terminal</span></div></div>
+            <span class="av2" style="background:linear-gradient(120deg,#B48EAD,#5E81AC)">p0</span></div>
+
+          <div class="bd" style="opacity:.62"><span class="rail" style="background:#81A1C1"></span>
+            <span class="pdt" style="background:#81A1C1"></span>
+            <div class="tt"><div class="a" style="text-decoration:line-through;text-decoration-color:rgba(255,255,255,.3)">Files row a11y copy</div><div class="b">bd-9130a9 <span class="lchip">a11y</span> · done</div></div>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="#81A1C1" stroke-width="1.6"/><path d="M8 12l3 3 5-6" stroke="#81A1C1" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+        </div>
+        <div class="nav">
+          <div class="ni"><svg viewBox="0 0 24 24" fill="none"><path d="M4 11l8-7 8 7M6 9.5V20h12V9.5" stroke="#6A7587" stroke-width="1.9" stroke-linejoin="round"/></svg>Home</div>
+          <div class="ni"><svg viewBox="0 0 24 24" fill="none"><path d="M4 6h16v10H8l-4 3V6z" stroke="#6A7587" stroke-width="1.9" stroke-linejoin="round"/></svg>Talk</div>
+          <div class="fab"><svg viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="#0B0E14" stroke-width="2.6" stroke-linecap="round"/></svg></div>
+          <div class="ni"><svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="3.4" stroke="#6A7587" stroke-width="1.9"/><path d="M5 20c1.4-3.6 12.6-3.6 14 0" stroke="#6A7587" stroke-width="1.9" stroke-linecap="round"/></svg>Agents</div>
+          <div class="ni on"><svg viewBox="0 0 24 24" fill="none"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z" stroke="#88C0D0" stroke-width="1.9" stroke-linejoin="round"/></svg>Work</div>
+        </div>
+      </div></div>
+    </div>
+
+  </div>
+  <div class="foot">Aurora Glass · candidate-independent design system (tokens + kit) applied across <b>Home · Agent · Work</b> — pairs with any IA pick in <b>ux-revamp-2026.md</b>. Self-rendered on pocket4 · not landed · review candidate.</div>
+</div>
+</body></html>

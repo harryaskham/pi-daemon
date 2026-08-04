@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<!-- Cacophony Android — "Aurora Cockpit" stunning-redesign deck (po4-1).
+     A cohesive 3-screen flow (Home / Talk / Agents) on ONE design system, to
+     demonstrate it is a real system — not a one-off screen. Addresses Harry's
+     "figma-WOW + full design system + many candidates" ask. -->
+<style>
+  :root{
+    --bg:#080A0F; --s0:#0E121B; --s1:#141A26; --s2:#1B2230; --s3:#232C3D; --s4:#2C374B;
+    --line:rgba(255,255,255,.06);
+    --t0:#F4F7FC; --t1:#C3CCDC; --t2:#8A97AD; --t3:#5C6678;
+    --teal:#5BE0C8; --cyan:#56C7F0; --blue:#6C8CFF; --violet:#A88BFF;
+    --pink:#FF7AB6; --amber:#FFC55C; --green:#7BE08A; --red:#FF6B6B;
+    --grad-hero:linear-gradient(135deg,#6C8CFF,#A88BFF 48%,#FF7AB6);
+    --grad-teal:linear-gradient(135deg,#5BE0C8,#56C7F0);
+    --glow-teal:0 0 0 1px rgba(91,224,200,.25),0 8px 30px -8px rgba(91,224,200,.45);
+    --r-lg:26px; --r-md:20px; --r-sm:14px; --r-pill:999px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;
+    font-family:'Inter','SF Pro Display','Segoe UI',system-ui,sans-serif;-webkit-font-smoothing:antialiased;}
+  body{background:
+      radial-gradient(1400px 700px at 10% -6%, rgba(108,140,255,.16), transparent 60%),
+      radial-gradient(1100px 650px at 100% 108%, rgba(255,122,182,.10), transparent 55%),
+      var(--bg);
+    color:var(--t0); padding:50px 50px 56px;}
+
+  /* ===== header / system band ===== */
+  .hero{display:flex; justify-content:space-between; align-items:flex-end; gap:40px; margin-bottom:38px;}
+  .hero .eye{font-size:13px; letter-spacing:3px; text-transform:uppercase; font-weight:800;
+    background:var(--grad-teal); -webkit-background-clip:text; background-clip:text; color:transparent;}
+  .hero h1{font-size:48px; font-weight:800; letter-spacing:-1.6px; margin-top:6px; line-height:1;}
+  .hero h1 span{background:var(--grad-hero); -webkit-background-clip:text; background-clip:text; color:transparent;}
+  .hero p{font-size:15px; color:var(--t2); margin-top:12px; max-width:560px; line-height:1.6;}
+  .syscard{display:flex; gap:26px; padding:18px 22px; background:var(--s0); border-radius:var(--r-md);
+    box-shadow:inset 0 0 0 1px var(--line);}
+  .syscol .h{font-size:10px; font-weight:800; letter-spacing:1.3px; text-transform:uppercase; color:var(--t3); margin-bottom:9px;}
+  .sw{display:flex; gap:6px;}
+  .sw i{width:20px; height:20px; border-radius:6px; box-shadow:inset 0 0 0 1px rgba(255,255,255,.1);}
+  .ladder{display:flex; gap:5px;}
+  .ladder i{width:22px; height:22px; border-radius:6px; box-shadow:inset 0 0 0 1px var(--line);}
+  .ty div{color:var(--t1); line-height:1.25;}
+
+  /* ===== phones row ===== */
+  .row{display:flex; gap:34px; align-items:flex-start;}
+  .stage{display:flex; flex-direction:column; align-items:center; gap:15px;}
+  .cap{font-size:13px; color:var(--t2); font-weight:600;} .cap b{color:var(--teal);}
+  .phone{width:360px; height:760px; border-radius:42px; position:relative; overflow:hidden;
+    background:linear-gradient(180deg,var(--s0),#0a0d14 60%);
+    box-shadow:0 0 0 2px rgba(255,255,255,.05),0 0 0 10px #05070b,0 36px 80px -28px rgba(0,0,0,.85);
+    display:flex; flex-direction:column; color:var(--t1);}
+  .notch{position:absolute; top:13px; left:50%; transform:translateX(-50%); width:100px; height:24px;
+    background:#05070b; border-radius:999px; z-index:30;}
+  .sb{height:44px; display:flex; align-items:flex-end; justify-content:space-between; padding:0 24px 5px;
+    font-size:12px; font-weight:600; color:var(--t1);} .sb .r{opacity:.9;}
+  .scr{flex:1; overflow:hidden; padding:6px 16px 0; position:relative;}
+
+  /* shared atoms */
+  .sec{display:flex; align-items:center; justify-content:space-between; margin:8px 2px 10px;}
+  .sec h2{font-size:12px; font-weight:800; letter-spacing:1.2px; text-transform:uppercase; color:var(--t2);}
+  .sec a{font-size:12px; font-weight:600; color:var(--cyan);}
+  .pill{font-size:10.5px; font-weight:700; padding:4px 10px; border-radius:var(--r-pill); letter-spacing:.3px;}
+  .pill.teal{background:rgba(91,224,200,.16); color:var(--teal);}
+  .pill.amber{background:rgba(255,197,92,.16); color:var(--amber);}
+  .pill.red{background:rgba(255,107,107,.16); color:var(--red);}
+  .pill.violet{background:rgba(168,139,255,.18); color:var(--violet);}
+  .ic{width:44px; height:44px; border-radius:14px; flex:none; display:flex; align-items:center; justify-content:center; font-size:20px;}
+  .ic.teal{background:rgba(91,224,200,.14); color:var(--teal); box-shadow:inset 0 0 0 1px rgba(91,224,200,.25);}
+  .ic.blue{background:rgba(108,140,255,.14); color:var(--blue); box-shadow:inset 0 0 0 1px rgba(108,140,255,.25);}
+  .ic.red{background:rgba(255,107,107,.14); color:var(--red); box-shadow:inset 0 0 0 1px rgba(255,107,107,.25);}
+  .ic.violet{background:rgba(168,139,255,.16); color:var(--violet); box-shadow:inset 0 0 0 1px rgba(168,139,255,.28);}
+  .cta{font-size:12px; font-weight:700; color:#06121a; background:var(--grad-teal); padding:7px 13px; border-radius:var(--r-pill); box-shadow:var(--glow-teal);}
+
+  /* nav */
+  .nav{height:74px; display:flex; align-items:center; justify-content:space-around; padding:0 10px 12px;
+    background:linear-gradient(180deg,transparent,rgba(8,10,15,.92) 40%);}
+  .nb{display:flex; flex-direction:column; align-items:center; gap:4px; font-size:10.5px; font-weight:600; color:var(--t3);}
+  .nb .g{font-size:19px;} .nb.on{color:var(--teal);} .nb.on .g{filter:drop-shadow(0 0 8px rgba(91,224,200,.7));}
+  .fab{width:58px; height:58px; border-radius:20px; margin-top:-28px; background:var(--grad-hero);
+    display:flex; align-items:center; justify-content:center; font-size:26px; color:#fff; font-weight:800;
+    box-shadow:0 14px 32px -10px rgba(168,139,255,.8), inset 0 1px 0 rgba(255,255,255,.4);}
+
+  /* ---- HOME ---- */
+  .greet .eye{font-size:11px; letter-spacing:2.2px; font-weight:700; text-transform:uppercase;
+    background:var(--grad-teal); -webkit-background-clip:text; background-clip:text; color:transparent;}
+  .greet h3{font-size:27px; font-weight:700; letter-spacing:-1px; color:var(--t0); margin:4px 0 2px;}
+  .attn{margin:14px 0 16px; padding:18px; border-radius:var(--r-lg); position:relative; overflow:hidden;
+    background:linear-gradient(135deg,rgba(108,140,255,.20),rgba(168,139,255,.12) 55%,rgba(255,122,182,.14));
+    box-shadow:inset 0 0 0 1px rgba(255,255,255,.08),0 18px 50px -26px rgba(108,140,255,.7);}
+  .attn .lab{font-size:11px; font-weight:700; letter-spacing:1.4px; text-transform:uppercase; color:rgba(255,255,255,.72);}
+  .attn .big{font-size:30px; font-weight:800; letter-spacing:-1px; color:#fff; margin-top:4px; line-height:1.06;}
+  .attn .big b{background:var(--grad-hero); -webkit-background-clip:text; background-clip:text; color:transparent;}
+  .attn .sub{font-size:12.5px; color:rgba(255,255,255,.78); margin-top:6px;}
+  .attn .ring{position:absolute; right:16px; top:50%; transform:translateY(-50%); width:66px; height:66px; border-radius:50%;
+    background:conic-gradient(var(--teal) 0 62%, rgba(255,255,255,.12) 62%); display:flex; align-items:center; justify-content:center; box-shadow:var(--glow-teal);}
+  .attn .ring i{width:51px; height:51px; border-radius:50%; background:#0c0f17; display:flex; align-items:center; justify-content:center; font-size:18px; font-weight:800; color:#fff; font-style:normal;}
+  .pcard{display:flex; gap:13px; align-items:center; padding:13px 14px; border-radius:var(--r-md);
+    background:linear-gradient(180deg,var(--s2),var(--s1)); box-shadow:inset 0 0 0 1px var(--line); margin-bottom:10px; position:relative; overflow:hidden;}
+  .pcard .rail{position:absolute; left:0; top:0; bottom:0; width:4px;}
+  .pcard .bd{flex:1; min-width:0;}
+  .pcard .tt{font-size:14.5px; font-weight:700; color:var(--t0); letter-spacing:-.2px;}
+  .pcard .ds{font-size:12px; color:var(--t2); margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .stats{display:flex; gap:10px; margin:4px 0 10px;}
+  .stat{flex:1; padding:13px 12px; border-radius:var(--r-md); background:var(--s1); box-shadow:inset 0 0 0 1px var(--line);}
+  .stat .n{font-size:24px; font-weight:800; letter-spacing:-.5px; color:var(--t0);}
+  .stat .n small{font-size:12px; font-weight:700; color:var(--t2);}
+  .stat .l{font-size:10px; font-weight:600; letter-spacing:.5px; text-transform:uppercase; color:var(--t3); margin-top:2px;}
+
+  /* ---- TALK / chat ---- */
+  .chdr{display:flex; align-items:center; gap:11px; padding:10px 4px 14px;}
+  .av{width:40px; height:40px; border-radius:13px; background:var(--grad-teal); color:#06121a; font-weight:800;
+    display:flex; align-items:center; justify-content:center; font-size:16px;}
+  .chdr .nm{font-size:16px; font-weight:700; color:var(--t0);}
+  .chdr .st{font-size:11.5px; color:var(--teal); display:flex; align-items:center; gap:5px;}
+  .chdr .st::before{content:''; width:7px; height:7px; border-radius:50%; background:var(--teal); box-shadow:0 0 8px var(--teal);}
+  .day{text-align:center; font-size:11px; color:var(--t3); margin:6px 0 14px;}
+  .bub{max-width:80%; padding:11px 14px; border-radius:18px; font-size:13px; line-height:1.5; margin-bottom:10px; position:relative;}
+  .bub .who{font-size:10.5px; font-weight:700; color:var(--teal); margin-bottom:3px;}
+  .bub.them{background:var(--s2); color:var(--t1); border-bottom-left-radius:5px; box-shadow:inset 0 0 0 1px var(--line);}
+  .bub.me{background:linear-gradient(135deg,#2c4a86,#3a5fa8); color:#eef3ff; border-bottom-right-radius:5px; margin-left:auto;}
+  .bub .tm{font-size:10px; color:var(--t3); margin-top:5px; text-align:right;}
+  .bub.me .tm{color:rgba(255,255,255,.6);}
+  .kindchip{display:inline-block; font-size:9px; font-weight:800; letter-spacing:.6px; padding:2px 7px; border-radius:6px;
+    background:rgba(91,224,200,.18); color:var(--teal); margin-bottom:5px;}
+  .composer{display:flex; align-items:center; gap:10px; background:var(--s2); border-radius:24px; padding:8px 8px 8px 16px;
+    margin:4px 0 12px; box-shadow:inset 0 0 0 1px var(--line);}
+  .composer .ph{flex:1; color:var(--t3); font-size:13px;}
+  .composer .send{width:38px; height:38px; border-radius:13px; background:var(--grad-teal); color:#06121a;
+    display:flex; align-items:center; justify-content:center; font-size:17px; font-weight:800; box-shadow:var(--glow-teal);}
+
+  /* ---- AGENTS ---- */
+  .agrid{display:grid; grid-template-columns:1fr 1fr; gap:11px;}
+  .agc{padding:14px; border-radius:var(--r-md); background:linear-gradient(180deg,var(--s2),var(--s1));
+    box-shadow:inset 0 0 0 1px var(--line); position:relative; overflow:hidden;}
+  .agc .top{display:flex; align-items:center; justify-content:space-between; margin-bottom:11px;}
+  .agc .face{width:38px; height:38px; border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:17px;}
+  .agc .dot{width:9px; height:9px; border-radius:50%;}
+  .agc .nm{font-size:14px; font-weight:700; color:var(--t0); letter-spacing:-.2px;}
+  .agc .role{font-size:11px; color:var(--t2); margin-top:2px;}
+  .agc .meta{font-size:10.5px; color:var(--t3); margin-top:9px; display:flex; gap:9px;}
+  .grp{font-size:11px; font-weight:800; letter-spacing:1px; text-transform:uppercase; color:var(--t3); margin:14px 2px 9px; display:flex; gap:8px; align-items:center;}
+  .grp::before{content:''; width:3px; height:13px; border-radius:2px; background:var(--grad-teal);}
+</style>
+</head>
+<body>
+
+  <div class="hero">
+    <div>
+      <div class="eye">Cacophony Android · redesign candidate</div>
+      <h1>Aurora <span>Cockpit</span></h1>
+      <p>From a 48-screen control panel to a calm, glanceable cockpit on one coherent system —
+        aurora-dark surfaces, layered elevation + glow, a disciplined type scale, and a single
+        component kit used across every screen. Three core loops shown: <b>Glance · Talk · Agents</b>.</p>
+    </div>
+    <div class="syscard">
+      <div class="syscol"><div class="h">Accent · aurora</div>
+        <div class="sw"><i style="background:#5BE0C8"></i><i style="background:#56C7F0"></i><i style="background:#6C8CFF"></i><i style="background:#A88BFF"></i><i style="background:#FF7AB6"></i><i style="background:#FFC55C"></i></div>
+        <div class="h" style="margin-top:14px">Surface ladder</div>
+        <div class="ladder"><i style="background:#080A0F"></i><i style="background:#0E121B"></i><i style="background:#141A26"></i><i style="background:#1B2230"></i><i style="background:#232C3D"></i><i style="background:#2C374B"></i></div>
+      </div>
+      <div class="syscol ty"><div class="h">Type · Inter</div>
+        <div style="font-size:22px;font-weight:800;letter-spacing:-.6px">Display 800</div>
+        <div style="font-size:15px;font-weight:700">Title 700</div>
+        <div style="font-size:13px;font-weight:600;color:var(--t2)">Body 600</div>
+        <div style="font-size:10px;font-weight:700;letter-spacing:1.3px;text-transform:uppercase;color:var(--t3)">Eyebrow · +1.3</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row">
+
+    <!-- HOME -->
+    <div class="stage"><div class="phone">
+      <div class="notch"></div><div class="sb"><div>9:41</div><div class="r">📶&nbsp; 🔋 85%</div></div>
+      <div class="scr">
+        <div class="greet"><div class="eye">Tuesday · cacophony</div><h3>Good evening, Harry</h3></div>
+        <div class="attn"><div class="ring"><i>3</i></div>
+          <div class="lab">Needs you now</div><div class="big"><b>3 things</b> want<br>your attention</div>
+          <div class="sub">1 choice · 1 DM · 1 failing job</div></div>
+        <div class="sec"><h2>Priority</h2><a>Snooze all</a></div>
+        <div class="pcard"><div class="rail" style="background:var(--teal)"></div><div class="ic teal">⚖️</div>
+          <div class="bd"><div class="tt">Approve revival plan?</div><div class="ds">caco-ctrl · awaiting choice</div></div><div class="cta">Resolve</div></div>
+        <div class="pcard"><div class="rail" style="background:var(--blue)"></div><div class="ic blue">💬</div>
+          <div class="bd"><div class="tt">md2-1 · Android</div><div class="ds">"bd-5bb8d9 verified — fixed"</div></div><div class="pill teal">2m</div></div>
+        <div class="pcard"><div class="rail" style="background:var(--red)"></div><div class="ic red">⚠️</div>
+          <div class="bd"><div class="tt">Release 1.2.1333 failed</div><div class="ds">non-exhaustive match</div></div><div class="pill red">CI</div></div>
+        <div class="sec"><h2>Fleet pulse</h2><a>Details</a></div>
+        <div class="stats"><div class="stat"><div class="n">84</div><div class="l">Agents</div></div>
+          <div class="stat"><div class="n">76<small> rdy</small></div><div class="l">Beads</div></div>
+          <div class="stat"><div class="n">9<small>/9</small></div><div class="l">Nodes</div></div></div>
+      </div>
+      <div class="nav"><div class="nb on"><div class="g">🏠</div>Home</div><div class="nb"><div class="g">💬</div>Talk</div>
+        <div class="fab">+</div><div class="nb"><div class="g">🤖</div>Agents</div><div class="nb"><div class="g">🗂️</div>Work</div></div>
+    </div><div class="cap"><b>Glance</b> — needs-you cockpit</div></div>
+
+    <!-- TALK -->
+    <div class="stage"><div class="phone">
+      <div class="notch"></div><div class="sb"><div>9:41</div><div class="r">📶&nbsp; 🔋 85%</div></div>
+      <div class="scr">
+        <div class="chdr"><div class="av">M</div><div><div class="nm">md2-1</div><div class="st">live · ms-dev-2 · Android</div></div></div>
+        <div class="day">Today</div>
+        <div class="bub them"><div class="who">md2-1 → you</div><span class="kindchip">DIRECT</span><br>Took bd-5bb8d9. Going with your option A — chrome buttons into a header row above the list.<div class="tm">10:31</div></div>
+        <div class="bub me">Perfect. Ping me the SHA and I'll verify the occlusion fix on the pocket4 emulator.<div class="tm">10:33 ✓✓</div></div>
+        <div class="bub them"><div class="who">md2-1 → you</div>Landed f3e6586303 — over to you for the visual verify 🙏<div class="tm">10:58</div></div>
+        <div class="bub me">Verified — top message's chip/sender no longer occluded, DIRECT renders full. Clean. 🎉<div class="tm">11:04 ✓✓</div></div>
+        <div class="composer"><div class="ph">Message md2-1…</div><div class="send">↑</div></div>
+      </div>
+      <div class="nav"><div class="nb"><div class="g">🏠</div>Home</div><div class="nb on"><div class="g">💬</div>Talk</div>
+        <div class="fab">+</div><div class="nb"><div class="g">🤖</div>Agents</div><div class="nb"><div class="g">🗂️</div>Work</div></div>
+    </div><div class="cap"><b>Talk</b> — premium conversation</div></div>
+
+    <!-- AGENTS -->
+    <div class="stage"><div class="phone">
+      <div class="notch"></div><div class="sb"><div>9:41</div><div class="r">📶&nbsp; 🔋 85%</div></div>
+      <div class="scr">
+        <div class="greet"><div class="eye">84 running · 9 nodes</div><h3>Agents</h3></div>
+        <div class="grp">pocket4 · 2</div>
+        <div class="agrid">
+          <div class="agc"><div class="top"><div class="face teal" style="background:rgba(91,224,200,.14)">🤖</div><div class="dot" style="background:var(--teal);box-shadow:0 0 8px var(--teal)"></div></div>
+            <div class="nm">caco-android</div><div class="role">po4-1 · Android QA</div><div class="meta"><span>⏱ 4h 12m</span><span>pi</span></div></div>
+          <div class="agc"><div class="top"><div class="face violet" style="background:rgba(168,139,255,.16)">🎙️</div><div class="dot" style="background:var(--violet);box-shadow:0 0 8px var(--violet)"></div></div>
+            <div class="nm">pico-ctrl</div><div class="role">po4-0 · realtime</div><div class="meta"><span>⏱ 6h 03m</span><span>pico</span></div></div>
+        </div>
+        <div class="grp">ms-dev-2 · 2</div>
+        <div class="agrid">
+          <div class="agc"><div class="top"><div class="face blue" style="background:rgba(108,140,255,.14)">🤖</div><div class="dot" style="background:var(--teal);box-shadow:0 0 8px var(--teal)"></div></div>
+            <div class="nm">caco-android</div><div class="role">md2-1 · UI lead</div><div class="meta"><span>⏱ 21h</span><span>pi</span></div></div>
+          <div class="agc"><div class="top"><div class="face amber" style="background:rgba(255,197,92,.14)">⚙️</div><div class="dot" style="background:var(--amber);box-shadow:0 0 8px var(--amber)"></div></div>
+            <div class="nm">caco-ctrl</div><div class="role">waiting · choice</div><div class="meta"><span>⏱ 3h</span><span>pi</span></div></div>
+        </div>
+      </div>
+      <div class="nav"><div class="nb"><div class="g">🏠</div>Home</div><div class="nb"><div class="g">💬</div>Talk</div>
+        <div class="fab">+</div><div class="nb on"><div class="g">🤖</div>Agents</div><div class="nb"><div class="g">🗂️</div>Work</div></div>
+    </div><div class="cap"><b>Agents</b> — grouped status grid</div></div>
+
+  </div>
+</body>
+</html>

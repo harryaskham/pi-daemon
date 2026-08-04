@@ -1,0 +1,41 @@
+From 26fee195a92aea02bbf95bdf9db35f88277e71a9 Mon Sep 17 00:00:00 2001
+From: Harry Askham <harryaskham@gmail.com>
+Date: Tue, 23 Jun 2026 00:05:05 +0100
+Subject: [PATCH] bd-fbf784: gitignore .cacophony/images/ so generation
+ output_dir stops re-dirtying the canonical checkout
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+generation.yaml writes generated images to output_dir .cacophony/images (4
+entries), which was NOT in .gitignore. Each generation pass (~3-6min) left
+untracked files in the canonical daemon checkout, dirtying it and blocking ALL
+cacophony direct reintegrations (the dirty-checkout preflight refuses) — the
+bd-ef7ec0 incident. Add .cacophony/images/ next to the .cacophony/tmp/
+runtime-state entry; pure generated artefacts, never committed.
+
+Verified: git check-ignore .cacophony/images/test-gen.png echoes the path.
+---
+ .gitignore | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/.gitignore b/.gitignore
+index 616681d84..98e255b8d 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -17,6 +17,12 @@ configs/*.yaml
+ # Runtime state written by repo-owned daemon automation
+ .cacophony/tmp/
+ 
++# Generated images written by the generation.yaml output_dir (.cacophony/images).
++# Pure generated artefacts, never committed; otherwise each generation pass
++# re-dirties the canonical daemon checkout and blocks ALL cacophony direct
++# reintegrations (bd-ef7ec0).
++.cacophony/images/
++
+ # Session summary artifacts are published to the Cacophony state sidecar,
+ # not tracked at the repository root.
+ /summary/
+-- 
+2.53.0
+

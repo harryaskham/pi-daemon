@@ -1,0 +1,213 @@
+From 66d4537c75753bfcb1a78ee87f91e3dc3e2e7716 Mon Sep 17 00:00:00 2001
+From: Harry Askham <harryaskham@gmail.com>
+Date: Sun, 21 Jun 2026 06:17:20 +0200
+Subject: [PATCH] =?UTF-8?q?bd-4d6172:=20per-node=20reintegration=20gate-ti?=
+ =?UTF-8?q?meout=20override=20(winmini=3D4800s)=20=E2=80=94=20interim=20ba?=
+ =?UTF-8?q?nd-aid=20for=20slow-node=20gate=20timeouts?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+The merge-queue reintegration gate on winmini (a slow mini-PC) times out at the
+default 2400s while cold-compiling cargo test-small, so its gate never completes
+(node-wide reint rejections + dead letters + stale temp checkouts/locks).
+
+Fix (ms-dev-ctrl-confirmed option (a) — PER-NODE, not a global bump): add a
+per-NODE gate-timeout override so a slow node gets a longer gate WITHOUT raising
+the global ceiling. A global bump would blunt the ~60min lands-gap wedge
+detection (a 60min gate becomes ambiguous with a stale-lock wedge), so the
+per-node value is set clearly ABOVE 60min.
+
+- caco-config model.rs: NodeEntry.reintegration_gate_timeout_secs: Option<u64>.
+- caco-cli lib.rs (the CACO_REINTEGRATION_GATE_TIMEOUT_SECS export): resolve the
+  per-node override FIRST, then the project agent_defaults value, then the
+  compiled 2400s default (env left unset).
+- .cacophony/config.yaml: winmini reintegration_gate_timeout_secs: 4800 (80min,
+  clearly above the ~60min wedge-detection mark per the ms-dev ctrl's tweak).
+- caco-config validate.rs: reject a 0 per-node value (mirrors the project
+  agent_defaults validation) + 2 tests (reject-zero, accept-positive).
+
+Contained interim band-aid; the DURABLE fix is the ms-dev ctrl's sccache
+warm-cache pairing (separate follow-up, ms-dev-ctrl-owned). This per-node band-aid
+does not preclude sccache (sccache may later obviate it).
+
+EDIT-HERE-LAND-THERE handoff: implemented on Apple-only ms-mac (cannot run the
+heavy reintegration gate here per the placement policy). BLIND-CODED — NOT
+compile-checked locally. Before landing, an ms-dev gated dev must: cargo check
+--workspace --tests + cargo clippy --workspace + cargo test-small (esp. the 2 new
+caco-config validate tests + that the caco-cli export compiles), and regenerate
+the config-schema docs (just docs-build / just docs-check, since a new NodeEntry
+field was added). NOT pushed by me, per ctrl — the ms-dev ctrl assigns the lander.
+---
+ .cacophony/config.yaml             |  9 ++++
+ crates/caco-cli/src/lib.rs         | 17 ++++++-
+ crates/caco-config/src/model.rs    | 10 +++++
+ crates/caco-config/src/validate.rs | 72 ++++++++++++++++++++++++++++++
+ 4 files changed, 106 insertions(+), 2 deletions(-)
+
+diff --git a/.cacophony/config.yaml b/.cacophony/config.yaml
+index eeebee622..cd08968db 100644
+--- a/.cacophony/config.yaml
++++ b/.cacophony/config.yaml
+@@ -691,6 +691,15 @@ nodes:
+       max_parallel: 1
+     tests:
+       max_parallel: 1
++    # bd-4d6172: winmini is a slow mini-PC -- its cold `cargo test-small` exceeds
++    # the default 2400s reintegration gate timeout, so its merge-queue gate never
++    # completes (node-wide reint failures + dead letters). Give THIS node a longer
++    # gate (4800s/80min) WITHOUT raising the global ceiling. 4800s is set clearly
++    # ABOVE 60min so a winmini hung gate never sits on the ~60min lands-gap
++    # wedge-detection mark (a global 60min ceiling would make a 60min gap ambiguous
++    # between a slow gate and a stale-lock wedge). Contained band-aid; the durable
++    # fix is the ms-dev sccache warm-cache pairing (separate follow-up).
++    reintegration_gate_timeout_secs: 4800
+     services:
+       caco-daemon: {{ values.services.internal.caco-daemon }}
+ 
+diff --git a/crates/caco-cli/src/lib.rs b/crates/caco-cli/src/lib.rs
+index c42d2c21a..aad722fa8 100644
+--- a/crates/caco-cli/src/lib.rs
++++ b/crates/caco-cli/src/lib.rs
+@@ -51926,12 +51926,25 @@ fn dispatch_agent_complete(
+     // instead of the hardcoded default. A missing value leaves the env unset,
+     // preserving the compiled default. Held in scope to function end so it also
+     // covers the real before_reintegration hook run.
+-    let _gate_timeout_env = config
++    // bd-4d6172: resolve a PER-NODE gate-timeout override first so a slow node
++    // (e.g. winmini, a mini-PC whose cold `cargo test-small` exceeds the project
++    // default) gets a longer gate WITHOUT raising the global ceiling, which would
++    // blunt the lands-gap wedge detection on fast throughput nodes. Node override
++    // wins, then the project agent_defaults value, then the compiled default
++    // (env left unset).
++    let node_gate_timeout = config
++        .nodes
++        .iter()
++        .find(|n| n.name == info.node)
++        .and_then(|n| n.reintegration_gate_timeout_secs);
++    let project_gate_timeout = config
+         .projects
+         .as_ref()
+         .and_then(|projects| projects.iter().find(|p| p.name == info.project))
+         .and_then(|p| p.agent_defaults.as_ref())
+-        .and_then(|d| d.reintegration_gate_timeout_secs)
++        .and_then(|d| d.reintegration_gate_timeout_secs);
++    let _gate_timeout_env = node_gate_timeout
++        .or(project_gate_timeout)
+         .map(|secs| ScopedEnvVar::set("CACO_REINTEGRATION_GATE_TIMEOUT_SECS", secs));
+ 
+     // Load the effective profile from the primary agent checkout for lifecycle
+diff --git a/crates/caco-config/src/model.rs b/crates/caco-config/src/model.rs
+index 4badd05fa..c092b3866 100644
+--- a/crates/caco-config/src/model.rs
++++ b/crates/caco-config/src/model.rs
+@@ -1975,6 +1975,16 @@ pub struct NodeEntry {
+     /// Optional queued build ceilings for this node (SPEC 6.5.5.3, bd-86e282).
+     #[serde(default)]
+     pub builds: Option<NodeBuildConfig>,
++    /// Optional per-node override for the before_reintegration validation gate
++    /// timeout in seconds (bd-4d6172). When set, agents on THIS node use this
++    /// value instead of the project `agent_defaults.reintegration_gate_timeout_secs`
++    /// (both export `CACO_REINTEGRATION_GATE_TIMEOUT_SECS`). Lets a slow node --
++    /// e.g. a mini-PC whose cold `cargo test-small` exceeds the project default --
++    /// get a longer gate WITHOUT raising the global ceiling, which would blunt the
++    /// lands-gap wedge detection on fast throughput nodes. When unset, the project
++    /// default (then the compiled 2400s default) applies.
++    #[serde(default, skip_serializing_if = "Option::is_none")]
++    pub reintegration_gate_timeout_secs: Option<u64>,
+     /// Node-scoped declarative persistent agents (SPEC 6.5.3.1, bd-f7fe64).
+     #[serde(default)]
+     pub agents: Option<NodeAgentsConfig>,
+diff --git a/crates/caco-config/src/validate.rs b/crates/caco-config/src/validate.rs
+index d4dbfcaf0..59e0ae9a2 100644
+--- a/crates/caco-config/src/validate.rs
++++ b/crates/caco-config/src/validate.rs
+@@ -117,6 +117,16 @@ pub fn validate_config_with_extra_profiles(
+                 );
+             }
+         }
++        // bd-4d6172: a per-node before_reintegration gate-timeout override must be
++        // a positive integer, mirroring the project agent_defaults validation -- a
++        // 0 silently breaks the gate (the runtime parser also falls back to the
++        // default, but explicit config-time validation surfaces the mistake).
++        if matches!(node.reintegration_gate_timeout_secs, Some(0)) {
++            errors.push(format!(
++                "nodes['{}'].reintegration_gate_timeout_secs must be a positive integer, got 0",
++                node.name
++            ));
++        }
+     }
+ 
+     // Collect profile names for concurrency ceiling cross-reference.
+@@ -8362,6 +8372,68 @@ services:
+         );
+     }
+ 
++    // bd-4d6172: a per-NODE gate-timeout override must also reject 0, mirroring the
++    // project agent_defaults validation (a 0 silently breaks the gate on that node).
++    #[test]
++    fn rejects_zero_node_reintegration_gate_timeout_bd_4d6172() {
++        let yaml = r#"
++version: 1
++node:
++  default: localhost
++nodes:
++  - name: localhost
++    host: localhost
++    reintegration_gate_timeout_secs: 0
++projects:
++  - name: cacophony
++    remote: ssh://git@github.com/someorg/cacophony.git
++services:
++  caco-daemon:
++    node: localhost
++    port: 11100
++  beads-host:
++    node: localhost
++    port: 11101
++"#;
++        let config: Config = serde_yaml::from_str(yaml).unwrap();
++        let err = validate_config(&config).unwrap_err();
++        let msg = err.to_string();
++        assert!(
++            msg.contains("nodes['localhost'].reintegration_gate_timeout_secs")
++                && msg.contains("positive integer"),
++            "got: {msg}"
++        );
++    }
++
++    // bd-4d6172: a positive per-node override (e.g. winmini's 4800s) must validate.
++    #[test]
++    fn accepts_positive_node_reintegration_gate_timeout_bd_4d6172() {
++        let yaml = r#"
++version: 1
++node:
++  default: localhost
++nodes:
++  - name: localhost
++    host: localhost
++    reintegration_gate_timeout_secs: 4800
++projects:
++  - name: cacophony
++    remote: ssh://git@github.com/someorg/cacophony.git
++services:
++  caco-daemon:
++    node: localhost
++    port: 11100
++  beads-host:
++    node: localhost
++    port: 11101
++"#;
++        let config: Config = serde_yaml::from_str(yaml).unwrap();
++        assert!(
++            validate_config(&config).is_ok(),
++            "a positive per-node reintegration_gate_timeout_secs must validate"
++        );
++    }
++
+     #[test]
+     fn resource_limits_optional_in_yaml() {
+         let yaml = r#"
+-- 
+2.53.0
+

@@ -1,0 +1,50 @@
+bd-050488 SOURCE-FLOOR GATE EVIDENCE — ms-mac
+Produced by ms-mac-cacophony-caco-dev-msm-0, 2026-07-30 ~17:30Z
+Machine-readable receipt for the rollout gate. Every line below is a measurement.
+
+## 1. FLOOR ANCESTRY (provider API, no clone)
+compare d5f20503...3660d7f4f45f  -> status=ahead ahead=59 behind=0   (floor IS ancestor)
+compare d5f20503...03ac36e       -> (per ms-dev-5) 65 above floor
+compare 3660d7f4...03ac36e       -> status=ahead ahead=6  behind=0   (reconciles 59+6=65)
+compare 722c110...3660d7f4       -> status=ahead behind=0            (forbidden rev is BELOW)
+MUST-NOT-FIRE CONTROL: compare d5f20503...deadbeef*40 -> HTTP 404, not a status.
+  => the comparison is capable of returning "not found"; a clean result is meaningful.
+
+## 2. RUNNING ARTIFACT IDENTITY (ms-mac)
+running process store path : /nix/store/kcdg62zy3wsyc9rpnhjwdgkbbdpa5v1b-pi-daemon-0.3.0
+  (read from the store path of PID 60662, NOT from the profile symlink or CACO_PI_DAEMON_BIN)
+deriver                    : /nix/store/5kcgc0jmlh1sw73gjvc78gq9fxw2j28s-pi-daemon-0.3.0.drv
+realized src               : /nix/store/0s9g8miswnznnjkz5i74xggp5q24js4d-...-source
+package.json version       : 0.3.0
+socket                     : /Users/harryaskham/.local/state/pi-daemon/cacophony/run/pi-daemon.sock
+                             srw------- owner harryaskham, present since Jul 29 23:26
+
+## 3. WHOLE-TREE FINGERPRINT (ms-dev-5 method) — NO MATCH
+running src   fp=8b84769e0e5519df083d188d8b870231396c63bb2dde4ecd62b6d605f23d83aa  424 files
+rev 03ac36e   fp=96d4ed88ebaeb2ccd7a7875805d9c1aca1638f2c8c88126dbb84b4cf1c4b3a8d  427 files
+rev 3660d7f4  fp=d20c5fa2d80e36d5237195f8024d50e5e22ba67478503e867228a22f22c82b94  426 files
+=> The running artifact CANNOT BE IDENTIFIED to a rev. Under a strict gate this REFUSES activation.
+
+## 4. DECOMPOSITION OF THE MISMATCH vs 3660d7f4
+common files            : 424
+only in candidate       : ./test/consumer-acceptance.mjs, ./test/consumer-acceptance.test.mjs
+differing common files  : 10
+  CHANGELOG.md CONTRIBUTING.md PLAN.md README.md SECURITY.md
+  docs/integration.md flake.nix scripts/live-sdk-smoke.mjs
+  test/path-ownership.test.mjs test/pi-sdk-compatibility.test.mjs
+common files under src/ : 78
+DIFFERING under src/    : 0        <-- the shipped code path is byte-identical
+
+## 5. DISPOSITION
+ms-mac is:  ABOVE-FLOOR BY CONTENT  /  NOT LOCK-CURRENT  /  NOT IDENTIFIED BY REV
+Inference (NOT proven): the deployed tree is vendored/packaged rather than a pristine
+checkout — consistent with gitRev "none" and with the source narHash mismatching the lock
+while content matches. Not shown to be a different code revision.
+
+## 6. BLOCKERS (deterministic, retried per operator guidance item B)
+caco pi-daemon status            -> forbidden "worker scope cannot access /api/v1/pi-daemon/status"
+                                    (also refused at project_controller, per caco-ctrl)
+caco agent new --type pi-daemon  -> forbidden "worker scope cannot spawn agents"  x3 consecutive
+Source reading (main f572540): /api/v1/pi-daemon/status has NO branch in the scope gate
+if-chain; AuthScope has only Worker/ProjectController/ClusterController. Predicted:
+cluster_controller is ALSO refused. UNTESTED — cheap falsifier for anyone holding it.

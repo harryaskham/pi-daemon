@@ -1,0 +1,384 @@
+From 7fd91e115c6794561305f9260f41aec293f6ffac Mon Sep 17 00:00:00 2001
+From: Harry Askham <harryaskham@gmail.com>
+Date: Mon, 13 Jul 2026 04:13:05 +0100
+Subject: [PATCH] bd-25085f: verify hosted repair resubmit identity
+
+---
+ SPEC.md                                |   2 +-
+ crates/caco-daemon/src/hosted_queue.rs | 340 +++++++++++++++++++++++++
+ 2 files changed, 341 insertions(+), 1 deletion(-)
+
+diff --git a/SPEC.md b/SPEC.md
+index 7200a12586..154098e345 100644
+--- a/SPEC.md
++++ b/SPEC.md
+@@ -5197,7 +5197,7 @@ Resolution rules:
+ - each PR-backed reintegration generation must publish to a unique immutable head derived from the stable agent and source HEAD, so a persistent agent may enqueue bead B while bead A remains open without rewriting A; retries of the same source generation reuse only a PR whose head generation and primary bead identity match, stale-title relabeling must never authorize cross-bead reuse, and receipts/PR metadata must retain generation, agent, bead, PR, and full source-head attribution
+ - before hooks, state publication, branch push, PR lookup/create/update, queue trigger, link persistence, or a success receipt, every mutating reintegration/completion path must replace stale runtime assignment metadata with the authoritative `bead_store_reconciled` assignment set. A branch HEAD whose subject names a bead outside that set is refused with candidate source, canonical status/assignee/duplicate-target evidence, and recovery guidance; closed/deleted/duplicate/superseded/foreign historical bead IDs elsewhere in the landing range are excluded from `Beads:` and lifecycle metadata. An explicit empty authoritative assignment set permits a genuinely beadless operational generation but must never infer bead IDs from goal text, commit bodies, summaries, docs/diff prose, or stale `agent.json` fields (bd-806fb7)
+ - a later generation from the same stable agent stream may stack on an open predecessor generation instead of repeating its patch against the integration branch. `caco agent reintegrate --stack-parent <PR-or-generation>` is the explicit CLI/MCP surface; without it Caco may select only the nearest open immutable generation whose exact agent-branch namespace matches and whose fetched head is an ancestor of the child HEAD or whose exact binary patch reverse-applies cleanly to the child tree. Title/bead mentions, substring ownership, cross-agent candidates, provider-blocked/returned parents, and unproven patch similarity must never authorize stacking. The child PR base is the parent immutable head, its diff is therefore incremental, and PR metadata/output exposes the stack base and `blocked_on_parent` state. Reuse deterministically re-applies the desired base; after the parent merges, the same idempotent operation retargets the child to the configured integration base without rewriting the immutable child head or changing its semantic delta (bd-1ce4f9)
+-- when a hosted provider returns/rejects/conflicts a PR, retry must remain scoped to the original owner and PR generation. After the corrected branch is published, the provider adapter must idempotently clear provider-blocking state and restore the configured queue trigger; until that automation exists, profile guidance may require the original owner to run the equivalent provider command (for Aviator: remove `blocked` and add `mergequeue`). No retry path may mutate another owner's PR or arm a competing Track-A/native lander
++- when a hosted provider returns/rejects/conflicts a PR, retry must remain scoped to the original owner and PR generation. Before mutation, one provider-neutral verifier must require an open PR, durable bead link, exact owner/bead/immutable-generation identity, returned and current head evidence, a real head advance or explicit validated repair receipt, and no competing Track-A/native-auto owner; unchanged head, wrong owner/bead/generation, missing link, closed PR, or ambiguous provider state fail closed with stable reason codes. Block-absent + configured-trigger-present is idempotently already-requeued even while the asynchronously folded provider record is briefly stale (bd-25085f). After the corrected branch is published, the provider adapter must idempotently clear provider-blocking state and restore the configured queue trigger; until that automation exists, profile guidance may require the original owner to run the equivalent provider command (for Aviator: remove `blocked` and add `mergequeue`). No retry path may mutate another owner's PR or arm a competing Track-A/native lander
+ - the Cacophony project may run one project-scoped persistent `caco-merger` queue operator on its control-plane node. It is a read-mostly controller, not an implementation worker: it must use bounded/event-driven observation, route each actionable return once to the exact original owner or one authoritative successor, acquire the named `caco-merger` lease before queue mutations, reconcile closure only from matching provider/mainline evidence, and file only deduplicated measured optimization work for non-control-plane workers. It must never run application builds, spawn implementation workers on the control-plane node, mutate another owner's head, or race Aviator with Track A/native auto
+ - Aviator `mq-bot-*` draft PRs and workflow runs are provider-owned speculative state. Before classifying one as current or stale, queue operations must establish active batch/generation lineage from source PR heads. Current, stale, and ambiguous bot heads/runs must not be cancelled, closed, relabelled, rerun, or pushed by Cacophony; cancelling a current required run can fail every dependent speculative branch. Recovery is limited to routing the affected source PR back to its original owner for requeue after source checks are classified green; no bot-head mutation is permitted
+ - the unified merge-queue model must combine local receipts with provider observations using canonical states `published`, `enqueue_failed`, `queued`, `updating`, `checks_pending`, `blocked`, `merged`, `kicked/cancelled`, and `provider_error`; list/API/MCP and UI consumers expose provider, safe public PR link, check summary, blocked reason, age, and action owner, with project/provider/agent/bead filters
+diff --git a/crates/caco-daemon/src/hosted_queue.rs b/crates/caco-daemon/src/hosted_queue.rs
+index 1e35011743..0dd9a421e9 100644
+--- a/crates/caco-daemon/src/hosted_queue.rs
++++ b/crates/caco-daemon/src/hosted_queue.rs
+@@ -97,6 +97,204 @@ pub struct HostedQueueEvidence {
+     pub observed_at: Option<DateTime<Utc>>,
+ }
+ 
++/// Public forge PR lifecycle state used by repair-resubmit verification.
++#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
++#[serde(rename_all = "snake_case")]
++pub enum HostedPullRequestState {
++    Open,
++    Closed,
++    Merged,
++}
++
++/// Immutable evidence required before a provider repair can clear its blocked
++/// marker and restore the configured queue trigger. This is provider-neutral:
++/// adapters supply their blocked/trigger label names and canonical queue state.
++#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
++pub struct HostedRepairResubmitEvidence {
++    pub provider: String,
++    pub pr_number: u64,
++    pub pr_state: HostedPullRequestState,
++    pub provider_state: HostedQueueState,
++    pub labels: Vec<String>,
++    pub blocked_label: String,
++    pub trigger_label: String,
++    pub expected_owner: String,
++    pub observed_owner: String,
++    pub expected_bead_id: String,
++    pub observed_bead_id: Option<String>,
++    pub expected_generation: String,
++    pub observed_generation: Option<String>,
++    pub returned_head_sha: String,
++    pub current_head_sha: String,
++    pub bead_link_present: bool,
++    pub validated_repair_attempt: bool,
++    pub track_a_active: bool,
++    pub native_auto_merge_armed: bool,
++}
++
++#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
++#[serde(rename_all = "snake_case")]
++pub enum HostedRepairResubmitDisposition {
++    Ready,
++    AlreadyRequeued,
++    Refused,
++}
++
++#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
++#[serde(rename_all = "snake_case")]
++pub enum HostedRepairResubmitCode {
++    ReadyHeadAdvanced,
++    ReadyValidatedAttempt,
++    AlreadyRequeued,
++    PrNotOpen,
++    OwnerMismatch,
++    BeadMismatch,
++    GenerationMismatch,
++    MissingBeadLink,
++    MissingHeadEvidence,
++    UnchangedHead,
++    ProviderNotBlocked,
++    CompetingLandingPath,
++}
++
++#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
++pub struct HostedRepairResubmitAssessment {
++    pub disposition: HostedRepairResubmitDisposition,
++    pub code: HostedRepairResubmitCode,
++    pub message: String,
++    pub head_advanced: bool,
++    pub remove_blocked_label: bool,
++    pub apply_trigger_label: bool,
++}
++
++impl HostedRepairResubmitAssessment {
++    fn refused(code: HostedRepairResubmitCode, message: impl Into<String>) -> Self {
++        Self {
++            disposition: HostedRepairResubmitDisposition::Refused,
++            code,
++            message: message.into(),
++            head_advanced: false,
++            remove_blocked_label: false,
++            apply_trigger_label: false,
++        }
++    }
++}
++
++fn has_label(labels: &[String], expected: &str) -> bool {
++    labels
++        .iter()
++        .any(|label| label.eq_ignore_ascii_case(expected))
++}
++
++/// Fail-closed pure gate for the future repair-resubmit mutation path.
++///
++/// The verifier owns no provider API calls and performs no state changes. The
++/// mutating consumer must re-read the same evidence immediately before applying
++/// both label operations atomically/idempotently (parent bd-311eab).
++pub fn assess_hosted_repair_resubmit(
++    evidence: &HostedRepairResubmitEvidence,
++) -> HostedRepairResubmitAssessment {
++    if evidence.pr_state != HostedPullRequestState::Open {
++        return HostedRepairResubmitAssessment::refused(
++            HostedRepairResubmitCode::PrNotOpen,
++            "repair resubmit requires an open pull request",
++        );
++    }
++    if evidence.expected_owner != evidence.observed_owner {
++        return HostedRepairResubmitAssessment::refused(
++            HostedRepairResubmitCode::OwnerMismatch,
++            format!(
++                "repair owner mismatch: expected {}, observed {}",
++                evidence.expected_owner, evidence.observed_owner
++            ),
++        );
++    }
++    if evidence.observed_bead_id.as_deref() != Some(evidence.expected_bead_id.as_str()) {
++        return HostedRepairResubmitAssessment::refused(
++            HostedRepairResubmitCode::BeadMismatch,
++            "repair bead association does not match the returned generation",
++        );
++    }
++    if evidence.observed_generation.as_deref() != Some(evidence.expected_generation.as_str()) {
++        return HostedRepairResubmitAssessment::refused(
++            HostedRepairResubmitCode::GenerationMismatch,
++            "repair generation does not match the returned immutable generation",
++        );
++    }
++    if !evidence.bead_link_present {
++        return HostedRepairResubmitAssessment::refused(
++            HostedRepairResubmitCode::MissingBeadLink,
++            "repair resubmit requires the durable bead-to-PR link",
++        );
++    }
++    if evidence.track_a_active || evidence.native_auto_merge_armed {
++        return HostedRepairResubmitAssessment::refused(
++            HostedRepairResubmitCode::CompetingLandingPath,
++            "repair resubmit refuses competing Track A or native auto-merge ownership",
++        );
++    }
++
++    let blocked_label_present = has_label(&evidence.labels, &evidence.blocked_label);
++    let trigger_present = has_label(&evidence.labels, &evidence.trigger_label);
++    // Public labels are the mutation receipt. Treat block-absent + trigger-present
++    // as idempotently requeued even if the asynchronously folded provider record
++    // still says Blocked for one refresh interval.
++    if !blocked_label_present && trigger_present {
++        return HostedRepairResubmitAssessment {
++            disposition: HostedRepairResubmitDisposition::AlreadyRequeued,
++            code: HostedRepairResubmitCode::AlreadyRequeued,
++            message: "provider block is already clear and queue trigger is present".to_string(),
++            head_advanced: !evidence.returned_head_sha.is_empty()
++                && !evidence.current_head_sha.is_empty()
++                && !evidence
++                    .returned_head_sha
++                    .eq_ignore_ascii_case(&evidence.current_head_sha),
++            remove_blocked_label: false,
++            apply_trigger_label: false,
++        };
++    }
++    let blocked = blocked_label_present || evidence.provider_state == HostedQueueState::Blocked;
++    if !blocked {
++        return HostedRepairResubmitAssessment::refused(
++            HostedRepairResubmitCode::ProviderNotBlocked,
++            "provider evidence is neither blocked nor already requeued",
++        );
++    }
++    if evidence.returned_head_sha.trim().is_empty() || evidence.current_head_sha.trim().is_empty() {
++        return HostedRepairResubmitAssessment::refused(
++            HostedRepairResubmitCode::MissingHeadEvidence,
++            "repair resubmit requires returned and current head SHAs",
++        );
++    }
++    let head_advanced = !evidence
++        .returned_head_sha
++        .eq_ignore_ascii_case(&evidence.current_head_sha);
++    if !head_advanced && !evidence.validated_repair_attempt {
++        return HostedRepairResubmitAssessment::refused(
++            HostedRepairResubmitCode::UnchangedHead,
++            "PR head is unchanged and no explicit validated repair attempt exists",
++        );
++    }
++
++    HostedRepairResubmitAssessment {
++        disposition: HostedRepairResubmitDisposition::Ready,
++        code: if head_advanced {
++            HostedRepairResubmitCode::ReadyHeadAdvanced
++        } else {
++            HostedRepairResubmitCode::ReadyValidatedAttempt
++        },
++        message: if head_advanced {
++            "same-owner repair advanced the exact returned generation head; clear block and restore trigger once"
++        } else {
++            "explicit validated repair attempt authorizes idempotent resubmit of the unchanged exact head"
++        }
++        .to_string(),
++        head_advanced,
++        remove_blocked_label: true,
++        apply_trigger_label: !trigger_present,
++    }
++}
++
+ /// Reduce GitHub evidence emitted by Aviator to the canonical state machine.
+ /// Comment matching is intentionally conservative; checks and merged status are
+ /// authoritative and comments only distinguish queue phases/reasons.
+@@ -388,6 +586,148 @@ mod tests {
+         assert!(!claim_notification(tmp.path(), "demo", 7, HostedQueueState::Blocked).unwrap());
+     }
+ 
++    fn repair_evidence() -> HostedRepairResubmitEvidence {
++        HostedRepairResubmitEvidence {
++            provider: "aviator".into(),
++            pr_number: 42,
++            pr_state: HostedPullRequestState::Open,
++            provider_state: HostedQueueState::Blocked,
++            labels: vec!["blocked".into()],
++            blocked_label: "blocked".into(),
++            trigger_label: "mergequeue".into(),
++            expected_owner: "agent-a".into(),
++            observed_owner: "agent-a".into(),
++            expected_bead_id: "bd-fix".into(),
++            observed_bead_id: Some("bd-fix".into()),
++            expected_generation: "generation-a".into(),
++            observed_generation: Some("generation-a".into()),
++            returned_head_sha: "aaaa".into(),
++            current_head_sha: "bbbb".into(),
++            bead_link_present: true,
++            validated_repair_attempt: false,
++            track_a_active: false,
++            native_auto_merge_armed: false,
++        }
++    }
++
++    #[test]
++    fn repair_resubmit_ready_and_idempotent_matrix_bd_25085f() {
++        let mut evidence = repair_evidence();
++        let ready = assess_hosted_repair_resubmit(&evidence);
++        assert_eq!(ready.disposition, HostedRepairResubmitDisposition::Ready);
++        assert_eq!(ready.code, HostedRepairResubmitCode::ReadyHeadAdvanced);
++        assert!(ready.remove_blocked_label);
++        assert!(ready.apply_trigger_label);
++        assert!(ready.head_advanced);
++
++        evidence.labels.push("mergequeue".into());
++        let trigger_retained = assess_hosted_repair_resubmit(&evidence);
++        assert_eq!(
++            trigger_retained.disposition,
++            HostedRepairResubmitDisposition::Ready
++        );
++        assert!(!trigger_retained.apply_trigger_label);
++
++        evidence.labels = vec!["mergequeue".into()];
++        evidence.current_head_sha = evidence.returned_head_sha.clone();
++        let replay = assess_hosted_repair_resubmit(&evidence);
++        assert_eq!(
++            replay.disposition,
++            HostedRepairResubmitDisposition::AlreadyRequeued
++        );
++        assert_eq!(replay.code, HostedRepairResubmitCode::AlreadyRequeued);
++        assert!(!replay.remove_blocked_label);
++        assert!(!replay.apply_trigger_label);
++    }
++
++    #[test]
++    fn repair_resubmit_unchanged_head_requires_validated_attempt_bd_25085f() {
++        let mut evidence = repair_evidence();
++        evidence.current_head_sha = evidence.returned_head_sha.clone();
++        let refused = assess_hosted_repair_resubmit(&evidence);
++        assert_eq!(
++            refused.disposition,
++            HostedRepairResubmitDisposition::Refused
++        );
++        assert_eq!(refused.code, HostedRepairResubmitCode::UnchangedHead);
++
++        evidence.validated_repair_attempt = true;
++        let ready = assess_hosted_repair_resubmit(&evidence);
++        assert_eq!(ready.disposition, HostedRepairResubmitDisposition::Ready);
++        assert_eq!(ready.code, HostedRepairResubmitCode::ReadyValidatedAttempt);
++        assert!(!ready.head_advanced);
++    }
++
++    #[test]
++    fn repair_resubmit_identity_and_ownership_refusals_bd_25085f() {
++        let mut evidence = repair_evidence();
++        evidence.observed_owner = "agent-b".into();
++        assert_eq!(
++            assess_hosted_repair_resubmit(&evidence).code,
++            HostedRepairResubmitCode::OwnerMismatch
++        );
++
++        evidence = repair_evidence();
++        evidence.observed_bead_id = Some("bd-other".into());
++        assert_eq!(
++            assess_hosted_repair_resubmit(&evidence).code,
++            HostedRepairResubmitCode::BeadMismatch
++        );
++
++        evidence = repair_evidence();
++        evidence.observed_generation = Some("generation-b".into());
++        assert_eq!(
++            assess_hosted_repair_resubmit(&evidence).code,
++            HostedRepairResubmitCode::GenerationMismatch
++        );
++
++        evidence = repair_evidence();
++        evidence.bead_link_present = false;
++        assert_eq!(
++            assess_hosted_repair_resubmit(&evidence).code,
++            HostedRepairResubmitCode::MissingBeadLink
++        );
++    }
++
++    #[test]
++    fn repair_resubmit_provider_and_competing_path_refusals_bd_25085f() {
++        let mut evidence = repair_evidence();
++        evidence.pr_state = HostedPullRequestState::Closed;
++        assert_eq!(
++            assess_hosted_repair_resubmit(&evidence).code,
++            HostedRepairResubmitCode::PrNotOpen
++        );
++
++        evidence = repair_evidence();
++        evidence.track_a_active = true;
++        assert_eq!(
++            assess_hosted_repair_resubmit(&evidence).code,
++            HostedRepairResubmitCode::CompetingLandingPath
++        );
++
++        evidence = repair_evidence();
++        evidence.native_auto_merge_armed = true;
++        assert_eq!(
++            assess_hosted_repair_resubmit(&evidence).code,
++            HostedRepairResubmitCode::CompetingLandingPath
++        );
++
++        evidence = repair_evidence();
++        evidence.labels.clear();
++        evidence.provider_state = HostedQueueState::Published;
++        assert_eq!(
++            assess_hosted_repair_resubmit(&evidence).code,
++            HostedRepairResubmitCode::ProviderNotBlocked
++        );
++
++        evidence = repair_evidence();
++        evidence.current_head_sha.clear();
++        assert_eq!(
++            assess_hosted_repair_resubmit(&evidence).code,
++            HostedRepairResubmitCode::MissingHeadEvidence
++        );
++    }
++
+     #[test]
+     fn unsafe_links_are_rejected_bd_5005d9() {
+         assert!(safe_pr_url("https://github.com/o/r/pull/12").is_some());
+-- 
+2.53.0
+

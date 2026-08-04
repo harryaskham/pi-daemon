@@ -1,0 +1,1410 @@
+From c0ded74a7d75cec6f63ca28598143a7ce26aafe7 Mon Sep 17 00:00:00 2001
+From: Harry Askham <harryaskham@gmail.com>
+Date: Mon, 13 Jul 2026 01:57:34 +0100
+Subject: [PATCH] bd-cb52ab: make queued MCP waits return durable receipts
+
+---
+ README.md                             |   4 +-
+ SPEC.md                               |   4 +
+ crates/caco-cli/src/lib.rs            | 280 +++++++++++++++++++++++---
+ crates/caco-cli/src/mcp_server.rs     |  92 ++++++++-
+ crates/caco-daemon/src/build_queue.rs | 203 ++++++++++++++++++-
+ crates/caco-daemon/src/lib.rs         |  65 +++++-
+ crates/caco-daemon/src/test_queue.rs  | 204 ++++++++++++++++++-
+ crates/caco-tui/src/state/tests.rs    |   2 +
+ crates/caco-tui/src/views/builds.rs   |   1 +
+ crates/caco-tui/src/views/tests.rs    |   1 +
+ 10 files changed, 809 insertions(+), 47 deletions(-)
+
+diff --git a/README.md b/README.md
+index 20f2d11b41..4e4626d375 100644
+--- a/README.md
++++ b/README.md
+@@ -102,7 +102,7 @@ tests/
+ | `caco decision-point` | Inspect decision-point snapshots; `caco decision-point rewind --agent-id <id> --decision-point-id <dp> --dry-run` renders a no-spawn rewind preview with text or JSON output |
+ | `caco ops` | Smooth-operations autopilot snapshots for controllers (`status`, `check`, `run --once`, `speak-summary`): inbox, fleet, bead routing/counts, orphan goal agents with null canonical assignment, worker blockers with watch-only stale-activity rows separated from blocked rows, local and reachable-node canonical checkout freshness/cleanliness, bead snapshot-vs-live-DB footprint, reintegration dead-letter counts, critical persistents plus persistent Pi `/loop`/self-nudge wake-path coverage, stable-only update posture, dedupe ledger, and speech gating |
+ | `caco update` | Inspect and apply self-updates (`status`, `android`, `macos`, `--stable-only`, `--restart`); status and update output include release-scope metadata, draft labels, host platform artifact, platform-gap warnings, and commit-level drift warnings so controllers can tell a stable-only published rollout from a draft-eligible candidate, see when a newer release lacks this host's binary, and see when the same semver hides tag/main commit drift; `caco update android` checks or installs configured Android companion APK targets without enumerating arbitrary devices; `caco update macos` pulls + sha256-verifies + installs the macOS app from the matching GitHub release (`--dry-run`/`--install`/`--app-path`/`--version`) |
+-| `caco test` | Queued test execution (run, list, show, logs, cancel; supports per-run `TIMEOUT_SECS="600"; caco test run --timeout "$TIMEOUT_SECS"`; daemon-restart recoveries include retry metadata plus first-party restart provenance when available) |
++| `caco test` | Queued test execution (run, list, show, logs, cancel; durable `--idempotency-key` replay/lookup prevents duplicate enqueue after lost responses; generated MCP waits return a bounded accepted job receipt for polling; supports per-run `TIMEOUT_SECS="600"; caco test run --timeout "$TIMEOUT_SECS"`; daemon-restart recoveries include retry metadata plus first-party restart provenance when available) |
+ | `caco project` | Inspect project inventory and per-project status (`list`, `show`, `status`); degraded status reads mark checkout freshness and counts as unverified rather than reporting misleading `ok`/zero values |
+ | `caco checkout` | Operator-owned canonical checkout repair (`regenerate --project <name>`); use only after inspecting preserved WIP/forensics when checkout identity drift is reported |
+ | `caco profile` | Inspect discovered repo/user/embedded agent profiles (`list`, `show`) and dry-run composed profile stacks with provenance (`compose --dry-run`) |
+@@ -113,7 +113,7 @@ tests/
+ | `caco microvm` | Validate optional microVM managed-agent isolation evidence and prepare worker nodes (`caco microvm preflight`; `REPORT="microvm-validation.json"; caco microvm validate --report "$REPORT"`; persistent full-node surfaces under `caco microvm node status --name micro-0` and `caco microvm node up --name micro-0 --dry-run` for safe state/preflight/boot-harness inspection, a public `docs/microvm-node-rollout.md` runbook for the current `micro-0` manual boot proof, with real boot/down/destroy still reserved while bd-a85bfa productizes the launcher; reusable NixOS/systemd/zsh agent image outputs are exposed as `.#caco-microvm-agent-*`; full-node proof images use `.#caco-microvm-node-*`, including isolated Cloud Hypervisor, Firecracker, and QEMU user-networking variants; the QEMU user-networking variant gives Tailnet/micro-N proofs outbound connectivity without host TAP/bridge/NAT setup and runs `tailscale up --ssh` when an auth key is projected; full-node images bundle a minimal interactive zsh environment plus Linux troubleshooting tools such as `ip`, `ping`, `dig`, `nc`, `nmap`, `lsof`, `tcpdump`, `htop`, `jq`, editors, and archive/file utilities for operator terminals and managed agents; `just microvm-node-boot-proof[-detached]` for single-node boot proof, and `just microvm-dispatch-integration` for the Docker-free multinode dispatch lane scaffold with explicit Linux/KVM/preflight skip reporting, validation-sized `--vm-vcpus` / `--vm-memory-mib` planning, generated alpha/beta configs, node service overrides, per-node runtime projection tarballs/VSOCK helpers with configurable distinct guest CIDs, a VM network manifest/setup-teardown helpers, VM boot orchestration helpers, bounded VSOCK SSH readiness, runtime projection, daemon-status checks, beads-routing checks, a hermetic dispatch-enqueue check, beta worker-pickup observation, beta worker-completion observation, alpha bare-repo reintegration observation, alpha/beta bead closeout replication observation, and alpha/beta replicated completed-agent inventory observation, all executing in `--execute` before cleanup, a VM asset manifest for variant-specific runner/image-info attrs, a VM execution plan, a dispatch runbook, and a cleanup receipt when the evidence workdir is preserved) |
+ | `caco audio` | Synthesize speech, transcribe audio, and run one-turn realtime audio conversations (`realtime-turn`) |
+ | `caco stt` | Diagnose local speech-to-text setup and control the headless STT daemon (`stt doctor`, `stt daemon`, `stt diff`, `stt tail`; daemon transcript buffers are retention-bounded; see the [transcription guide](docs/transcription.md) for the full STT surface map) |
+-| `caco build` | Queued build execution (run, list, show, logs, cancel) |
++| `caco build` | Queued build execution (run, list, show, logs, cancel; durable enqueue keys and bounded MCP wait receipts mirror `caco test`) |
+ | `caco action` | Run operator-defined actions (run, list) |
+ | `caco hooks` | Inspect configured webhook ingress (`list`, `show`); external callers POST to `/hooks/<scope>/<id>` with a bearer token to create beads (`bead` handler) or run a command (`bash` handler), optionally exposed via Tailscale Funnel (SPEC §26). Tokens are always redacted |
+ | `caco changelog` | Show beads grouped by versioned release |
+diff --git a/SPEC.md b/SPEC.md
+index ec31c8d847..d12ef704c3 100644
+--- a/SPEC.md
++++ b/SPEC.md
+@@ -8140,6 +8140,8 @@ Command rules:
+ - `caco test run` must support `--timeout <secs>` as a one-off queued runtime override for that job without changing the project default
+ - when no queued test command can be resolved, `caco test run` must fail explicitly with a routing or resolution error that tells the caller whether config or autodetection was missing
+ - `caco test run` must support a `--wait` flag that blocks the CLI process until the enqueued job reaches a terminal state (`passed`, `failed`, `canceled`, or `error`) and returns the final job state, exit code, and logs in a single response; this is the required invocation mode for managed bead workers to prevent background-task stranding (bd-7dbcef)
++- queued test enqueue accepts a bounded caller `idempotency_key`, scoped by project + requester and persisted with the job before success is returned. An exact replay with the same resolved command/cwd/runtime/priority returns the original job (including after daemon restart); key reuse with payload drift is rejected. `caco test list --idempotency-key <key>` is the canonical post-timeout lookup for that caller. Queue admission/spawn runs after the durable accepted response rather than extending the enqueue request (bd-cb52ab)
++- generated MCP `caco_test_run` calls inject one durable idempotency key per tool call and reuse it across transparent retries. For `wait=true`, MCP also supplies a short `--wait-budget-secs`; if the job is still queued/running when that budget expires, the tool returns success with `data.accepted:true`, job id, idempotency key, queue progress when available, and `caco test show` polling guidance while the job continues. Direct CLI `--wait` retains its configured full wait unless the caller explicitly supplies the same accepted-receipt budget (bd-cb52ab)
+ - while `caco test run --wait` is still observing a queued or running job, human-readable output should periodically surface wait progress including queued position, queued jobs ahead, queued total, and running count when available; timeout JSON should include the same progress metadata under `data.wait_progress` so agents can see queue placement before an outer tool timeout (bd-1cd621)
+ - when `caco test run --wait` observes a recovered daemon-restart `error`, the JSON response must preserve the job record's `retryable`, `failure_kind`, artifact paths, recovery hint, `retry_after_secs`, and `retry_command` so release/update automation can retry infrastructure loss separately from a real validation failure; if the job ID becomes unavailable despite durable recovery, JSON output must return a retryable `queue_job_unavailable` error rather than unstructured prose
+ - queued test jobs may surface `warnings` alongside terminal passed/failed state; cargo-test jobs that report zero executed tests while filtering out tests must fail validation by default and warn that the filter likely matched no tests, because Cargo test filters are substring matches rather than regular expressions. Operators may explicitly opt in to zero-test cargo invocations by setting `CACO_ALLOW_ZERO_EXECUTED_CARGO_TESTS=1` (or the legacy alias `CACO_ALLOW_ZERO_TESTS=1`) in the queued command (bd-7a5536, bd-14af0f).
+@@ -8183,6 +8185,8 @@ Command rules:
+ - `caco build run` must resolve its command in this order: explicit request override, configured `projects[].build.command`, deterministic autodetection
+ - when no queued build command can be resolved, `caco build run` must fail explicitly with a routing or resolution error that tells the caller whether config or autodetection was missing
+ - `caco build run` must support a `--wait` flag that blocks the CLI process until the enqueued job reaches a terminal state (`succeeded`, `failed`, `canceled`, or `error`) and returns the final job state, exit code, and logs in a single response; this is the required invocation mode for managed bead workers whenever a heavyweight build command is needed
++- queued build enqueue accepts the same durable, project+requester-scoped `idempotency_key` contract as queued tests: persist before acceptance, exact replay returns the original job across restart, payload drift rejects, `caco build list --idempotency-key <key>` resolves a lost response, and admission/spawn starts after the accepted HTTP receipt (bd-cb52ab)
++- generated MCP `caco_build_run` calls inject and reuse one durable key across retries and bound `wait=true` with the same accepted-receipt wait budget as tests. Budget expiry returns success with job id/key/progress/poll guidance while the build continues; direct CLI full-wait behavior is unchanged unless `--wait-budget-secs` is explicit (bd-cb52ab)
+ - while `caco build run --wait` is still observing a queued or running job, human-readable output should periodically surface wait progress including queued position, queued jobs ahead, queued total, and running count when available; timeout JSON should include the same progress metadata under `data.wait_progress` so agents can see queue placement before an outer tool timeout (bd-1cd621)
+ - when `caco build run --wait` observes a recovered daemon-restart `error`, the JSON response must preserve the job record's `retryable`, `failure_kind`, artifact paths, and recovery hint so release/update automation can retry infrastructure loss separately from a real build failure; if the job ID becomes unavailable despite durable recovery, JSON output must return a retryable `queue_job_unavailable` error rather than unstructured prose
+ - queued build jobs must surface at least the states `queued`, `running`, `succeeded`, `failed`, `canceled`, and `error`
+diff --git a/crates/caco-cli/src/lib.rs b/crates/caco-cli/src/lib.rs
+index ad167065b8..7305a4ce19 100644
+--- a/crates/caco-cli/src/lib.rs
++++ b/crates/caco-cli/src/lib.rs
+@@ -4074,11 +4074,21 @@ const TEST_RUN_ARGS: &[ArgSpec] = &[
+         summary: "Override the queued test job max runtime ceiling in seconds.",
+         required: false,
+     },
++    ArgSpec {
++        name: "--idempotency-key",
++        summary: "Durable enqueue key scoped to project + requester; exact retries return the original job.",
++        required: false,
++    },
+     ArgSpec {
+         name: "--wait",
+         summary: "Block until the job reaches a terminal state and return the final result with exit code and logs.",
+         required: false,
+     },
++    ArgSpec {
++        name: "--wait-budget-secs",
++        summary: "Bound blocking wait time; if it expires, return a successful accepted receipt with job id/key and polling hint while the job continues.",
++        required: false,
++    },
+     // bd-d79bfd (Slice B): reintegration merge-gate priority lane.
+     ArgSpec {
+         name: "--gate",
+@@ -4135,6 +4145,11 @@ const TEST_LIST_ARGS: &[ArgSpec] = &[
+         summary: "Only show jobs enqueued by this requester/caller id.",
+         required: false,
+     },
++    ArgSpec {
++        name: "--idempotency-key",
++        summary: "Resolve the caller's exact durable enqueue key after a lost/timeout response.",
++        required: false,
++    },
+ ];
+ const TEST_SHOW_ARGS: &[ArgSpec] = &[
+     ArgSpec {
+@@ -4253,11 +4268,21 @@ const BUILD_RUN_ARGS: &[ArgSpec] = &[
+         summary: "Override the queued build job max runtime ceiling in seconds.",
+         required: false,
+     },
++    ArgSpec {
++        name: "--idempotency-key",
++        summary: "Durable enqueue key scoped to project + requester; exact retries return the original job.",
++        required: false,
++    },
+     ArgSpec {
+         name: "--wait",
+         summary: "Block until the job reaches a terminal state and return the final result with exit code and logs.",
+         required: false,
+     },
++    ArgSpec {
++        name: "--wait-budget-secs",
++        summary: "Bound blocking wait time; if it expires, return a successful accepted receipt with job id/key and polling hint while the job continues.",
++        required: false,
++    },
+     ArgSpec {
+         name: "--priority",
+         summary: "Scheduling priority: 'release' admits ahead of normal builds and may use reserved heavy-admission slots (bd-6fefc4). Default: normal.",
+@@ -4303,6 +4328,11 @@ const BUILD_LIST_ARGS: &[ArgSpec] = &[
+         summary: "Only show jobs enqueued by this requester/caller id.",
+         required: false,
+     },
++    ArgSpec {
++        name: "--idempotency-key",
++        summary: "Resolve the caller's exact durable enqueue key after a lost/timeout response.",
++        required: false,
++    },
+ ];
+ const BUILD_SHOW_ARGS: &[ArgSpec] = &[
+     ArgSpec {
+@@ -51027,6 +51057,30 @@ fn dispatch_test_run(
+     } else {
+         None
+     };
++    if let Some(key) = flags.get("--idempotency-key") {
++        body.insert(
++            "idempotency_key".to_string(),
++            serde_json::Value::String(key.clone()),
++        );
++    }
++    let wait_budget_secs = if let Some(value) = flags.get("--wait-budget-secs") {
++        let value = value
++            .parse::<u64>()
++            .map_err(|_| CliError::new("--wait-budget-secs must be a positive integer"))?;
++        if value == 0 {
++            return Err(CliError::new(
++                "--wait-budget-secs must be a positive integer",
++            ));
++        }
++        Some(value)
++    } else {
++        None
++    };
++    if wait_budget_secs.is_some() && !wait {
++        return Err(CliError::new(
++            "--wait-budget-secs requires --wait",
++        ));
++    }
+     // bd-d79bfd (Slice B): --gate marks this as a reintegration merge-gate job
+     // so the daemon admits it ahead of normal worker-validation jobs in the
+     // per-project queue. Used by the reintegration gate runner so a saturated
+@@ -51136,18 +51190,20 @@ fn dispatch_test_run(
+         // stdout, or list output is ANSI-truncated. stderr keeps --json stdout clean.
+         eprintln!("job_id={job_id}");
+         // Load wait_timeout_secs from project config (default: 60s).
+-        let configured_wait_timeout_secs = load_config_novalidate_for(config_override)
+-            .ok()
+-            .and_then(|cfg| {
+-                cfg.projects
+-                    .as_ref()?
+-                    .iter()
+-                    .find(|p| p.name == project)?
+-                    .test
+-                    .as_ref()?
+-                    .wait_timeout_secs
+-            })
+-            .unwrap_or(60);
++        let configured_wait_timeout_secs = wait_budget_secs.unwrap_or_else(|| {
++            load_config_novalidate_for(config_override)
++                .ok()
++                .and_then(|cfg| {
++                    cfg.projects
++                        .as_ref()?
++                        .iter()
++                        .find(|p| p.name == project)?
++                        .test
++                        .as_ref()?
++                        .wait_timeout_secs
++                })
++                .unwrap_or(60)
++        });
+         // bd-6668c4: a gate job's explicit max runtime is the lower bound for
+         // its waiter. The cacophony gate uses 2400s while ordinary test waits
+         // are 1800s; returning at 1800s left Cargo alive while reintegration
+@@ -51167,6 +51223,7 @@ fn dispatch_test_run(
+             &job_id,
+             &result,
+             wait_timeout_secs,
++            wait_budget_secs.is_some(),
+         );
+     }
+ 
+@@ -51197,6 +51254,9 @@ fn dispatch_test_run(
+         s.kv(&mut buf, "State", data["state"].as_str().unwrap_or("?"));
+         s.kv(&mut buf, "Command", data["command"].as_str().unwrap_or("?"));
+         s.kv(&mut buf, "Project", data["project"].as_str().unwrap_or("?"));
++        if let Some(key) = data["idempotency_key"].as_str() {
++            s.kv(&mut buf, "Idempotency Key", key);
++        }
+         Ok(Outcome {
+             exit_code: 0,
+             stdout: buf,
+@@ -51374,6 +51434,7 @@ fn dispatch_test_run_wait(
+     job_id: &str,
+     enqueue_result: &serde_json::Value,
+     wait_timeout_secs: u64,
++    accepted_on_timeout: bool,
+ ) -> Result<Outcome, CliError> {
+     const POLL_INTERVAL: std::time::Duration = std::time::Duration::from_secs(3);
+     // bd-02c78d: derive max polls from configurable wait timeout.
+@@ -51493,6 +51554,8 @@ fn dispatch_test_run_wait(
+             let mut timeout_result = enqueue_result.clone();
+             timeout_result["data"]["wait_timeout"] = serde_json::Value::Bool(true);
+             timeout_result["data"]["wait_timeout_secs"] = serde_json::json!(wait_timeout_secs);
++            timeout_result["data"]["accepted"] =
++                serde_json::Value::Bool(accepted_on_timeout);
+             timeout_result["data"]["hint"] = serde_json::Value::String(format!(
+                 "Job {job_id} is still running. Poll with: caco test show --id {job_id}"
+             ));
+@@ -51501,7 +51564,7 @@ fn dispatch_test_run_wait(
+             }
+             return if json_requested {
+                 Ok(Outcome {
+-                    exit_code: 2,
++                    exit_code: if accepted_on_timeout { 0 } else { 2 },
+                     stdout: serde_json::to_string_pretty(&timeout_result).unwrap_or_default(),
+                     paginate: true,
+                     gfx_requested: false,
+@@ -51509,19 +51572,29 @@ fn dispatch_test_run_wait(
+             } else {
+                 let s = style::Styled::detect();
+                 let mut buf = String::new();
+-                s.heading(&mut buf, "caco test run — timeout");
++                s.heading(
++                    &mut buf,
++                    if accepted_on_timeout {
++                        "caco test run — accepted"
++                    } else {
++                        "caco test run — timeout"
++                    },
++                );
+                 s.kv(&mut buf, "Job ID", job_id);
++                if let Some(key) = timeout_result["data"]["idempotency_key"].as_str() {
++                    s.kv(&mut buf, "Idempotency Key", key);
++                }
+                 s.kv(
+                     &mut buf,
+                     "Status",
+-                    &format!("timed out after {wait_timeout_secs}s — job continues in background"),
++                    &format!("wait ended after {wait_timeout_secs}s — job continues in background"),
+                 );
+                 if let Some(progress) = latest_progress.as_ref() {
+                     s.kv(&mut buf, "Queue", &progress.status_line());
+                 }
+                 s.kv(&mut buf, "Next", &format!("caco test show --id {job_id}"));
+                 Ok(Outcome {
+-                    exit_code: 2,
++                    exit_code: if accepted_on_timeout { 0 } else { 2 },
+                     stdout: buf,
+                     paginate: true,
+                     gfx_requested: false,
+@@ -51762,6 +51835,19 @@ fn dispatch_test_list(
+         validate_enum_flag("--state", v, ALLOWED_STATE)?;
+         params.push(format!("state={v}"));
+     }
++    if let Some(key) = flags.get("--idempotency-key") {
++        if key.is_empty()
++            || key.len() > 256
++            || !key.bytes().all(|byte| {
++                byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b':')
++            })
++        {
++            return Err(CliError::new(
++                "--idempotency-key must be 1..=256 bytes using only ASCII letters, digits, '-', '_', '.', and ':'",
++            ));
++        }
++        params.push(format!("idempotency_key={key}"));
++    }
+     // bd-dee49a: the daemon applies `limit` BEFORE any requester filter, so a
+     // small server limit can drop the caller's job under concurrent load. When
+     // filtering by requester, fetch a generous batch and apply --limit client-side.
+@@ -52717,6 +52803,30 @@ fn dispatch_build_run(
+         }
+         body.insert("timeout_secs".to_string(), serde_json::json!(timeout_secs));
+     }
++    if let Some(key) = flags.get("--idempotency-key") {
++        body.insert(
++            "idempotency_key".to_string(),
++            serde_json::Value::String(key.clone()),
++        );
++    }
++    let wait_budget_secs = if let Some(value) = flags.get("--wait-budget-secs") {
++        let value = value
++            .parse::<u64>()
++            .map_err(|_| CliError::new("--wait-budget-secs must be a positive integer"))?;
++        if value == 0 {
++            return Err(CliError::new(
++                "--wait-budget-secs must be a positive integer",
++            ));
++        }
++        Some(value)
++    } else {
++        None
++    };
++    if wait_budget_secs.is_some() && !wait {
++        return Err(CliError::new(
++            "--wait-budget-secs requires --wait",
++        ));
++    }
+     // bd-6fefc4: release-build priority. --priority wins; --release is shorthand
+     // for --priority release. Only honored when the daemon node has opted into a
+     // release-slot reservation (CACO_HEAVY_BUILD_RELEASE_RESERVED_SLOTS > 0);
+@@ -52783,18 +52893,20 @@ fn dispatch_build_run(
+         // capturable even on timeout/silent build. stderr keeps --json stdout clean.
+         eprintln!("job_id={job_id}");
+         // Load wait_timeout_secs from project config (default: 60s).
+-        let wait_timeout_secs = load_config_novalidate_for(config_override)
+-            .ok()
+-            .and_then(|cfg| {
+-                cfg.projects
+-                    .as_ref()?
+-                    .iter()
+-                    .find(|p| p.name == project)?
+-                    .build
+-                    .as_ref()?
+-                    .wait_timeout_secs
+-            })
+-            .unwrap_or(60);
++        let wait_timeout_secs = wait_budget_secs.unwrap_or_else(|| {
++            load_config_novalidate_for(config_override)
++                .ok()
++                .and_then(|cfg| {
++                    cfg.projects
++                        .as_ref()?
++                        .iter()
++                        .find(|p| p.name == project)?
++                        .build
++                        .as_ref()?
++                        .wait_timeout_secs
++                })
++                .unwrap_or(60)
++        });
+         return dispatch_build_run_wait(
+             json_requested,
+             &client,
+@@ -52805,6 +52917,7 @@ fn dispatch_build_run(
+             &job_id,
+             &result,
+             wait_timeout_secs,
++            wait_budget_secs.is_some(),
+         );
+     }
+ 
+@@ -52825,6 +52938,9 @@ fn dispatch_build_run(
+         s.kv(&mut buf, "State", data["state"].as_str().unwrap_or("?"));
+         s.kv(&mut buf, "Command", data["command"].as_str().unwrap_or("?"));
+         s.kv(&mut buf, "Project", data["project"].as_str().unwrap_or("?"));
++        if let Some(key) = data["idempotency_key"].as_str() {
++            s.kv(&mut buf, "Idempotency Key", key);
++        }
+         Ok(Outcome {
+             exit_code: 0,
+             stdout: buf,
+@@ -52852,6 +52968,7 @@ fn dispatch_build_run_wait(
+     job_id: &str,
+     enqueue_result: &serde_json::Value,
+     wait_timeout_secs: u64,
++    accepted_on_timeout: bool,
+ ) -> Result<Outcome, CliError> {
+     const POLL_INTERVAL: std::time::Duration = std::time::Duration::from_secs(3);
+     // bd-02c78d: derive max polls from configurable wait timeout.
+@@ -52963,6 +53080,8 @@ fn dispatch_build_run_wait(
+             let mut timeout_result = enqueue_result.clone();
+             timeout_result["data"]["wait_timeout"] = serde_json::Value::Bool(true);
+             timeout_result["data"]["wait_timeout_secs"] = serde_json::json!(wait_timeout_secs);
++            timeout_result["data"]["accepted"] =
++                serde_json::Value::Bool(accepted_on_timeout);
+             timeout_result["data"]["hint"] = serde_json::Value::String(format!(
+                 "Job {job_id} is still running. Poll with: caco build show --id {job_id}"
+             ));
+@@ -52971,7 +53090,7 @@ fn dispatch_build_run_wait(
+             }
+             return if json_requested {
+                 Ok(Outcome {
+-                    exit_code: 2,
++                    exit_code: if accepted_on_timeout { 0 } else { 2 },
+                     stdout: serde_json::to_string_pretty(&timeout_result).unwrap_or_default(),
+                     paginate: true,
+                     gfx_requested: false,
+@@ -52979,19 +53098,29 @@ fn dispatch_build_run_wait(
+             } else {
+                 let s = style::Styled::detect();
+                 let mut buf = String::new();
+-                s.heading(&mut buf, "caco build run — timeout");
++                s.heading(
++                    &mut buf,
++                    if accepted_on_timeout {
++                        "caco build run — accepted"
++                    } else {
++                        "caco build run — timeout"
++                    },
++                );
+                 s.kv(&mut buf, "Job ID", job_id);
++                if let Some(key) = timeout_result["data"]["idempotency_key"].as_str() {
++                    s.kv(&mut buf, "Idempotency Key", key);
++                }
+                 s.kv(
+                     &mut buf,
+                     "Status",
+-                    &format!("timed out after {wait_timeout_secs}s — job continues in background"),
++                    &format!("wait ended after {wait_timeout_secs}s — job continues in background"),
+                 );
+                 if let Some(progress) = latest_progress.as_ref() {
+                     s.kv(&mut buf, "Queue", &progress.status_line());
+                 }
+                 s.kv(&mut buf, "Next", &format!("caco build show --id {job_id}"));
+                 Ok(Outcome {
+-                    exit_code: 2,
++                    exit_code: if accepted_on_timeout { 0 } else { 2 },
+                     stdout: buf,
+                     paginate: true,
+                     gfx_requested: false,
+@@ -53151,6 +53280,19 @@ fn dispatch_build_list(
+         validate_enum_flag("--state", v, ALLOWED_STATE)?;
+         params.push(format!("state={v}"));
+     }
++    if let Some(key) = flags.get("--idempotency-key") {
++        if key.is_empty()
++            || key.len() > 256
++            || !key.bytes().all(|byte| {
++                byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b':')
++            })
++        {
++            return Err(CliError::new(
++                "--idempotency-key must be 1..=256 bytes using only ASCII letters, digits, '-', '_', '.', and ':'",
++            ));
++        }
++        params.push(format!("idempotency_key={key}"));
++    }
+     // bd-dee49a: fetch a generous batch when filtering by requester (the daemon
+     // applies `limit` before any requester filter); apply --limit client-side.
+     let mut client_limit: Option<usize> = None;
+@@ -142124,6 +142266,80 @@ services:
+         );
+     }
+ 
++    #[test]
++    fn bounded_test_wait_returns_accepted_receipt_bd_cb52ab() {
++        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
++        let port = listener.local_addr().unwrap().port();
++        let handle = thread::spawn(move || {
++            for response_body in [
++                serde_json::json!({
++                    "ok": true,
++                    "data": {
++                        "id": "tj-accepted",
++                        "state": "running",
++                        "project": "proj",
++                        "command": "echo ok"
++                    }
++                }),
++                serde_json::json!({
++                    "ok": true,
++                    "data": [{
++                        "id": "tj-accepted",
++                        "state": "running",
++                        "project": "proj",
++                        "command": "echo ok",
++                        "queued_at": "2026-07-13T00:00:00Z"
++                    }]
++                }),
++            ] {
++                let (mut stream, _) = listener.accept().unwrap();
++                let mut request = [0u8; 4096];
++                let _ = stream.read(&mut request).unwrap();
++                let body = response_body.to_string();
++                let response = format!(
++                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
++                    body.len(), body
++                );
++                stream.write_all(response.as_bytes()).unwrap();
++            }
++        });
++
++        let enqueue = serde_json::json!({
++            "ok": true,
++            "data": {
++                "id": "tj-accepted",
++                "state": "queued",
++                "project": "proj",
++                "command": "echo ok",
++                "idempotency_key": "request-accepted"
++            }
++        });
++        let outcome = dispatch_test_run_wait(
++            true,
++            &reqwest::blocking::Client::new(),
++            &format!("http://127.0.0.1:{port}"),
++            "token",
++            "proj",
++            None,
++            "tj-accepted",
++            &enqueue,
++            1,
++            true,
++        )
++        .unwrap();
++        handle.join().unwrap();
++
++        assert_eq!(outcome.exit_code, 0);
++        let payload: serde_json::Value = serde_json::from_str(&outcome.stdout).unwrap();
++        assert_eq!(payload["data"]["accepted"], true);
++        assert_eq!(payload["data"]["id"], "tj-accepted");
++        assert_eq!(payload["data"]["idempotency_key"], "request-accepted");
++        assert!(payload["data"]["hint"]
++            .as_str()
++            .unwrap()
++            .contains("caco test show --id tj-accepted"));
++    }
++
+     /// bd-7dbcef: `caco test run --wait` end-to-end test with a mock
+     /// daemon that transitions queued → running → passed.
+     #[serial_test::serial(env)]
+diff --git a/crates/caco-cli/src/mcp_server.rs b/crates/caco-cli/src/mcp_server.rs
+index 67a0a0b943..6e277e24b3 100644
+--- a/crates/caco-cli/src/mcp_server.rs
++++ b/crates/caco-cli/src/mcp_server.rs
+@@ -34,6 +34,13 @@ const RESPONSE_SIZE_LIMIT_ENV: &str = "CACO_MCP_RESPONSE_SIZE_LIMIT";
+ /// every MCP tool schema (bd-ff5c93).
+ const ALLOW_LARGE_RESPONSE_PARAM: &str = "allow_large_response";
+ 
++/// Generated MCP calls have no streaming response channel. Keep queue `--wait`
++/// inside the outer tool transport budget, then return the durable accepted job
++/// receipt for canonical polling instead of letting the MCP request disappear.
++const MCP_QUEUE_WAIT_BUDGET_SECS: u64 = 10;
++static MCP_QUEUE_REQUEST_COUNTER: std::sync::atomic::AtomicU64 =
++    std::sync::atomic::AtomicU64::new(0);
++
+ // --- bd-aab0cd: MCP retry env var overrides ---
+ const MCP_RETRY_MAX_RETRIES_ENV: &str = "CACO_MCP_RETRY_MAX_RETRIES";
+ const MCP_RETRY_INITIAL_BACKOFF_MS_ENV: &str = "CACO_MCP_RETRY_INITIAL_BACKOFF_MS";
+@@ -881,6 +888,11 @@ fn call_tool_with_retry(
+     tools: &[ToolEntry],
+     retry_config: &RetryConfig,
+ ) -> Value {
++    // Queue enqueue tools are retryable only because one generated durable key
++    // is reused for every retry in THIS MCP call. The wait budget turns a long
++    // `wait=true` into an accepted receipt before the outer MCP transport dies.
++    let prepared_arguments = prepare_mcp_queue_run_arguments(tool_name, arguments);
++
+     // bd-21c44d: Look up the tool entry and skip retry entirely for
+     // non-idempotent operations to prevent duplicate resource creation.
+     let is_idempotent = tools
+@@ -890,14 +902,57 @@ fn call_tool_with_retry(
+         .unwrap_or(true); // unknown tools default to idempotent (safe to retry)
+ 
+     if !is_idempotent {
+-        return call_tool(tool_name, arguments, tools);
++        return call_tool(tool_name, &prepared_arguments, tools);
+     }
+ 
+     retry_loop(retry_config, tool_name, || {
+-        call_tool(tool_name, arguments, tools)
++        call_tool(tool_name, &prepared_arguments, tools)
+     })
+ }
+ 
++fn argument_is_true(value: Option<&Value>) -> bool {
++    match value {
++        Some(Value::Bool(value)) => *value,
++        Some(Value::String(value)) => value.eq_ignore_ascii_case("true"),
++        Some(Value::Number(value)) => value.as_u64().is_some_and(|value| value != 0),
++        _ => false,
++    }
++}
++
++fn next_mcp_queue_idempotency_key(tool_name: &str) -> String {
++    use std::sync::atomic::Ordering;
++    let sequence = MCP_QUEUE_REQUEST_COUNTER.fetch_add(1, Ordering::Relaxed);
++    let nanos = std::time::SystemTime::now()
++        .duration_since(std::time::UNIX_EPOCH)
++        .unwrap_or_default()
++        .as_nanos();
++    let family = if tool_name == "caco_test_run" {
++        "test"
++    } else {
++        "build"
++    };
++    format!("mcp-{family}-{}-{nanos:x}-{sequence:x}", std::process::id())
++}
++
++/// Add the safety metadata generated MCP queue calls need but ordinary direct
++/// CLI callers may choose explicitly. This is pure except for unique-key
++/// generation and leaves every non-queue tool byte-for-byte unchanged.
++fn prepare_mcp_queue_run_arguments(tool_name: &str, arguments: &Value) -> Value {
++    if !matches!(tool_name, "caco_test_run" | "caco_build_run") {
++        return arguments.clone();
++    }
++    let mut prepared = arguments.as_object().cloned().unwrap_or_default();
++    prepared
++        .entry("idempotency_key".to_string())
++        .or_insert_with(|| Value::String(next_mcp_queue_idempotency_key(tool_name)));
++    if argument_is_true(prepared.get("wait")) {
++        prepared
++            .entry("wait_budget_secs".to_string())
++            .or_insert_with(|| Value::String(MCP_QUEUE_WAIT_BUDGET_SECS.to_string()));
++    }
++    Value::Object(prepared)
++}
++
+ /// Generic retry loop with exponential backoff (bd-aab0cd).
+ ///
+ /// Calls `f` repeatedly until it returns a non-retryable result, or the
+@@ -1179,6 +1234,39 @@ mod tests {
+         ]
+     }
+ 
++    #[test]
++    fn queue_run_mcp_arguments_get_one_durable_key_and_bounded_wait_bd_cb52ab() {
++        let input = serde_json::json!({
++            "command": "cargo test -p caco-daemon focused",
++            "wait": true
++        });
++        let prepared = prepare_mcp_queue_run_arguments("caco_test_run", &input);
++        let key = prepared["idempotency_key"]
++            .as_str()
++            .expect("generated durable key");
++        assert!(key.starts_with("mcp-test-"));
++        assert_eq!(
++            prepared["wait_budget_secs"],
++            Value::String(MCP_QUEUE_WAIT_BUDGET_SECS.to_string())
++        );
++        assert_eq!(prepared["command"], input["command"]);
++
++        let explicit = serde_json::json!({
++            "wait": true,
++            "idempotency_key": "caller-key",
++            "wait_budget_secs": "7"
++        });
++        let preserved = prepare_mcp_queue_run_arguments("caco_build_run", &explicit);
++        assert_eq!(preserved["idempotency_key"], "caller-key");
++        assert_eq!(preserved["wait_budget_secs"], "7");
++
++        let unrelated = serde_json::json!({"wait": true});
++        assert_eq!(
++            prepare_mcp_queue_run_arguments("caco_test_list", &unrelated),
++            unrelated
++        );
++    }
++
+     #[test]
+     fn build_mcp_tools_produces_correct_schema() {
+         let tools = build_mcp_tools(&sample_tools());
+diff --git a/crates/caco-daemon/src/build_queue.rs b/crates/caco-daemon/src/build_queue.rs
+index 266f1c9a6a..c3687b87a1 100644
+--- a/crates/caco-daemon/src/build_queue.rs
++++ b/crates/caco-daemon/src/build_queue.rs
+@@ -184,6 +184,11 @@ pub struct BuildJob {
+     pub cwd: String,
+     /// Identity of the requester (caller ID).
+     pub requester: String,
++    /// Caller-supplied enqueue idempotency key, scoped by project + requester.
++    /// Persisted with the job so a lost enqueue response can be retried safely
++    /// across daemon restarts without creating duplicate work (bd-cb52ab).
++    #[serde(default, skip_serializing_if = "Option::is_none")]
++    pub idempotency_key: Option<String>,
+     /// Optional request-level max runtime override in seconds.
+     #[serde(default, skip_serializing_if = "Option::is_none")]
+     pub max_runtime_secs: Option<u64>,
+@@ -253,6 +258,11 @@ pub struct BuildRunRequest {
+     /// heavy-admission slots. Defaults to normal.
+     #[serde(default)]
+     pub priority: Option<String>,
++    /// Optional durable enqueue idempotency key. Replaying the same key with
++    /// the same resolved payload returns the original job; payload drift is
++    /// rejected rather than silently creating different work (bd-cb52ab).
++    #[serde(default, alias = "idempotencyKey")]
++    pub idempotency_key: Option<String>,
+ }
+ 
+ /// Response after enqueuing a build job.
+@@ -263,6 +273,8 @@ pub struct BuildRunResponse {
+     pub command: String,
+     pub project: String,
+     pub queued_at: DateTime<Utc>,
++    #[serde(default, skip_serializing_if = "Option::is_none")]
++    pub idempotency_key: Option<String>,
+ }
+ 
+ /// Cancel response.
+@@ -421,6 +433,29 @@ fn generate_job_id(counter: u64) -> String {
+     format!("bj-{}", &hex::encode(&hash[..4]))
+ }
+ 
++fn normalize_idempotency_key(value: Option<&str>) -> Result<Option<String>, String> {
++    let Some(value) = value else {
++        return Ok(None);
++    };
++    let value = value.trim();
++    if value.is_empty() {
++        return Err("build idempotency key must not be empty".to_string());
++    }
++    if value.len() > 256 {
++        return Err("build idempotency key must be at most 256 bytes".to_string());
++    }
++    if !value
++        .bytes()
++        .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b':'))
++    {
++        return Err(
++            "build idempotency key may contain only ASCII letters, digits, '-', '_', '.', and ':'"
++                .to_string(),
++        );
++    }
++    Ok(Some(value.to_string()))
++}
++
+ /// Autodetect a build command from a checkout directory.
+ ///
+ /// Resolution order (SPEC 6.5.5.3):
+@@ -1120,6 +1155,34 @@ impl BuildQueueManager {
+         request_max_runtime_secs: Option<u64>,
+         cwd: &str,
+         priority: BuildJobPriority,
++    ) -> Result<BuildRunResponse, String> {
++        self.enqueue_idempotent_with_priority(
++            project,
++            requester,
++            request_command,
++            config_command,
++            request_max_runtime_secs,
++            cwd,
++            priority,
++            None,
++        )
++        .await
++    }
++
++    /// Enqueue with a durable caller key. The key is scoped by project and
++    /// requester; an exact replay returns the original job, including its
++    /// current state, while key reuse with a different payload is rejected.
++    #[allow(clippy::too_many_arguments)]
++    pub async fn enqueue_idempotent_with_priority(
++        &self,
++        project: &str,
++        requester: &str,
++        request_command: Option<&str>,
++        config_command: Option<&str>,
++        request_max_runtime_secs: Option<u64>,
++        cwd: &str,
++        priority: BuildJobPriority,
++        idempotency_key: Option<&str>,
+     ) -> Result<BuildRunResponse, String> {
+         if matches!(request_max_runtime_secs, Some(0)) {
+             return Err("build timeout must be a positive integer, got 0".to_string());
+@@ -1142,7 +1205,35 @@ impl BuildQueueManager {
+             })?
+         };
+ 
++        let idempotency_key = normalize_idempotency_key(idempotency_key)?;
+         let mut inner = self.inner.lock().await;
++        if let Some(key) = idempotency_key.as_deref() {
++            if let Some(existing) = inner.jobs.values().find(|job| {
++                job.project == project
++                    && job.requester == requester
++                    && job.idempotency_key.as_deref() == Some(key)
++            }) {
++                if existing.command != command
++                    || existing.cwd != cwd
++                    || existing.max_runtime_secs != request_max_runtime_secs
++                    || existing.priority != priority
++                {
++                    return Err(format!(
++                        "build idempotency key '{key}' is already bound to job {} with a different command/cwd/timeout/priority",
++                        existing.id
++                    ));
++                }
++                return Ok(BuildRunResponse {
++                    id: existing.id.clone(),
++                    state: existing.state,
++                    command: existing.command.clone(),
++                    project: existing.project.clone(),
++                    queued_at: existing.queued_at,
++                    idempotency_key: existing.idempotency_key.clone(),
++                });
++            }
++        }
++
+         inner.counter += 1;
+         let id = generate_job_id(inner.counter);
+         let now = Utc::now();
+@@ -1153,6 +1244,7 @@ impl BuildQueueManager {
+             command: command.clone(),
+             cwd: cwd.to_string(),
+             requester: requester.to_string(),
++            idempotency_key: idempotency_key.clone(),
+             max_runtime_secs: request_max_runtime_secs,
+             state: BuildJobState::Queued,
+             queued_at: now,
+@@ -1174,8 +1266,18 @@ impl BuildQueueManager {
+             .entry(project.to_string())
+             .or_default()
+             .push_back(id.clone());
+-        // bd-98acfe: persist after enqueue.
+-        Self::persist_after_mutation(&inner);
++        // A success receipt must mean the idempotency mapping and queued job are
++        // durable. If the atomic snapshot write fails, roll the in-memory enqueue
++        // back and refuse acceptance instead of returning an indeterminate ID.
++        if let Err(error) = Self::persist_locked(&inner) {
++            inner.jobs.remove(&id);
++            if let Some(pending) = inner.pending.get_mut(project) {
++                pending.retain(|pending_id| pending_id != &id);
++            }
++            return Err(format!(
++                "failed to durably persist queued build job {id}; no job was accepted: {error}"
++            ));
++        }
+         if let Some(job) = inner.jobs.get(&id).cloned() {
+             drop(inner);
+             self.notify_transition(&job);
+@@ -1187,9 +1289,31 @@ impl BuildQueueManager {
+             command,
+             project: project.to_string(),
+             queued_at: now,
++            idempotency_key,
+         })
+     }
+ 
++    /// Resolve one durable enqueue key for canonical post-timeout recovery.
++    pub async fn get_by_idempotency_key(
++        &self,
++        project: &str,
++        requester: &str,
++        idempotency_key: &str,
++    ) -> Result<Option<BuildJob>, String> {
++        let key = normalize_idempotency_key(Some(idempotency_key))?
++            .expect("Some input normalizes to Some key");
++        let inner = self.inner.lock().await;
++        Ok(inner
++            .jobs
++            .values()
++            .find(|job| {
++                job.project == project
++                    && job.requester == requester
++                    && job.idempotency_key.as_deref() == Some(key.as_str())
++            })
++            .cloned())
++    }
++
+     /// List all jobs, optionally filtered by project and/or state.
+     pub async fn list(
+         &self,
+@@ -2070,6 +2194,80 @@ mod tests {
+         assert_eq!(jobs[0].id, resp.id);
+     }
+ 
++    #[tokio::test]
++    async fn durable_idempotency_replays_one_build_job_bd_cb52ab() {
++        let dir = tempdir().unwrap();
++        let cwd = dir.path().to_str().unwrap();
++        let mgr = BuildQueueManager::new(dir.path());
++
++        let first = mgr
++            .enqueue_idempotent_with_priority(
++                "proj",
++                "agent-1",
++                Some("echo hello"),
++                None,
++                Some(30),
++                cwd,
++                BuildJobPriority::Normal,
++                Some("request-1"),
++            )
++            .await
++            .unwrap();
++        let replay = mgr
++            .enqueue_idempotent_with_priority(
++                "proj",
++                "agent-1",
++                Some("echo hello"),
++                None,
++                Some(30),
++                cwd,
++                BuildJobPriority::Normal,
++                Some("request-1"),
++            )
++            .await
++            .unwrap();
++        assert_eq!(replay.id, first.id);
++        assert_eq!(mgr.list(Some("proj"), None, None).await.len(), 1);
++        assert_eq!(
++            mgr.get_by_idempotency_key("proj", "agent-1", "request-1")
++                .await
++                .unwrap()
++                .unwrap()
++                .id,
++            first.id
++        );
++
++        let restarted = BuildQueueManager::new(dir.path());
++        let after_restart = restarted
++            .enqueue_idempotent_with_priority(
++                "proj",
++                "agent-1",
++                Some("echo hello"),
++                None,
++                Some(30),
++                cwd,
++                BuildJobPriority::Normal,
++                Some("request-1"),
++            )
++            .await
++            .unwrap();
++        assert_eq!(after_restart.id, first.id);
++        let mismatch = restarted
++            .enqueue_idempotent_with_priority(
++                "proj",
++                "agent-1",
++                Some("echo different"),
++                None,
++                Some(30),
++                cwd,
++                BuildJobPriority::Normal,
++                Some("request-1"),
++            )
++            .await
++            .expect_err("key reuse with payload drift must fail closed");
++        assert!(mismatch.contains("different command/cwd/timeout/priority"));
++    }
++
+     #[tokio::test]
+     async fn transition_observer_records_build_queue_lifecycle_bd_6c3dd0() {
+         let dir = tempdir().unwrap();
+@@ -2179,6 +2377,7 @@ mod tests {
+             command: "c".to_string(),
+             cwd: "/tmp".to_string(),
+             requester: "r".to_string(),
++            idempotency_key: None,
+             max_runtime_secs: None,
+             state: BuildJobState::Queued,
+             queued_at,
+diff --git a/crates/caco-daemon/src/lib.rs b/crates/caco-daemon/src/lib.rs
+index 66c3f62516..78fe27f4a7 100644
+--- a/crates/caco-daemon/src/lib.rs
++++ b/crates/caco-daemon/src/lib.rs
+@@ -32559,7 +32559,7 @@ async fn handle_test_run(
+ 
+     match state
+         .test_queue
+-        .enqueue_with_priority(
++        .enqueue_idempotent_with_priority(
+             &project,
+             &caller,
+             body.command.as_deref(),
+@@ -32567,12 +32567,16 @@ async fn handle_test_run(
+             body.timeout_secs,
+             &cwd,
+             body.priority,
++            body.idempotency_key.as_deref(),
+         )
+         .await
+     {
+         Ok(resp) => {
+-            // Trigger queue drain.
+-            state.test_queue.tick().await;
++            // The durable enqueue receipt is the response boundary. Queue drain
++            // may perform admission/spawn work under host load, so schedule it
++            // after acceptance instead of holding the HTTP/MCP request open.
++            let queue = state.test_queue.clone();
++            tokio::spawn(async move { queue.tick().await });
+             (
+                 StatusCode::OK,
+                 Json(SuccessEnvelope::new(
+@@ -32642,6 +32646,29 @@ async fn handle_test_list(
+     Query(params): Query<std::collections::HashMap<String, String>>,
+ ) -> Response {
+     let request_id = extract_request_id(&headers);
++    if let Some(idempotency_key) = params.get("idempotency_key") {
++        let caller = extract_caller_or_infer(&headers, &state.node_name);
++        return match state
++            .test_queue
++            .get_by_idempotency_key(&project, &caller, idempotency_key)
++            .await
++        {
++            Ok(job) => queued_job_list_response(
++                job.into_iter().collect(),
++                request_id,
++                state.node_name.clone(),
++            ),
++            Err(error) => (
++                StatusCode::BAD_REQUEST,
++                Json(ErrorEnvelope::new(
++                    "invalid_idempotency_key",
++                    error,
++                    request_id,
++                )),
++            )
++                .into_response(),
++        };
++    }
+     let state_filter = params.get("state").and_then(|s| match s.as_str() {
+         "queued" => Some(test_queue::TestJobState::Queued),
+         "running" => Some(test_queue::TestJobState::Running),
+@@ -32819,7 +32846,7 @@ async fn handle_build_run(
+ 
+     match state
+         .build_queue
+-        .enqueue_with_priority(
++        .enqueue_idempotent_with_priority(
+             &project,
+             &caller,
+             body.command.as_deref(),
+@@ -32827,12 +32854,15 @@ async fn handle_build_run(
+             body.timeout_secs,
+             &cwd,
+             priority,
++            body.idempotency_key.as_deref(),
+         )
+         .await
+     {
+         Ok(resp) => {
+-            // Trigger queue drain.
+-            state.build_queue.tick().await;
++            // Return the durable accepted job before potentially slow
++            // admission/spawn work so MCP callers always receive the handle.
++            let queue = state.build_queue.clone();
++            tokio::spawn(async move { queue.tick().await });
+             (
+                 StatusCode::OK,
+                 Json(SuccessEnvelope::new(
+@@ -32859,6 +32889,29 @@ async fn handle_build_list(
+     Query(params): Query<std::collections::HashMap<String, String>>,
+ ) -> Response {
+     let request_id = extract_request_id(&headers);
++    if let Some(idempotency_key) = params.get("idempotency_key") {
++        let caller = extract_caller_or_infer(&headers, &state.node_name);
++        return match state
++            .build_queue
++            .get_by_idempotency_key(&project, &caller, idempotency_key)
++            .await
++        {
++            Ok(job) => queued_job_list_response(
++                job.into_iter().collect(),
++                request_id,
++                state.node_name.clone(),
++            ),
++            Err(error) => (
++                StatusCode::BAD_REQUEST,
++                Json(ErrorEnvelope::new(
++                    "invalid_idempotency_key",
++                    error,
++                    request_id,
++                )),
++            )
++                .into_response(),
++        };
++    }
+     let state_filter = params.get("state").and_then(|s| match s.as_str() {
+         "queued" => Some(build_queue::BuildJobState::Queued),
+         "running" => Some(build_queue::BuildJobState::Running),
+diff --git a/crates/caco-daemon/src/test_queue.rs b/crates/caco-daemon/src/test_queue.rs
+index 5f0e7d126a..8423ce0a06 100644
+--- a/crates/caco-daemon/src/test_queue.rs
++++ b/crates/caco-daemon/src/test_queue.rs
+@@ -217,6 +217,11 @@ pub struct TestJob {
+     pub cwd: String,
+     /// Identity of the requester (caller ID).
+     pub requester: String,
++    /// Caller-supplied enqueue idempotency key, scoped by project + requester.
++    /// Persisted with the job so a lost enqueue response can be retried safely
++    /// across daemon restarts without creating duplicate work (bd-cb52ab).
++    #[serde(default, skip_serializing_if = "Option::is_none")]
++    pub idempotency_key: Option<String>,
+     /// Optional request-level max runtime override in seconds.
+     #[serde(default, skip_serializing_if = "Option::is_none")]
+     pub max_runtime_secs: Option<u64>,
+@@ -634,6 +639,11 @@ pub struct TestRunRequest {
+     /// reintegration op_timeout. Defaults to `normal`.
+     #[serde(default)]
+     pub priority: JobPriority,
++    /// Optional durable enqueue idempotency key. Replaying the same key with
++    /// the same resolved payload returns the original job; payload drift is
++    /// rejected rather than silently creating different work (bd-cb52ab).
++    #[serde(default, alias = "idempotencyKey")]
++    pub idempotency_key: Option<String>,
+ }
+ 
+ /// Response after enqueuing a test job.
+@@ -644,6 +654,8 @@ pub struct TestRunResponse {
+     pub command: String,
+     pub project: String,
+     pub queued_at: DateTime<Utc>,
++    #[serde(default, skip_serializing_if = "Option::is_none")]
++    pub idempotency_key: Option<String>,
+ }
+ 
+ /// Cancel response.
+@@ -827,6 +839,29 @@ fn generate_job_id(counter: u64) -> String {
+     format!("tj-{}", &hex::encode(&hash[..4]))
+ }
+ 
++fn normalize_idempotency_key(value: Option<&str>) -> Result<Option<String>, String> {
++    let Some(value) = value else {
++        return Ok(None);
++    };
++    let value = value.trim();
++    if value.is_empty() {
++        return Err("test idempotency key must not be empty".to_string());
++    }
++    if value.len() > 256 {
++        return Err("test idempotency key must be at most 256 bytes".to_string());
++    }
++    if !value
++        .bytes()
++        .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b':'))
++    {
++        return Err(
++            "test idempotency key may contain only ASCII letters, digits, '-', '_', '.', and ':'"
++                .to_string(),
++        );
++    }
++    Ok(Some(value.to_string()))
++}
++
+ /// Autodetect a test command from a checkout directory.
+ ///
+ /// Resolution order (SPEC 6.5.4.2):
+@@ -1653,6 +1688,34 @@ impl TestQueueManager {
+         request_max_runtime_secs: Option<u64>,
+         cwd: &str,
+         priority: JobPriority,
++    ) -> Result<TestRunResponse, String> {
++        self.enqueue_idempotent_with_priority(
++            project,
++            requester,
++            request_command,
++            config_command,
++            request_max_runtime_secs,
++            cwd,
++            priority,
++            None,
++        )
++        .await
++    }
++
++    /// Enqueue with a durable caller key. The key is scoped by project and
++    /// requester; an exact replay returns the original job, including its
++    /// current state, while key reuse with a different payload is rejected.
++    #[allow(clippy::too_many_arguments)]
++    pub async fn enqueue_idempotent_with_priority(
++        &self,
++        project: &str,
++        requester: &str,
++        request_command: Option<&str>,
++        config_command: Option<&str>,
++        request_max_runtime_secs: Option<u64>,
++        cwd: &str,
++        priority: JobPriority,
++        idempotency_key: Option<&str>,
+     ) -> Result<TestRunResponse, String> {
+         if matches!(request_max_runtime_secs, Some(0)) {
+             return Err("test timeout must be a positive integer, got 0".to_string());
+@@ -1686,7 +1749,35 @@ impl TestQueueManager {
+             ));
+         }
+ 
++        let idempotency_key = normalize_idempotency_key(idempotency_key)?;
+         let mut inner = self.inner.lock().await;
++        if let Some(key) = idempotency_key.as_deref() {
++            if let Some(existing) = inner.jobs.values().find(|job| {
++                job.project == project
++                    && job.requester == requester
++                    && job.idempotency_key.as_deref() == Some(key)
++            }) {
++                if existing.command != command
++                    || existing.cwd != cwd
++                    || existing.max_runtime_secs != request_max_runtime_secs
++                    || existing.priority != priority
++                {
++                    return Err(format!(
++                        "test idempotency key '{key}' is already bound to job {} with a different command/cwd/timeout/priority",
++                        existing.id
++                    ));
++                }
++                return Ok(TestRunResponse {
++                    id: existing.id.clone(),
++                    state: existing.state,
++                    command: existing.command.clone(),
++                    project: existing.project.clone(),
++                    queued_at: existing.queued_at,
++                    idempotency_key: existing.idempotency_key.clone(),
++                });
++            }
++        }
++
+         inner.counter += 1;
+         let id = generate_job_id(inner.counter);
+         let now = Utc::now();
+@@ -1697,6 +1788,7 @@ impl TestQueueManager {
+             command: command.clone(),
+             cwd: cwd.to_string(),
+             requester: requester.to_string(),
++            idempotency_key: idempotency_key.clone(),
+             max_runtime_secs: request_max_runtime_secs,
+             state: TestJobState::Queued,
+             queued_at: now,
+@@ -1721,9 +1813,18 @@ impl TestQueueManager {
+             .entry(project.to_string())
+             .or_default()
+             .push_back(id.clone());
+-        // bd-98acfe: persist after enqueue so a daemon restart sees
+-        // the queued job and (since state==Queued) re-pends it.
+-        Self::persist_after_mutation(&inner);
++        // A success receipt must mean the idempotency mapping and queued job are
++        // durable. If the atomic snapshot write fails, roll the in-memory enqueue
++        // back and refuse acceptance instead of returning an indeterminate ID.
++        if let Err(error) = Self::persist_locked(&inner) {
++            inner.jobs.remove(&id);
++            if let Some(pending) = inner.pending.get_mut(project) {
++                pending.retain(|pending_id| pending_id != &id);
++            }
++            return Err(format!(
++                "failed to durably persist queued test job {id}; no job was accepted: {error}"
++            ));
++        }
+         if let Some(job) = inner.jobs.get(&id).cloned() {
+             drop(inner);
+             self.notify_transition(&job);
+@@ -1735,9 +1836,31 @@ impl TestQueueManager {
+             command,
+             project: project.to_string(),
+             queued_at: now,
++            idempotency_key,
+         })
+     }
+ 
++    /// Resolve one durable enqueue key for canonical post-timeout recovery.
++    pub async fn get_by_idempotency_key(
++        &self,
++        project: &str,
++        requester: &str,
++        idempotency_key: &str,
++    ) -> Result<Option<TestJob>, String> {
++        let key = normalize_idempotency_key(Some(idempotency_key))?
++            .expect("Some input normalizes to Some key");
++        let inner = self.inner.lock().await;
++        Ok(inner
++            .jobs
++            .values()
++            .find(|job| {
++                job.project == project
++                    && job.requester == requester
++                    && job.idempotency_key.as_deref() == Some(key.as_str())
++            })
++            .cloned())
++    }
++
+     /// List all jobs, optionally filtered by project and/or state.
+     pub async fn list(
+         &self,
+@@ -2951,6 +3074,80 @@ mod tests {
+         assert_eq!(jobs[0].id, resp.id);
+     }
+ 
++    #[tokio::test]
++    async fn durable_idempotency_replays_one_test_job_bd_cb52ab() {
++        let dir = tempdir().unwrap();
++        let cwd = dir.path().to_str().unwrap();
++        let mgr = TestQueueManager::new(dir.path());
++
++        let first = mgr
++            .enqueue_idempotent_with_priority(
++                "proj",
++                "agent-1",
++                Some("echo hello"),
++                None,
++                Some(30),
++                cwd,
++                JobPriority::Normal,
++                Some("request-1"),
++            )
++            .await
++            .unwrap();
++        let replay = mgr
++            .enqueue_idempotent_with_priority(
++                "proj",
++                "agent-1",
++                Some("echo hello"),
++                None,
++                Some(30),
++                cwd,
++                JobPriority::Normal,
++                Some("request-1"),
++            )
++            .await
++            .unwrap();
++        assert_eq!(replay.id, first.id);
++        assert_eq!(mgr.list(Some("proj"), None, None).await.len(), 1);
++        assert_eq!(
++            mgr.get_by_idempotency_key("proj", "agent-1", "request-1")
++                .await
++                .unwrap()
++                .unwrap()
++                .id,
++            first.id
++        );
++
++        let restarted = TestQueueManager::new(dir.path());
++        let after_restart = restarted
++            .enqueue_idempotent_with_priority(
++                "proj",
++                "agent-1",
++                Some("echo hello"),
++                None,
++                Some(30),
++                cwd,
++                JobPriority::Normal,
++                Some("request-1"),
++            )
++            .await
++            .unwrap();
++        assert_eq!(after_restart.id, first.id);
++        let mismatch = restarted
++            .enqueue_idempotent_with_priority(
++                "proj",
++                "agent-1",
++                Some("echo different"),
++                None,
++                Some(30),
++                cwd,
++                JobPriority::Normal,
++                Some("request-1"),
++            )
++            .await
++            .expect_err("key reuse with payload drift must fail closed");
++        assert!(mismatch.contains("different command/cwd/timeout/priority"));
++    }
++
+     #[tokio::test]
+     async fn transition_observer_records_test_queue_lifecycle_bd_6c3dd0() {
+         let dir = tempdir().unwrap();
+@@ -4372,6 +4569,7 @@ mod tests {
+             command: "cargo test-small".to_string(),
+             cwd: "/tmp".to_string(),
+             requester: "caller".to_string(),
++            idempotency_key: None,
+             max_runtime_secs: None,
+             state: TestJobState::Queued,
+             queued_at,
+diff --git a/crates/caco-tui/src/state/tests.rs b/crates/caco-tui/src/state/tests.rs
+index 29c383257d..a992df5f65 100644
+--- a/crates/caco-tui/src/state/tests.rs
++++ b/crates/caco-tui/src/state/tests.rs
+@@ -9050,6 +9050,7 @@ fn test_jobs_inserted_and_fetched_flag() {
+         command: "cargo test".to_string(),
+         cwd: "/tmp/checkout".to_string(),
+         requester: "test-operator".to_string(),
++        idempotency_key: None,
+         state: caco_daemon::test_queue::TestJobState::Queued,
+         queued_at: Utc::now(),
+         started_at: None,
+@@ -9104,6 +9105,7 @@ fn test_selected_index_bounds() {
+             command: "cargo test".to_string(),
+             cwd: "/tmp".to_string(),
+             requester: "op".to_string(),
++            idempotency_key: None,
+             state: caco_daemon::test_queue::TestJobState::Passed,
+             queued_at: Utc::now(),
+             started_at: None,
+diff --git a/crates/caco-tui/src/views/builds.rs b/crates/caco-tui/src/views/builds.rs
+index f3f20f137a..4c302859fc 100644
+--- a/crates/caco-tui/src/views/builds.rs
++++ b/crates/caco-tui/src/views/builds.rs
+@@ -626,6 +626,7 @@ mod tests {
+             command: "cargo check".to_string(),
+             cwd: "/tmp".to_string(),
+             requester: "tester".to_string(),
++            idempotency_key: None,
+             max_runtime_secs: None,
+             state: BuildJobState::Queued,
+             queued_at: Utc::now(),
+diff --git a/crates/caco-tui/src/views/tests.rs b/crates/caco-tui/src/views/tests.rs
+index f4af217b1c..f423af0420 100644
+--- a/crates/caco-tui/src/views/tests.rs
++++ b/crates/caco-tui/src/views/tests.rs
+@@ -627,6 +627,7 @@ mod tests {
+             command: "cargo test-small".to_string(),
+             cwd: "/tmp".to_string(),
+             requester: "tester".to_string(),
++            idempotency_key: None,
+             max_runtime_secs: None,
+             state: TestJobState::Queued,
+             queued_at: Utc::now(),
+-- 
+2.53.0
+

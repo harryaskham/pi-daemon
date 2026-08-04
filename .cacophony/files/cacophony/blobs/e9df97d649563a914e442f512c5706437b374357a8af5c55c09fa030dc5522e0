@@ -1,0 +1,115 @@
+From 530e1d5a61bca28356694f6433676785a5cfc361 Mon Sep 17 00:00:00 2001
+From: Harry Askham <harryaskham@gmail.com>
+Date: Mon, 13 Jul 2026 03:33:13 +0100
+Subject: [PATCH] bd-103e56: bound picophony test socket paths
+
+---
+ crates/caco-picophony/src/attach.rs |  7 +++-
+ crates/caco-picophony/src/lib.rs    | 50 +++++++++++++++++++++++++++++
+ crates/caco-picophony/src/socket.rs |  7 +++-
+ 3 files changed, 62 insertions(+), 2 deletions(-)
+
+diff --git a/crates/caco-picophony/src/attach.rs b/crates/caco-picophony/src/attach.rs
+index c903168899..d98c966b11 100644
+--- a/crates/caco-picophony/src/attach.rs
++++ b/crates/caco-picophony/src/attach.rs
+@@ -615,7 +615,12 @@ mod tests {
+             .duration_since(std::time::UNIX_EPOCH)
+             .unwrap()
+             .as_nanos();
+-        std::env::temp_dir().join(format!("pico-attach-{}-{}.sock", std::process::id(), nanos))
++        crate::bounded_test_socket_path(
++            &std::env::temp_dir(),
++            "pico-attach",
++            std::process::id(),
++            nanos,
++        )
+     }
+ 
+     async fn wait_for<F: Fn() -> bool>(pred: F) {
+diff --git a/crates/caco-picophony/src/lib.rs b/crates/caco-picophony/src/lib.rs
+index 02e8c952c6..9128065fb7 100644
+--- a/crates/caco-picophony/src/lib.rs
++++ b/crates/caco-picophony/src/lib.rs
+@@ -426,10 +426,60 @@ impl PiBackend for InProcessBackend {
+     }
+ }
+ 
++/// Build a unique test socket path while respecting the smallest common Unix
++/// `sockaddr_un.sun_path` budget. macOS allows only about 104 bytes; Nix shells
++/// can set TMPDIR to a path longer than 60 bytes before the filename is added.
++/// Fall back to `/tmp` only for the test listener path, retaining pid+nanos
++/// uniqueness and leaving production socket placement unchanged (bd-103e56).
++#[cfg(all(test, unix, feature = "runtime"))]
++pub(crate) fn bounded_test_socket_path(
++    temp_dir: &std::path::Path,
++    prefix: &str,
++    pid: u32,
++    nanos: u128,
++) -> std::path::PathBuf {
++    use std::os::unix::ffi::OsStrExt;
++
++    use std::sync::atomic::{AtomicU64, Ordering};
++
++    const SAFE_UNIX_SOCKET_PATH_BYTES: usize = 100;
++    static TEST_SOCKET_SEQUENCE: AtomicU64 = AtomicU64::new(0);
++    let sequence = TEST_SOCKET_SEQUENCE.fetch_add(1, Ordering::Relaxed);
++    let filename = format!("{prefix}-{pid}-{nanos}-{sequence}.sock");
++    let candidate = temp_dir.join(&filename);
++    if candidate.as_os_str().as_bytes().len() < SAFE_UNIX_SOCKET_PATH_BYTES {
++        candidate
++    } else {
++        std::path::Path::new("/tmp").join(filename)
++    }
++}
++
+ #[cfg(test)]
+ mod tests {
+     use super::*;
+ 
++    #[cfg(all(unix, feature = "runtime"))]
++    #[test]
++    fn test_socket_path_falls_back_for_long_nix_tmpdir_bd_103e56() {
++        use std::os::unix::ffi::OsStrExt;
++
++        let long_tmp = std::path::PathBuf::from("/var/folders")
++            .join("nix-shell")
++            .join("x".repeat(120));
++        let path = bounded_test_socket_path(&long_tmp, "pico-test", 42, 123456789);
++        assert_eq!(path.parent(), Some(std::path::Path::new("/tmp")));
++        assert!(path.as_os_str().as_bytes().len() < 100);
++        let second = bounded_test_socket_path(&long_tmp, "pico-test", 42, 123456789);
++        assert_ne!(
++            path, second,
++            "same-tick parallel tests still need unique sockets"
++        );
++
++        let short_tmp = std::path::Path::new("/tmp/short");
++        let short = bounded_test_socket_path(short_tmp, "pico-test", 42, 123456789);
++        assert_eq!(short.parent(), Some(short_tmp));
++    }
++
+     #[test]
+     fn framer_splits_on_lf_and_strips_cr() {
+         let mut f = JsonlFramer::new();
+diff --git a/crates/caco-picophony/src/socket.rs b/crates/caco-picophony/src/socket.rs
+index 776ab90526..47ad1b2f58 100644
+--- a/crates/caco-picophony/src/socket.rs
++++ b/crates/caco-picophony/src/socket.rs
+@@ -292,7 +292,12 @@ mod tests {
+             .duration_since(std::time::UNIX_EPOCH)
+             .unwrap()
+             .as_nanos();
+-        std::env::temp_dir().join(format!("pico-test-{}-{}.sock", std::process::id(), nanos))
++        crate::bounded_test_socket_path(
++            &std::env::temp_dir(),
++            "pico-test",
++            std::process::id(),
++            nanos,
++        )
+     }
+ 
+     async fn wait_for<F: Fn() -> bool>(pred: F) {
+-- 
+2.53.0
+

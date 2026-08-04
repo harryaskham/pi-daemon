@@ -1,0 +1,162 @@
+From 5c5dc2e4f4b46e3b71abe675fff672474569fad3 Mon Sep 17 00:00:00 2001
+From: Harry Askham <harryaskham@gmail.com>
+Date: Tue, 23 Jun 2026 23:38:12 +0100
+Subject: [PATCH] bd-fbdd22: lock-free cached nudge-wake agent lookup (registry
+ read-contention)
+
+handle_agent_nudge -> state.agents.get takes the contended AgentManager inner
+lock; under sustained registry-write load it blanks/times-out (bd-4e5f59 bounds
+it but the lookup still fails) -> the nudge returns a backpressured envelope
+instead of resolving the local agent. Registry-side sibling to bd-057f2e.
+
+Fix: AgentManager::get_cached, a lock-free lookup from the existing
+agents_read_model (the lock-free read-model landed under bd-dc4a4c, refreshed
+off the hot path by the reconcile loop). handle_agent_nudge tries get_cached
+first (no inner lock; common established-agent case) and falls back to the
+bounded lock-based get only on a cache miss (cold model, agent newer than the
+~10s refresh, or a Discarded agent). The duplicate-spawn-guard
+find_any_agent_for_bead callers intentionally stay lock-based (need a fresh
+view to avoid missing a recent worker -> duplicate spawn).
+
++ unit test get_cached_resolves_from_read_model_bd_fbdd22.
+---
+ crates/caco-daemon/src/agent/lifecycle.rs | 13 +++++++
+ crates/caco-daemon/src/agent/tests.rs     | 46 +++++++++++++++++++++++
+ crates/caco-daemon/src/lib.rs             | 40 ++++++++++++--------
+ 3 files changed, 84 insertions(+), 15 deletions(-)
+
+diff --git a/crates/caco-daemon/src/agent/lifecycle.rs b/crates/caco-daemon/src/agent/lifecycle.rs
+index 9379010f2..89c5a18b4 100644
+--- a/crates/caco-daemon/src/agent/lifecycle.rs
++++ b/crates/caco-daemon/src/agent/lifecycle.rs
+@@ -4463,6 +4463,19 @@ impl AgentManager {
+         inner.agents.get(agent_id).cloned()
+     }
+ 
++    /// bd-fbdd22: lock-free single-agent lookup from the cached agents
++    /// read-model (`agents_read_model`, refreshed off the hot path by the
++    /// reconcile loop), so the nudge-wake agent lookup does not blank/time-out
++    /// under sustained registry-lock (`inner`) contention — the registry-side
++    /// sibling to the bd-057f2e store read-snapshot. Returns `None` on a cache
++    /// miss (cold model, an agent newer than the last ~10s refresh, or a
++    /// `Discarded` agent excluded by the read-model); callers fall back to the
++    /// bounded lock-based [`get`](Self::get) for those cases.
++    pub async fn get_cached(&self, agent_id: &str) -> Option<AgentInfo> {
++        let cached = self.list_all_cached().await;
++        cached.iter().find(|a| a.id == agent_id).cloned()
++    }
++
+     /// Get info for a specific agent after reconciling newer on-disk state.
+     ///
+     /// bd-2efa9c: Direct `caco agent status --id <agent>` must not serve a
+diff --git a/crates/caco-daemon/src/agent/tests.rs b/crates/caco-daemon/src/agent/tests.rs
+index af77cce76..2ccbab5a4 100644
+--- a/crates/caco-daemon/src/agent/tests.rs
++++ b/crates/caco-daemon/src/agent/tests.rs
+@@ -8209,6 +8209,52 @@ async fn list_all_cached_matches_and_refreshes_bd_dc4a4c() {
+     );
+ }
+ 
++/// bd-fbdd22: the nudge-wake lock-free lookup. `get_cached` resolves a known
++/// agent from the cached read-model (no `inner` lock), returns `None` for an
++/// unknown id, and treats an agent newer than the last refresh as a cache miss
++/// (the nudge path falls back to the bounded lock-based `get` for that case).
++#[tokio::test]
++async fn get_cached_resolves_from_read_model_bd_fbdd22() {
++    let tmp = tempfile::tempdir().unwrap();
++    let agents_dir = tmp.path().join("agents");
++    std::fs::create_dir_all(&agents_dir).unwrap();
++    let mgr = AgentManager::new(&agents_dir);
++    {
++        let mut inner = mgr.inner.lock().await;
++        inner
++            .agents
++            .insert("a1".to_string(), sample_agent_for_bead("a1", "bd-000001"));
++    }
++    // Cold get_cached populates the read-model and resolves the agent lock-free.
++    let got = mgr.get_cached("a1").await;
++    assert!(
++        got.as_ref().map(|a| a.id.as_str()) == Some("a1"),
++        "bd-fbdd22: get_cached must resolve a known agent from the read-model"
++    );
++    // Unknown id -> None (callers fall back to the lock-based get).
++    assert!(
++        mgr.get_cached("nope").await.is_none(),
++        "bd-fbdd22: get_cached returns None for an unknown id"
++    );
++    // An agent added after the last refresh is a cache miss until refreshed;
++    // the nudge path's lock-based-get fallback covers this window.
++    {
++        let mut inner = mgr.inner.lock().await;
++        inner
++            .agents
++            .insert("a2".to_string(), sample_agent_for_bead("a2", "bd-000002"));
++    }
++    assert!(
++        mgr.get_cached("a2").await.is_none(),
++        "bd-fbdd22: a newer-than-refresh agent is a cache miss until refresh_read_model"
++    );
++    mgr.refresh_read_model().await;
++    assert!(
++        mgr.get_cached("a2").await.is_some(),
++        "bd-fbdd22: refresh_read_model publishes the new agent to get_cached"
++    );
++}
++
+ /// bd-d6fb09: A running agent with a live tmux session survives
+ /// reconcile — it is NOT transitioned to Failed or removed.
+ ///
+diff --git a/crates/caco-daemon/src/lib.rs b/crates/caco-daemon/src/lib.rs
+index 91e43ff7a..7e4fdc24f 100644
+--- a/crates/caco-daemon/src/lib.rs
++++ b/crates/caco-daemon/src/lib.rs
+@@ -43272,21 +43272,31 @@ async fn handle_agent_nudge(
+     // HTTP transport while /node stays healthy.
+     let nudge_deadline =
+         effective_agent_nudge_request_timeout().saturating_sub(std::time::Duration::from_secs(1));
+-    let local_lookup = tokio::time::timeout(
+-        nudge_deadline.max(std::time::Duration::from_secs(1)),
+-        state.agents.get(&agent_id),
+-    )
+-    .await;
+-    let local_agent = match local_lookup {
+-        Ok(found) => found,
+-        Err(_) => {
+-            let body = agent_lifecycle_backpressured_envelope(
+-                &format!("/api/v1/agents/{agent_id}/nudge"),
+-                nudge_deadline,
+-                request_id,
+-                "nudge_agent_lookup_timeout",
+-            );
+-            return agent_lifecycle_backpressured_response(body);
++    // bd-fbdd22: try the lock-free cached read-model first so the nudge agent
++    // lookup does not blank/time-out under sustained registry-lock (`inner`)
++    // contention — the registry-side sibling to the bd-057f2e store snapshot.
++    // Fall back to the bounded lock-based `get` only on a cache miss (cold
++    // model, an agent newer than the ~10s refresh, or a `Discarded` agent).
++    let local_agent = match state.agents.get_cached(&agent_id).await {
++        Some(found) => Some(found),
++        None => {
++            let local_lookup = tokio::time::timeout(
++                nudge_deadline.max(std::time::Duration::from_secs(1)),
++                state.agents.get(&agent_id),
++            )
++            .await;
++            match local_lookup {
++                Ok(found) => found,
++                Err(_) => {
++                    let body = agent_lifecycle_backpressured_envelope(
++                        &format!("/api/v1/agents/{agent_id}/nudge"),
++                        nudge_deadline,
++                        request_id,
++                        "nudge_agent_lookup_timeout",
++                    );
++                    return agent_lifecycle_backpressured_response(body);
++                }
++            }
+         }
+     };
+ 
+-- 
+2.53.0
+

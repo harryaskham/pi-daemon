@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="920" height="600" viewBox="0 0 920 600" font-family="-apple-system, Helvetica, Arial, sans-serif">
+  <rect width="920" height="600" fill="#eef0f3"/>
+  <text x="460" y="40" text-anchor="middle" font-size="18" font-weight="600" fill="#1d1d1f">Direction C — "Your panes, your layout" (workspace-centric multi-pane)</text>
+
+  <!-- window -->
+  <rect x="30" y="60" width="860" height="510" rx="12" fill="#ffffff" stroke="#cfd2d6" stroke-width="1"/>
+  <path d="M30 72 a12 12 0 0 1 12 -12 h836 a12 12 0 0 1 12 12 v24 h-860 z" fill="#e7e9ec"/>
+  <circle cx="50" cy="78" r="6" fill="#ff5f57"/><circle cx="70" cy="78" r="6" fill="#febc2e"/><circle cx="90" cy="78" r="6" fill="#28c840"/>
+  <text x="460" y="83" text-anchor="middle" font-size="12" fill="#6e6e73">Cacophony — Workspace: "Triage"</text>
+
+  <!-- thin launcher rail -->
+  <rect x="31" y="96" width="58" height="473" fill="#f2f3f6"/>
+  <g fill="#c7ccd4">
+    <rect x="48" y="116" width="24" height="24" rx="6"/>
+    <rect x="48" y="150" width="24" height="24" rx="6"/>
+    <rect x="48" y="184" width="24" height="24" rx="6"/>
+    <rect x="48" y="218" width="24" height="24" rx="6"/>
+    <rect x="48" y="252" width="24" height="24" rx="6"/>
+  </g>
+  <text x="60" y="556" text-anchor="middle" font-size="9.5" fill="#9b9ba0">launcher</text>
+
+  <!-- saved-layout tabs -->
+  <g font-size="11">
+    <rect x="100" y="104" width="78" height="22" rx="6" fill="#0a84ff"/><text x="139" y="119" text-anchor="middle" fill="#fff">Triage</text>
+    <rect x="184" y="104" width="78" height="22" rx="6" fill="#eef1f5"/><text x="223" y="119" text-anchor="middle" fill="#3a3a3c">Release</text>
+    <rect x="268" y="104" width="78" height="22" rx="6" fill="#eef1f5"/><text x="307" y="119" text-anchor="middle" fill="#3a3a3c">Watch</text>
+    <text x="360" y="119" fill="#9b9ba0">+ saved layouts</text>
+  </g>
+
+  <!-- multi-pane workspace -->
+  <!-- pane 1: agent terminal -->
+  <rect x="100" y="134" width="360" height="240" rx="9" fill="#1e2127" stroke="#cfd2d6"/>
+  <text x="116" y="154" font-size="11" fill="#8a8f98">agent terminal — caco-macos-2</text>
+  <text x="116" y="178" font-size="11" fill="#69d28a" font-family="monospace">$ cargo build -p caco</text>
+  <text x="116" y="196" font-size="11" fill="#c8ccd2" font-family="monospace">  Compiling caco v1.2…</text>
+  <!-- pane 2: bead detail -->
+  <rect x="470" y="134" width="395" height="240" rx="9" fill="#f4f7fb" stroke="#e1e6ec"/>
+  <text x="486" y="154" font-size="11" fill="#6e6e73">bead detail — bd-19c52a</text>
+  <rect x="486" y="166" width="363" height="14" rx="3" fill="#dfe5ec"/>
+  <rect x="486" y="186" width="320" height="14" rx="3" fill="#dfe5ec"/>
+  <rect x="486" y="206" width="345" height="14" rx="3" fill="#dfe5ec"/>
+  <!-- pane 3: chat (full width) -->
+  <rect x="100" y="384" width="765" height="161" rx="9" fill="#ffffff" stroke="#e1e6ec"/>
+  <text x="116" y="404" font-size="11" fill="#6e6e73">chat — project</text>
+  <rect x="116" y="416" width="300" height="22" rx="9" fill="#eef1f5"/>
+  <rect x="430" y="444" width="300" height="22" rx="9" fill="#d6e4ff"/>
+  <rect x="116" y="472" width="380" height="22" rx="9" fill="#eef1f5"/>
+
+  <text x="460" y="592" text-anchor="middle" font-size="12" fill="#86868b">Sidebar becomes a launcher; you compose + save multi-pane layouts per task (terminal + bead + chat). Mirrors caco-web's workspace.</text>
+</svg>

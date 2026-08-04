@@ -1,0 +1,25 @@
+{
+    "ok": true,
+    "data": {
+        "reflection": [],
+        "session": [],
+        "summary": [
+            {
+                "id": "pending",
+                "index": 0,
+                "modified_ms": 1780614374379,
+                "path": "/Users/harryaskham/.cacophony/agents/cacophony/ms-mac-cacophony-caco-ios-1/checkout/.cacophony/agent/ms-mac-cacophony-config-helper/summary/pending/summary.md"
+            },
+            {
+                "id": "pending",
+                "index": 1,
+                "modified_ms": 1780614374374,
+                "path": "/Users/harryaskham/.cacophony/agents/cacophony/ms-mac-cacophony-caco-ios-1/checkout/.cacophony/agent/ms-mac-cacophony-caco-dev-msm-3/summary/pending/summary.md"
+            }
+        ]
+    },
+    "meta": {
+        "request_id": "req-32e1f3280e42806f",
+        "node": "ms-mac"
+    }
+}

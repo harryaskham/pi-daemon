@@ -1,0 +1,312 @@
+From 25e38725fb979b3418750facf305be25897e5548 Mon Sep 17 00:00:00 2001
+From: Harry Askham <harryaskham@gmail.com>
+Date: Mon, 13 Jul 2026 03:07:03 +0100
+Subject: [PATCH] bd-c339e1: make land-pr watching critical-only
+
+---
+ README.md                      |   2 +-
+ SPEC.md                        |   1 +
+ crates/caco-cli/src/lib.rs     | 116 +++++++++++++++++++++++++++++----
+ docs/cli.html                  |   2 +-
+ docs/env-vars.html             |   2 +-
+ docs/env-vars.md               |   1 +
+ docs/reintegration-policy.html |   5 +-
+ docs/reintegration-policy.md   |  12 ++++
+ 8 files changed, 126 insertions(+), 15 deletions(-)
+
+diff --git a/README.md b/README.md
+index 4e4626d375..4596c39f29 100644
+--- a/README.md
++++ b/README.md
+@@ -614,7 +614,7 @@ The repository ships canonical lifecycle profiles such as `worker`, `controller`
+ 
+ For Claude-managed bead workers, the canonical `worker` profile is reified through a first-party runtime-native agent wrapper under [`plugins/caco-agent`](./plugins/caco-agent), but managed launch does not borrow that checkout-local directory directly. The daemon materializes a portable Claude plugin root under the spawned agent directory, writes the generated `worker` agent markdown/frontmatter plus shipped hook assets there, and launches Claude with `--setting-sources project,local --plugin-dir <materialized-plugin-root> --agent caco-agent:worker`. That generated runtime package carries the translated lifecycle hooks, MCP wiring, permission and memory settings, runtime constraints such as `disallowedTools`, and colocated agent hook scripts under `agents/`, while the canonical profile remains the source of truth for worker instructions and completion semantics. The explicit setting-source restriction keeps unrelated user-level Claude plugins and slash-command skills out of managed worker sessions. The canonical worker contract also requires concise `caco msg speak` narration at every major action or phase change — claim/start, complex edit, meaningful implementation milestone, queued validation/build start and finish, blockers/decisions, and reintegration/completion results — while avoiding per-file-edit spam. The canonical worker contract now also requires project-chat coordination for broken-on-main test failures: workers should announce ownership with `caco msg broadcast`, watch `caco msg inbox` for overlap, and either fix the failure themselves or coordinate a clear handoff instead of defaulting to `#[ignore]`. For the canonical direct worker contract, successful `caco agent complete` is expected to both reintegrate the work and close the worker's claimed implementation bead via validated mainline-aware closeout; automatic closeout is limited to bead IDs explicitly present in the worker goal or agent record, and coincidentally claimed unrelated beads are skipped with warnings. When a no-ID `caco bd claim` returns `no_ready_beads`, the structured error includes exclusion counts plus bounded sample bead IDs for assigned, blocked, dispatch-queued, operator-action, epic, pr-in-flight, permanent-tracker, and non-generic-ready-like buckets so workers can inspect why open beads were skipped without assuming board inconsistency.
+ 
+-Landing convergence is infrastructure-owned, not author-agent busywork. After a lifecycle call returns an accepted detached queue submission or a published/queued PR with queue ownership, the author leaves the bead open/in-flight and moves to its next permitted slice (or idles for a one-shot worker). It must not run PR-check/status watches, update-branch loops, or repeated `caco agent land-pr` nudges. Queue/daemon controllers own convergence, terminal-failure routing, and confirmed-merge closeout; force/bypass remains an explicit audited operator/controller path for changes classified critical.
++Landing convergence is infrastructure-owned, not author-agent busywork. After a lifecycle call returns an accepted detached queue submission or a published/queued PR with queue ownership, the author leaves the bead open/in-flight and moves to its next permitted slice (or idles for a one-shot worker). It must not run PR-check/status watches, update-branch loops, or repeated `caco agent land-pr` nudges. `caco agent land-pr` itself is status-only by default (one `gh pr view`, advisory, return); only explicit `--critical` or `CACO_LAND_PR_CLIENT_WATCH=1` restores its bounded client watch/nudge path, and `CACO_LAND_QUEUE_ENABLED` still makes it defer unconditionally. Queue/daemon controllers own convergence, terminal-failure routing, and confirmed-merge closeout; force/bypass remains an explicit audited operator/controller path for changes classified critical.
+ 
+ For normal Cacophony typed-Aviator submissions, hosted GitHub required CI owns final ready-time test and lint validation. Authors may run one very small exact smoke while developing when it answers a concrete uncertainty, but must not run a final local or daemon-queued Cargo/check/clippy/build/docs gate that CI will immediately repeat on the same self-hosted capacity. Ready work is committed, submitted, and left to the queue. Broader checks require explicit missing hosted coverage, test-infrastructure, safety reproduction, device/platform acceptance, CI-failure diagnosis, or operator direction; projects without equivalent hosted enforcement retain their configured validation policy.
+ 
+diff --git a/SPEC.md b/SPEC.md
+index d12ef704c3..7200a12586 100644
+--- a/SPEC.md
++++ b/SPEC.md
+@@ -5188,6 +5188,7 @@ Resolution rules:
+ - `pr_auto_merge`: open a PR and merge it automatically when allowed
+ - `pr_review`: open a PR and stop after reporting the review target
+ - once a PR-backed lifecycle call reports a published/queued PR with explicit queue ownership, the authoring agent's work on landing convergence is complete: it must not watch checks, poll PR status, run update-branch loops, or repeatedly invoke client-side `land-pr` nudges; the hosted/local queue and controllers own convergence, terminal-failure routing, and confirmed-merge bead closeout. The bead remains open/in-flight until confirmed merge automation closes or reconciles it.
++- `caco agent land-pr` is read-only/status-only by default: after preserving the authoritative `CACO_LAND_QUEUE_ENABLED` defer, it resolves the PR, performs exactly one `gh pr view`, reports state plus a no-babysit advisory, and returns without sleeping, updating the branch, or falling back. The legacy bounded client-side watch/nudge/fallback bridge runs only with explicit `--critical` or truthy `CACO_LAND_PR_CLIENT_WATCH`, for a genuinely critical land classified by an operator/controller (bd-c339e1).
+ - force/bypass landing is not a routine authoring-agent fallback; it is reserved for an operator/controller-classified critical change through an explicit audited first-party route
+ - a project may select a typed hosted merge queue for PR-backed direct intent; hosted submission is a handoff, so success means the PR is durably enqueued and explicitly reported as pending rather than falsely reported as landed
+ - when a typed hosted queue has authoritative required CI, normal ready-time validation belongs to that hosted lane: authoring agents must not run a final local or daemon-queued test/check/clippy/build/docs gate that CI will immediately repeat. During implementation they may run only the smallest exact smoke needed for a concrete uncertainty; broader local validation requires explicit missing hosted coverage, test-infrastructure, safety reproduction, device/platform acceptance, CI-failure diagnosis, or operator direction. Projects without equivalent hosted enforcement retain their configured validation policy
+diff --git a/crates/caco-cli/src/lib.rs b/crates/caco-cli/src/lib.rs
+index 7305a4ce19..83c3b13e27 100644
+--- a/crates/caco-cli/src/lib.rs
++++ b/crates/caco-cli/src/lib.rs
+@@ -554,7 +554,12 @@ const AGENT_LAND_PR_ARGS: &[ArgSpec] = &[
+     },
+     ArgSpec {
+         name: "--pr",
+-        summary: "PR number or URL to land (default: auto-detect the agent branch's open PR via the project gh wrapper).",
++        summary: "PR number or URL to inspect/land (default: auto-detect the agent branch's open PR via the project gh wrapper).",
++        required: false,
++    },
++    ArgSpec {
++        name: "--critical",
++        summary: "Explicitly opt into the bounded client-side watch/nudge loop for a genuinely critical land. Without this (or CACO_LAND_PR_CLIENT_WATCH=1), land-pr performs one status check and returns.",
+         required: false,
+     },
+     ArgSpec {
+@@ -2137,11 +2142,11 @@ const AGENT_SUBCOMMANDS: &[CommandSpec] = &[
+         agent_safe: false,
+         idempotent: false,
+     },
+-    // bd-6b7716: bounded client-side watch loop to land an agent's armed
+-    // auto-merge PR (busy-main treadmill stopgap; bridges to bd-dd182d).
++    // bd-6b7716/bd-c339e1: status-only by default; explicit critical opt-in
++    // retains the bounded client-side bridge while the queue remains authoritative.
+     CommandSpec {
+         name: "land-pr",
+-        summary: "Watch + land an agent's armed auto-merge PR by automating bounded gh pr update-branch nudges, then fall back to / recommend local_merge direct on exhaustion (busy-main stopgap; no-ops when CACO_LAND_QUEUE_ENABLED).",
++        summary: "Inspect one armed auto-merge PR and return without babysitting by default. --critical (or CACO_LAND_PR_CLIENT_WATCH=1) opts into bounded update-branch/CI watching; always no-ops when CACO_LAND_QUEUE_ENABLED.",
+         subcommands: &[],
+         args: AGENT_LAND_PR_ARGS,
+         runtime: RuntimeKind::Command,
+@@ -18496,12 +18501,14 @@ fn dispatch(parsed: &ParsedCommand) -> Result<Outcome, CliError> {
+                 .and_then(|v| v.trim().parse().ok())
+                 .unwrap_or(25u64);
+             let auto_fallback = parsed.flags.contains_key("--auto-fallback");
++            let critical = flag_is_truthy(&parsed, "--critical");
+             dispatch_agent_land_pr(
+                 &id,
+                 pr,
+                 max_attempts,
+                 max_minutes,
+                 auto_fallback,
++                critical,
+                 json_requested,
+                 co,
+             )?
+@@ -59037,11 +59044,11 @@ fn gh_arg_shell_quote(value: &str) -> String {
+     format!("'{}'", value.replace('\'', "'\\''"))
+ }
+ 
+-// bd-6b7716: `caco agent land-pr` — bounded client-side watch loop that lands an
+-// agent's armed auto-merge PR by automating the manual `gh pr update-branch`
+-// nudging the fleet hand-cranks on a busy main (3+ agents: #1156/#1163/#1164/
+-// #1167). Explicit BRIDGE for md2-0's durable daemon-side serialized land queue
+-// (bd-dd182d / Track A); retires (no-ops) once CACO_LAND_QUEUE_ENABLED is set.
++// bd-6b7716/bd-c339e1: `caco agent land-pr` performs one read-only PR status
++// check and returns by default. The historical bounded `gh pr update-branch`
++// watch is retained only behind explicit --critical / CACO_LAND_PR_CLIENT_WATCH
++// opt-in. The daemon-side serialized land queue remains authoritative and causes
++// an unconditional no-op when CACO_LAND_QUEUE_ENABLED is set.
+ 
+ /// The next watch-loop action for a PR given its forge `state` +
+ /// `mergeStateStatus`. Pure so the bounded loop's decisions are unit-testable
+@@ -59125,6 +59132,18 @@ fn land_queue_enabled() -> bool {
+         .unwrap_or(false)
+ }
+ 
++/// bd-c339e1: the old client-side watch loop is an explicit critical-land
++/// escape hatch, never the default behavior of invoking `land-pr`.
++fn land_pr_client_watch_enabled(explicit_critical: bool, env_value: Option<&str>) -> bool {
++    explicit_critical
++        || env_value.is_some_and(|value| {
++            matches!(
++                value.trim().to_ascii_lowercase().as_str(),
++                "1" | "true" | "yes" | "on" | "enabled"
++            )
++        })
++}
++
+ /// Best-effort auto-detect the agent's open PR from its checkout's current
+ /// branch via `gh pr list --head <branch> --state open`. None => caller requires
+ /// explicit `--pr` (the PR-backed push may use a different head branch).
+@@ -59273,6 +59292,7 @@ fn dispatch_agent_land_pr(
+     max_attempts: u32,
+     max_minutes: u64,
+     auto_fallback: bool,
++    critical: bool,
+     json_requested: bool,
+     config_override: Option<&PathBuf>,
+ ) -> Result<String, CliError> {
+@@ -59320,6 +59340,63 @@ fn dispatch_agent_land_pr(
+         })?,
+     };
+ 
++    let env_watch = std::env::var("CACO_LAND_PR_CLIENT_WATCH").ok();
++    if !land_pr_client_watch_enabled(critical, env_watch.as_deref()) {
++        let (state, merge_state, status_error) = match run_project_gh(
++            &["pr", "view", &pr, "--json", "state,mergeStateStatus,url"],
++            gh_override.as_deref(),
++        ) {
++            Ok(output) if output.status.success() => {
++                let (state, merge) = parse_pr_view_state(&String::from_utf8_lossy(&output.stdout));
++                (state, merge, None)
++            }
++            Ok(output) => (
++                String::new(),
++                String::new(),
++                Some(String::from_utf8_lossy(&output.stderr).trim().to_string()),
++            ),
++            Err(error) => (String::new(), String::new(), Some(error.to_string())),
++        };
++        let displayed_state = if state.is_empty() { "UNKNOWN" } else { &state };
++        let displayed_merge = if merge_state.is_empty() {
++            "UNKNOWN"
++        } else {
++            &merge_state
++        };
++        let advisory = concat!(
++            "No client watch, sleep, update-branch, or fallback loop ran. ",
++            "Put the PR up and move on; landing convergence belongs to the configured queue / ",
++            "`caco agent reintegrate`. Re-run with --critical (or set ",
++            "CACO_LAND_PR_CLIENT_WATCH=1) only when an operator/controller classifies this land ",
++            "as genuinely critical."
++        )
++        .to_string();
++        if json_requested {
++            return Ok(serde_json::json!({
++                "ok": true,
++                "data": {
++                    "agent": id,
++                    "pr": pr,
++                    "status_only": true,
++                    "client_watch_enabled": false,
++                    "state": displayed_state,
++                    "merge_state_status": displayed_merge,
++                    "merged": state.eq_ignore_ascii_case("MERGED"),
++                    "status_error": status_error,
++                    "advisory": advisory,
++                }
++            })
++            .to_string());
++        }
++        let status_error = status_error
++            .filter(|error| !error.is_empty())
++            .map(|error| format!(" Status check error: {error}."))
++            .unwrap_or_default();
++        return Ok(format!(
++            "caco agent land-pr: PR {pr} state={displayed_state} mergeStateStatus={displayed_merge}.{status_error} {advisory}"
++        ));
++    }
++
+     let deadline = Duration::from_secs(max_minutes.saturating_mul(60));
+     let start = Instant::now();
+     let mut nudges = 0u32;
+@@ -59445,10 +59522,27 @@ fn dispatch_agent_land_pr(
+ #[cfg(test)]
+ mod land_pr_tests {
+     use super::{
+-        land_pr_action_for_state, land_pr_backoff_secs, parse_pr_view_state, pr_url_from_pr_list,
+-        LandPrAction,
++        land_pr_action_for_state, land_pr_backoff_secs, land_pr_client_watch_enabled,
++        parse_pr_view_state, pr_url_from_pr_list, LandPrAction, AGENT_LAND_PR_ARGS,
+     };
+ 
++    #[test]
++    fn client_watch_requires_critical_opt_in_bd_c339e1() {
++        assert!(!land_pr_client_watch_enabled(false, None));
++        assert!(!land_pr_client_watch_enabled(false, Some("0")));
++        assert!(!land_pr_client_watch_enabled(false, Some("false")));
++        assert!(land_pr_client_watch_enabled(true, None));
++        for value in ["1", "true", "YES", "on", "enabled"] {
++            assert!(
++                land_pr_client_watch_enabled(false, Some(value)),
++                "{value} should explicitly enable the client watch"
++            );
++        }
++        assert!(AGENT_LAND_PR_ARGS
++            .iter()
++            .any(|arg| arg.name == "--critical"));
++    }
++
+     #[test]
+     fn action_merged_closed_behind_wait_bd_6b7716() {
+         assert_eq!(
+diff --git a/docs/cli.html b/docs/cli.html
+index 98b50aa125..90e9ed9a54 100644
+--- a/docs/cli.html
++++ b/docs/cli.html
+@@ -120,7 +120,7 @@ caco_bd-v2       → caco bd-v2    # hyphens stay within segments</code></pre>
+ <tr><td><code>AGENT_ID="agent-id"; caco agent reintegrate --id "$AGENT_ID"</code></td><td>Merge agent work into target branch without stopping; <code>--friend &lt;project&gt;</code> targets a configured materialized <code>friend-checkouts/&lt;project&gt;/</code> checkout while keeping the primary checkout alive; <code>--dry-run</code> / <code>--preview</code> exits before hooks/merge/publish; <code>--backend &lt;pull_request|local_merge&gt;</code> overrides the profile/project-resolved backend for this one reintegration (so any agent can choose PR vs direct merge per land, and <code>--backend local_merge</code> lands off a broken PR backend) (bd-c949e1)</td></tr>
+ <tr><td><code>AGENT_ID="agent-id"; caco agent rebase --id "$AGENT_ID"</code></td><td>Fetch the authoritative target branch, align the visible <code>origin/&lt;target&gt;</code> tracking ref, rebase the agent checkout onto it, repair bounded Cacophony-owned corrupt refs/tags, and clean up ahead commits only when they contain exclusively <code>.cacophony/agent/**</code> state or summary artefacts</td></tr>
+ <tr><td><code>AGENT_ID="agent-id"; caco agent clear-stale-pr-ref --id "$AGENT_ID" --dry-run</code></td><td>Controller/operator command to clear an agent's stale <code>-pr</code> forge refs that wedge PR-backend lands (discovers all of the agent's stale <code>-pr</code> refs via <code>git ls-remote</code>); <code>--dry-run</code> lists the refs and tip SHAs without deleting so you confirm the set first, and the clear does an exact-pattern-matched lifecycle-push forge-delete capturing each SHA receipt (gc-recoverable) (bd-acd2b6)</td></tr>
+-<tr><td><code>AGENT_ID="agent-id"; caco agent land-pr --id "$AGENT_ID"</code></td><td>Transitional client-side bridge that lands an agent's armed auto-merge PR on a busy <code>main</code> by automating the manual <code>gh pr update-branch</code> + CI-wait loop with jittered backoff up to a bounded <code>--max-attempts</code> and wall-clock ceiling; on exhaustion it recommends &mdash; or, with <code>--auto-fallback</code>, runs &mdash; <code>caco agent reintegrate --mode direct --backend local_merge</code> (the reliable busy-<code>main</code> escape at normal node load), and no-ops under <code>CACO_LAND_QUEUE_ENABLED</code> pending the durable daemon-side serialized land-queue (bd-6b7716)</td></tr>
++<tr><td><code>AGENT_ID="agent-id"; caco agent land-pr --id "$AGENT_ID"</code></td><td>Inspect the agent's PR once and return with a no-babysit advisory; no sleep, update-branch, or fallback loop runs by default. <code>--critical</code> (or <code>CACO_LAND_PR_CLIENT_WATCH=1</code>) explicitly restores the bounded client-side update/CI/fallback bridge for a genuinely critical land. <code>CACO_LAND_QUEUE_ENABLED</code> remains authoritative and defers before PR inspection (bd-c339e1).</td></tr>
+ <tr><td><code>AGENT_ID="agent-id"; caco agent recreate "$AGENT_ID"</code></td><td>Fresh checkout and tmux with same config</td></tr>
+ <tr><td><code>AGENT_ID="agent-id"; caco agent replace "$AGENT_ID"</code></td><td>Stop a stuck agent and spawn a fresh one on the same bead</td></tr>
+ <tr><td><code>AGENT_ID="agent-id"; caco agent retry "$AGENT_ID"</code></td><td>Discard a failed agent and spawn a fresh one on the same bead</td></tr>
+diff --git a/docs/env-vars.html b/docs/env-vars.html
+index c16ff96dd3..90e6d347a2 100644
+--- a/docs/env-vars.html
++++ b/docs/env-vars.html
+@@ -137,6 +137,6 @@ scripts/check-env-vars-docs.py --list   # print the canonical read set</code></p
+ </main>
+ </div>
+ <script src="site.js" defer></script>
+-<!-- md-sibling-sha: 1765fab113f00be8dc8aa5b2233e7839670e65210a947ec6f04e81e45df7e387 -->
++<!-- md-sibling-sha: d26115fb1689e14b35be8dd29fe1fc897ebffdd94160e39269c7abe0a169335e -->
+ </body>
+ </html>
+diff --git a/docs/env-vars.md b/docs/env-vars.md
+index de2be97bb7..6deeeb0799 100644
+--- a/docs/env-vars.md
++++ b/docs/env-vars.md
+@@ -124,6 +124,7 @@ config (env still overrides). New env-only knobs land under the umbrella bead
+ | `CACO_LAND_QUEUE_DIR` | internal | Land-queue state directory override. |
+ | `CACO_LAND_QUEUE_STUCK_TIMEOUT_SECS` | tuning | Age after which a land-queue entry is considered stuck. |
+ | `CACO_LAND_QUEUE_WORKER_POLL_SECS` | tuning | Land-queue worker poll interval. |
++| `CACO_LAND_PR_CLIENT_WATCH` | tuning | Explicitly opt into the legacy bounded client-side `caco agent land-pr` watch/nudge loop (`1`/`true`); absent/false keeps `land-pr` to one read-only status check. Prefer the per-invocation `--critical` flag (bd-c339e1). |
+ | `CACO_BATCH_LANDING_ENABLED` | policy | Global batched-landing toggle (`1`/`true` enables it for all projects; bd-cb8425). Per-project typed home `projects.<name>.integration.batch_landing.enabled`; env override wins. Default OFF fleet-wide. |
+ | `CACO_BATCH_LANDING_ENABLED_PROJECTS` | policy | Per-project enablement of experimental batched landing (comma-list; bd-cb8425). Typed as `projects.<name>.integration.batch_landing.enabled` (default OFF fleet-wide); env override wins. See `docs/design/batched-landing-bors-ng.md`. |
+ | `CACO_BATCH_LANDING_MAX_SIZE` | policy | Max batch size for batched landing. Typed as `projects.<name>.integration.batch_landing.max_batch_size` (default 1 = current unbatched behavior); env override wins. |
+diff --git a/docs/reintegration-policy.html b/docs/reintegration-policy.html
+index 2ea11cd595..af5e92957e 100644
+--- a/docs/reintegration-policy.html
++++ b/docs/reintegration-policy.html
+@@ -167,6 +167,9 @@
+ <p>PR operations invoke <code>gh</code> through the project wrapper, in this order: <code>CACO_GH_COMMAND_OVERRIDE_&lt;PROJECT&gt;</code>, <code>CACO_GH_COMMAND_OVERRIDE</code>, then the first checkout-bootstrap snippet that defines or wraps <code>gh</code>. This keeps fork/upstream PR work on the same identity policy as the checkout.</p>
+ <p>Agents do not run <code>gh pr create</code> (or any other direct PR-publishing <code>gh</code> command) themselves to land their branch. PR creation is owned by the first-party lifecycle surfaces — <code>caco agent reintegrate --mode pr_review</code> / <code>pr_auto_merge</code>, <code>caco agent complete</code>, and the manual <code>caco pr</code> product-PR tool — which invoke <code>gh</code> exactly once through the project wrapper above so the project's configured GitHub username, host, and forge remote (from <code>config.yaml</code> / <code>projects[].remotes</code>) are always the identity that publishes the branch and opens the PR. Even though agents work in daemon-local checkouts whose <code>origin</code> is a mirror, the lifecycle path publishes the agent PR branch to, and opens the PR against, the project's configured forge remote rather than the local mirror, so the configured project is respected end to end.</p>
+ 
++<h2><code>land-pr</code> is status-only unless critical</h2>
++<p>Landing convergence belongs to the configured queue and controller paths, not to an author-agent watch loop. <code>caco agent land-pr --id &lt;agent&gt;</code> therefore does one <code>gh pr view</code>, reports the PR state plus a no-babysit advisory, and returns; it does not sleep, update the branch, or fall back. The historical bounded client-side update/CI/fallback loop is available only with explicit <code>--critical</code> or <code>CACO_LAND_PR_CLIENT_WATCH=1</code>, for a genuinely critical land classified by an operator/controller. <code>CACO_LAND_QUEUE_ENABLED</code> remains the first gate and makes the command defer without contacting the PR, so a client watch can never race the authoritative daemon queue (bd-c339e1).</p>
++
+ <h2>Workflow-file PRs and the <code>workflow</code> OAuth scope</h2>
+ <p>A PR-backend PR that modifies <code>.github/workflows/**</code> cannot be brought up-to-date through <code>gh pr update-branch</code>: GitHub refuses the OAuth-app token without the <code>workflow</code> scope (<code>refusing to allow an OAuth App to create or update workflow &hellip; without workflow scope</code>). On a busy <code>main</code> under branch-protection strict/up-to-date, a workflow-file <code>pr_auto_merge</code> PR therefore goes behind and cannot be advanced by <code>gh pr update-branch</code> &mdash; and <code>caco agent land-pr</code> hits the same wall, because it shells the same OAuth path (the token can also rotate mid-flight, so the first update-branch calls may succeed and later ones fail).</p>
+ <p>The working land path is <strong>re-reintegration over the daemon's SSH git</strong>: <code>caco agent rebase --id &lt;agent&gt;</code> then <code>caco agent reintegrate --id &lt;agent&gt;</code>. The daemon re-pushes the rebased agent branch to the existing PR branch over its SSH/git credentials &mdash; which already have workflow access, since that is how the PR was opened with the <code>.github/workflows/**</code> change &mdash; idempotently reuses the existing PR (bd-ce2015), and re-arms auto-merge, so the PR becomes up-to-date and CI re-runs. The OAuth <code>workflow</code> scope constraint only affects the <code>gh pr update-branch</code> HTTP path, not the daemon's canonical git push.</p>
+@@ -200,6 +203,6 @@ git fetch origin main &amp;&amp; git log -1 --format='%H %cI' origin/main</code>
+ </main>
+ </div>
+ <script src="site.js" defer></script>
+-<!-- md-sibling-sha: f9cfcbff5c420c87cfcd0c76cbc0b0f00a9a183e3dbad580a2e48d1d80e01b24 -->
++<!-- md-sibling-sha: 23fcf479f82430c2a547c6c997faaa781d0d4e4084330920e137347beb034303 -->
+ </body>
+ </html>
+diff --git a/docs/reintegration-policy.md b/docs/reintegration-policy.md
+index f6240cea53..9ab5fca162 100644
+--- a/docs/reintegration-policy.md
++++ b/docs/reintegration-policy.md
+@@ -623,6 +623,18 @@ checkouts whose `origin` is a mirror, the lifecycle path publishes the agent PR
+ branch to, and opens the PR against, the project's configured forge remote rather
+ than the local mirror, so the configured project is respected end to end.
+ 
++### `land-pr` is status-only unless critical
++
++Landing convergence belongs to the configured queue and controller paths, not
++to an author-agent watch loop. `caco agent land-pr --id <agent>` therefore does
++one `gh pr view`, reports the PR state plus a no-babysit advisory, and returns;
++it does not sleep, update the branch, or fall back. The historical bounded
++client-side update/CI/fallback loop is available only with explicit
++`--critical` or `CACO_LAND_PR_CLIENT_WATCH=1`, for a genuinely critical land
++classified by an operator/controller. `CACO_LAND_QUEUE_ENABLED` remains the
++first gate and makes the command defer without contacting the PR, so a client
++watch can never race the authoritative daemon queue (bd-c339e1).
++
+ ### Workflow-file PRs and the `workflow` OAuth scope
+ 
+ A PR-backend PR that modifies `.github/workflows/**` cannot be brought
+-- 
+2.53.0
+

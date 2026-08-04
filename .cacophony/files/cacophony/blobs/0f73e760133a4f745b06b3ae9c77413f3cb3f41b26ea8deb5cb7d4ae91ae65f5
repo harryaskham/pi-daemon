@@ -1,0 +1,227 @@
+From 2dc5a5b16efdaa1431b93faa9dcbb34ace73338a Mon Sep 17 00:00:00 2001
+From: Harry Askham <harryaskham@gmail.com>
+Date: Wed, 24 Jun 2026 06:36:49 +0100
+Subject: [PATCH] bd-05cda9: file-cache sync self-heals a stale state-sync.lock
+ (the 4h fleet-wide wedge durable fix)
+
+acquire_file_sync_lock opened the lock with create_new(true) and, on
+AlreadyExists, errored UNCONDITIONALLY -- it never checked whether the recorded
+holder PID was still alive. So a sync that hung (e.g. on a broken SSH key) and
+was killed mid-hold left a STALE lock that blocked EVERY future sync forever:
+the observed ~4h fleet-wide file-cache replication wedge (holder PID dead, lock
+held 134min, every sync refused 'already exists') needed a manual ctrl clear.
+
+Fix: on AlreadyExists, self-heal a STALE lock. The lock records 'pid=<N> ts=...';
+file_sync_lock_is_stale reads it and, if the holder PID is not alive
+(kill(pid, 0) -> ESRCH), clears the lock and retries the create once. Only a
+genuinely-live holder still refuses. Conservative throughout: a live PID is
+never stale, EPERM (exists-but-not-ours) counts as alive, and an unparseable
+lock is only stale past a 900s floor -- so a racing sync's fresh lock is never
+cleared. Mirrors the daemon's git index.lock cleanup + the kill(pid,0) liveness
+pattern used elsewhere in the workspace.
+
+Refactors the create+stamp into try_create_file_sync_lock (reused for the
+post-clear retry). + unit test file_sync_lock_stale_self_heal_bd_05cda9
+(dead-holder stale, live-holder kept, young-unparseable kept). caco-cli only.
+
+Follow-up (noted in bead): also bound the sync's git ops with a process-group
+timeout so a hang is killed + the lock RAII-released rather than lingering.
+---
+ crates/caco-cli/src/file_cmd.rs | 161 +++++++++++++++++++++++++++++---
+ 1 file changed, 149 insertions(+), 12 deletions(-)
+
+diff --git a/crates/caco-cli/src/file_cmd.rs b/crates/caco-cli/src/file_cmd.rs
+index 9be453288..644b42ba4 100644
+--- a/crates/caco-cli/src/file_cmd.rs
++++ b/crates/caco-cli/src/file_cmd.rs
+@@ -843,24 +843,53 @@ fn acquire_file_sync_lock(
+             ))
+         })?;
+     }
++    // bd-05cda9: first attempt to acquire atomically.
++    if let Some(lock) = try_create_file_sync_lock(&path)? {
++        return Ok(lock);
++    }
++    // bd-05cda9: the lock already exists -- but an existing lock is NOT
++    // necessarily a LIVE sync. A `caco file sync` that hung (e.g. on a broken
++    // SSH key) and was killed mid-hold leaves a STALE lock that blocks EVERY
++    // future sync forever (the observed ~4h fleet-wide file-cache wedge: holder
++    // PID dead, lock held 134min, every sync refused). The lock records
++    // `pid=<N>`, so self-heal: if the recorded holder is gone, clear the stale
++    // lock and retry once; only refuse when the holder is genuinely alive.
++    if file_sync_lock_is_stale(&path) {
++        let _ = std::fs::remove_file(&path);
++        if let Some(lock) = try_create_file_sync_lock(&path)? {
++            return Ok(lock);
++        }
++    }
++    Err(CliError::new(format!(
++        "another caco file sync appears to be running for project {project}; lock {} already exists",
++        path.display()
++    )))
++}
++
++/// bd-05cda9: atomically create the file-sync lock and stamp `pid`/`ts`.
++/// Returns `Ok(Some(lock))` if we created it, `Ok(None)` if it already exists,
++/// `Err` on any other IO error.
++fn try_create_file_sync_lock(path: &Path) -> Result<Option<FileSyncLock>, CliError> {
+     match std::fs::OpenOptions::new()
+         .write(true)
+         .create_new(true)
+-        .open(&path)
++        .open(path)
+     {
+         Ok(mut file) => {
+-            writeln!(file, "pid={} ts={}", std::process::id(), chrono::Utc::now().to_rfc3339())
+-                .map_err(|err| {
+-                    CliError::new(format!("write file sync lock {}: {err}", path.display()))
+-                })?;
+-            Ok(FileSyncLock { path })
++            writeln!(
++                file,
++                "pid={} ts={}",
++                std::process::id(),
++                chrono::Utc::now().to_rfc3339()
++            )
++            .map_err(|err| {
++                CliError::new(format!("write file sync lock {}: {err}", path.display()))
++            })?;
++            Ok(Some(FileSyncLock {
++                path: path.to_path_buf(),
++            }))
+         }
+-        Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => Err(CliError::new(
+-            format!(
+-                "another caco file sync appears to be running for project {project}; lock {} already exists",
+-                path.display()
+-            ),
+-        )),
++        Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => Ok(None),
+         Err(err) => Err(CliError::new(format!(
+             "create file sync lock {}: {err}",
+             path.display()
+@@ -868,6 +897,66 @@ fn acquire_file_sync_lock(
+     }
+ }
+ 
++/// bd-05cda9: minimum age before an UNPARSEABLE lock (no readable `pid=`) is
++/// treated as stale. A lock with a readable PID is judged purely on holder
++/// liveness; this floor only guards the corrupt/legacy-lock fallback so a
++/// brand-new lock a racing sync just wrote is never cleared.
++const FILE_SYNC_LOCK_STALE_THRESHOLD: std::time::Duration = std::time::Duration::from_secs(900);
++
++/// bd-05cda9: is the file-sync lock at `path` STALE (no live owner)?
++/// - Readable `pid=<N>`: stale iff that process is not alive (the common case --
++///   a killed/hung sync). A live PID is NEVER stale.
++/// - Unparseable contents: stale only if older than `FILE_SYNC_LOCK_STALE_THRESHOLD`
++///   (a corrupt/legacy lock no live sync owns).
++/// Conservative throughout: any uncertainty resolves to "not stale" so a live
++/// lock is never cleared.
++fn file_sync_lock_is_stale(path: &Path) -> bool {
++    let contents = match std::fs::read_to_string(path) {
++        Ok(c) => c,
++        Err(_) => return false,
++    };
++    if let Some(pid) = parse_file_sync_lock_pid(&contents) {
++        return !file_sync_pid_is_alive(pid);
++    }
++    match std::fs::metadata(path).and_then(|m| m.modified()) {
++        Ok(modified) => modified
++            .elapsed()
++            .map(|age| age >= FILE_SYNC_LOCK_STALE_THRESHOLD)
++            .unwrap_or(false),
++        Err(_) => false,
++    }
++}
++
++/// bd-05cda9: parse `pid=<N>` from a file-sync lock body (`pid=<N> ts=...`).
++fn parse_file_sync_lock_pid(contents: &str) -> Option<u32> {
++    contents
++        .split_whitespace()
++        .find_map(|tok| tok.strip_prefix("pid="))
++        .and_then(|v| v.parse::<u32>().ok())
++}
++
++/// bd-05cda9: is `pid` a live process? Uses `kill(pid, 0)` (no signal sent --
++/// existence/permission probe only), mirroring the workspace's existing liveness
++/// checks. Conservative: only a definitive `ESRCH` ("no such process") counts as
++/// dead; `EPERM` (process exists but not ours) is treated as alive so a lock we
++/// cannot prove dead is never cleared.
++#[cfg(unix)]
++fn file_sync_pid_is_alive(pid: u32) -> bool {
++    let rc = unsafe { libc::kill(pid as libc::pid_t, 0) };
++    if rc == 0 {
++        return true;
++    }
++    std::io::Error::last_os_error().raw_os_error() != Some(libc::ESRCH)
++}
++
++/// bd-05cda9: non-unix fallback -- cannot probe a PID, so conservatively assume
++/// alive (never clear a lock on a platform where we cannot verify the holder is
++/// dead).
++#[cfg(not(unix))]
++fn file_sync_pid_is_alive(_pid: u32) -> bool {
++    true
++}
++
+ #[derive(Debug, Default, Clone, PartialEq, Eq)]
+ struct FileSyncStats {
+     pushed_records: usize,
+@@ -2948,6 +3037,54 @@ pub(crate) fn dispatch_file_sync(
+ mod tests {
+     use super::*;
+ 
++    /// bd-05cda9: the file-sync stale-lock self-heal -- a dead-holder lock is
++    /// detected stale (so it is cleared + retried instead of wedging the fleet),
++    /// a live-holder lock is never cleared, and a young unparseable lock is left
++    /// alone. Unix-gated: the liveness probe (`kill(pid, 0)`) is unix-specific.
++    #[cfg(unix)]
++    #[test]
++    fn file_sync_lock_stale_self_heal_bd_05cda9() {
++        assert_eq!(
++            parse_file_sync_lock_pid("pid=7142 ts=2026-06-23T23:54:33Z"),
++            Some(7142)
++        );
++        assert_eq!(parse_file_sync_lock_pid("garbage no pid here"), None);
++
++        let tmp = tempfile::tempdir().unwrap();
++        let lock = tmp.path().join("state-sync.lock");
++
++        // A dead holder PID -> stale (the wedge case: a killed/hung sync's lock).
++        // Spawn + reap a child so its PID is definitively gone.
++        let mut child = std::process::Command::new("true")
++            .spawn()
++            .expect("spawn true");
++        let dead_pid = child.id();
++        child.wait().expect("reap true");
++        std::fs::write(&lock, format!("pid={dead_pid} ts=2026-06-23T23:54:33Z")).unwrap();
++        assert!(
++            file_sync_lock_is_stale(&lock),
++            "bd-05cda9: a dead-holder lock must be detected stale"
++        );
++
++        // Our own (live) PID -> NOT stale (never clear a live sync's lock).
++        std::fs::write(
++            &lock,
++            format!("pid={} ts=2026-06-23T23:54:33Z", std::process::id()),
++        )
++        .unwrap();
++        assert!(
++            !file_sync_lock_is_stale(&lock),
++            "bd-05cda9: a live-holder lock must NOT be cleared"
++        );
++
++        // Unparseable + young -> NOT stale (conservative; only old corrupt locks).
++        std::fs::write(&lock, "corrupt-no-pid").unwrap();
++        assert!(
++            !file_sync_lock_is_stale(&lock),
++            "bd-05cda9: a young unparseable lock is not cleared"
++        );
++    }
++
+     fn sample_link_record(id: &str) -> LinkRecord {
+         LinkRecord {
+             id: id.to_string(),
+-- 
+2.53.0
+

@@ -1,0 +1,46 @@
+From ccae607f64848f76158db88d9657872b236d286a Mon Sep 17 00:00:00 2001
+From: Harry Askham <harryaskham@gmail.com>
+Date: Thu, 16 Jul 2026 23:56:33 +0100
+Subject: [PATCH] fix(bd-a0b48f): canonicalize untrusted CI roots
+
+---
+ scripts/ci-resolve-trusted-caco.sh | 3 +++
+ tests/ci-trusted-caco-fixtures.sh  | 7 +++++--
+ 2 files changed, 8 insertions(+), 2 deletions(-)
+
+diff --git a/scripts/ci-resolve-trusted-caco.sh b/scripts/ci-resolve-trusted-caco.sh
+index 35d935cfe..d51ce1c16 100755
+--- a/scripts/ci-resolve-trusted-caco.sh
++++ b/scripts/ci-resolve-trusted-caco.sh
+@@ -28,6 +28,9 @@ resolved="$(readlink -f -- "$candidate" 2>/dev/null)" || fail \
+ # checkout/action scratch roots.
+ for untrusted_root in "${GITHUB_WORKSPACE:-}" "${RUNNER_TEMP:-}"; do
+   [[ -n "$untrusted_root" ]] || continue
++  raw_untrusted_root="$untrusted_root"
++  untrusted_root="$(readlink -f -- "$untrusted_root" 2>/dev/null)" || fail \
++    "trusted Cacophony binary resolution cannot canonicalize untrusted root '$raw_untrusted_root'"
+   untrusted_root="${untrusted_root%/}"
+   if [[ "$resolved" == "$untrusted_root" || "$resolved" == "$untrusted_root"/* ]]; then
+     fail "trusted Cacophony binary refused: resolved CACO_BIN is inside an untrusted checkout/action root: '$resolved'"
+diff --git a/tests/ci-trusted-caco-fixtures.sh b/tests/ci-trusted-caco-fixtures.sh
+index 545c1bb85..15c87e3dc 100755
+--- a/tests/ci-trusted-caco-fixtures.sh
++++ b/tests/ci-trusted-caco-fixtures.sh
+@@ -54,9 +54,12 @@ selected=""
+ while IFS='=' read -r key value; do
+   [[ "$key" == CACO_CI_TRUSTED_CACO_BIN ]] && selected="$value"
+ done < "$github_env"
+-[[ "$selected" == "$runtime/canonical-caco" ]]
++# The resolver exports the canonical filesystem path. On macOS, /var is a
++# symlink to /private/var, while Linux usually preserves the original spelling.
++expected_selected="$(readlink -f "$runtime/canonical-caco")"
++[[ "$selected" == "$expected_selected" ]]
+ grep -Fq \
+-  "changed-surface-caco: selected_binary=$runtime/canonical-caco version=9.8.7 commit=abc1234 source=CACO_BIN" \
++  "changed-surface-caco: selected_binary=$expected_selected version=9.8.7 commit=abc1234 source=CACO_BIN" \
+   "$resolver_out"
+ PATH="$minimal_path" FIXTURE_INVOCATIONS="$invocations" \
+   "$selected" config validate --strict
+-- 
+2.53.0
+

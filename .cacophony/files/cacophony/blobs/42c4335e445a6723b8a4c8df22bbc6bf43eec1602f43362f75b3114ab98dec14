@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="920" height="600" viewBox="0 0 920 600" font-family="-apple-system, Helvetica, Arial, sans-serif">
+  <rect width="920" height="600" fill="#eef0f3"/>
+  <text x="460" y="40" text-anchor="middle" font-size="18" font-weight="600" fill="#1d1d1f">Current — 23 sections / 5 groups, single detail canvas</text>
+
+  <!-- window -->
+  <rect x="30" y="60" width="860" height="510" rx="12" fill="#ffffff" stroke="#cfd2d6" stroke-width="1"/>
+  <!-- titlebar -->
+  <path d="M30 72 a12 12 0 0 1 12 -12 h836 a12 12 0 0 1 12 12 v24 h-860 z" fill="#e7e9ec"/>
+  <circle cx="50" cy="78" r="6" fill="#ff5f57"/><circle cx="70" cy="78" r="6" fill="#febc2e"/><circle cx="90" cy="78" r="6" fill="#28c840"/>
+  <text x="460" y="83" text-anchor="middle" font-size="12" fill="#6e6e73">Cacophony — Status</text>
+
+  <!-- sidebar -->
+  <rect x="31" y="96" width="250" height="473" fill="#f7f8fa"/>
+  <rect x="45" y="108" width="222" height="22" rx="5" fill="#e3e6ea"/>
+  <text x="56" y="123" font-size="11" fill="#86868b">Search sections…  ⌘K</text>
+
+  <!-- groups -->
+  <g font-size="11" fill="#86868b" font-weight="600">
+    <text x="48" y="152">OVERVIEW</text>
+    <text x="48" y="252">COMMUNICATION</text>
+    <text x="48" y="312">OPERATIONS</text>
+    <text x="48" y="430">DIAGNOSTICS</text>
+    <text x="48" y="478">ADMINISTRATION</text>
+  </g>
+  <g font-size="12" fill="#1d1d1f">
+    <!-- overview (7) -->
+    <rect x="44" y="158" width="224" height="18" rx="4" fill="#d6e4ff"/>
+    <text x="56" y="171">Status · Lenses · Nodes · Agents</text>
+    <text x="56" y="190">TUI · Pico · Beads</text>
+    <!-- communication (3) -->
+    <text x="56" y="270">Chat · Inbox · Controls</text>
+    <!-- operations (6) -->
+    <text x="56" y="330">Operations · Workspace · Files</text>
+    <text x="56" y="349">Links · Summaries · Suggestions</text>
+    <!-- diagnostics (2) -->
+    <text x="56" y="448">Diagnostics · Inspector</text>
+    <!-- admin (3) -->
+    <text x="56" y="496">Admin · Audio · Settings</text>
+  </g>
+
+  <!-- detail -->
+  <rect x="281" y="96" width="608" height="473" fill="#ffffff"/>
+  <rect x="305" y="120" width="560" height="425" rx="10" fill="#f4f7fb" stroke="#e1e6ec" stroke-width="1"/>
+  <text x="585" y="320" text-anchor="middle" font-size="15" fill="#6e6e73">Single "glass" detail canvas</text>
+  <text x="585" y="344" text-anchor="middle" font-size="13" fill="#9b9ba0">one section at a time</text>
+
+  <!-- annotation -->
+  <text x="460" y="592" text-anchor="middle" font-size="12" fill="#86868b">Strong bones (search, ⌘K, ⌘-shortcuts, Favorites) — but the top level is busy and a few groups overlap in purpose.</text>
+</svg>

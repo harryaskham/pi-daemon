@@ -1,0 +1,128 @@
+{
+    "ok": true,
+    "data": [
+        {
+            "depth": 0,
+            "has_children": true,
+            "is_dir": true,
+            "name": ".pi-agent",
+            "rel_path": ".pi-agent"
+        },
+        {
+            "depth": 0,
+            "has_children": true,
+            "is_dir": true,
+            "name": "bin",
+            "rel_path": "bin"
+        },
+        {
+            "depth": 0,
+            "has_children": true,
+            "is_dir": true,
+            "name": "checkout",
+            "rel_path": "checkout"
+        },
+        {
+            "depth": 0,
+            "has_children": true,
+            "is_dir": true,
+            "name": "friend-checkouts",
+            "rel_path": "friend-checkouts"
+        },
+        {
+            "depth": 0,
+            "has_children": true,
+            "is_dir": true,
+            "name": "logs",
+            "rel_path": "logs"
+        },
+        {
+            "depth": 0,
+            "has_children": true,
+            "is_dir": true,
+            "name": "result",
+            "rel_path": "result"
+        },
+        {
+            "depth": 0,
+            "has_children": false,
+            "is_dir": false,
+            "name": ".caco-alive",
+            "rel_path": ".caco-alive"
+        },
+        {
+            "depth": 0,
+            "has_children": false,
+            "is_dir": false,
+            "name": ".caco-ready",
+            "rel_path": ".caco-ready"
+        },
+        {
+            "depth": 0,
+            "has_children": false,
+            "is_dir": false,
+            "name": "agent.json",
+            "rel_path": "agent.json"
+        },
+        {
+            "depth": 0,
+            "has_children": false,
+            "is_dir": false,
+            "name": "checkout_size_bytes",
+            "rel_path": "checkout_size_bytes"
+        },
+        {
+            "depth": 0,
+            "has_children": false,
+            "is_dir": false,
+            "name": "env.sh",
+            "rel_path": "env.sh"
+        },
+        {
+            "depth": 0,
+            "has_children": false,
+            "is_dir": false,
+            "name": "init.sh",
+            "rel_path": "init.sh"
+        },
+        {
+            "depth": 0,
+            "has_children": false,
+            "is_dir": false,
+            "name": "prompt.txt",
+            "rel_path": "prompt.txt"
+        },
+        {
+            "depth": 0,
+            "has_children": false,
+            "is_dir": false,
+            "name": "runtime-health.json",
+            "rel_path": "runtime-health.json"
+        },
+        {
+            "depth": 0,
+            "has_children": false,
+            "is_dir": false,
+            "name": "runtime_ownership.json",
+            "rel_path": "runtime_ownership.json"
+        },
+        {
+            "depth": 0,
+            "has_children": false,
+            "is_dir": false,
+            "name": "runtime_pane_pid",
+            "rel_path": "runtime_pane_pid"
+        },
+        {
+            "depth": 0,
+            "has_children": false,
+            "is_dir": false,
+            "name": "system-prompt.txt",
+            "rel_path": "system-prompt.txt"
+        }
+    ],
+    "meta": {
+        "request_id": "req-c06945e63c8f0893",
+        "node": "ms-mac"
+    }
+}

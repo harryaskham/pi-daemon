@@ -1,0 +1,140 @@
+From 4199a53defa4023dd5c8ed456f6f79b1e52b4a1f Mon Sep 17 00:00:00 2001
+From: Harry Askham <harryaskham@gmail.com>
+Date: Wed, 24 Jun 2026 01:36:26 +0100
+Subject: [PATCH] bd-cbf959: document the iOS/Android app error-report contract
+ (platform-tagged /api/v1/logs/error)
+
+Backend keystone for letting companion-app runtime errors flow into Cacophony as
+first-class platform errors. Verify-before-implement: the endpoint already
+exists (POST /api/v1/logs/error -> handle_log_error), so this is the documented
+contract the iOS/Android client beads target, NOT a new endpoint.
+
+Verified:
+- Auth: CallerIdentity::Node -> ScopeCheck::Allowed (lib.rs:11707), so the app's
+  existing node/operator token can POST /api/v1/logs/error with no new scope grant.
+- Empirical acceptance: 'caco log error --component ios-app --labels platform:ios,...'
+  surfaces tagged in 'caco log exceptions --component ios-app' (exc-019ef706...).
+- Platform filtering already works via the existing --component filter.
+
+Documents the stable platform-tagging convention (component ios-app/android-app,
+labels platform:/surface:/kind:, fingerprint dedup guidance, --component
+filtering, a verified example) in docs/logs.md + the styled docs/logs.html
+sibling (marker resynced; docs/validate-pages.sh passes). Docs-only.
+---
+ docs/logs.html | 30 ++++++++++++++++++++++++++++-
+ docs/logs.md   | 52 ++++++++++++++++++++++++++++++++++++++++++++++++++
+ 2 files changed, 81 insertions(+), 1 deletion(-)
+
+diff --git a/docs/logs.html b/docs/logs.html
+index 350bd9e23..11ba91f72 100644
+--- a/docs/logs.html
++++ b/docs/logs.html
+@@ -116,6 +116,34 @@ done &lt; &lt;(find ~/.cacophony/trash -type f -name session.log -print0)</code>
+ </ul>
+ <p>Use examples such as <code>caco log perf-list --project cacophony --metric daemon_memory_rss_bytes --limit 20</code> or <code>caco log perf-list --project cacophony --top</code> to generate operator reports from the canonical telemetry store. Set <code>CACO_DAEMON_PERF_TELEMETRY_INTERVAL_SECS=0</code> only for a deliberate diagnostic opt-out; otherwise the default bounded cadence keeps telemetry available without writing on every request.</p>
+ 
++<h2>iOS/Android app error reports (platform-tagged)</h2>
++<p>Companion-app runtime errors &mdash; failed button actions, failed daemon requests, response decode failures &mdash; flow into Cacophony as first-class platform errors through the same structured-error ingest endpoint the CLI uses, so iOS/Android surface devs can analyse them in the Errors surfaces (<code>caco log exceptions</code>, the TUI/Web Errors tab).</p>
++<p><strong>Endpoint.</strong> <code>POST /api/v1/logs/error</code> &mdash; the same path <code>caco log error</code> uses, with fields <code>component</code>, <code>summary</code>, <code>detail</code>, <code>severity</code>, <code>fingerprint</code>, <code>labels</code>. The endpoint already exists (<code>handle_log_error</code>); clients do not need a new route.</p>
++<p><strong>Auth.</strong> The companion apps authenticate with their existing node/operator token. A node-identity caller is authorized for every endpoint (<code>CallerIdentity::Node</code> resolves to an allowed scope check), so the app's token can <code>POST /api/v1/logs/error</code> without a new scope grant; worker-scope tokens are not used by the apps.</p>
++<p><strong>Platform-tagging convention</strong> (stable &mdash; the iOS/Android client beads target this):</p>
++<table>
++  <thead><tr><th>Field</th><th>iOS</th><th>Android</th></tr></thead>
++  <tbody>
++    <tr><td><code>component</code></td><td><code>ios-app</code></td><td><code>android-app</code></td></tr>
++    <tr><td>label <code>platform:</code></td><td><code>platform:ios</code></td><td><code>platform:android</code></td></tr>
++  </tbody>
++</table>
++<p>Recommended additional labels:</p>
++<ul>
++  <li><code>surface:&lt;view&gt;</code> &mdash; the originating screen, e.g. <code>surface:ContentView</code>, <code>surface:AgentDetail</code>.</li>
++  <li><code>kind:&lt;class&gt;</code> &mdash; the failure class: <code>kind:button</code> (a failed UI action), <code>kind:request</code> (a failed daemon request), <code>kind:decode</code> (a response-decode failure).</li>
++</ul>
++<p><strong>Fingerprint guidance (dedup).</strong> Set <code>fingerprint</code> to a stable signature of the recurring failure, e.g. <code>&lt;component&gt;:&lt;surface&gt;:&lt;kind&gt;:&lt;stable-error-key&gt;</code>, omitting volatile detail (timestamps, request ids), so a repeatedly-failing button aggregates into one Errors row with an occurrence count instead of flooding the surface. When <code>fingerprint</code> is omitted the daemon derives one from the component and summary.</p>
++<p><strong>Filtering.</strong> Narrow the Errors surface to one platform with the existing component filter &mdash; <code>caco log exceptions --component ios-app</code> / <code>--component android-app</code> &mdash; plus the <code>platform:</code> / <code>surface:</code> / <code>kind:</code> labels for finer analysis.</p>
++<p><strong>Example</strong> (verified end to end):</p>
++<pre><code>caco log error --project cacophony \
++  --component ios-app \
++  --summary "Save button failed" \
++  --detail "ContentView save -&gt; POST /api/v1/agents/&lt;id&gt;/nudge returned 500" \
++  --severity error \
++  --labels "platform:ios,surface:ContentView,kind:button"
++# surfaces in: caco log exceptions --component ios-app</code></pre>
++
+ <h2>Operator takeaway</h2>
+ <p>If you want to watch an agent live, use attach/terminal surfaces. If you want history, use the structured log views. Do not expect <code>session.log</code> to exist for new agents; future embedded terminal panes should use the broker contract rather than adding new unbounded capture files.</p>
+ <div class="footer">
+@@ -124,6 +152,6 @@ done &lt; &lt;(find ~/.cacophony/trash -type f -name session.log -print0)</code>
+ </main>
+ </div>
+ <script src="site.js" defer></script>
+-<!-- md-sibling-sha: 87e3d48f5d9f1d64feab7959b1069bf48a9a4da28c8af8bb96444088405c7059 -->
++<!-- md-sibling-sha: d48bbca096b9eb20851ed53f2e3817d6bf22a4844fb2bfb38bf3a8665d98b7eb -->
+ </body>
+ </html>
+diff --git a/docs/logs.md b/docs/logs.md
+index 6616cdbbf..34069dae1 100644
+--- a/docs/logs.md
++++ b/docs/logs.md
+@@ -154,6 +154,58 @@ daemon_memory_rss_bytes --limit 20` or `caco log perf-list --project cacophony
+ opt-out; otherwise the default bounded cadence keeps telemetry available without
+ writing on every request.
+ 
++## iOS/Android app error reports (platform-tagged)
++
++Companion-app runtime errors — failed button actions, failed daemon requests, response
++decode failures — flow into Cacophony as first-class platform errors through the same
++structured-error ingest endpoint the CLI uses, so iOS/Android surface devs can analyse
++them in the Errors surfaces (`caco log exceptions`, the TUI/Web Errors tab).
++
++**Endpoint.** `POST /api/v1/logs/error` — the same path `caco log error` uses, with
++fields `component`, `summary`, `detail`, `severity`, `fingerprint`, `labels`. The
++endpoint already exists (`handle_log_error`); clients do not need a new route.
++
++**Auth.** The companion apps authenticate with their existing node/operator token. A
++node-identity caller is authorized for every endpoint (`CallerIdentity::Node` resolves to
++an allowed scope check), so the app's token can `POST /api/v1/logs/error` without a new
++scope grant; worker-scope tokens are not used by the apps.
++
++**Platform-tagging convention** (stable — the iOS/Android client beads target this):
++
++| Field | iOS | Android |
++| --- | --- | --- |
++| `component` | `ios-app` | `android-app` |
++| label `platform:` | `platform:ios` | `platform:android` |
++
++Recommended additional labels:
++
++- `surface:<view>` — the originating screen, e.g. `surface:ContentView`,
++  `surface:AgentDetail`.
++- `kind:<class>` — the failure class: `kind:button` (a failed UI action), `kind:request`
++  (a failed daemon request), `kind:decode` (a response-decode failure).
++
++**Fingerprint guidance (dedup).** Set `fingerprint` to a stable signature of the
++recurring failure, e.g. `<component>:<surface>:<kind>:<stable-error-key>`, omitting
++volatile detail (timestamps, request ids), so a repeatedly-failing button aggregates into
++one Errors row with an occurrence count instead of flooding the surface. When
++`fingerprint` is omitted the daemon derives one from the component and summary.
++
++**Filtering.** Narrow the Errors surface to one platform with the existing component
++filter — `caco log exceptions --component ios-app` / `--component android-app` — plus the
++`platform:` / `surface:` / `kind:` labels for finer analysis.
++
++**Example** (verified end to end):
++
++```bash
++caco log error --project cacophony \
++  --component ios-app \
++  --summary "Save button failed" \
++  --detail "ContentView save -> POST /api/v1/agents/<id>/nudge returned 500" \
++  --severity error \
++  --labels "platform:ios,surface:ContentView,kind:button"
++# surfaces in: caco log exceptions --component ios-app
++```
++
+ ## Related beads
+ 
+ - **Supersedes**: bd-528f11 (closed as inaccurate — log rotation was the
+-- 
+2.53.0
+

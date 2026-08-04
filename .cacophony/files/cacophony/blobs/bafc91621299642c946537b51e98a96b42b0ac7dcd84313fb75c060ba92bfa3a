@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<!-- Cacophony Android — "Aurora Cockpit" stunning-redesign candidate (po4-1).
+     A premium, glanceable redesign with a real design system: aurora-dark
+     surfaces, layered elevation + glow, a refined type scale, and a coherent
+     component kit. Addresses Harry's "sparse / too similar / want figma-WOW +
+     full design system" critique. HTML/CSS -> chromium-headless render. -->
+<style>
+  :root{
+    /* ---- Aurora-dark surface ladder (cool near-black, blue undertone) ---- */
+    --bg:#080A0F; --s0:#0E121B; --s1:#141A26; --s2:#1B2230; --s3:#232C3D; --s4:#2C374B;
+    --line:rgba(255,255,255,.06); --line2:rgba(255,255,255,.10);
+    /* ---- Text ---- */
+    --t0:#F4F7FC; --t1:#C3CCDC; --t2:#8A97AD; --t3:#5C6678;
+    /* ---- Aurora accent system (elevated Nord) ---- */
+    --teal:#5BE0C8; --cyan:#56C7F0; --blue:#6C8CFF; --violet:#A88BFF;
+    --pink:#FF7AB6; --amber:#FFC55C; --green:#7BE08A; --red:#FF6B6B;
+    --grad-hero:linear-gradient(135deg,#6C8CFF 0%,#A88BFF 48%,#FF7AB6 100%);
+    --grad-teal:linear-gradient(135deg,#5BE0C8,#56C7F0);
+    --glow-teal:0 0 0 1px rgba(91,224,200,.25), 0 8px 30px -8px rgba(91,224,200,.45);
+    --glow-soft:0 12px 40px -18px rgba(0,0,0,.8);
+    --r-lg:26px; --r-md:20px; --r-sm:14px; --r-pill:999px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;
+    font-family:'Inter','SF Pro Display','Segoe UI',system-ui,sans-serif;
+    -webkit-font-smoothing:antialiased;}
+  body{background:
+      radial-gradient(1200px 700px at 12% -8%, rgba(108,140,255,.16), transparent 60%),
+      radial-gradient(900px 600px at 100% 110%, rgba(255,122,182,.10), transparent 55%),
+      var(--bg);
+    color:var(--t0); padding:54px; display:flex; gap:54px; align-items:flex-start;}
+
+  /* =========================== PHONE =========================== */
+  .stage{display:flex; flex-direction:column; align-items:center; gap:18px;}
+  .stage .cap{font-size:13px; letter-spacing:.4px; color:var(--t2); font-weight:600;}
+  .stage .cap b{color:var(--teal);}
+  .phone{width:392px; height:830px; border-radius:46px; position:relative; overflow:hidden;
+    background:linear-gradient(180deg,var(--s0),#0a0d14 60%);
+    box-shadow:0 0 0 2px rgba(255,255,255,.05), 0 0 0 11px #05070b,
+               0 40px 90px -30px rgba(0,0,0,.85), var(--glow-soft);
+    display:flex; flex-direction:column;}
+  .notch{position:absolute; top:14px; left:50%; transform:translateX(-50%);
+    width:108px; height:26px; background:#05070b; border-radius:999px; z-index:30;}
+  .sb{height:48px; display:flex; align-items:flex-end; justify-content:space-between;
+    padding:0 26px 6px; font-size:13px; font-weight:600; color:var(--t1);}
+  .sb .r{display:flex; gap:7px; align-items:center; opacity:.9;}
+  .scr{flex:1; overflow:hidden; padding:6px 18px 0; position:relative;}
+
+  /* ---- hero greeting + attention ---- */
+  .greet{padding:10px 4px 2px;}
+  .greet .eye{font-size:12px; letter-spacing:2.4px; font-weight:700; text-transform:uppercase;
+    background:var(--grad-teal); -webkit-background-clip:text; background-clip:text; color:transparent;}
+  .greet h1{font-size:30px; font-weight:700; letter-spacing:-1.1px; color:var(--t0); margin-top:5px;}
+  .greet h1 span{color:var(--t2); font-weight:600;}
+
+  .attn{margin:16px 0 18px; padding:20px; border-radius:var(--r-lg); position:relative; overflow:hidden;
+    background:linear-gradient(135deg, rgba(108,140,255,.20), rgba(168,139,255,.12) 55%, rgba(255,122,182,.14));
+    box-shadow:inset 0 0 0 1px rgba(255,255,255,.08), 0 18px 50px -26px rgba(108,140,255,.7);}
+  .attn::after{content:''; position:absolute; inset:0; background:
+      radial-gradient(420px 160px at 88% -30%, rgba(255,255,255,.14), transparent 60%);}
+  .attn .lab{font-size:12px; font-weight:700; letter-spacing:1.4px; text-transform:uppercase; color:rgba(255,255,255,.72);}
+  .attn .big{font-size:34px; font-weight:800; letter-spacing:-1px; color:#fff; margin-top:4px; line-height:1.05;}
+  .attn .big b{background:var(--grad-hero); -webkit-background-clip:text; background-clip:text; color:transparent;}
+  .attn .sub{font-size:13px; color:rgba(255,255,255,.78); margin-top:6px;}
+  .attn .ring{position:absolute; right:18px; top:50%; transform:translateY(-50%);
+    width:74px; height:74px; border-radius:50%;
+    background:conic-gradient(var(--teal) 0 62%, rgba(255,255,255,.12) 62% 100%);
+    display:flex; align-items:center; justify-content:center; box-shadow:var(--glow-teal);}
+  .attn .ring i{width:58px; height:58px; border-radius:50%; background:#0c0f17; display:flex; align-items:center;
+    justify-content:center; font-size:20px; font-weight:800; color:#fff; font-style:normal;}
+
+  /* ---- priority feed ---- */
+  .sec{display:flex; align-items:center; justify-content:space-between; margin:6px 2px 10px;}
+  .sec h2{font-size:13px; font-weight:700; letter-spacing:1.2px; text-transform:uppercase; color:var(--t2);}
+  .sec a{font-size:12px; font-weight:600; color:var(--cyan);}
+
+  .pcard{display:flex; gap:14px; align-items:center; padding:15px 16px; border-radius:var(--r-md);
+    background:linear-gradient(180deg,var(--s2),var(--s1)); box-shadow:inset 0 0 0 1px var(--line), 0 10px 26px -20px #000;
+    margin-bottom:11px; position:relative; overflow:hidden;}
+  .pcard .rail{position:absolute; left:0; top:0; bottom:0; width:4px; border-radius:0 4px 4px 0;}
+  .ic{width:46px; height:46px; border-radius:15px; flex:none; display:flex; align-items:center; justify-content:center;
+    font-size:21px; position:relative;}
+  .ic.teal{background:rgba(91,224,200,.14); color:var(--teal); box-shadow:inset 0 0 0 1px rgba(91,224,200,.25);}
+  .ic.blue{background:rgba(108,140,255,.14); color:var(--blue); box-shadow:inset 0 0 0 1px rgba(108,140,255,.25);}
+  .ic.amber{background:rgba(255,197,92,.14); color:var(--amber); box-shadow:inset 0 0 0 1px rgba(255,197,92,.25);}
+  .ic.red{background:rgba(255,107,107,.14); color:var(--red); box-shadow:inset 0 0 0 1px rgba(255,107,107,.25);}
+  .pcard .bd{flex:1; min-width:0;}
+  .pcard .tt{font-size:15px; font-weight:700; color:var(--t0); letter-spacing:-.2px;}
+  .pcard .ds{font-size:12.5px; color:var(--t2); margin-top:3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .pill{font-size:11px; font-weight:700; padding:4px 10px; border-radius:var(--r-pill); letter-spacing:.3px; flex:none;}
+  .pill.teal{background:rgba(91,224,200,.16); color:var(--teal);}
+  .pill.amber{background:rgba(255,197,92,.16); color:var(--amber);}
+  .pill.red{background:rgba(255,107,107,.16); color:var(--red);}
+  .cta{font-size:12.5px; font-weight:700; color:#06121a; background:var(--grad-teal);
+    padding:8px 14px; border-radius:var(--r-pill); flex:none; box-shadow:var(--glow-teal);}
+
+  /* ---- glance stat strip ---- */
+  .stats{display:flex; gap:11px; margin:6px 0 12px;}
+  .stat{flex:1; padding:14px 13px; border-radius:var(--r-md); background:var(--s1);
+    box-shadow:inset 0 0 0 1px var(--line); position:relative; overflow:hidden;}
+  .stat .n{font-size:26px; font-weight:800; letter-spacing:-.6px; color:var(--t0);}
+  .stat .n small{font-size:13px; font-weight:700; color:var(--t2);}
+  .stat .l{font-size:11px; font-weight:600; letter-spacing:.5px; text-transform:uppercase; color:var(--t3); margin-top:2px;}
+  .stat .spark{position:absolute; right:10px; top:12px; width:30px; height:16px;
+    background:linear-gradient(90deg,transparent,rgba(91,224,200,.5)); border-radius:3px; opacity:.5;}
+
+  /* ---- bottom nav + FAB ---- */
+  .nav{height:78px; display:flex; align-items:center; justify-content:space-around; padding:0 12px 12px;
+    background:linear-gradient(180deg,transparent, rgba(8,10,15,.9) 40%); position:relative;}
+  .nb{display:flex; flex-direction:column; align-items:center; gap:5px; font-size:11px; font-weight:600; color:var(--t3);}
+  .nb .g{width:26px; height:26px; display:flex; align-items:center; justify-content:center; font-size:20px;}
+  .nb.on{color:var(--teal);} .nb.on .g{filter:drop-shadow(0 0 8px rgba(91,224,200,.7));}
+  .fab{width:62px; height:62px; border-radius:22px; margin-top:-30px; background:var(--grad-hero);
+    display:flex; align-items:center; justify-content:center; font-size:28px; color:#fff; font-weight:800;
+    box-shadow:0 14px 34px -10px rgba(168,139,255,.8), inset 0 1px 0 rgba(255,255,255,.4);}
+
+  /* =========================== DESIGN SYSTEM =========================== */
+  .ds-panel{width:520px; display:flex; flex-direction:column; gap:22px; padding-top:8px;}
+  .ds-h{font-size:13px; letter-spacing:3px; text-transform:uppercase; font-weight:800; color:var(--teal);}
+  .ds-title{font-size:34px; font-weight:800; letter-spacing:-1px; margin-top:4px;}
+  .ds-title span{background:var(--grad-hero); -webkit-background-clip:text; background-clip:text; color:transparent;}
+  .ds-sub{font-size:14px; color:var(--t2); margin-top:8px; line-height:1.6; max-width:480px;}
+  .block{background:var(--s0); border-radius:var(--r-md); padding:20px; box-shadow:inset 0 0 0 1px var(--line);}
+  .block .bt{font-size:12px; font-weight:700; letter-spacing:1.4px; text-transform:uppercase; color:var(--t2); margin-bottom:14px;}
+  .swatches{display:grid; grid-template-columns:repeat(6,1fr); gap:10px;}
+  .sw{height:54px; border-radius:12px; display:flex; align-items:flex-end; padding:7px; font-size:10px; font-weight:700;
+    color:rgba(0,0,0,.65); box-shadow:inset 0 0 0 1px rgba(255,255,255,.08);}
+  .surf-ladder{display:flex; gap:8px;}
+  .surf-ladder div{flex:1; height:40px; border-radius:10px; box-shadow:inset 0 0 0 1px var(--line); display:flex;
+    align-items:center; justify-content:center; font-size:10px; color:var(--t2); font-weight:600;}
+  .type div{margin-bottom:10px; color:var(--t0);} .type .m{color:var(--t3); font-size:11px; font-weight:600; letter-spacing:.4px;}
+  .kit{display:flex; flex-wrap:wrap; gap:10px; align-items:center;}
+  .foot{font-size:12px; color:var(--t3); line-height:1.6;}
+  .foot b{color:var(--t1);}
+</style>
+</head>
+<body>
+
+  <!-- ===== PHONE: Home / Aurora Cockpit ===== -->
+  <div class="stage">
+    <div class="phone">
+      <div class="notch"></div>
+      <div class="sb"><div>9:41</div><div class="r">📶&nbsp;&nbsp;🔋&nbsp;85%</div></div>
+      <div class="scr">
+        <div class="greet">
+          <div class="eye">Tuesday · cacophony</div>
+          <h1>Good evening, Harry <span>·</span></h1>
+        </div>
+
+        <div class="attn">
+          <div class="ring"><i>3</i></div>
+          <div class="lab">Needs you now</div>
+          <div class="big"><b>3 things</b> want<br>your attention</div>
+          <div class="sub">1 choice · 1 DM · 1 failing job — tap to triage</div>
+        </div>
+
+        <div class="sec"><h2>Priority</h2><a>Snooze all</a></div>
+
+        <div class="pcard"><div class="rail" style="background:var(--teal)"></div>
+          <div class="ic teal">⚖️</div>
+          <div class="bd"><div class="tt">Approve revival plan?</div><div class="ds">caco-ctrl · awaiting your choice</div></div>
+          <div class="cta">Resolve</div></div>
+
+        <div class="pcard"><div class="rail" style="background:var(--blue)"></div>
+          <div class="ic blue">💬</div>
+          <div class="bd"><div class="tt">md2-1 · Android</div><div class="ds">"bd-5bb8d9 verified — occlusion fixed"</div></div>
+          <div class="pill teal">2m</div></div>
+
+        <div class="pcard"><div class="rail" style="background:var(--red)"></div>
+          <div class="ic red">⚠️</div>
+          <div class="bd"><div class="tt">Release v1.2.1333 failed</div><div class="ds">non-exhaustive match · caco-daemon</div></div>
+          <div class="pill red">CI</div></div>
+
+        <div class="sec"><h2>Fleet pulse</h2><a>Details</a></div>
+        <div class="stats">
+          <div class="stat"><div class="spark"></div><div class="n">84</div><div class="l">Agents</div></div>
+          <div class="stat"><div class="n">76<small> rdy</small></div><div class="l">Beads</div></div>
+          <div class="stat"><div class="n">9<small>/9</small></div><div class="l">Nodes</div></div>
+        </div>
+      </div>
+      <div class="nav">
+        <div class="nb on"><div class="g">🏠</div>Home</div>
+        <div class="nb"><div class="g">💬</div>Talk</div>
+        <div class="fab">+</div>
+        <div class="nb"><div class="g">🤖</div>Agents</div>
+        <div class="nb"><div class="g">🗂️</div>Work</div>
+      </div>
+    </div>
+    <div class="cap"><b>Home</b> — the glanceable "needs-you" cockpit</div>
+  </div>
+
+  <!-- ===== DESIGN SYSTEM ===== -->
+  <div class="ds-panel">
+    <div>
+      <div class="ds-h">Cacophony Android</div>
+      <div class="ds-title">Aurora <span>Cockpit</span></div>
+      <div class="ds-sub">A calm, glanceable cockpit with a real, coherent design system — aurora-dark
+        surfaces, layered elevation + soft glow, a disciplined type scale, and one component kit used
+        everywhere. From a 48-screen control panel to a premium app that surfaces what needs you and
+        gets you there in one tap.</div>
+    </div>
+
+    <div class="block">
+      <div class="bt">Accent system — aurora</div>
+      <div class="swatches">
+        <div class="sw" style="background:#5BE0C8">teal</div>
+        <div class="sw" style="background:#56C7F0">cyan</div>
+        <div class="sw" style="background:#6C8CFF">blue</div>
+        <div class="sw" style="background:#A88BFF">violet</div>
+        <div class="sw" style="background:#FF7AB6">pink</div>
+        <div class="sw" style="background:#FFC55C">amber</div>
+      </div>
+      <div style="height:14px"></div>
+      <div class="bt">Surface elevation ladder</div>
+      <div class="surf-ladder">
+        <div style="background:#080A0F">bg</div><div style="background:#0E121B">s0</div>
+        <div style="background:#141A26">s1</div><div style="background:#1B2230">s2</div>
+        <div style="background:#232C3D">s3</div><div style="background:#2C374B">s4</div>
+      </div>
+    </div>
+
+    <div class="block type">
+      <div class="bt">Type scale — Inter</div>
+      <div style="font-size:30px;font-weight:800;letter-spacing:-1px">Display · 30/700</div>
+      <div style="font-size:21px;font-weight:700;letter-spacing:-.4px">Title · 21/700</div>
+      <div style="font-size:15px;font-weight:600">Body · 15/600</div>
+      <div class="m" style="text-transform:uppercase;letter-spacing:1.4px">Eyebrow · 12/700 · +1.4</div>
+    </div>
+
+    <div class="block">
+      <div class="bt">Component kit</div>
+      <div class="kit">
+        <span class="pill teal">RUNNING</span>
+        <span class="pill amber">WAITING</span>
+        <span class="pill red">FAILED</span>
+        <span class="cta">Resolve</span>
+        <span class="ic teal" style="width:38px;height:38px;border-radius:12px;font-size:18px">⚖️</span>
+        <span class="ic blue" style="width:38px;height:38px;border-radius:12px;font-size:18px">💬</span>
+        <span class="stat" style="flex:none;min-width:96px"><span class="n" style="font-size:20px">84</span><span class="l">Agents</span></span>
+      </div>
+    </div>
+
+    <div class="foot">
+      <b>Why it WOWs:</b> one attention hero (not a dashboard of everything) · prioritized actionable feed ranked
+      choices › DMs › failures · 4-tab + center-FAB thumb nav · depth &amp; glow give hierarchy the current flat
+      cards lack · a single token + component system so all 48 surfaces feel like one premium app.<br>
+      <span style="color:var(--t3)">Candidate by caco-android-po4-1 · HTML/CSS→render · complements the canonical revamp (md2-1)</span>
+    </div>
+  </div>
+
+</body>
+</html>

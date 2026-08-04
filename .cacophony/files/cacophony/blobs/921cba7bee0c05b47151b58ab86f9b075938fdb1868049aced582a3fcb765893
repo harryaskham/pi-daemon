@@ -1,0 +1,140 @@
+From 00f106629e5ff3be6b4d57c9b976b6185b0b3106 Mon Sep 17 00:00:00 2001
+From: Harry Askham <harryaskham@gmail.com>
+Date: Mon, 22 Jun 2026 01:49:46 +0200
+Subject: [PATCH] bd-5e0cf2 follow-up: harvest PR-mode Beads footer from
+ agent_head_full, not bare target
+
+bd-5e0cf2's harvest used head_branch=target (the agent PR branch NAME), but the
+PR branch is only pushed as {remote}/{target} -- no bare local 'target' ref --
+so 'git log base..target' hit 'unknown revision' and the harvest returned EMPTY
+for every PR-branch land (regardless of artefacts), dropping the Beads footer ->
+close-validation fails after the squash-PR-merge. Thread the agent's ORIGINAL
+HEAD sha (agent_head_full, pre-strip, always resolvable) into OpenOrUpdatePrRequest
+and harvest from it. +1 regression test. bd-c26699 cutover prereq.
+---
+ crates/caco-daemon/src/reintegration.rs | 81 ++++++++++++++++++++++++-
+ 1 file changed, 79 insertions(+), 2 deletions(-)
+
+diff --git a/crates/caco-daemon/src/reintegration.rs b/crates/caco-daemon/src/reintegration.rs
+index 375b58cf0..12898797f 100644
+--- a/crates/caco-daemon/src/reintegration.rs
++++ b/crates/caco-daemon/src/reintegration.rs
+@@ -11202,6 +11202,7 @@ pub fn reintegrate_direct_branch(
+             gh_command_override: req.gh_command_override.as_deref(),
+             state_branch: &req.state_branch,
+             artefact_split: artefact_split.as_ref(),
++            agent_head_full: &agent_head_full,
+         }) {
+             Ok((url, created)) => {
+                 pr_url = Some(url);
+@@ -11533,6 +11534,13 @@ struct OpenOrUpdatePrRequest<'a> {
+     gh_command_override: Option<&'a str>,
+     state_branch: &'a str,
+     artefact_split: Option<&'a crate::cacophony_state::ArtefactSplitOutcome>,
++    /// bd-5e0cf2 follow-up: the agent's ORIGINAL HEAD sha (captured pre-strip,
++    /// always locally resolvable). The Beads-footer harvest must use THIS, not
++    /// the bare `head_branch`/`target` name: the PR branch is only pushed as
++    /// `{remote}/{target}` (no bare local `target` ref exists), so harvesting
++    /// from `target` hits "unknown revision" and returns empty (dropping the
++    /// footer -> close-validation fails after the squash-PR-merge).
++    agent_head_full: &'a str,
+ }
+ 
+ fn gh_output_pr_url(output: &str) -> Option<String> {
+@@ -11590,6 +11598,7 @@ fn open_or_update_pr(req: OpenOrUpdatePrRequest<'_>) -> Result<(String, bool), D
+         gh_command_override,
+         state_branch,
+         artefact_split,
++        agent_head_full,
+     } = req;
+     let base_branch: &str = base.split_once('/').map(|(_r, b)| b).unwrap_or(base);
+ 
+@@ -11604,8 +11613,19 @@ fn open_or_update_pr(req: OpenOrUpdatePrRequest<'_>) -> Result<(String, bool), D
+     let title = format!("[caco] {} -> {}", head_branch, base_branch,);
+     // bd-5e0cf2: harvest the branch's bead IDs so build_pr_body can append the
+     // `Beads:` footer for repo-setting-independent PR-mode close-validation.
+-    let branch_bead_ids = harvest_branch_bead_ids(checkout, base, head_branch);
+-    let body = build_pr_body(agent, comment, state_branch, artefact_split, &branch_bead_ids);
++    // bd-5e0cf2 follow-up: harvest the bead IDs from the agent's ORIGINAL HEAD
++    // sha (resolvable, pre-strip), NOT the bare `head_branch`/`target` name. A
++    // bare `target` ref does not exist locally (only `{remote}/{target}` does),
++    // so `git log base..target` hit "unknown revision" and returned empty,
++    // dropping the footer for EVERY PR-branch land regardless of artefacts.
++    let branch_bead_ids = harvest_branch_bead_ids(checkout, base, agent_head_full);
++    let body = build_pr_body(
++        agent,
++        comment,
++        state_branch,
++        artefact_split,
++        &branch_bead_ids,
++    );
+     let create = run_gh_command(
+         checkout,
+         &[
+@@ -23262,6 +23282,63 @@ gh() {
+     /// the build_reintegration_commit_message_with_branch_ids caller
+     /// receives Some(empty), falls through to legacy goal-text
+     /// extraction, and pollutes the squash footer with noise IDs.
++    #[test]
++    fn harvest_from_head_sha_resolves_while_bare_pr_branch_does_not_bd_5e0cf2() {
++        // bd-5e0cf2 follow-up regression: the PR-mode Beads-footer harvest must
++        // use the agent's ORIGINAL HEAD sha (resolvable), NOT the bare PR-branch
++        // `target` name (which only exists locally as `{remote}/{target}`, so a
++        // bare lookup hits "unknown revision" -> empty harvest -> no footer).
++        let temp = tempfile::tempdir().unwrap();
++        let (checkout, _branch) = setup_repo(temp.path());
++        let co = checkout.display().to_string();
++        Command::new("git")
++            .args(["-C", &co, "checkout", "-b", "agent/test"])
++            .output()
++            .unwrap();
++        std::fs::write(checkout.join("work.txt"), "work\n").unwrap();
++        Command::new("git")
++            .args(["-C", &co, "add", "."])
++            .output()
++            .unwrap();
++        Command::new("git")
++            .args([
++                "-C",
++                &co,
++                "commit",
++                "-m",
++                "bd-abc123: PR-mode close-validation footer work",
++            ])
++            .output()
++            .unwrap();
++        let head_sha = String::from_utf8(
++            Command::new("git")
++                .args(["-C", &co, "rev-parse", "HEAD"])
++                .output()
++                .unwrap()
++                .stdout,
++        )
++        .unwrap()
++        .trim()
++        .to_string();
++
++        // FIX path: harvest from the resolvable HEAD sha -> finds the bead id.
++        let from_sha = harvest_branch_bead_ids(&checkout, "main", &head_sha);
++        assert_eq!(
++            from_sha,
++            vec!["bd-abc123".to_string()],
++            "harvest from the original HEAD sha must find the bead id"
++        );
++
++        // BUG path: a bare PR-branch name with no local ref -> empty harvest
++        // (exactly what bd-5e0cf2's first cut did via head_branch=target).
++        let from_bare =
++            harvest_branch_bead_ids(&checkout, "main", "agent-specific-pr-branch-no-local-ref");
++        assert!(
++            from_bare.is_empty(),
++            "harvest from a bare unresolvable PR-branch name must return empty"
++        );
++    }
++
+     #[test]
+     fn harvest_branch_bead_ids_falls_back_to_direct_log_when_range_empty() {
+         let temp = tempfile::tempdir().unwrap();
+-- 
+2.53.0
+

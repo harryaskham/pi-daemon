@@ -1,0 +1,199 @@
+From 4992cb8c0a7f44bbfcf45c6b7442569e6c2ce445 Mon Sep 17 00:00:00 2001
+From: Harry Askham <harryaskham@gmail.com>
+Date: Mon, 13 Jul 2026 05:12:35 +0100
+Subject: [PATCH] bd-7624ac: make resume validation lane-aware
+
+---
+ README.md                              |  2 +-
+ SPEC.md                                |  2 +-
+ crates/caco-daemon/src/agent/health.rs | 21 ++++---
+ crates/caco-daemon/src/agent/tests.rs  | 84 ++++++++++++++------------
+ 4 files changed, 62 insertions(+), 47 deletions(-)
+
+diff --git a/README.md b/README.md
+index 544d3dce10..11ac07e14e 100644
+--- a/README.md
++++ b/README.md
+@@ -616,7 +616,7 @@ For Claude-managed bead workers, the canonical `worker` profile is reified throu
+ 
+ Landing convergence is infrastructure-owned, not author-agent busywork. After a lifecycle call returns an accepted detached queue submission or a published/queued PR with queue ownership, the author leaves the bead open/in-flight and moves to its next permitted slice (or idles for a one-shot worker). It must not run PR-check/status watches, update-branch loops, or repeated `caco agent land-pr` nudges. `caco agent land-pr` itself is status-only by default (one `gh pr view`, advisory, return); only explicit `--critical` or `CACO_LAND_PR_CLIENT_WATCH=1` restores its bounded client watch/nudge path, and `CACO_LAND_QUEUE_ENABLED` still makes it defer unconditionally. Queue/daemon controllers own convergence, terminal-failure routing, and confirmed-merge closeout; force/bypass remains an explicit audited operator/controller path for changes classified critical.
+ 
+-For normal Cacophony typed-Aviator submissions, hosted GitHub required CI owns final ready-time test and lint validation. Authors may run one very small exact smoke while developing when it answers a concrete uncertainty, but must not run a final local or daemon-queued Cargo/check/clippy/build/docs gate that CI will immediately repeat on the same self-hosted capacity. Ready work is committed, submitted, and left to the queue. Broader checks require explicit missing hosted coverage, test-infrastructure, safety reproduction, device/platform acceptance, CI-failure diagnosis, or operator direction; projects without equivalent hosted enforcement retain their configured validation policy.
++For normal Cacophony typed-Aviator submissions, hosted GitHub required CI owns final ready-time test and lint validation. Authors may run one very small exact smoke while developing when it answers a concrete uncertainty, but must not run a final local or daemon-queued Cargo/check/clippy/build/docs gate that CI will immediately repeat on the same self-hosted capacity. Ready work is committed, submitted, and left to the queue. Broader checks require explicit missing hosted coverage, test-infrastructure, safety reproduction, device/platform acceptance, CI-failure diagnosis, or operator direction; projects without equivalent hosted enforcement retain their configured validation policy. Managed crash/restart resume nudges preserve the foreground-only safety rule while restating these conditional lanes; they do not revive blanket `cargo test`/`cargo build`/`cargo clippy` preflight examples.
+ 
+ Until provider-neutral retry automation lands, an Aviator Returned/Rejected/Conflict PR needs one owner-only manual repair step. After the original owner fixes/rebases and publishes the corrected branch, that owner runs `gh pr edit <PR> --remove-label blocked --add-label mergequeue`, keeps the bead claim and PR link, and moves on. Never clear/requeue another owner's PR, clear `blocked` before publishing a correction, or arm Track A/native auto alongside Aviator.
+ 
+diff --git a/SPEC.md b/SPEC.md
+index ade0d6d251..4c0bf34e18 100644
+--- a/SPEC.md
++++ b/SPEC.md
+@@ -5191,7 +5191,7 @@ Resolution rules:
+ - `caco agent land-pr` is read-only/status-only by default: after preserving the authoritative `CACO_LAND_QUEUE_ENABLED` defer, it resolves the PR, performs exactly one `gh pr view`, reports state plus a no-babysit advisory, and returns without sleeping, updating the branch, or falling back. The legacy bounded client-side watch/nudge/fallback bridge runs only with explicit `--critical` or truthy `CACO_LAND_PR_CLIENT_WATCH`, for a genuinely critical land classified by an operator/controller (bd-c339e1).
+ - force/bypass landing is not a routine authoring-agent fallback; it is reserved for an operator/controller-classified critical change through an explicit audited first-party route
+ - a project may select a typed hosted merge queue for PR-backed direct intent; hosted submission is a handoff, so success means the PR is durably enqueued and explicitly reported as pending rather than falsely reported as landed
+-- when a typed hosted queue has authoritative required CI, normal ready-time validation belongs to that hosted lane: authoring agents must not run a final local or daemon-queued test/check/clippy/build/docs gate that CI will immediately repeat. During implementation they may run only the smallest exact smoke needed for a concrete uncertainty; broader local validation requires explicit missing hosted coverage, test-infrastructure, safety reproduction, device/platform acceptance, CI-failure diagnosis, or operator direction. Projects without equivalent hosted enforcement retain their configured validation policy
++- when a typed hosted queue has authoritative required CI, normal ready-time validation belongs to that hosted lane: authoring agents must not run a final local or daemon-queued test/check/clippy/build/docs gate that CI will immediately repeat. During implementation they may run only the smallest exact smoke needed for a concrete uncertainty; broader local validation requires explicit missing hosted coverage, test-infrastructure, safety reproduction, device/platform acceptance, CI-failure diagnosis, or operator direction. Projects without equivalent hosted enforcement retain their configured validation policy. Crash/restart resume nudges must repeat this conditional lane contract while preserving foreground-only execution safety; they must not revive unconditional broad Cargo command examples (bd-7624ac)
+ - CI path classification must consume the exact PR/stack delta selected by the caller, remain token-free/fork-safe, and fail to full lanes on empty, malformed, unreadable, unknown, workflow, Rust, or platform paths. The reusable classifier foundation emits stable `config-profile-only` vs `full` JSON/GitHub outputs for conservative checked-in `.cacophony` YAML/profile/instruction sources and explicit generated profile/plugin/docs artifacts; workflow wiring must preserve required check contexts and may not infer a broader ancestor-stack diff (bd-57ade7)
+ - hosted-queue policy must be default-off, reuse the project's configured `gh` wrapper, preserve the agent-specific PR branch and `pr-in-flight` bead marker, fail closed when enqueueing fails, and suppress native auto-merge plus the daemon Track-A land queue for that PR so two landers cannot race
+ - when the effective project enables typed hosted_queue, a nonpersistent worker must not local-direct land or silently fall back to `pr_review`: it calls reintegrate with no mode/backend override, effective direct intent routes through the pull-request backend, Caco ensures the hosted trigger and records queue ownership, and explicit `pr_auto_merge`/native auto is refused. The worker/bead/PR remain owned while unmerged. After confirmed merge, the worker inspects checkout state and may complete idempotently or discard only when merged source is durable and the checkout is clean; dirty/untracked work is preserved and blocks silent teardown. Projects without hosted_queue retain their configured direct/review/artifact lifecycle, while persistent controllers/observers and release/tag actors retain explicit audited modes
+diff --git a/crates/caco-daemon/src/agent/health.rs b/crates/caco-daemon/src/agent/health.rs
+index 26dc6839ac..ec9b0dce22 100644
+--- a/crates/caco-daemon/src/agent/health.rs
++++ b/crates/caco-daemon/src/agent/health.rs
+@@ -2524,15 +2524,22 @@ pub fn resumed_worker_nudge_with_assignment(
+     };
+     append_first_goal_line(&mut message, goal);
+     message.push_str(" Use first-party caco shell commands only.");
+-    // bd-368eaf, bd-1bd973: Reinforce the no-background-task validation
+-    // policy after resume/restart. Resumed workers can lose prompt context
+-    // and revert to wrapping foreground validation in run_in_background,
+-    // stranding the session in a task-output wait loop.
++    // bd-368eaf, bd-1bd973, bd-7624ac: Reinforce foreground execution
++    // without reviving the obsolete blanket Cargo preflight. Resume nudges do
++    // not carry project config, so the message states both conditional lane
++    // contracts and lets the composed project profile select the active one.
+     message.push_str(
+-        " For validation, run direct foreground commands from the agent checkout \
+-         (for Rust work: `cargo test`, `cargo build`, `cargo clippy`). Do NOT wrap \
++        " For validation, follow the active project delivery lane and run any \
++         needed check directly in the foreground. During implementation, use only \
++         the smallest exact smoke needed for a concrete uncertainty. When a typed \
++         hosted queue with required CI is active, do not run a final broad local or \
++         queued Cargo preflight that CI will immediately repeat; submit ready work \
++         to hosted CI. Broader test-infrastructure, uncovered-platform/device, \
++         safety-reproduction, CI-diagnosis, or operator exceptions require an \
++         explicit reason and must stay narrow. Projects without equivalent hosted \
++         enforcement retain their configured validation policy. Do NOT wrap \
+          validation in run_in_background or background tasks — this strands the \
+-         session in a task-output wait loop (bd-368eaf, bd-1bd973).",
++         session in a task-output wait loop (bd-368eaf, bd-1bd973, bd-7624ac).",
+     );
+     message
+ }
+diff --git a/crates/caco-daemon/src/agent/tests.rs b/crates/caco-daemon/src/agent/tests.rs
+index a9ace1eca3..f8b67f7cf0 100644
+--- a/crates/caco-daemon/src/agent/tests.rs
++++ b/crates/caco-daemon/src/agent/tests.rs
+@@ -18176,47 +18176,45 @@ fn resumed_worker_nudge_mentions_crash_and_shell_only_policy() {
+     );
+ }
+ 
+-// --- bd-368eaf, bd-1bd973: Resume nudge must reinforce direct foreground validation ---
+-
+-/// bd-368eaf, bd-1bd973: The resume nudge must explicitly direct workers to use
+-/// foreground checkout-local validation and prohibit `run_in_background`.
+-#[test]
+-fn resumed_worker_nudge_reinforces_direct_foreground_validation() {
+-    let message = resumed_worker_nudge(Some("Implement bead bd-1bd973"), None, None);
+-    assert!(
+-        message.contains("cargo test"),
+-        "bd-1bd973: resume nudge must mention `cargo test`, got: {message}"
+-    );
+-    assert!(
+-        message.contains("cargo build"),
+-        "bd-1bd973: resume nudge must mention `cargo build`, got: {message}"
+-    );
+-    assert!(
+-        message.contains("cargo clippy"),
+-        "bd-1bd973: resume nudge must mention `cargo clippy`, got: {message}"
+-    );
+-    assert!(
+-        message.contains("run_in_background"),
+-        "bd-368eaf: resume nudge must warn against run_in_background, got: {message}"
+-    );
+-    assert!(
+-            message.contains("task-output wait loop"),
+-            "bd-368eaf: resume nudge must explain the consequence (task-output wait loop), got: {message}"
++// --- bd-368eaf, bd-1bd973, bd-7624ac: lane-aware foreground validation ---
++
++/// Resume nudges must preserve foreground safety while making hosted required
++/// CI, narrow exceptions, and non-hosted policy explicit.
++#[test]
++fn resumed_worker_nudge_reinforces_lane_aware_foreground_validation() {
++    let message = resumed_worker_nudge(Some("Implement bead bd-7624ac"), None, None);
++    for required in [
++        "directly in the foreground",
++        "smallest exact smoke",
++        "typed hosted queue with required CI",
++        "explicit reason and must stay narrow",
++        "Projects without equivalent hosted enforcement",
++        "run_in_background",
++        "task-output wait loop",
++    ] {
++        assert!(
++            message.contains(required),
++            "bd-7624ac: resume nudge must contain `{required}`, got: {message}"
++        );
++    }
++    for obsolete in ["`cargo test`", "`cargo build`", "`cargo clippy`"] {
++        assert!(
++            !message.contains(obsolete),
++            "bd-7624ac: resume nudge must not revive broad command `{obsolete}`, got: {message}"
+         );
++    }
+ }
+ 
+-/// bd-368eaf, bd-1bd973: Resume nudge without a goal must still carry validation guidance.
++/// A goal-less/assignment-audit worker nudge still carries lane-aware safety.
+ #[test]
+ fn resumed_worker_nudge_no_goal_still_has_direct_validation_guidance() {
+     let message = resumed_worker_nudge(None, None, None);
+     assert!(
+-        message.contains("cargo test"),
+-        "bd-1bd973: resume nudge without goal must still mention cargo test, got: {message}"
++        message.contains("smallest exact smoke")
++            && message.contains("typed hosted queue with required CI")
++            && message.contains("run_in_background"),
++        "bd-7624ac: resume nudge without goal must retain lane-aware foreground guidance, got: {message}"
+     );
+-    assert!(
+-            message.contains("run_in_background"),
+-            "bd-368eaf: resume nudge without goal must still warn against run_in_background, got: {message}"
+-        );
+ }
+ 
+ // --- bd-30bc72: Resume nudge must be profile-aware ---
+@@ -18238,8 +18236,8 @@ fn resumed_worker_nudge_project_controller_gets_controller_text() {
+         "bd-30bc72: project_controller nudge must not mention assigned bead, got: {message}"
+     );
+     assert!(
+-        !message.contains("cargo test"),
+-        "bd-30bc72: controller nudge should not include worker validation guidance, got: {message}"
++        !message.contains("typed hosted queue") && !message.contains("smallest exact smoke"),
++        "bd-30bc72/bd-7624ac: controller nudge should not include worker validation guidance, got: {message}"
+     );
+ }
+ 
+@@ -18257,7 +18255,8 @@ fn resumed_worker_nudge_cluster_controller_gets_controller_text() {
+     );
+ }
+ 
+-/// bd-30bc72: Workers (explicit scope) still get the bead-oriented nudge.
++/// bd-30bc72, bd-7624ac: Workers (explicit scope) get bead-oriented,
++/// lane-aware validation guidance without an unconditional broad Cargo revival.
+ #[test]
+ fn resumed_worker_nudge_explicit_worker_scope_gets_worker_text() {
+     let message = resumed_worker_nudge(Some("Implement bead bd-test"), Some("worker"), None);
+@@ -18266,8 +18265,17 @@ fn resumed_worker_nudge_explicit_worker_scope_gets_worker_text() {
+         "bd-30bc72: explicit worker scope must still get bead-oriented nudge, got: {message}"
+     );
+     assert!(
+-        message.contains("cargo test"),
+-        "bd-30bc72: explicit worker scope must include validation guidance, got: {message}"
++        message.contains("smallest exact smoke")
++            && message.contains("typed hosted queue with required CI")
++            && message.contains("Projects without equivalent hosted enforcement")
++            && message.contains("directly in the foreground"),
++        "bd-7624ac: explicit worker scope must include both conditional validation lanes, got: {message}"
++    );
++    assert!(
++        !message.contains("`cargo test`")
++            && !message.contains("`cargo build`")
++            && !message.contains("`cargo clippy`"),
++        "bd-7624ac: resume nudge must not revive unconditional broad Cargo commands, got: {message}"
+     );
+ }
+ 
+-- 
+2.53.0
+

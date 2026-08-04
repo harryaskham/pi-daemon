@@ -1,0 +1,127 @@
+From 71675ccf868f1f876e68786a80be9f4dec9d7b96 Mon Sep 17 00:00:00 2001
+From: Harry Askham <harryaskham@gmail.com>
+Date: Tue, 14 Jul 2026 22:17:07 +0100
+Subject: [PATCH] fix(ci): remove ambient awk from cache contract (bd-0e5d21)
+
+---
+ scripts/ci-cache-contract-smoke.sh | 61 +++++++++++++++++++++++++++---
+ scripts/ci-cache-contract.sh       | 12 ++++--
+ 2 files changed, 64 insertions(+), 9 deletions(-)
+
+diff --git a/scripts/ci-cache-contract-smoke.sh b/scripts/ci-cache-contract-smoke.sh
+index 4471759..9e965d0 100755
+--- a/scripts/ci-cache-contract-smoke.sh
++++ b/scripts/ci-cache-contract-smoke.sh
+@@ -13,11 +13,53 @@ export CARGO_HOME="$tmp/cargo"
+ mkdir -p "$HOME" "$SCCACHE_DIR" "$CARGO_HOME"
+ cd "$tmp"
+ 
++expect_contains() {
++  local file=$1 expected=$2 expectation=$3 line
++  if grep -Fq "$expected" "$file"; then
++    return 0
++  fi
++  printf 'ci-cache-contract-smoke: expectation failed: %s\n' "$expectation" >&2
++  printf 'expected fixed text: %s\n' "$expected" >&2
++  printf '%s\n' "--- captured $file ---" >&2
++  while IFS= read -r line || [[ -n "$line" ]]; do
++    printf '%s\n' "$line" >&2
++  done < "$file"
++  printf '%s\n' "--- end captured $file ---" >&2
++  exit 1
++}
++
++# The preparation job runs before Nix and must not regain an ambient awk
++# dependency.  Guard the source and poison PATH so both failure and success
++# fixtures prove the contract stays on the declared Bash/find/coreutils path.
++line_number=0
++while IFS= read -r line || [[ -n "$line" ]]; do
++  line_number=$((line_number + 1))
++  [[ "$line" =~ ^[[:space:]]*# ]] && continue
++  if [[ "$line" =~ (^|[^[:alnum:]_])awk([^[:alnum:]_]|$) ]]; then
++    printf 'ci-cache-contract-smoke: ambient awk source dependency at %s:%s: %s\n' \
++      "$script" "$line_number" "$line" >&2
++    exit 1
++  fi
++done < "$script"
++
++poison_bin="$tmp/poison-bin"
++awk_marker="$tmp/ambient-awk-invoked"
++mkdir -p "$poison_bin"
++cat > "$poison_bin/awk" <<'EOF'
++#!/bin/sh
++printf 'ambient awk invoked\n' > "${CI_CACHE_AWK_POISON_MARKER:?}"
++exit 97
++EOF
++chmod +x "$poison_bin/awk"
++export CI_CACHE_AWK_POISON_MARKER="$awk_marker"
++export PATH="$poison_bin:$PATH"
++
+ if "$script" assert-populated 1024 >empty.out 2>empty.err; then
+   echo 'ci-cache-contract-smoke: empty cache unexpectedly accepted' >&2
+   exit 1
+ fi
+-grep -Fq 'Implausibly empty CI cache' empty.err
++expect_contains empty.err 'Implausibly empty CI cache' \
++  'empty cache emits the typed refusal diagnostic'
+ 
+ mkdir -p "$SCCACHE_DIR/a" "$CARGO_HOME/registry/cache" .ci-green-cache/test
+ printf '%01024d' 0 > "$SCCACHE_DIR/a/object"
+@@ -25,9 +67,12 @@ printf 'crate' > "$CARGO_HOME/registry/cache/archive"
+ printf 'green' > .ci-green-cache/test/marker
+ GITHUB_OUTPUT="$tmp/output" GITHUB_STEP_SUMMARY="$tmp/summary" \
+   "$script" metrics fixture >metrics.out
+-grep -Fq 'phase=fixture total_files=2 total_bytes=1029' metrics.out
+-grep -Fq 'files=2' "$tmp/output"
+-grep -Fq 'bytes=1029' "$tmp/output"
++expect_contains metrics.out 'phase=fixture total_files=2 total_bytes=1029' \
++  'populated metrics report exact aggregate file and byte counts'
++expect_contains "$tmp/output" 'files=2' \
++  'GitHub output reports the populated file count'
++expect_contains "$tmp/output" 'bytes=1029' \
++  'GitHub output reports the populated byte count'
+ "$script" assert-populated 1024
+ 
+ # A 420-byte marker-only archive reproduces the historical false "cache hit"
+@@ -38,6 +83,12 @@ if "$script" assert-populated 1048576 .ci-green-cache >tiny.out 2>tiny.err; then
+   echo 'ci-cache-contract-smoke: 420-byte marker cache unexpectedly accepted' >&2
+   exit 1
+ fi
+-grep -Fq 'bytes=420 minimum_bytes=1048576' tiny.err
++expect_contains tiny.err 'bytes=420 minimum_bytes=1048576' \
++  'marker-only cache refusal reports exact bytes and minimum'
++
++if [[ -e "$awk_marker" ]]; then
++  printf 'ci-cache-contract-smoke: poisoned ambient awk was invoked\n' >&2
++  exit 1
++fi
+ 
+ echo 'ci-cache-contract-smoke: ok'
+diff --git a/scripts/ci-cache-contract.sh b/scripts/ci-cache-contract.sh
+index 7021985..dc7304a 100755
+--- a/scripts/ci-cache-contract.sh
++++ b/scripts/ci-cache-contract.sh
+@@ -20,12 +20,16 @@ default_paths=(
+ )
+ 
+ path_metrics() {
+-  local path=$1 files=0 bytes=0
++  local path=$1 files=0 bytes=0 size
+   if [[ -e "$path" ]]; then
+     if [[ -d "$path" ]]; then
+-      files=$(find "$path" -type f -printf '.' 2>/dev/null | wc -c)
+-      bytes=$(find "$path" -type f -printf '%s\n' 2>/dev/null \
+-        | awk '{ total += $1 } END { printf "%.0f", total + 0 }')
++      # Preparation runs before the Nix shell exists.  Sum the GNU find sizes
++      # with Bash arithmetic so this contract does not depend on ambient awk.
++      while IFS= read -r size; do
++        [[ "$size" =~ ^[0-9]+$ ]] || continue
++        files=$((files + 1))
++        bytes=$((bytes + size))
++      done < <(find "$path" -type f -printf '%s\n' 2>/dev/null)
+     else
+       files=1
+       bytes=$(wc -c < "$path")
+-- 
+2.53.0
+

@@ -1,0 +1,104 @@
+From b457773c3b02be9a4fdbb4b9d3d35102a03ed49f Mon Sep 17 00:00:00 2001
+From: Harry Askham <harryaskham@gmail.com>
+Date: Sun, 21 Jun 2026 19:18:17 +0200
+Subject: [PATCH] bd-5e0cf2: build_pr_body appends Beads footer for
+ repo-setting-independent PR-mode close-validation
+
+The PR-mode path (build_pr_body) did not carry the 'Beads: {ids}' footer that
+the direct/local_merge path adds via build_reintegration_commit_message_with_branch_ids.
+A gh pr merge --squash commit defaults its message to the PR body/title (per the
+repo squash_merge_commit_message setting), so without the footer in the body,
+caco bd close cannot find the bead-ID on main after a squash-PR-merge -> close
+validation fails. Harvest the agent branch's bead IDs (harvest_branch_bead_ids)
+and append the same 'Beads: {ids}' footer to the PR body so close-validation
+works independent of the repo squash-merge-message setting (bd-c26699 cutover
+prereq). +1 unit test.
+---
+ crates/caco-daemon/src/reintegration.rs | 43 ++++++++++++++++++++++++-
+ 1 file changed, 42 insertions(+), 1 deletion(-)
+
+diff --git a/crates/caco-daemon/src/reintegration.rs b/crates/caco-daemon/src/reintegration.rs
+index 68840bd13..3e22c1ac7 100644
+--- a/crates/caco-daemon/src/reintegration.rs
++++ b/crates/caco-daemon/src/reintegration.rs
+@@ -11498,7 +11498,17 @@ fn open_or_update_pr(req: OpenOrUpdatePrRequest<'_>) -> Result<(String, bool), D
+ 
+     // 2. No existing PR — create one.
+     let title = format!("[caco] {} -> {}", head_branch, base_branch,);
+-    let body = build_pr_body(agent, comment, state_branch, artefact_split);
++    // bd-5e0cf2: harvest the agent branch's bead IDs so build_pr_body can embed
++    // the `Beads:` footer -- close-validation must find the bead-ID in the squash-PR
++    // commit regardless of the repo's squash-merge-message setting.
++    let branch_bead_ids = harvest_branch_bead_ids(checkout, base, head_branch);
++    let body = build_pr_body(
++        agent,
++        comment,
++        state_branch,
++        artefact_split,
++        &branch_bead_ids,
++    );
+     let create = run_gh_command(
+         checkout,
+         &[
+@@ -11586,6 +11596,7 @@ fn build_pr_body(
+     comment: Option<&str>,
+     state_branch: &str,
+     artefact_split: Option<&crate::cacophony_state::ArtefactSplitOutcome>,
++    branch_bead_ids: &[String],
+ ) -> String {
+     let mut body = format!(
+         "Opened automatically by `caco agent reintegrate --branch` (bd-ce2015).\n\n\
+@@ -11616,6 +11627,15 @@ fn build_pr_body(
+             body.push('\n');
+         }
+     }
++    // bd-5e0cf2: append the `Beads: {ids}` footer so a squash-PR-merge commit
++    // carries the agent's bead IDs for close-validation, INDEPENDENT of the repo's
++    // squash_merge_commit_message setting. The direct/local_merge path already
++    // carries this via build_reintegration_commit_message_with_branch_ids; without
++    // it on the PR path, `caco bd close` cannot find the bead-ID on main after a
++    // squash-PR-merge whose commit message defaults to the PR body/title.
++    if !branch_bead_ids.is_empty() {
++        body.push_str(&format!("\nBeads: {}\n", branch_bead_ids.join(", ")));
++    }
+     body
+ }
+ 
+@@ -22467,6 +22487,7 @@ gh() {
+             Some("validation passed"),
+             "cacophony-state",
+             Some(&split),
++            &[],
+         );
+         assert!(body.contains("<!-- caco:summary:start -->"));
+         assert!(body.contains("State branch: `cacophony-state`"));
+@@ -22475,6 +22496,26 @@ gh() {
+         assert!(body.contains("validation passed"));
+     }
+ 
++    #[test]
++    fn build_pr_body_appends_beads_footer_for_close_validation_bd_5e0cf2() {
++        // bd-5e0cf2: the PR body must carry the `Beads: {ids}` footer so a
++        // squash-PR-merge commit contains the bead-ID for close-validation,
++        // independent of the repo's squash_merge_commit_message setting.
++        let agent = test_agent("agent/example");
++        let ids = vec!["bd-abc123".to_string(), "bd-def456".to_string()];
++        let body = build_pr_body(&agent, None, "cacophony-state", None, &ids);
++        assert!(
++            body.contains("Beads: bd-abc123, bd-def456"),
++            "PR body must carry the Beads footer for close-validation; got:\n{body}"
++        );
++
++        let empty = build_pr_body(&agent, None, "cacophony-state", None, &[]);
++        assert!(
++            !empty.contains("Beads:"),
++            "no Beads footer when there are no branch bead ids; got:\n{empty}"
++        );
++    }
++
+     #[test]
+     fn extract_json_string_field_reads_url_from_gh_output() {
+         let sample = r#"[{"number":42,"url":"https://github.com/o/r/pull/42"}]"#;
+-- 
+2.53.0
+

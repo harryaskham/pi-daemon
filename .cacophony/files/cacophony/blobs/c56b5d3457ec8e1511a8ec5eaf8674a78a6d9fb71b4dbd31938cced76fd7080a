@@ -1,0 +1,459 @@
+From 86ac91c1ca56e76d5c3787f128fb8b09f91406fc Mon Sep 17 00:00:00 2001
+From: Harry Askham <harryaskham@gmail.com>
+Date: Mon, 13 Jul 2026 04:21:10 +0100
+Subject: [PATCH] bd-b81dac: classify provider head reconciliation
+
+---
+ SPEC.md                                |   1 +
+ crates/caco-daemon/src/hosted_queue.rs | 416 +++++++++++++++++++++++++
+ 2 files changed, 417 insertions(+)
+
+diff --git a/SPEC.md b/SPEC.md
+index 154098e345..6551fa6449 100644
+--- a/SPEC.md
++++ b/SPEC.md
+@@ -5198,6 +5198,7 @@ Resolution rules:
+ - before hooks, state publication, branch push, PR lookup/create/update, queue trigger, link persistence, or a success receipt, every mutating reintegration/completion path must replace stale runtime assignment metadata with the authoritative `bead_store_reconciled` assignment set. A branch HEAD whose subject names a bead outside that set is refused with candidate source, canonical status/assignee/duplicate-target evidence, and recovery guidance; closed/deleted/duplicate/superseded/foreign historical bead IDs elsewhere in the landing range are excluded from `Beads:` and lifecycle metadata. An explicit empty authoritative assignment set permits a genuinely beadless operational generation but must never infer bead IDs from goal text, commit bodies, summaries, docs/diff prose, or stale `agent.json` fields (bd-806fb7)
+ - a later generation from the same stable agent stream may stack on an open predecessor generation instead of repeating its patch against the integration branch. `caco agent reintegrate --stack-parent <PR-or-generation>` is the explicit CLI/MCP surface; without it Caco may select only the nearest open immutable generation whose exact agent-branch namespace matches and whose fetched head is an ancestor of the child HEAD or whose exact binary patch reverse-applies cleanly to the child tree. Title/bead mentions, substring ownership, cross-agent candidates, provider-blocked/returned parents, and unproven patch similarity must never authorize stacking. The child PR base is the parent immutable head, its diff is therefore incremental, and PR metadata/output exposes the stack base and `blocked_on_parent` state. Reuse deterministically re-applies the desired base; after the parent merges, the same idempotent operation retargets the child to the configured integration base without rewriting the immutable child head or changing its semantic delta (bd-1ce4f9)
+ - when a hosted provider returns/rejects/conflicts a PR, retry must remain scoped to the original owner and PR generation. Before mutation, one provider-neutral verifier must require an open PR, durable bead link, exact owner/bead/immutable-generation identity, returned and current head evidence, a real head advance or explicit validated repair receipt, and no competing Track-A/native-auto owner; unchanged head, wrong owner/bead/generation, missing link, closed PR, or ambiguous provider state fail closed with stable reason codes. Block-absent + configured-trigger-present is idempotently already-requeued even while the asynchronously folded provider record is briefly stale (bd-25085f). After the corrected branch is published, the provider adapter must idempotently clear provider-blocking state and restore the configured queue trigger; until that automation exists, profile guidance may require the original owner to run the equivalent provider command (for Aviator: remove `blocked` and add `mergequeue`). No retry path may mutate another owner's PR or arm a competing Track-A/native lander
++- provider-authored PR head updates are classified against exact project/repository/PR/agent/bead/generation identity and retain submitted, previous-provider, observed-provider, and local-generation SHAs plus observation time. Duplicate/equal events are no-ops; stale/out-of-order or cross-identity events are ignored/refused; only a clean local generation proven ancestor of the provider head is fast-forward-ready. Dirty, local-ahead, provider-rewritten, diverged, missing-ref, fetch/auth-failed, or unknown-ancestry cases preserve both sides and return reconciliation-required with a safe first-party next action. An owner that moved to another bead may update only the isolated generation ref/worktree and must never have its current checkout switched/reset (bd-b81dac)
+ - the Cacophony project may run one project-scoped persistent `caco-merger` queue operator on its control-plane node. It is a read-mostly controller, not an implementation worker: it must use bounded/event-driven observation, route each actionable return once to the exact original owner or one authoritative successor, acquire the named `caco-merger` lease before queue mutations, reconcile closure only from matching provider/mainline evidence, and file only deduplicated measured optimization work for non-control-plane workers. It must never run application builds, spawn implementation workers on the control-plane node, mutate another owner's head, or race Aviator with Track A/native auto
+ - Aviator `mq-bot-*` draft PRs and workflow runs are provider-owned speculative state. Before classifying one as current or stale, queue operations must establish active batch/generation lineage from source PR heads. Current, stale, and ambiguous bot heads/runs must not be cancelled, closed, relabelled, rerun, or pushed by Cacophony; cancelling a current required run can fail every dependent speculative branch. Recovery is limited to routing the affected source PR back to its original owner for requeue after source checks are classified green; no bot-head mutation is permitted
+ - the unified merge-queue model must combine local receipts with provider observations using canonical states `published`, `enqueue_failed`, `queued`, `updating`, `checks_pending`, `blocked`, `merged`, `kicked/cancelled`, and `provider_error`; list/API/MCP and UI consumers expose provider, safe public PR link, check summary, blocked reason, age, and action owner, with project/provider/agent/bead filters
+diff --git a/crates/caco-daemon/src/hosted_queue.rs b/crates/caco-daemon/src/hosted_queue.rs
+index 0dd9a421e9..15583a4268 100644
+--- a/crates/caco-daemon/src/hosted_queue.rs
++++ b/crates/caco-daemon/src/hosted_queue.rs
+@@ -295,6 +295,286 @@ pub fn assess_hosted_repair_resubmit(
+     }
+ }
+ 
++#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
++#[serde(rename_all = "snake_case")]
++pub enum HostedHeadRelation {
++    Equal,
++    LocalAncestorOfProvider,
++    ProviderAncestorOfLocal,
++    Diverged,
++    Unknown,
++}
++
++#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
++pub struct HostedProviderHeadEvidence {
++    pub expected_project: String,
++    pub observed_project: String,
++    pub expected_repository: String,
++    pub observed_repository: String,
++    pub expected_pr_number: u64,
++    pub observed_pr_number: u64,
++    pub expected_agent_id: String,
++    pub observed_agent_id: String,
++    pub expected_bead_id: String,
++    pub observed_bead_id: String,
++    pub expected_generation: String,
++    pub observed_generation: String,
++    pub submitted_sha: String,
++    pub previous_provider_sha: Option<String>,
++    pub previous_observed_at: Option<DateTime<Utc>>,
++    pub observed_provider_sha: Option<String>,
++    pub observed_at: DateTime<Utc>,
++    pub local_generation_sha: Option<String>,
++    pub local_relation_to_provider: HostedHeadRelation,
++    pub local_dirty: bool,
++    pub owner_current_bead_id: Option<String>,
++    pub fetch_error: Option<String>,
++}
++
++#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
++#[serde(rename_all = "snake_case")]
++pub enum HostedProviderHeadState {
++    Unchanged,
++    FastForwardReady,
++    ReconciliationRequired,
++    Ignored,
++    Refused,
++}
++
++#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
++#[serde(rename_all = "snake_case")]
++pub enum HostedProviderHeadCode {
++    Unchanged,
++    DuplicateEvent,
++    FastForward,
++    ProviderRewrite,
++    DirtyLocalGeneration,
++    LocalAhead,
++    Diverged,
++    MissingAncestryEvidence,
++    StaleEvent,
++    IdentityMismatch,
++    MissingProviderHead,
++    MissingLocalGeneration,
++    FetchUnavailable,
++}
++
++#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
++pub struct HostedProviderHeadAssessment {
++    pub state: HostedProviderHeadState,
++    pub code: HostedProviderHeadCode,
++    pub message: String,
++    pub submitted_sha: String,
++    pub previous_provider_sha: Option<String>,
++    pub provider_sha: Option<String>,
++    pub local_generation_sha: Option<String>,
++    pub owner_moved_on: bool,
++    pub safe_next_action: String,
++}
++
++fn normalize_sha(value: &str) -> String {
++    value.trim().to_ascii_lowercase()
++}
++
++fn provider_head_assessment(
++    evidence: &HostedProviderHeadEvidence,
++    state: HostedProviderHeadState,
++    code: HostedProviderHeadCode,
++    message: impl Into<String>,
++    next: impl Into<String>,
++) -> HostedProviderHeadAssessment {
++    HostedProviderHeadAssessment {
++        state,
++        code,
++        message: message.into(),
++        submitted_sha: evidence.submitted_sha.clone(),
++        previous_provider_sha: evidence.previous_provider_sha.clone(),
++        provider_sha: evidence.observed_provider_sha.clone(),
++        local_generation_sha: evidence.local_generation_sha.clone(),
++        owner_moved_on: evidence
++            .owner_current_bead_id
++            .as_deref()
++            .is_some_and(|bead| bead != evidence.expected_bead_id),
++        safe_next_action: next.into(),
++    }
++}
++
++/// Pure provider-head update classifier for an isolated immutable generation.
++/// Git ancestry/fetch evidence is supplied by the caller; this function never
++/// touches refs, worktrees, or the author's current checkout (bd-b81dac).
++pub fn assess_provider_head_update(
++    evidence: &HostedProviderHeadEvidence,
++) -> HostedProviderHeadAssessment {
++    let identity_matches = evidence.expected_project == evidence.observed_project
++        && evidence.expected_repository == evidence.observed_repository
++        && evidence.expected_pr_number == evidence.observed_pr_number
++        && evidence.expected_agent_id == evidence.observed_agent_id
++        && evidence.expected_bead_id == evidence.observed_bead_id
++        && evidence.expected_generation == evidence.observed_generation;
++    if !identity_matches {
++        return provider_head_assessment(
++            evidence,
++            HostedProviderHeadState::Refused,
++            HostedProviderHeadCode::IdentityMismatch,
++            "provider-head event does not match the exact project/repository/PR/agent/bead/generation",
++            "preserve every local ref and route the event to the matching generation owner",
++        );
++    }
++    if let Some(error) = evidence
++        .fetch_error
++        .as_deref()
++        .filter(|error| !error.trim().is_empty())
++    {
++        return provider_head_assessment(
++            evidence,
++            HostedProviderHeadState::ReconciliationRequired,
++            HostedProviderHeadCode::FetchUnavailable,
++            format!("provider head could not be fetched: {}", error.trim()),
++            "retry the first-party exact-PR fetch after auth/connectivity recovers; do not reset or force",
++        );
++    }
++    let Some(provider_sha) = evidence
++        .observed_provider_sha
++        .as_deref()
++        .map(normalize_sha)
++        .filter(|sha| !sha.is_empty())
++    else {
++        return provider_head_assessment(
++            evidence,
++            HostedProviderHeadState::ReconciliationRequired,
++            HostedProviderHeadCode::MissingProviderHead,
++            "provider event has no usable head SHA",
++            "re-read the exact PR head through the configured provider wrapper",
++        );
++    };
++    let Some(local_sha) = evidence
++        .local_generation_sha
++        .as_deref()
++        .map(normalize_sha)
++        .filter(|sha| !sha.is_empty())
++    else {
++        return provider_head_assessment(
++            evidence,
++            HostedProviderHeadState::ReconciliationRequired,
++            HostedProviderHeadCode::MissingLocalGeneration,
++            "managed state has no local generation head",
++            "materialize/recover the isolated generation ref; never switch or reset unrelated current work",
++        );
++    };
++
++    if let Some(previous_at) = evidence.previous_observed_at {
++        if evidence.observed_at < previous_at {
++            let duplicate = evidence
++                .previous_provider_sha
++                .as_deref()
++                .is_some_and(|previous| normalize_sha(previous) == provider_sha);
++            return provider_head_assessment(
++                evidence,
++                HostedProviderHeadState::Ignored,
++                if duplicate {
++                    HostedProviderHeadCode::DuplicateEvent
++                } else {
++                    HostedProviderHeadCode::StaleEvent
++                },
++                if duplicate {
++                    "duplicate older provider-head event is already reflected"
++                } else {
++                    "out-of-order provider-head event is older than the durable observation"
++                },
++                "no action",
++            );
++        }
++    }
++    if evidence
++        .previous_provider_sha
++        .as_deref()
++        .is_some_and(|previous| normalize_sha(previous) == provider_sha)
++        && evidence.local_relation_to_provider == HostedHeadRelation::Equal
++    {
++        return provider_head_assessment(
++            evidence,
++            HostedProviderHeadState::Unchanged,
++            HostedProviderHeadCode::DuplicateEvent,
++            "provider and local generation heads are already reconciled",
++            "no action",
++        );
++    }
++    if local_sha == provider_sha || evidence.local_relation_to_provider == HostedHeadRelation::Equal
++    {
++        return provider_head_assessment(
++            evidence,
++            HostedProviderHeadState::Unchanged,
++            HostedProviderHeadCode::Unchanged,
++            "local generation already equals the observed provider head",
++            "record the observation idempotently; do not touch the author's current checkout",
++        );
++    }
++    if evidence.local_dirty {
++        return provider_head_assessment(
++            evidence,
++            HostedProviderHeadState::ReconciliationRequired,
++            HostedProviderHeadCode::DirtyLocalGeneration,
++            "local isolated generation worktree is dirty; provider update cannot be applied safely",
++            "preserve local changes and report submitted/local/provider SHAs for explicit repair",
++        );
++    }
++
++    match evidence.local_relation_to_provider {
++        HostedHeadRelation::LocalAncestorOfProvider => provider_head_assessment(
++            evidence,
++            HostedProviderHeadState::FastForwardReady,
++            HostedProviderHeadCode::FastForward,
++            "clean isolated generation can fast-forward to the observed provider head",
++            if evidence
++                .owner_current_bead_id
++                .as_deref()
++                .is_some_and(|bead| bead != evidence.expected_bead_id)
++            {
++                "fast-forward only the isolated generation ref/worktree and notify the owner; do not switch its current bead checkout"
++            } else {
++                "fast-forward the exact isolated generation through the first-party reconciliation path"
++            },
++        ),
++        HostedHeadRelation::ProviderAncestorOfLocal => provider_head_assessment(
++            evidence,
++            HostedProviderHeadState::ReconciliationRequired,
++            HostedProviderHeadCode::LocalAhead,
++            "local generation contains commits beyond the provider head",
++            "preserve the local generation and require explicit owner reconciliation; never reset or force",
++        ),
++        HostedHeadRelation::Diverged => {
++            let local_was_known_provider = evidence
++                .previous_provider_sha
++                .as_deref()
++                .is_some_and(|previous| normalize_sha(previous) == local_sha)
++                || normalize_sha(&evidence.submitted_sha) == local_sha;
++            provider_head_assessment(
++                evidence,
++                HostedProviderHeadState::ReconciliationRequired,
++                if local_was_known_provider {
++                    HostedProviderHeadCode::ProviderRewrite
++                } else {
++                    HostedProviderHeadCode::Diverged
++                },
++                if local_was_known_provider {
++                    "provider rewrote/rebased the queued PR head; local generation must not be auto-reset"
++                } else {
++                    "local and provider generation histories diverged"
++                },
++                "preserve both heads and route an explicit first-party rebase/repair against the latest provider SHA",
++            )
++        }
++        HostedHeadRelation::Unknown => provider_head_assessment(
++            evidence,
++            HostedProviderHeadState::ReconciliationRequired,
++            HostedProviderHeadCode::MissingAncestryEvidence,
++            "provider/local ancestry is unknown",
++            "fetch and classify exact generation ancestry before any ref mutation",
++        ),
++        HostedHeadRelation::Equal => unreachable!("equal relation returned above"),
++    }
++}
++
+ /// Reduce GitHub evidence emitted by Aviator to the canonical state machine.
+ /// Comment matching is intentionally conservative; checks and merged status are
+ /// authoritative and comments only distinguish queue phases/reasons.
+@@ -728,6 +1008,142 @@ mod tests {
+         );
+     }
+ 
++    fn provider_head_evidence() -> HostedProviderHeadEvidence {
++        let now = Utc::now();
++        HostedProviderHeadEvidence {
++            expected_project: "cacophony".into(),
++            observed_project: "cacophony".into(),
++            expected_repository: "harryaskham/cacophony".into(),
++            observed_repository: "harryaskham/cacophony".into(),
++            expected_pr_number: 42,
++            observed_pr_number: 42,
++            expected_agent_id: "agent-a".into(),
++            observed_agent_id: "agent-a".into(),
++            expected_bead_id: "bd-a".into(),
++            observed_bead_id: "bd-a".into(),
++            expected_generation: "generation-a".into(),
++            observed_generation: "generation-a".into(),
++            submitted_sha: "aaaa".into(),
++            previous_provider_sha: Some("aaaa".into()),
++            previous_observed_at: Some(now - chrono::Duration::minutes(1)),
++            observed_provider_sha: Some("bbbb".into()),
++            observed_at: now,
++            local_generation_sha: Some("aaaa".into()),
++            local_relation_to_provider: HostedHeadRelation::LocalAncestorOfProvider,
++            local_dirty: false,
++            owner_current_bead_id: Some("bd-a".into()),
++            fetch_error: None,
++        }
++    }
++
++    #[test]
++    fn provider_head_clean_fast_forward_and_moved_owner_bd_b81dac() {
++        let mut evidence = provider_head_evidence();
++        let fast_forward = assess_provider_head_update(&evidence);
++        assert_eq!(
++            fast_forward.state,
++            HostedProviderHeadState::FastForwardReady
++        );
++        assert_eq!(fast_forward.code, HostedProviderHeadCode::FastForward);
++        assert!(!fast_forward.owner_moved_on);
++        assert_eq!(fast_forward.provider_sha.as_deref(), Some("bbbb"));
++
++        evidence.owner_current_bead_id = Some("bd-later".into());
++        let moved = assess_provider_head_update(&evidence);
++        assert_eq!(moved.state, HostedProviderHeadState::FastForwardReady);
++        assert!(moved.owner_moved_on);
++        assert!(moved.safe_next_action.contains("isolated generation"));
++        assert!(moved.safe_next_action.contains("do not switch"));
++    }
++
++    #[test]
++    fn provider_head_dirty_ahead_and_diverged_are_preserved_bd_b81dac() {
++        let mut evidence = provider_head_evidence();
++        evidence.local_dirty = true;
++        assert_eq!(
++            assess_provider_head_update(&evidence).code,
++            HostedProviderHeadCode::DirtyLocalGeneration
++        );
++
++        evidence = provider_head_evidence();
++        evidence.local_relation_to_provider = HostedHeadRelation::ProviderAncestorOfLocal;
++        assert_eq!(
++            assess_provider_head_update(&evidence).code,
++            HostedProviderHeadCode::LocalAhead
++        );
++
++        evidence = provider_head_evidence();
++        evidence.local_relation_to_provider = HostedHeadRelation::Diverged;
++        assert_eq!(
++            assess_provider_head_update(&evidence).code,
++            HostedProviderHeadCode::ProviderRewrite
++        );
++
++        evidence.local_generation_sha = Some("cccc".into());
++        assert_eq!(
++            assess_provider_head_update(&evidence).code,
++            HostedProviderHeadCode::Diverged
++        );
++    }
++
++    #[test]
++    fn provider_head_duplicate_stale_and_equal_events_are_harmless_bd_b81dac() {
++        let mut evidence = provider_head_evidence();
++        evidence.local_generation_sha = Some("bbbb".into());
++        evidence.local_relation_to_provider = HostedHeadRelation::Equal;
++        let equal = assess_provider_head_update(&evidence);
++        assert_eq!(equal.state, HostedProviderHeadState::Unchanged);
++        assert_eq!(equal.code, HostedProviderHeadCode::Unchanged);
++
++        evidence.previous_provider_sha = Some("bbbb".into());
++        let duplicate = assess_provider_head_update(&evidence);
++        assert_eq!(duplicate.code, HostedProviderHeadCode::DuplicateEvent);
++
++        evidence.observed_at =
++            evidence.previous_observed_at.unwrap() - chrono::Duration::seconds(1);
++        evidence.observed_provider_sha = Some("cccc".into());
++        let stale = assess_provider_head_update(&evidence);
++        assert_eq!(stale.state, HostedProviderHeadState::Ignored);
++        assert_eq!(stale.code, HostedProviderHeadCode::StaleEvent);
++    }
++
++    #[test]
++    fn provider_head_identity_missing_and_fetch_fail_closed_bd_b81dac() {
++        let mut evidence = provider_head_evidence();
++        evidence.observed_generation = "generation-other".into();
++        assert_eq!(
++            assess_provider_head_update(&evidence).code,
++            HostedProviderHeadCode::IdentityMismatch
++        );
++
++        evidence = provider_head_evidence();
++        evidence.observed_provider_sha = None;
++        assert_eq!(
++            assess_provider_head_update(&evidence).code,
++            HostedProviderHeadCode::MissingProviderHead
++        );
++
++        evidence = provider_head_evidence();
++        evidence.local_generation_sha = None;
++        assert_eq!(
++            assess_provider_head_update(&evidence).code,
++            HostedProviderHeadCode::MissingLocalGeneration
++        );
++
++        evidence = provider_head_evidence();
++        evidence.fetch_error = Some("auth unavailable".into());
++        let fetch = assess_provider_head_update(&evidence);
++        assert_eq!(fetch.code, HostedProviderHeadCode::FetchUnavailable);
++        assert!(fetch.safe_next_action.contains("do not reset or force"));
++
++        evidence = provider_head_evidence();
++        evidence.local_relation_to_provider = HostedHeadRelation::Unknown;
++        assert_eq!(
++            assess_provider_head_update(&evidence).code,
++            HostedProviderHeadCode::MissingAncestryEvidence
++        );
++    }
++
+     #[test]
+     fn unsafe_links_are_rejected_bd_5005d9() {
+         assert!(safe_pr_url("https://github.com/o/r/pull/12").is_some());
+-- 
+2.53.0
+

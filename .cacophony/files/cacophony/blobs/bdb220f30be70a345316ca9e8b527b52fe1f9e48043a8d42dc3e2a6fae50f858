@@ -1,0 +1,102 @@
+# macOS Companion — UX Revamp Exploration (2026)
+
+**Status:** Exploratory first cut for operator review. Design DIRECTION is the operator's call — this proposes options to react to, not a committed design. Parallel to the Android UX redesign spike (`companion/android/docs/ux-revamp-2026.md`).
+
+**Author:** caco-macos-0 · 2026-06-21 (overnight, per operator directive) · bead bd-76c84e
+
+---
+
+## 1. Why now
+
+The macOS companion is no longer bare — it has *matured* into a feature-rich operator console. That maturity is the design problem worth exploring: the app now exposes **23 sections across 5 sidebar groups**, and the question is no longer "what to add" but "how to make a deep app feel calm, fast, and obvious."
+
+This is the macOS counterpart to the Android UX exploration: current-state grounding, observed pain points, a few candidate directions, wireframe sketches, and open questions for you to steer.
+
+## 2. Current state (grounded in the actual app)
+
+**Shell:** `NavigationSplitView` — a grouped, searchable, pinnable sidebar + a single "glass" detail canvas (native `.regularMaterial` blur, always-active behind-window translucency).
+
+**Sidebar — 23 sections / 5 groups:**
+
+| Group | Sections |
+|---|---|
+| **Overview** | Status · Lenses · Nodes · Agents · TUI · Pico · Beads |
+| **Communication** | Chat · Inbox · Controls |
+| **Operations** | Operations · Workspace · Files · Links · Summaries · Suggestions |
+| **Diagnostics** | Diagnostics · Inspector |
+| **Administration** | Admin · Audio · Settings |
+
+**Already strong (keep all of this):**
+- Command palette (⌘K), ⌘-number shortcuts (⌘1 Status … ⌘9 Admin, ⌘, Settings), ⌘R refresh.
+- Sidebar search/filter, Favorites (pin sections), compact-density toggle, collapsible groups.
+- Per-pane persisted detail selections; a "return to global scope" affordance so you're never stuck nested.
+- HIG accessibility (reduce-motion-aware transitions, accessibility hints throughout).
+
+So the bones are good. The opportunities below are about *information architecture*, *workflow*, and *visual polish* — not missing features.
+
+## 3. Observed pain points / opportunities
+
+**P1 — Section sprawl (23 top-level rooms).** Five groups help, but 23 is a lot to scan, and several sections are adjacent in purpose:
+- *Status · Lenses · Nodes* are all "look at the fleet."
+- *Diagnostics · Inspector · Admin* are all "inspect / configure."
+- *Operations · Workspace · Files · Links · Summaries · Suggestions* is a six-section grab-bag.
+
+**P2 — Nouns, not verbs.** The app is organized by *things* (sections), not by what you're *doing* (monitor · triage work · talk to agents · operate the fleet · inspect). Cross-section workflows — bead → its assigned agent → that agent's terminal, or a chat bubble → that agent's detail — require manual hops.
+
+**P3 — One detail pane at a time.** The Workspace section hints at multi-pane, but it's one of 23, not the default model. Operators often want two contexts at once (an agent terminal + the bead it's on; chat + status).
+
+**P4 — Depth isn't visible.** Each pane is rich, but that depth isn't obvious from the sidebar; search + ⌘K mitigate it, but breadth still dominates first impressions.
+
+**P5 — Visual language can mature.** The glass aesthetic is established; hierarchy, density, typography, motion, and empty/onboarding/not-connected states are the next refinement.
+
+## 4. Candidate directions
+
+A/B/C are IA/interaction options (pick one as the spine); **D is an orthogonal visual layer** that applies under any of them.
+
+### Direction A — "Fewer, clearer rooms" (IA consolidation) — lowest risk
+Collapse 23 → ~12–14 top-level rooms by merging adjacent purposes, each room with internal tabs/segments:
+- **Fleet** = Status + Lenses + Nodes (one hub, sub-tabs)
+- **Inspect** = Diagnostics + Inspector + Admin
+- **Library** = Files + Links + Summaries (+ Suggestions)
+- Keep Agents · Beads · Chat · Inbox · Operations · Workspace · Pico · TUI · Audio · Settings first-class.
+
+Everything stays reachable; the *top level* gets calmer. Mostly a reorganization of the existing `sidebarGroups` + per-room tab hosts — small, incremental, shippable in slices.
+
+### Direction B — "Verbs, not nouns" (workflow-first) — boldest
+Reframe the primary nav around operator intents, with the 23 sections as building blocks pulled in contextually:
+- **Monitor** — status / nodes / lenses / diagnostics at a glance
+- **Work** — beads → assigned agent → terminal, in one flow
+- **Converse** — chat / inbox / pico / agent-detail, threaded
+- **Operate** — operations / controls / releases / admin
+
+Highest payoff for "what do I do next," highest design cost. Could ship as a new top-level "mode switcher" layered over the existing sections.
+
+### Direction C — "Your panes, your layout" (workspace-centric) — power-operator
+Promote the Workspace split-pane model from one-of-23 to the **default shell**: the sidebar becomes a launcher, and you compose a multi-pane layout (agent terminal + bead detail + chat side by side), with saved layouts per task — mirroring caco-web's workspace contract. Best for heavy multitasking; needs a solid pane/tab manager.
+
+### Direction D — Visual modernization (orthogonal, continuous)
+Under any of A/B/C: tighten hierarchy and spacing, adaptive density (auto-compact in narrow windows), refined typography, purposeful (reduce-motion-aware) motion, and richer empty/onboarding/not-connected states. Lowest-risk, always-applicable polish.
+
+## 5. Wireframes
+
+See `companion/macos/docs/mockups/`:
+- `macos-ux-current.svg` — today's 23-section grouped sidebar + single glass detail (reference)
+- `macos-ux-direction-a.svg` — consolidated "rooms" sidebar + in-room tabs
+- `macos-ux-direction-c.svg` — workspace-centric multi-pane shell
+
+(Schematic box-and-label sketches, not pixel comps — meant to make the IA/layout options concrete enough to react to.)
+
+## 6. Open questions (for you to steer)
+
+1. **Appetite:** incremental polish (A + D) or a bolder rethink (B or C)?
+2. **The 23 → how many?** Is consolidation welcome, or do you value every section being exactly one click away?
+3. **Single-pane vs multi-pane default** — do you multitask enough to want C's workspace shell?
+4. **Cross-surface parity** — should the macOS IA converge with caco-web/Android, or stay macOS-native-idiomatic?
+5. **Priorities** — which 1–2 of P1–P5 actually bug you most in daily use?
+
+## 7. Non-goals / what stays
+
+- No feature removal — every current capability stays reachable.
+- Keep it macOS-native (NavigationSplitView, materials, ⌘-shortcuts, HIG accessibility) — not a cross-platform reskin.
+- Keep the command palette + keyboard-first ergonomics.
+- This is exploration; nothing here lands without your direction.

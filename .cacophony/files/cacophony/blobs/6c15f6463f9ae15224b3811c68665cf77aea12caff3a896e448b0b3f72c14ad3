@@ -1,0 +1,386 @@
+From cc98cf8e1366bfec4d3f83bbe53ad7d983f000cf Mon Sep 17 00:00:00 2001
+From: Harry Askham <harryaskham@gmail.com>
+Date: Mon, 13 Jul 2026 04:31:00 +0100
+Subject: [PATCH] bd-57ade7: classify config profile CI deltas
+
+---
+ README.md                          |   2 +
+ SPEC.md                            |   1 +
+ scripts/ci_change_classify.py      | 216 +++++++++++++++++++++++++++++
+ scripts/ci_change_classify_test.py | 116 ++++++++++++++++
+ 4 files changed, 335 insertions(+)
+ create mode 100755 scripts/ci_change_classify.py
+ create mode 100755 scripts/ci_change_classify_test.py
+
+diff --git a/README.md b/README.md
+index 4596c39f29..544d3dce10 100644
+--- a/README.md
++++ b/README.md
+@@ -847,6 +847,8 @@ Linux GitHub Actions runners use the Node runtime from their immutable Nix runne
+ GitHub’s generated `Dependabot Updates` workflow is also part of the default-branch CI contract even though it is not checked into `.github/workflows/`: it appears in Actions as `dynamic/dependabot/dependabot-updates`. Keep at least one Linux self-hosted runner registered with the custom `dependabot` label and a working Docker installation, because GitHub’s Dependabot job verifies `docker info` before it starts update execution. If that label disappears the workflow stays queued indefinitely; if Docker is missing it starts and then fails in the runner-dependency bootstrap step. The external Linux runner setup currently derives its PATH from this repository’s default Linux `nix develop` shell, so `flake.nix` must continue to expose the Docker CLI there as well; host/system config still remains responsible for the running daemon and socket access.
+ Managed workers on shared Cacophony hosts do not automatically resubmit intercepted heavyweight commands as a ready-time validation ritual. For normal typed-Aviator work, hosted CI owns the broad gate; use only a tiny targeted development smoke when uncertain, then submit. The daemon `caco test` / `caco build` queues remain for explicit non-hosted policy, uncovered platform/device acceptance, test-infrastructure work, safety reproduction, or narrow diagnosis of a reported CI failure. Direct Bash tool calls such as broad `cargo test`, `cargo clippy`, `cargo build`, `cargo check`, `nix build`, and heavyweight build/test `just` recipes are intercepted; when an explicit exception genuinely requires them, route them through `caco test run --wait --command "<same command>"` or `caco build run --wait --command "<same command>"`. The same managed-worker hook chain denies high-risk shell commands before execution — for example `sudo`, firewall tools (`nft`, `iptables`, `ufw`, `firewall-cmd`, `pfctl`), service stop/restart/kickstart commands, broad process kills, destructive `.git`/`.cacophony`/daemon-state deletion, `git push --force`, and `git reset --hard` — and directs agents to explicit operator/controller approval or first-party Cacophony surfaces instead. The queued job executes in the resolved `cwd` from the enqueue payload; for agent-branch validation, run the command from the agent checkout (or pass `--cwd "$PWD"`) and use `caco test run --print --command "<same command>"` to preview which checkout the daemon will use. Uncommitted files are visible only if they already exist in that resolved checkout when the queued job starts; the queue does not copy WIP into the canonical daemon checkout. Queue state is persisted on disk, so daemon restarts re-pend queued jobs and reconcile in-flight detached test/build jobs with their real processes: a still-live leader is re-adopted, a job that finished while the daemon was down is finalized from its durable exit status, and only an unrecoverable job falls back to a retryable infrastructure error (`retryable: true`, `failure_kind: "daemon_restart_recovered"`) with artifact paths and recovery hints rather than silently losing the job ID. Recovered queued-test errors additionally include concrete retry metadata (`retry_after_secs` plus a first-party retry command) so agents do not have to invent daemon-stability backoff by hand. Queued cargo-test jobs that report zero executed tests while filtering out tests fail validation by default and include a warning about Cargo's substring filters; failed and measured test-result rows count as real execution, so genuinely failing targeted tests are not mislabeled as zero-executed filter mistakes. Set `CACO_ALLOW_ZERO_EXECUTED_CARGO_TESTS=1` (or legacy `CACO_ALLOW_ZERO_TESTS=1`) in the queued command only when a zero-test cargo invocation is intentional. Once a queued test/build enters `running`, `caco test logs` / `caco build logs` expose a small progress marker with job ID, start time, command, and cwd even before the child process has produced terminal output. While `caco test run --wait` or `caco build run --wait` is still queued/running, the CLI periodically reports queue placement in human-readable mode and includes `data.wait_progress` on JSON timeouts when the queue list is available. Test and build jobs append an early Cargo package-cache lock diagnostic for Cargo/Rust commands that remain without durable output after the shorter of 60 seconds or 25% of `maxRuntimeSecs`, then append broader Cargo/Rust silence diagnostics at 80% of `maxRuntimeSecs`, including target-directory lock markers and a short `ps` snapshot of visible `cargo` / `rustc` / `sccache` processes. If queued-test stdout/stderr artifact writes fail with ENOSPC, or if the captured child output itself reports ENOSPC / `No space left on device`, the job is marked retryable with `failure_kind: "disk_exhaustion"`, retry metadata, and a recovery hint to free disk before trusting or retrying the result; Rust/Cargo hints point at `caco prune run --cargo-targets`, `caco prune run --cargo-targets --current-agent` from a managed worker, `--nonzero-only` for concise previews, copied Pi package-cache cleanup via `caco prune run --pi-package-cache --current-agent`, or an isolated `CARGO_TARGET_DIR`. Doctor/disk breakdown reports copied non-symlink `.pi-agent/git` directories as `agent_pi_package_cache_copies`, legacy daemon-owned Pi JSONL history under `.pi-agent/sessions` as `agent_pi_session_history`, and large runtime hot spots such as `daemon_checkouts`, `build_artifacts`, `test_artifacts`, `daemon_build_target`, `tui_logs`, and `state_branches`, so operators can find legacy package-cache, session-history, or runtime-artifact bloat before it becomes host-level disk pressure; current managed Pi launches use Pi-owned external session storage via `PI_CODING_AGENT_SESSION_DIR=~/.pi/agent/sessions/`, which Cacophony cleanup/retention must not mutate, and name each Pi session from the stable Cacophony agent ID via Pi's native `--name <agent-id>` startup flag. Preview legacy Pi history cleanup with `caco agent clear-history --id <agent> --dry-run --keep-last <n>`, or list/trim selected agents with `caco prune run --pi-session-history --dry-run --nonzero-only`, before mutating daemon-owned legacy history. When explicitly invoked for an allowed exception, the Cacophony project queues use serial, low-threaded defaults (`cargo test-small` and `cargo build --jobs 2`) to avoid rustc/qemu contention on shared operator nodes. When a concrete development uncertainty, test-infrastructure bead, or returned CI failure requires a small `caco-daemon` helper/unit reproduction, use `just caco-daemon-helper-test <filter>` (or `just caco-daemon-helper-test-exact <path>`) so the explicit diagnostic uses the queued, lib-only `RUST_MIN_STACK=33554432 cargo test -p caco-daemon --lib ... -- --test-threads=1` lane with a 3600-second cold-compile budget instead of accidentally compiling broader daemon targets locally or hitting the generic queue timeout. The equivalent explicit caco-cli file-cache/file-command diagnostic is `just caco-cli-file-cmd-test <filter>`; it uses the queue with a 3600-second default because cold `caco-cli` file-command tests currently compile enough daemon dependencies to exceed the generic queue budget on shared hosts. When the same explicit exception needs focused single-crate clippy, use `just clippy-preflight <crate>` (or `scripts/clippy-preflight.sh <crate>`, with `--tests` / `--all-targets` scope variants and `--print` to emit the queued command via `just clippy-preflight-print <crate>`); it runs `cargo clippy -p <crate> -- -D warnings`, streams the JSON diagnostics, and reports target-crate lint failures separately from dependency-crate lint debt so agents can distinguish "my touched crate" failures from pre-existing dependency lint debt. Source-only/lightweight checks remain fine when they do not spawn heavyweight compilers/emulators or privileged/destructive host changes. Use `cargo test` or `just test-large` only through an explicit queued command or an operator-approved dedicated validation lane. Android companion QA coordinated from shared macOS/operator hosts must keep emulator/QEMU work on the configured remote Android builder; do not start local Android emulator or AVD processes there unless the operator explicitly approves a one-off exception.
+ 
++`scripts/ci_change_classify.py` is the token-free/fork-safe path-classifier foundation for the future config/profile fast lane. Callers pass an exact PR-delta paths file or explicit PR/stack base and head; it emits stable JSON/GitHub outputs and fails conservatively to `full` for empty, malformed, unknown, Rust, workflow, or platform deltas. It is not itself workflow wiring: required check-context preservation and lightweight profile validation composition remain dependent slices.
++
+ The project targets Rust edition 2021 with a minimum Rust version of 1.91.
+ 
+ ### Integration Testing
+diff --git a/SPEC.md b/SPEC.md
+index 6551fa6449..ade0d6d251 100644
+--- a/SPEC.md
++++ b/SPEC.md
+@@ -5192,6 +5192,7 @@ Resolution rules:
+ - force/bypass landing is not a routine authoring-agent fallback; it is reserved for an operator/controller-classified critical change through an explicit audited first-party route
+ - a project may select a typed hosted merge queue for PR-backed direct intent; hosted submission is a handoff, so success means the PR is durably enqueued and explicitly reported as pending rather than falsely reported as landed
+ - when a typed hosted queue has authoritative required CI, normal ready-time validation belongs to that hosted lane: authoring agents must not run a final local or daemon-queued test/check/clippy/build/docs gate that CI will immediately repeat. During implementation they may run only the smallest exact smoke needed for a concrete uncertainty; broader local validation requires explicit missing hosted coverage, test-infrastructure, safety reproduction, device/platform acceptance, CI-failure diagnosis, or operator direction. Projects without equivalent hosted enforcement retain their configured validation policy
++- CI path classification must consume the exact PR/stack delta selected by the caller, remain token-free/fork-safe, and fail to full lanes on empty, malformed, unreadable, unknown, workflow, Rust, or platform paths. The reusable classifier foundation emits stable `config-profile-only` vs `full` JSON/GitHub outputs for conservative checked-in `.cacophony` YAML/profile/instruction sources and explicit generated profile/plugin/docs artifacts; workflow wiring must preserve required check contexts and may not infer a broader ancestor-stack diff (bd-57ade7)
+ - hosted-queue policy must be default-off, reuse the project's configured `gh` wrapper, preserve the agent-specific PR branch and `pr-in-flight` bead marker, fail closed when enqueueing fails, and suppress native auto-merge plus the daemon Track-A land queue for that PR so two landers cannot race
+ - when the effective project enables typed hosted_queue, a nonpersistent worker must not local-direct land or silently fall back to `pr_review`: it calls reintegrate with no mode/backend override, effective direct intent routes through the pull-request backend, Caco ensures the hosted trigger and records queue ownership, and explicit `pr_auto_merge`/native auto is refused. The worker/bead/PR remain owned while unmerged. After confirmed merge, the worker inspects checkout state and may complete idempotently or discard only when merged source is durable and the checkout is clean; dirty/untracked work is preserved and blocks silent teardown. Projects without hosted_queue retain their configured direct/review/artifact lifecycle, while persistent controllers/observers and release/tag actors retain explicit audited modes
+ - each PR-backed reintegration generation must publish to a unique immutable head derived from the stable agent and source HEAD, so a persistent agent may enqueue bead B while bead A remains open without rewriting A; retries of the same source generation reuse only a PR whose head generation and primary bead identity match, stale-title relabeling must never authorize cross-bead reuse, and receipts/PR metadata must retain generation, agent, bead, PR, and full source-head attribution
+diff --git a/scripts/ci_change_classify.py b/scripts/ci_change_classify.py
+new file mode 100755
+index 0000000000..2cae3a7d7c
+--- /dev/null
++++ b/scripts/ci_change_classify.py
+@@ -0,0 +1,216 @@
++#!/usr/bin/env python3
++"""Conservative token-free PR path classifier (bd-57ade7).
++
++This foundation only classifies an already-selected PR delta. Workflow callers
++must pass the exact PR/stack base and head, or an exact paths file; the script
++never queries GitHub and never broadens credentials on forked pull requests.
++Unknown, empty, malformed, or unreadable input always selects the full lane.
++"""
++
++from __future__ import annotations
++
++import argparse
++import json
++import subprocess
++import sys
++from dataclasses import asdict, dataclass
++from pathlib import PurePosixPath
++from typing import Iterable, Sequence
++
++CONFIG_EXTENSIONS = {".yaml", ".yml", ".json"}
++PROFILE_DOC_NAMES = {
++    "AGENTS.md",
++    "docs/agents.html",
++    "docs/profile-lifecycle.html",
++    "docs/profiles.html",
++}
++COUPLED_SCRIPTS = {
++    "scripts/profile-lifecycle-audit.py",
++    "scripts/render-profiles-docs.py",
++}
++
++
++@dataclass(frozen=True)
++class Classification:
++    classification: str
++    config_profile_only: bool
++    reason: str
++    files: list[str]
++    matched_files: list[str]
++    unmatched_files: list[str]
++    source: str
++    error: str | None = None
++
++
++def normalize_path(raw: str) -> str | None:
++    value = raw.strip().replace("\\", "/")
++    if not value or value.startswith("/") or "\x00" in value:
++        return None
++    path = PurePosixPath(value)
++    if any(part in {"", ".", ".."} for part in path.parts):
++        return None
++    return path.as_posix()
++
++
++def is_config_profile_path(path: str) -> bool:
++    p = PurePosixPath(path)
++    suffix = p.suffix.lower()
++
++    if path == "AGENTS.md":
++        return True
++    if path.startswith(".cacophony/"):
++        # YAML/JSON declarations and Markdown profile/instruction sources are
++        # configuration; executable Pi/JS/Rust/shell payloads fail full.
++        return suffix in CONFIG_EXTENSIONS or suffix == ".md"
++    if path.startswith("docs/config-schema/"):
++        return suffix in {".html", ".json", ".md"}
++    if path in PROFILE_DOC_NAMES or path in COUPLED_SCRIPTS:
++        return True
++    if path.startswith("plugins/"):
++        parts = p.parts
++        if "agents" in parts:
++            # Materialized Claude profile agents and their colocated hook assets
++            # are validated by the profile/plugin policy lane, not Cargo.
++            return suffix in {".md", ".sh", ".json"} or p.name == ".gitkeep"
++        if "commands" in parts:
++            return suffix in {".md", ".json"}
++        if ".claude-plugin" in parts:
++            return suffix == ".json"
++        return p.name == "README.md"
++    return False
++
++
++def classify_paths(paths: Iterable[str], source: str = "paths") -> Classification:
++    normalized: list[str] = []
++    invalid: list[str] = []
++    for raw in paths:
++        path = normalize_path(raw)
++        if path is None:
++            if raw.strip():
++                invalid.append(raw.strip())
++            continue
++        normalized.append(path)
++    files = sorted(set(normalized))
++    if invalid:
++        return Classification(
++            classification="full",
++            config_profile_only=False,
++            reason="invalid or unsafe path input",
++            files=files,
++            matched_files=[],
++            unmatched_files=sorted(set(invalid)),
++            source=source,
++        )
++    if not files:
++        return Classification(
++            classification="full",
++            config_profile_only=False,
++            reason="empty delta fails closed",
++            files=[],
++            matched_files=[],
++            unmatched_files=[],
++            source=source,
++        )
++
++    matched = [path for path in files if is_config_profile_path(path)]
++    unmatched = [path for path in files if path not in set(matched)]
++    if unmatched:
++        return Classification(
++            classification="full",
++            config_profile_only=False,
++            reason=f"non-config/profile path requires full lanes: {unmatched[0]}",
++            files=files,
++            matched_files=matched,
++            unmatched_files=unmatched,
++            source=source,
++        )
++    return Classification(
++        classification="config-profile-only",
++        config_profile_only=True,
++        reason="every changed path is in the conservative config/profile policy allowlist",
++        files=files,
++        matched_files=matched,
++        unmatched_files=[],
++        source=source,
++    )
++
++
++def git_diff_paths(base: str, head: str) -> list[str]:
++    if not base.strip() or not head.strip():
++        raise ValueError("--base and --head must both be non-empty")
++    proc = subprocess.run(
++        ["git", "diff", "--name-only", "--diff-filter=ACMRD", "-z", base, head, "--"],
++        check=False,
++        stdout=subprocess.PIPE,
++        stderr=subprocess.PIPE,
++    )
++    if proc.returncode != 0:
++        detail = proc.stderr.decode("utf-8", errors="replace").strip()
++        raise RuntimeError(f"git diff failed: {detail or f'exit {proc.returncode}'}")
++    return [part.decode("utf-8", errors="surrogateescape") for part in proc.stdout.split(b"\0") if part]
++
++
++def paths_from_file(path: str) -> list[str]:
++    with open(path, "r", encoding="utf-8") as handle:
++        return [line.rstrip("\r\n") for line in handle]
++
++
++def full_on_error(source: str, error: Exception) -> Classification:
++    return Classification(
++        classification="full",
++        config_profile_only=False,
++        reason="classification input failed; full lanes selected conservatively",
++        files=[],
++        matched_files=[],
++        unmatched_files=[],
++        source=source,
++        error=str(error),
++    )
++
++
++def write_github_output(path: str, result: Classification) -> None:
++    with open(path, "a", encoding="utf-8") as handle:
++        handle.write(f"classification={result.classification}\n")
++        handle.write(f"config_profile_only={str(result.config_profile_only).lower()}\n")
++        handle.write(f"reason={result.reason}\n")
++
++
++def parse_args(argv: Sequence[str]) -> argparse.Namespace:
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument("--paths-file", help="newline-delimited exact PR-delta paths")
++    parser.add_argument("--base", help="exact PR/stack base commit or ref")
++    parser.add_argument("--head", help="exact PR head commit or ref")
++    parser.add_argument("--github-output", help="append stable outputs to this GitHub output file")
++    parser.add_argument("--pretty", action="store_true", help="pretty-print JSON")
++    return parser.parse_args(argv)
++
++
++def main(argv: Sequence[str] | None = None) -> int:
++    args = parse_args(argv or sys.argv[1:])
++    source = "paths-file" if args.paths_file else "git-diff"
++    try:
++        if args.paths_file and (args.base or args.head):
++            raise ValueError("pass either --paths-file or --base/--head, not both")
++        if args.paths_file:
++            paths = paths_from_file(args.paths_file)
++        elif args.base is not None or args.head is not None:
++            if args.base is None or args.head is None:
++                raise ValueError("--base and --head must be supplied together")
++            paths = git_diff_paths(args.base, args.head)
++        else:
++            raise ValueError("one of --paths-file or --base/--head is required")
++        result = classify_paths(paths, source=source)
++    except Exception as error:  # fail closed without suppressing required contexts
++        result = full_on_error(source, error)
++
++    if args.github_output:
++        try:
++            write_github_output(args.github_output, result)
++        except Exception as error:
++            result = full_on_error(source, error)
++    print(json.dumps(asdict(result), indent=2 if args.pretty else None, sort_keys=True))
++    return 0
++
++
++if __name__ == "__main__":
++    raise SystemExit(main())
+diff --git a/scripts/ci_change_classify_test.py b/scripts/ci_change_classify_test.py
+new file mode 100755
+index 0000000000..5f98070817
+--- /dev/null
++++ b/scripts/ci_change_classify_test.py
+@@ -0,0 +1,116 @@
++#!/usr/bin/env python3
++
++import json
++import subprocess
++import tempfile
++import unittest
++from pathlib import Path
++
++import ci_change_classify as classifier
++
++
++class ChangeClassifierTests(unittest.TestCase):
++    def assert_config_only(self, paths):
++        result = classifier.classify_paths(paths)
++        self.assertEqual(result.classification, "config-profile-only", result)
++        self.assertTrue(result.config_profile_only)
++        self.assertFalse(result.unmatched_files)
++
++    def assert_full(self, paths):
++        result = classifier.classify_paths(paths)
++        self.assertEqual(result.classification, "full", result)
++        self.assertFalse(result.config_profile_only)
++
++    def test_yaml_and_profile_only(self):
++        self.assert_config_only(
++            [
++                ".cacophony/config.yaml",
++                ".cacophony/agents/dev.yaml",
++                ".cacophony/profiles/worker.md",
++            ]
++        )
++
++    def test_generated_profile_docs_and_plugin_agents(self):
++        self.assert_config_only(
++            [
++                "docs/config-schema/profiles.html",
++                "docs/profiles.html",
++                "plugins/caco-agent/agents/worker.md",
++                "plugins/caco-agent/agents/pause-gate.sh",
++            ]
++        )
++
++    def test_profile_plus_rust_is_full(self):
++        self.assert_full([".cacophony/profiles/worker.md", "crates/caco-cli/src/lib.rs"])
++
++    def test_workflow_platform_and_pi_extension_are_full(self):
++        for path in [
++            ".github/workflows/ci.yml",
++            "companion/android/app/build.gradle.kts",
++            "companion/macos/Cacophony/App.swift",
++            ".cacophony/pi/inbox/index.ts",
++            "plugins/caco-agent/pi-extensions/caco-lifecycle.mjs",
++        ]:
++            with self.subTest(path=path):
++                self.assert_full([path])
++
++    def test_unknown_empty_and_unsafe_fail_closed(self):
++        self.assert_full([])
++        self.assert_full(["some/new/surface.xyz"])
++        result = classifier.classify_paths(["../outside.yml"])
++        self.assertEqual(result.classification, "full")
++        self.assertIn("invalid", result.reason)
++
++    def test_order_and_duplicates_are_deterministic(self):
++        result = classifier.classify_paths(
++            [".cacophony/profiles/z.md", ".cacophony/config.yaml", ".cacophony/config.yaml"]
++        )
++        self.assertEqual(
++            result.files,
++            [".cacophony/config.yaml", ".cacophony/profiles/z.md"],
++        )
++
++    def test_cli_missing_file_emits_full_json_and_success(self):
++        script = Path(__file__).with_name("ci_change_classify.py")
++        proc = subprocess.run(
++            ["python3", str(script), "--paths-file", "/definitely/missing"],
++            check=False,
++            text=True,
++            stdout=subprocess.PIPE,
++            stderr=subprocess.PIPE,
++        )
++        self.assertEqual(proc.returncode, 0, proc.stderr)
++        result = json.loads(proc.stdout)
++        self.assertEqual(result["classification"], "full")
++        self.assertFalse(result["config_profile_only"])
++        self.assertIn("No such file", result["error"])
++
++    def test_cli_github_output_is_stable(self):
++        script = Path(__file__).with_name("ci_change_classify.py")
++        with tempfile.TemporaryDirectory() as directory:
++            paths = Path(directory, "paths.txt")
++            output = Path(directory, "output.txt")
++            paths.write_text(".cacophony/config.yaml\n", encoding="utf-8")
++            proc = subprocess.run(
++                [
++                    "python3",
++                    str(script),
++                    "--paths-file",
++                    str(paths),
++                    "--github-output",
++                    str(output),
++                ],
++                check=False,
++                text=True,
++                stdout=subprocess.PIPE,
++                stderr=subprocess.PIPE,
++            )
++            self.assertEqual(proc.returncode, 0, proc.stderr)
++            self.assertEqual(
++                output.read_text(encoding="utf-8").splitlines()[:2],
++                ["classification=config-profile-only", "config_profile_only=true"],
++            )
++
++
++if __name__ == "__main__":
++    unittest.main()
+-- 
+2.53.0
+

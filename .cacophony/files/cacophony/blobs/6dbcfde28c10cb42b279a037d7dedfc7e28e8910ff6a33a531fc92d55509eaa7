@@ -1,0 +1,215 @@
+diff --git a/.cacophony/projects.yaml b/.cacophony/projects.yaml
+index 2a38bb5829..30c301c01e 100644
+--- a/.cacophony/projects.yaml
++++ b/.cacophony/projects.yaml
+@@ -54,7 +54,7 @@ projects:
+         # check_command: CARGO_BUILD_JOBS=2 cargo check --workspace --tests
+         # clippy_command: CARGO_BUILD_JOBS=2 cargo clippy --workspace
+     test:
+-      command: CARGO_BUILD_JOBS=2 cargo test-small -- --test-threads=2
++      command: cargo test-small
+       max_parallel: 3
+       wait_timeout_secs: 1800
+       max_runtime_secs: 1200
+@@ -63,7 +63,7 @@ projects:
+           - '(^|[;&|()])([[:space:]]*(env[[:space:]]+)?([A-Za-z_][A-Za-z0-9_]*=[^;&|[:space:]]+[[:space:]]+)*)cargo[[:space:]]+(test|test-small|test-medium|test-large|nextest[[:space:]]+run|clippy)([[:space:]]|$)'
+           - '(^|[;&|()])([[:space:]]*(env[[:space:]]+)?([A-Za-z_][A-Za-z0-9_]*=[^;&|[:space:]]+[[:space:]]+)*)just[[:space:]]+(test|test-small|test-medium|test-large|test-full|check)([[:space:]]|$)'
+     build:
+-      command: CARGO_BUILD_JOBS=2 cargo build --jobs 2
++      command: cargo build
+       max_parallel: 3
+       wait_timeout_secs: 1800
+       max_runtime_secs: 1800
+diff --git a/crates/caco-daemon/src/queued_job_env.rs b/crates/caco-daemon/src/queued_job_env.rs
+index 52d01259f9..c1d2cbb51e 100644
+--- a/crates/caco-daemon/src/queued_job_env.rs
++++ b/crates/caco-daemon/src/queued_job_env.rs
+@@ -127,21 +127,57 @@ fn truncate_for_restart_provenance(value: &str, max_chars: usize) -> String {
+     out
+ }
+ 
+-/// Default `CARGO_BUILD_JOBS` cap injected into queued cargo jobs that do not
+-/// already specify one (bd-2d039d). `CARGO_BUILD_JOBS` bounds rustc codegen
+-/// parallelism during the dependency-graph compile phase, which is what a
+-/// `cargo clippy --workspace` job saturates on a shared host even though the
+-/// queue serializes jobs within a lane. Overridable via
+-/// `CACO_QUEUED_CARGO_BUILD_JOBS` so the cap stays queue/config tunable without
+-/// a config-schema migration.
+-const DEFAULT_QUEUED_CARGO_BUILD_JOBS: u32 = 2;
++/// Floor for the queued cargo-job parallelism default (bd-2d039d / bd-233590).
++/// Small / low-power nodes (1-4 logical cores) keep the historical conservative
++/// cap of 2; only nodes with more cores scale above it. The proportional
++/// default never drops below this.
++const QUEUED_CARGO_BUILD_JOBS_FLOOR: u32 = 2;
++
++/// bd-233590: core-count-proportional default queued cargo-job parallelism.
++///
++/// `CARGO_BUILD_JOBS` (and the matching `RUST_TEST_THREADS` / explicit-flag
++/// clamp) bound rustc codegen + libtest parallelism for queued jobs so one job
++/// cannot saturate a shared host even though the queue serializes lanes.
++/// Harry's 2026-06-21 directive ("the machines can handle heavy load; stop
++/// over-throttling development") raised the historical flat cap of 2. Rather
++/// than a flat higher number, the default now scales to HALF the host's logical
++/// cores (floored at [`QUEUED_CARGO_BUILD_JOBS_FLOOR`]) so each node uses its
++/// own capacity WITHOUT any per-node config (there is no per-node daemon-process
++/// env mechanism — `caco-daemon-extra-env` is global-only): beefy Linux devboxes
++/// (ms-dev / ms-dev-2 16-core → 8, big cs-*) parallelize cargo validation far
++/// more, ms-mac scales to its own nproc/2, and small / low-power nodes stay
++/// bounded at the floor. Half (not all) cores leaves headroom for the daemon,
++/// concurrent queue lanes, and any co-resident compile, and queued jobs are
++/// already nice/ionice de-prioritized (bd-7db412).
++///
++/// macOS hosts are pinned to the floor (`is_macos`): in this fleet the macOS
++/// node is the RAM-constrained Apple release builder (ms-mac), and keeping its
++/// queued-job parallelism conservative protects it under release+validation
++/// concurrency without a per-node daemon-env mechanism (which does not exist).
++/// The raise barely helps ms-mac anyway (it is not a dev workhorse), and its
++/// darwin-OOM release protections (release-darwin-ci codegen-units, jetsam,
++/// single-builder) are separate. The `is_macos` branch is the one-line removal
++/// if the operator later wants ms-mac wide-open (caco-ctrl 2026-06-21). An
++/// explicit `CACO_QUEUED_CARGO_BUILD_JOBS` override still wins on any host.
++fn proportional_queued_cargo_build_jobs(cpu_count: usize, is_macos: bool) -> u32 {
++    if is_macos {
++        return QUEUED_CARGO_BUILD_JOBS_FLOOR;
++    }
++    ((cpu_count / 2) as u32).max(QUEUED_CARGO_BUILD_JOBS_FLOOR)
++}
++
++/// bd-233590: the host's core-count-proportional queued cargo-job default,
++/// resolved from the live logical CPU count and the compiled-for platform.
++fn default_queued_cargo_build_jobs() -> u32 {
++    proportional_queued_cargo_build_jobs(host_logical_cpu_count(), cfg!(target_os = "macos"))
++}
+ 
+ /// Resolve the effective `CARGO_BUILD_JOBS` cap for queued cargo jobs.
+ ///
+-/// Reads `CACO_QUEUED_CARGO_BUILD_JOBS`; falls back to
+-/// [`DEFAULT_QUEUED_CARGO_BUILD_JOBS`]. A value of `0` (or any unparseable
+-/// value) disables injection by returning `None`, letting an operator opt a
+-/// host out of the cap entirely.
++/// Reads `CACO_QUEUED_CARGO_BUILD_JOBS`; when unset (or unparseable) falls back
++/// to the core-count-proportional [`default_queued_cargo_build_jobs`] for this
++/// host. A value of `0` disables injection by returning `None`, letting an
++/// operator opt a host out of the cap entirely.
+ pub fn effective_queued_cargo_build_jobs() -> Option<u32> {
+     match std::env::var("CACO_QUEUED_CARGO_BUILD_JOBS") {
+         Ok(raw) => {
+@@ -149,10 +185,10 @@ pub fn effective_queued_cargo_build_jobs() -> Option<u32> {
+             match trimmed.parse::<u32>() {
+                 Ok(0) => None,
+                 Ok(n) => Some(n),
+-                Err(_) => Some(DEFAULT_QUEUED_CARGO_BUILD_JOBS),
++                Err(_) => Some(default_queued_cargo_build_jobs()),
+             }
+         }
+-        Err(_) => Some(DEFAULT_QUEUED_CARGO_BUILD_JOBS),
++        Err(_) => Some(default_queued_cargo_build_jobs()),
+     }
+ }
+ 
+@@ -1254,14 +1290,18 @@ fn prepend_nix_ldflag(existing: Option<OsString>, extra: &Path) -> OsString {
+ // ---------------------------------------------------------------------------
+ 
+ /// Default host-saturation threshold expressed as 1-minute load average per
+-/// logical CPU. A value of `2.0` means the host is treated as saturated once
+-/// the 1-minute load average exceeds twice the logical core count (i.e. there
+-/// are, on average, two-plus runnable tasks competing for every core), which is
+-/// the regime in which queued cargo jobs slow enough to risk a false
+-/// `maxRuntimeSecs` kill. Overridable via
++/// logical CPU. A value of `3.0` means the host is treated as saturated once
++/// the 1-minute load average exceeds three times the logical core count (i.e.
++/// there are, on average, three-plus runnable tasks competing for every core),
++/// which is the regime in which queued cargo jobs slow enough to risk a false
++/// `maxRuntimeSecs` kill. bd-233590 raised this from 2.0 to 3.0 per Harry's
++/// 2026-06-21 "the machines can handle heavy load; stop holding work for
++/// moderate load" directive: with the higher proportional parallelism caps the
++/// new-normal load runs hotter, so only clearly-extreme load (3x+ cores) should
++/// reclassify a timeout as saturation-retryable. Overridable via
+ /// `CACO_QUEUED_SATURATION_LOAD_PER_CPU` so the threshold stays queue/config
+ /// tunable without a config-schema migration.
+-const DEFAULT_HOST_SATURATION_LOAD_PER_CPU: f64 = 2.0;
++const DEFAULT_HOST_SATURATION_LOAD_PER_CPU: f64 = 3.0;
+ 
+ /// Default retry-after backoff (seconds) suggested when a queued job is killed
+ /// because the host was saturated. Long enough that a worker is not hammering a
+@@ -2148,7 +2188,9 @@ mod tests {
+     fn normalize_queued_cargo_command_injects_build_jobs_cap_bd_2d039d() {
+         // A queued workspace clippy command that omits CARGO_BUILD_JOBS gets the
+         // cap prepended so its dep-graph compile phase cannot saturate the host.
+-        std::env::remove_var("CACO_QUEUED_CARGO_BUILD_JOBS");
++        // bd-233590: pin the cap so the expected string is host-core-independent
++        // (the unset default is now core-count-proportional).
++        std::env::set_var("CACO_QUEUED_CARGO_BUILD_JOBS", "2");
+         let out = normalize_queued_cargo_command(
+             "RUST_MIN_STACK=33554432 cargo clippy --workspace",
+         );
+@@ -2167,7 +2209,9 @@ mod tests {
+ 
+     #[test]
+     fn normalize_queued_cargo_command_preserves_explicit_cap_bd_2d039d() {
+-        std::env::remove_var("CACO_QUEUED_CARGO_BUILD_JOBS");
++        // bd-233590: pin the cap so the injected RUST_TEST_THREADS default is
++        // host-core-independent.
++        std::env::set_var("CACO_QUEUED_CARGO_BUILD_JOBS", "2");
+         // An explicit inline CARGO_BUILD_JOBS env is respected, not
+         // double-injected or clamped (bd-6f944d treats inline env as the
+         // intentionally-allowed override; it still injects a RUST_TEST_THREADS
+@@ -2323,9 +2367,30 @@ mod tests {
+         assert_eq!(build_priority_wrapped_launch(inner.clone(), &p), inner);
+     }
+ 
++    #[test]
++    fn proportional_queued_cargo_build_jobs_scales_to_cores_bd_233590() {
++        // bd-233590: hosts scale to half their logical cores, floored at 2 so
++        // small / low-power nodes stay bounded; beefy nodes parallelize. macOS
++        // (the RAM-constrained ms-mac Apple release builder) is pinned to the
++        // floor to protect it under release+validation concurrency (caco-ctrl
++        // 2026-06-21); the is_macos branch is the one-line removal.
++        assert_eq!(proportional_queued_cargo_build_jobs(1, false), 2);
++        assert_eq!(proportional_queued_cargo_build_jobs(2, false), 2);
++        assert_eq!(proportional_queued_cargo_build_jobs(4, false), 2);
++        assert_eq!(proportional_queued_cargo_build_jobs(8, false), 4);
++        assert_eq!(proportional_queued_cargo_build_jobs(16, false), 8);
++        assert_eq!(proportional_queued_cargo_build_jobs(32, false), 16);
++        assert_eq!(proportional_queued_cargo_build_jobs(64, false), 32);
++        // macOS (ms-mac) pinned to the floor regardless of core count.
++        assert_eq!(proportional_queued_cargo_build_jobs(16, true), 2);
++        assert_eq!(proportional_queued_cargo_build_jobs(32, true), 2);
++    }
++
+     #[test]
+     fn effective_queued_cargo_build_jobs_respects_override_bd_2d039d() {
+-        std::env::remove_var("CACO_QUEUED_CARGO_BUILD_JOBS");
++        // bd-233590: pin the override so this assertion is host-core-independent
++        // (the unset default is now core-count-proportional, tested above).
++        std::env::set_var("CACO_QUEUED_CARGO_BUILD_JOBS", "2");
+         assert_eq!(effective_queued_cargo_build_jobs(), Some(2));
+         std::env::set_var("CACO_QUEUED_CARGO_BUILD_JOBS", "1");
+         assert_eq!(effective_queued_cargo_build_jobs(), Some(1));
+@@ -2345,7 +2410,7 @@ mod tests {
+         // The universal queue choke point applies the cap on the non-macOS
+         // sh -c path (test build runs with the macos+test cfg, but a tempdir
+         // with no flake/nix falls through to the sh -c branch).
+-        std::env::remove_var("CACO_QUEUED_CARGO_BUILD_JOBS");
++        std::env::set_var("CACO_QUEUED_CARGO_BUILD_JOBS", "2");
+         let dir = tempdir().expect("tempdir should exist");
+         let launch = resolve_platform_job_launch_with_path(
+             "cargo clippy --workspace",
+@@ -2443,7 +2508,7 @@ mod tests {
+ 
+     #[test]
+     fn resolve_platform_job_launch_for_job_injects_and_normalizes_bd_6a50c3() {
+-        std::env::remove_var("CACO_QUEUED_CARGO_BUILD_JOBS");
++        std::env::set_var("CACO_QUEUED_CARGO_BUILD_JOBS", "2");
+         let dir = tempdir().expect("tempdir should exist");
+         let plan = resolve_platform_job_launch_for_job(
+             "cargo test -p caco-tui --lib",
+@@ -2535,7 +2600,7 @@ mod tests {
+ 
+     #[test]
+     fn normalize_injects_rust_test_threads_for_free_form_test_bd_6f944d() {
+-        std::env::remove_var("CACO_QUEUED_CARGO_BUILD_JOBS");
++        std::env::set_var("CACO_QUEUED_CARGO_BUILD_JOBS", "2");
+         // The real-world storm shape: a free-form queued test with no thread
+         // spec gets both caps injected so libtest cannot run at nproc.
+         assert_eq!(
