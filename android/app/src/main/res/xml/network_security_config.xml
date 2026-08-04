@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+  <!--
+    HTTPS with platform trust is the default registration path. Cleartext exists
+    only for an operator-confirmed trusted-tailnet/loopback host; HostRegistry
+    and ServiceBearerRequestFactory independently reject unconfirmed remote HTTP.
+    User-installed CAs are deliberately excluded.
+  -->
+  <base-config cleartextTrafficPermitted="true">
+    <trust-anchors>
+      <certificates src="system" />
+    </trust-anchors>
+  </base-config>
+</network-security-config>

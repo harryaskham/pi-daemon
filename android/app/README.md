@@ -1,17 +1,18 @@
 # Pi Droid early internal application
 
-`com.harryaskham.pidroid` is currently a deliberately narrow fixture-shell
-vertical slice. It renders the canonical recursive workspace source, saves only
-its deterministic local workspace JSON, adapts across phone/tablet/wide windows,
-and requests no `INTERNET` permission. It does not yet connect to Pi Daemon or
-carry host credentials, controller commands, notifications, files, or other
-live-session authority.
+`com.harryaskham.pidroid` is a trusted-tailnet **readonly** Pi Daemon client. It
+registers hosts manually or from the stable ASCII/QR envelope, stores service
+bearers as Android-Keystore AES-GCM ciphertext under `noBackupFilesDir`, and
+projects authenticated capabilities, multi-host inventory, information,
+transcript and observer attach state into the canonical `SessionSurface`.
+Version 2 requests `INTERNET`, but still carries no prompt, wake or controller
+mutation authority; those remain later interactive milestones.
 
 The module is excluded from ordinary Gradle settings and the Android fast lane.
 Enable it only with `-PpiDroidAndroidApp=true` inside the pinned
 `nix develop .#androidRelease` shell. The committed `android/release.properties`
-starts the monotonic Play identity at version code 1 and release name
-`0.3.0-internal.1`; every later AAB must increment the code.
+records the current monotonic Play identity as version code 2 and release name
+`0.3.0-internal.2`; every later AAB must increment the code.
 
 ## Secret-safe internal release
 
@@ -29,24 +30,28 @@ Play mutation:
 PI_DROID_SOPS_SSH_PRIVATE_KEY_FILE="$HOME/.ssh/caco" \
   nix develop .#androidRelease --command \
   android/build-logic/release-internal.sh \
-    --version-code 1 \
-    --version-name 0.3.0-internal.1 \
+    --version-code 2 \
+    --version-name 0.3.0-internal.2 \
     --artifacts "$PWD/pi-droid-release" \
     --prepare-only
 
 PI_DROID_SOPS_SSH_PRIVATE_KEY_FILE="$HOME/.ssh/caco" \
   nix develop .#androidRelease --command \
   android/build-logic/release-internal.sh \
-    --version-code 1 \
-    --version-name 0.3.0-internal.1 \
+    --version-code 2 \
+    --version-name 0.3.0-internal.2 \
     --artifacts "$PWD/pi-droid-release" \
     --upload-prepared
 ```
 
 Preparation validates bundletool structure, package/version, JAR signature and
 the exact release certificate, then installs a universal APK on a dynamically
-ported KVM emulator and waits for the fixture accessibility marker before taking
-phone/tablet/wide screenshots. Upload uses Gradle Play Publisher's `IGNORE`
+ported KVM emulator and waits for the registration/workspace accessibility
+marker before taking phone/tablet/wide screenshots. The separate
+`live-readonly-proof.sh` uses only a random private disposable bearer and
+ApiServer, then proves emulator capabilities/inventory/info/transcript,
+observer attach, offline cache and a different host incarnation after restart.
+Upload uses Gradle Play Publisher's `IGNORE`
 resolution for idempotent version-code retries, targets only `internal`, commits
 no wider rollout, and opens a separate read edit to verify the highest remote
 version and track.

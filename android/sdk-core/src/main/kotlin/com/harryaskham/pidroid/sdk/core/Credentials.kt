@@ -112,6 +112,25 @@ public class HostCredentialVault(
     }
   }
 
+  public suspend fun <T> withBearerSuspending(
+    handle: CredentialHandle,
+    block: suspend (CharArray) -> T,
+  ): T {
+    val protected =
+      store.read(handle)
+        ?: throw IllegalStateException("credential handle is not available")
+    val bearer = protector.reveal(handle, protected)
+    return try {
+      require(
+        bearer.isNotEmpty() && bearer.size <= 4_096 &&
+          bearer.none { it == '\r' || it == '\n' || it == '\u0000' },
+      ) { "revealed service bearer is invalid" }
+      block(bearer)
+    } finally {
+      bearer.fill('\u0000')
+    }
+  }
+
   public suspend fun remove(handle: CredentialHandle) {
     store.remove(handle)
     protector.destroy(handle)

@@ -1,84 +1,122 @@
 package com.harryaskham.pidroid
 
+import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalDensity
-import com.harryaskham.pidroid.workspace.PiDroidWorkspaceShell
-import com.harryaskham.pidroid.workspace.WorkspaceAdaptivePolicy
-import com.harryaskham.pidroid.workspace.WorkspacePersistence
-import com.harryaskham.pidroid.workspace.WorkspaceRestoreResult
-import com.harryaskham.pidroid.workspace.WorkspaceShellAction
-import com.harryaskham.pidroid.workspace.WorkspaceShellFixtures
-import com.harryaskham.pidroid.workspace.WorkspaceShellReducer
-import com.harryaskham.pidroid.workspace.WorkspaceShellState
-import com.harryaskham.pidroid.workspace.WorkspaceViewport
+import androidx.lifecycle.lifecycleScope
+import com.harryaskham.pidroid.live.AndroidHostRegistry
+import com.harryaskham.pidroid.live.LiveReadonlyRepository
+import com.harryaskham.pidroid.live.LiveReadonlyScreen
+import com.harryaskham.pidroid.live.OkHttpPiDaemonTransport
+import com.harryaskham.pidroid.sdk.core.PairingPayloadCodec
+import kotlinx.coroutines.launch
+import java.net.URI
 
 class MainActivity : ComponentActivity() {
+  private lateinit var repository: LiveReadonlyRepository
+
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
     enableEdgeToEdge()
+    val hosts = AndroidHostRegistry(this)
+    repository =
+      LiveReadonlyRepository(
+        registry = hosts.registry,
+        credentials = hosts.credentialVault,
+        transport = OkHttpPiDaemonTransport(),
+      )
 
-    val fixture = WorkspaceShellFixtures.nestedWorkspace()
-    val preferences = getSharedPreferences(PREFERENCES_NAME, MODE_PRIVATE)
-    val restored =
-      preferences
-        .getString(WORKSPACE_KEY, null)
-        ?.let(WorkspacePersistence::restore)
-        ?.let { result ->
-          when (result) {
-            is WorkspaceRestoreResult.Loaded -> result.document
-            is WorkspaceRestoreResult.Quarantined -> result.fallback
-          }
-        } ?: fixture.document
+    lifecycleScope.launch {
+      repository.initialize()
+      intent?.dataString?.takeIf { it.startsWith(PAIRING_PREFIX) }?.let { registerEnvelope(it) }
+    }
 
     setContent {
-      var shellState by remember {
-        mutableStateOf(
-          WorkspaceShellState(
-            document = restored,
-            sidebarExpanded = false,
-          ),
-        )
-      }
-      val density = LocalDensity.current
-
-      BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-        val viewport =
-          remember(maxWidth, maxHeight, density.fontScale) {
-            WorkspaceViewport(
-              widthDp = maxWidth.value.toInt().coerceAtLeast(1),
-              heightDp = maxHeight.value.toInt().coerceAtLeast(1),
-              fontScale = density.fontScale,
-            )
+      val state by repository.state.collectAsState()
+      LiveReadonlyScreen(
+        state = state,
+        onRegisterManual = { endpoint, displayName, bearer, fingerprint, confirmInsecure ->
+          lifecycleScope.launch {
+            runCatching {
+              repository.registerManual(
+                apiUri = URI(endpoint),
+                displayName = displayName,
+                bearer = bearer,
+                tlsFingerprint = fingerprint,
+                confirmInsecureHttp = confirmInsecure,
+              )
+            }.onFailure { repository.reportFailure(safeCode(it)) }
           }
-        PiDroidWorkspaceShell(
-          fixture = fixture,
-          layout = WorkspaceAdaptivePolicy.resolve(viewport),
-          state = shellState,
-          onAction = { action: WorkspaceShellAction ->
-            val next = WorkspaceShellReducer.reduce(shellState, action)
-            shellState = next
-            preferences
-              .edit()
-              .putString(WORKSPACE_KEY, WorkspacePersistence.encode(next.document))
-              .apply()
-          },
-        )
-      }
+        },
+        onRegisterEnvelope = { envelope, confirmInsecure ->
+          lifecycleScope.launch {
+            runCatching { repository.registerEnvelope(envelope, confirmInsecure) }
+              .onFailure { repository.reportFailure(safeCode(it)) }
+          }
+        },
+        onRefresh = {
+          lifecycleScope.launch {
+            runCatching { repository.refresh() }
+              .onFailure { repository.reportFailure(safeCode(it)) }
+          }
+        },
+        onSelectHost = repository::selectHost,
+      )
     }
   }
 
+  override fun onNewIntent(intent: Intent) {
+    super.onNewIntent(intent)
+    setIntent(intent)
+    intent.dataString?.takeIf { it.startsWith(PAIRING_PREFIX) }?.let { envelope ->
+      lifecycleScope.launch { registerEnvelope(envelope) }
+    }
+  }
+
+  override fun onDestroy() {
+    repository.close()
+    super.onDestroy()
+  }
+
+  private suspend fun registerEnvelope(envelope: String) {
+    val debugMetadata =
+      packageManager
+        .getApplicationInfo(
+          packageName,
+          PackageManager.ApplicationInfoFlags.of(PackageManager.GET_META_DATA.toLong()),
+        ).metaData
+    val allowDisposableBridge =
+      debugMetadata?.getBoolean(DISPOSABLE_EMULATOR_METADATA, false) == true &&
+        runCatching {
+          PairingPayloadCodec.decode(envelope).use { payload -> payload.apiUri.host == "10.0.2.2" }
+        }.getOrDefault(false)
+    runCatching { repository.registerEnvelope(envelope, confirmInsecureHttp = allowDisposableBridge) }
+      .onFailure { repository.reportFailure(safeCode(it)) }
+  }
+
+  private fun safeCode(error: Throwable): String =
+    when (error) {
+      is com.harryaskham.pidroid.live.LiveReadonlyFailure -> error.code
+      is com.harryaskham.pidroid.live.TransportFailure -> error.code
+      is com.harryaskham.pidroid.sdk.core.PairingPayloadException -> error.code
+      is com.harryaskham.pidroid.sdk.core.ProtocolDecodeException -> error.code
+      is com.harryaskham.pidroid.sessionui.SessionFixtureException -> error.code
+      is IllegalArgumentException ->
+        error.message
+          ?.take(96)
+          ?.replace(Regex("[^A-Za-z0-9 _.-]"), "_")
+          ?.let { "invalid_registration: $it" }
+          ?: "invalid_registration"
+      else -> "host_unavailable_${error::class.simpleName?.take(64) ?: "unknown"}"
+    }
+
   private companion object {
-    const val PREFERENCES_NAME: String = "pi-droid-workspace"
-    const val WORKSPACE_KEY: String = "workspace-v2"
+    const val PAIRING_PREFIX: String = "pidroid://pair/v1/"
+    const val DISPOSABLE_EMULATOR_METADATA: String = "com.harryaskham.pidroid.ALLOW_DISPOSABLE_EMULATOR_BRIDGE"
   }
 }

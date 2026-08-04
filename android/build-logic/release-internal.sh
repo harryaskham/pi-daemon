@@ -199,8 +199,14 @@ bundletool validate --bundle="$release_aab" >/dev/null
 jarsigner -verify "$release_aab" >/dev/null
 bundle_manifest="$private_dir/bundle-manifest.xml"
 bundletool dump manifest --bundle="$release_aab" --module=base > "$bundle_manifest"
-if grep -q 'android.permission.INTERNET' "$bundle_manifest"; then
-  printf '%s\n' 'release bundle unexpectedly requests INTERNET permission' >&2
+internet_permission='false'
+if grep -q 'android.permission.INTERNET' "$bundle_manifest"; then internet_permission='true'; fi
+if [[ "$version_code" == '1' && "$internet_permission" != 'false' ]]; then
+  printf '%s\n' 'fixture-only release version one must not request INTERNET permission' >&2
+  exit 65
+fi
+if (( version_code >= 2 )) && [[ "$internet_permission" != 'true' ]]; then
+  printf '%s\n' 'live-client release must request INTERNET permission' >&2
   exit 65
 fi
 bundle_package="$(bundletool dump manifest --bundle="$release_aab" --module=base --xpath=/manifest/@package)"
@@ -299,7 +305,7 @@ capture_profile() {
   for _ in $(seq 1 30); do
     adb -s "$emulator_serial" shell uiautomator dump /sdcard/pi-droid-window.xml >/dev/null 2>&1 || true
     if adb -s "$emulator_serial" exec-out cat /sdcard/pi-droid-window.xml 2>/dev/null \
-      | grep -Eq 'WORKSPACE FIXTURE|Pane Build room'; then
+      | grep -Eq 'WORKSPACE FIXTURE|Pane Build room|Connect a trusted-tailnet Pi Daemon|Pi Daemon API URL'; then
       ready='true'
       break
     fi
@@ -327,7 +333,7 @@ cat > "$artifacts_dir/release-build-receipt.json" <<EOF
   "versionCode": $version_code,
   "versionName": "$version_name",
   "certificateSha256": "$EXPECTED_CERT_SHA256",
-  "internetPermission": false,
+  "internetPermission": $internet_permission,
   "aab": "pi-droid-release.aab",
   "mapping": "mapping.txt"
 }

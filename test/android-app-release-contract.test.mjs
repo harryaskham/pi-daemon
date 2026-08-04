@@ -15,12 +15,13 @@ async function source(relativePath) {
 }
 
 test("Pi Droid app is conditional, fixed-identity, fixture-only, and release signed", async () => {
-  const [settings, catalog, build, manifest, activity] = await Promise.all([
+  const [settings, catalog, build, manifest, activity, liveScreen] = await Promise.all([
     source("android/settings.gradle.kts"),
     source("android/gradle/libs.versions.toml"),
     source("android/app/build.gradle.kts"),
     source("android/app/src/main/AndroidManifest.xml"),
     source("android/app/src/main/kotlin/com/harryaskham/pidroid/MainActivity.kt"),
+    source("android/app/src/main/kotlin/com/harryaskham/pidroid/live/LiveReadonlyScreen.kt"),
   ]);
 
   assert.match(settings, /piDroidAndroidApp/);
@@ -44,12 +45,12 @@ test("Pi Droid app is conditional, fixed-identity, fixture-only, and release sig
   assert.match(build, /\.\.\/sdk-workspace-ui\/src\/main\/kotlin/);
   assert.match(build, /WorkspaceFixtureApp\.kt/);
 
-  assert.doesNotMatch(manifest, /android\.permission\.INTERNET/);
+  assert.match(manifest, /android\.permission\.INTERNET/);
   assert.match(manifest, /android:name="\.MainActivity"/);
-  assert.match(activity, /PiDroidWorkspaceShell/);
-  assert.match(activity, /WorkspaceShellFixtures\.nestedWorkspace/);
-  assert.match(activity, /WorkspacePersistence/);
-  assert.doesNotMatch(activity, /OkHttp|WebSocket|Bearer|Credential/);
+  assert.match(activity, /LiveReadonlyScreen/);
+  assert.match(liveScreen, /SessionSurface/);
+  assert.match(liveScreen, /HostRegistrationScreen/);
+  assert.doesNotMatch(activity, /prompt|wake|requestControl|TuiSurface/i);
 });
 
 test("release script materializes secrets privately and verifies fixed identity before upload", async () => {
@@ -71,7 +72,7 @@ test("release script materializes secrets privately and verifies fixed identity 
   assert.match(script, /publishReleaseBundle/);
   assert.match(script, /verifyInternalTrackReceipt/);
   assert.match(script, /android\.permission\.INTERNET/);
-  assert.match(script, /"internetPermission": false/);
+  assert.match(script, /"internetPermission": \$internet_permission/);
   assert.match(script, /--prepare-only/);
   assert.match(script, /--upload-prepared/);
   assert.doesNotMatch(script, /jarsigner[^\n]*-strict/);

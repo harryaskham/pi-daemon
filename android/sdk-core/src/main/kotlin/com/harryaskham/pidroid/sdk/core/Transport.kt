@@ -174,12 +174,13 @@ public class ServiceBearerRequestFactory private constructor(
   public fun http(
     method: HttpMethod,
     path: String,
+    query: List<Pair<String, String>> = emptyList(),
     body: ByteArray? = null,
     extraHeaders: Map<String, String> = emptyMap(),
   ): NeutralHttpRequest =
     NeutralHttpRequest(
       method = method,
-      uri = resolve(path, query = emptyList(), webSocket = false),
+      uri = resolve(path, query = query, webSocket = false),
       headers = authenticatedHeaders(extraHeaders),
       body = body,
     )

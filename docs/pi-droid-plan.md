@@ -691,7 +691,17 @@ confirmed completed release 1 on `internal`; the uploaded AAB SHA-256 is
 `d9b2e9fb569bb936d81764eeb5d16b21ce49a9ad810e63dfb6f5ba0ebc2144c3`.
 Bundletool manifest inspection confirmed the early fixture app requests no
 `INTERNET` permission. This proves signing, packaging, emulated install and the
-internal delivery path only; it does not claim a live Pi Daemon connection.
+internal delivery path only.
+
+The second internal release was uploaded on 2026-08-04 as version code 2
+(`0.3.0-internal.2`). It adds reviewed `INTERNET` authority, manual/ASCII-QR host
+registration, Android-Keystore/no-backup bearer storage, bounded OkHttp HTTP and
+observer WebSocket transport, and live readonly inventory/info/transcript UI.
+Disposable ApiServer proof crossed emulator `10.0.2.2`, then captured offline
+cache and a different host incarnation after restart with no prompt/controller
+operations or bearer leakage. Fresh Play verification edit
+`02117095949443938631` confirmed completed version 2 on `internal`; uploaded AAB
+SHA-256 is `72adf5bacefac22c1569d2b7579b547d4f48c28881808e4f7036fde6560331aa`.
 
 ## 19. Testing and acceptance
 

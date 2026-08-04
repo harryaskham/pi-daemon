@@ -11,8 +11,9 @@ plugins {
 
 val releaseTasks =
   gradle.startParameter.taskNames.any { task ->
-    task.contains("Release", ignoreCase = true) ||
-      task.contains("publish", ignoreCase = true)
+    task.contains("bundleRelease", ignoreCase = true) ||
+      task.contains("assembleRelease", ignoreCase = true) ||
+      task.contains("publishRelease", ignoreCase = true)
   }
 
 fun requiredEnvironmentFile(name: String): File {
@@ -41,11 +42,14 @@ android {
     applicationId = "com.harryaskham.pidroid"
     minSdk = 26
     targetSdk = 36
-    versionCode = providers.gradleProperty("piDroidVersionCode").getOrElse("1").toInt()
-    versionName = providers.gradleProperty("piDroidVersionName").getOrElse("0.3.0-internal.1")
+    versionCode = providers.gradleProperty("piDroidVersionCode").getOrElse("2").toInt()
+    versionName = providers.gradleProperty("piDroidVersionName").getOrElse("0.3.0-internal.2")
   }
 
   sourceSets.named("main") {
+    kotlin.directories += "../sdk-core/src/generated/kotlin"
+    kotlin.directories += "../sdk-core/src/main/kotlin"
+    kotlin.directories += "../sdk-session-ui/src/main/kotlin"
     kotlin.directories += "../sdk-workspace-ui/src/main/kotlin"
   }
 
@@ -85,6 +89,10 @@ android {
     buildConfig = false
   }
 
+  testOptions {
+    unitTests.isReturnDefaultValues = true
+  }
+
   packaging {
     resources.excludes +=
       setOf(
@@ -97,9 +105,15 @@ android {
 dependencies {
   implementation(libs.activity.compose)
   implementation(libs.kotlinx.serialization.json)
+  implementation(libs.okhttp)
   implementation(compose.runtime)
   implementation(compose.foundation)
   implementation(compose.material3)
+  testImplementation(libs.junit.jupiter)
+  testImplementation(libs.kotlinx.coroutines.test.android)
+  testImplementation(libs.mockwebserver)
+  testImplementation(libs.okhttp.tls)
+  testRuntimeOnly(libs.junit.platform.launcher)
 }
 
 val playCredentials =
@@ -112,6 +126,11 @@ play {
   track.set("internal")
   defaultToAppBundles.set(true)
   resolutionStrategy.set(ResolutionStrategy.IGNORE)
+}
+
+tasks.withType<Test>().configureEach {
+  useJUnitPlatform()
+  systemProperty("piDaemon.repositoryRoot", rootProject.rootDir.parentFile.absolutePath)
 }
 
 tasks.withType<KotlinCompile>().configureEach {
