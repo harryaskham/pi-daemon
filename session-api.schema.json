@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://a.skh.am/pi-daemon/session-api.schema.json",
   "title": "Pi Daemon additive session API v1",
-  "description": "Language-neutral REST resources, ticket records, framed Pi RPC attachment messages, and ACP transport messages. Raw Pi RPC uses the upstream Pi 0.82.1 shapes.",
+  "description": "Language-neutral REST session resources, durable mutation tickets, bounded SHA-256 blob/session file transfer, framed Pi RPC attachment messages, and ACP transport messages. Raw Pi RPC uses the upstream Pi 0.82.1 shapes.",
   "oneOf": [
     {
       "$ref": "#/$defs/sessionCreateRequest"
@@ -45,6 +45,18 @@
     },
     {
       "$ref": "#/$defs/jsonRpcMessage"
+    },
+    {
+      "$ref": "#/$defs/blobReservationRequest"
+    },
+    {
+      "$ref": "#/$defs/blobMaterializationRequest"
+    },
+    {
+      "$ref": "#/$defs/blobTransferResource"
+    },
+    {
+      "$ref": "#/$defs/sessionUploadResource"
     }
   ],
   "$defs": {
@@ -819,7 +831,11 @@
             "create",
             "update",
             "delete",
-            "prompt"
+            "prompt",
+            "reserve_blob",
+            "materialize_blob",
+            "delete_blob",
+            "delete_file"
           ]
         },
         "state": {
@@ -1111,7 +1127,8 @@
         "acp",
         "isolationModes",
         "authentication",
-        "schedules"
+        "schedules",
+        "blobTransfers"
       ],
       "properties": {
         "apiVersion": {
@@ -1175,6 +1192,9 @@
         },
         "dashboard": {
           "$ref": "https://a.skh.am/pi-daemon/dashboard-api.schema.json#/$defs/dashboardServiceCapabilities"
+        },
+        "blobTransfers": {
+          "$ref": "#/$defs/blobTransferCapabilityStatus"
         }
       },
       "additionalProperties": false
@@ -2044,6 +2064,500 @@
         }
       ],
       "additionalProperties": true
+    },
+    "blobId": {
+      "type": "string",
+      "pattern": "^blob-[A-Za-z0-9_-]{43}$"
+    },
+    "fileId": {
+      "type": "string",
+      "pattern": "^file-[A-Za-z0-9_-]{43}$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "blobMetadataInput": {
+      "type": "object",
+      "required": [
+        "name",
+        "mediaType"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "mediaType": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 255,
+          "pattern": "^[A-Za-z0-9!#$&^_.+-]+/[A-Za-z0-9!#$&^_.+-]+$"
+        }
+      },
+      "additionalProperties": false
+    },
+    "blobUntrustedMetadata": {
+      "type": "object",
+      "required": [
+        "name",
+        "mediaType",
+        "trust"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "mediaType": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 255,
+          "pattern": "^[A-Za-z0-9!#$&^_.+-]+/[A-Za-z0-9!#$&^_.+-]+$"
+        },
+        "trust": {
+          "const": "untrusted"
+        }
+      },
+      "additionalProperties": false
+    },
+    "blobTransferLimits": {
+      "type": "object",
+      "required": [
+        "maxBlobs",
+        "maxBlobsPerSession",
+        "maxBlobBytes",
+        "maxTotalBytes",
+        "maxReferences",
+        "maxReferencesPerBlob",
+        "maxNameBytes",
+        "maxMediaTypeBytes",
+        "maxRecordBytes",
+        "maxRecoveryBytes",
+        "reservationTtlMs",
+        "blobTtlMs",
+        "referenceTtlMs"
+      ],
+      "properties": {
+        "maxBlobs": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "maxBlobsPerSession": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "maxBlobBytes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "maxTotalBytes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "maxReferences": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "maxReferencesPerBlob": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "maxNameBytes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "maxMediaTypeBytes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "maxRecordBytes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "maxRecoveryBytes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "reservationTtlMs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "blobTtlMs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "referenceTtlMs": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "blobTransferCapabilities": {
+      "type": "object",
+      "required": [
+        "contractVersion",
+        "opaqueContent",
+        "contentAddressedSha256",
+        "untrustedMetadata",
+        "cwdMaterialization",
+        "quarantine",
+        "limits"
+      ],
+      "properties": {
+        "contractVersion": {
+          "const": "1.0"
+        },
+        "opaqueContent": {
+          "const": true
+        },
+        "contentAddressedSha256": {
+          "const": true
+        },
+        "untrustedMetadata": {
+          "const": true
+        },
+        "cwdMaterialization": {
+          "const": false
+        },
+        "quarantine": {
+          "const": true
+        },
+        "limits": {
+          "$ref": "#/$defs/blobTransferLimits"
+        }
+      },
+      "additionalProperties": false
+    },
+    "blobTransferCapabilityStatus": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/blobTransferCapabilities"
+        },
+        {
+          "type": "object",
+          "required": [
+            "available"
+          ],
+          "properties": {
+            "available": {
+              "const": false
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "blobReservationRequest": {
+      "type": "object",
+      "required": [
+        "requestId",
+        "expectedGeneration",
+        "metadata",
+        "sizeBytes",
+        "sha256"
+      ],
+      "properties": {
+        "requestId": {
+          "$ref": "#/$defs/requestId"
+        },
+        "expectedGeneration": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "metadata": {
+          "$ref": "#/$defs/blobMetadataInput"
+        },
+        "sizeBytes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 67108864
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      },
+      "additionalProperties": false
+    },
+    "blobMaterializationRequest": {
+      "type": "object",
+      "required": [
+        "requestId",
+        "expectedGeneration",
+        "blobId"
+      ],
+      "properties": {
+        "requestId": {
+          "$ref": "#/$defs/requestId"
+        },
+        "expectedGeneration": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "blobId": {
+          "$ref": "#/$defs/blobId"
+        }
+      },
+      "additionalProperties": false
+    },
+    "blobTransferLinks": {
+      "type": "object",
+      "required": [
+        "self",
+        "content",
+        "materialize"
+      ],
+      "properties": {
+        "self": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096
+        },
+        "content": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096
+        },
+        "materialize": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096
+        }
+      },
+      "additionalProperties": false
+    },
+    "blobTransferResource": {
+      "type": "object",
+      "required": [
+        "contractVersion",
+        "blobId",
+        "sessionId",
+        "generation",
+        "revision",
+        "state",
+        "metadata",
+        "sizeBytes",
+        "sha256",
+        "referenceCount",
+        "createdAt",
+        "updatedAt",
+        "expiresAt",
+        "links"
+      ],
+      "properties": {
+        "contractVersion": {
+          "const": "1.0"
+        },
+        "blobId": {
+          "$ref": "#/$defs/blobId"
+        },
+        "sessionId": {
+          "$ref": "#/$defs/identifier"
+        },
+        "generation": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "state": {
+          "enum": [
+            "reserved",
+            "available",
+            "quarantined"
+          ]
+        },
+        "metadata": {
+          "$ref": "#/$defs/blobUntrustedMetadata"
+        },
+        "sizeBytes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 67108864
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "referenceCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "createdAt": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "updatedAt": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "expiresAt": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "quarantineCode": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]{0,63}$"
+        },
+        "links": {
+          "$ref": "#/$defs/blobTransferLinks"
+        }
+      },
+      "additionalProperties": false,
+      "oneOf": [
+        {
+          "properties": {
+            "state": {
+              "const": "quarantined"
+            },
+            "quarantineCode": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_]{0,63}$"
+            }
+          },
+          "required": [
+            "state",
+            "quarantineCode"
+          ]
+        },
+        {
+          "properties": {
+            "state": {
+              "enum": [
+                "reserved",
+                "available"
+              ]
+            },
+            "quarantineCode": false
+          },
+          "required": [
+            "state"
+          ]
+        }
+      ]
+    },
+    "sessionUploadLinks": {
+      "type": "object",
+      "required": [
+        "self",
+        "content"
+      ],
+      "properties": {
+        "self": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096
+        },
+        "content": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096
+        }
+      },
+      "additionalProperties": false
+    },
+    "sessionUploadResource": {
+      "type": "object",
+      "required": [
+        "contractVersion",
+        "fileId",
+        "sessionId",
+        "generation",
+        "blobId",
+        "relativeRef",
+        "metadata",
+        "sizeBytes",
+        "sha256",
+        "createdAt",
+        "expiresAt",
+        "links"
+      ],
+      "properties": {
+        "contractVersion": {
+          "const": "1.0"
+        },
+        "fileId": {
+          "$ref": "#/$defs/fileId"
+        },
+        "sessionId": {
+          "$ref": "#/$defs/identifier"
+        },
+        "generation": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "blobId": {
+          "$ref": "#/$defs/blobId"
+        },
+        "relativeRef": {
+          "type": "string",
+          "pattern": "^uploads/file-[A-Za-z0-9_-]{43}$"
+        },
+        "metadata": {
+          "$ref": "#/$defs/blobUntrustedMetadata"
+        },
+        "sizeBytes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 67108864
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "createdAt": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "expiresAt": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "links": {
+          "$ref": "#/$defs/sessionUploadLinks"
+        }
+      },
+      "additionalProperties": false
+    },
+    "blobTransferEnvelope": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/apiEnvelopeBase"
+        },
+        {
+          "type": "object",
+          "required": [
+            "data"
+          ],
+          "properties": {
+            "ok": {
+              "const": true
+            },
+            "data": {
+              "$ref": "#/$defs/blobTransferResource"
+            }
+          }
+        }
+      ]
+    },
+    "sessionUploadEnvelope": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/apiEnvelopeBase"
+        },
+        {
+          "type": "object",
+          "required": [
+            "data"
+          ],
+          "properties": {
+            "ok": {
+              "const": true
+            },
+            "data": {
+              "$ref": "#/$defs/sessionUploadResource"
+            }
+          }
+        }
+      ]
     }
   }
 }

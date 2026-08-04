@@ -106,6 +106,74 @@ test("mutation tickets durably deduplicate, execute once, and retain safe termin
   );
 });
 
+test("blob reserve and daemon-owned materialization commands use durable POST tickets", async () => {
+  const stateDir = await temporaryState();
+  const commands = [];
+  const controller = new MutationTicketController(new FileMutationTicketStore({ stateDir }));
+  await controller.recover(async (command) => {
+    commands.push(command);
+    return command.operation === "reserve_blob"
+      ? { blobId: command.blobId, state: "reserved" }
+      : { fileId: command.fileId, relativeRef: `uploads/${command.fileId}` };
+  });
+  const blobId = `blob-${"a".repeat(43)}`;
+  const fileId = `file-${"b".repeat(43)}`;
+  const reserve = await controller.submit({
+    method: "POST",
+    canonicalTarget: "/v1/session/session-a/blob",
+    idempotencyKey: "reserve-once",
+    command: {
+      operation: "reserve_blob",
+      requestId: "reserve-request",
+      sessionId: "session-a",
+      expectedGeneration: 3,
+      blobId,
+      metadata: { name: "untrusted.txt", mediaType: "text/plain" },
+      sizeBytes: 7,
+      sha256: "c".repeat(64),
+    },
+  });
+  const reserved = await controller.wait(reserve.ticketId);
+  assert.equal(reserved.state, "succeeded");
+  assert.equal(reserved.generation, 3);
+  assert.equal(mutationTicketResource(reserved).operation, "reserve_blob");
+
+  const materialize = await controller.submit({
+    method: "POST",
+    canonicalTarget: "/v1/session/session-a/file",
+    idempotencyKey: "materialize-once",
+    command: {
+      operation: "materialize_blob",
+      requestId: "materialize-request",
+      sessionId: "session-a",
+      expectedGeneration: 3,
+      blobId,
+      fileId,
+    },
+  });
+  const materialized = await controller.wait(materialize.ticketId);
+  assert.equal(materialized.state, "succeeded");
+  assert.equal(mutationTicketResource(materialized).operation, "materialize_blob");
+  assert.deepEqual(commands.map((command) => command.operation), ["reserve_blob", "materialize_blob"]);
+
+  await assert.rejects(
+    controller.submit({
+      method: "POST",
+      canonicalTarget: "/v1/session/session-a/file",
+      idempotencyKey: "invalid-materialize",
+      command: {
+        operation: "materialize_blob",
+        requestId: "invalid-request",
+        sessionId: "session-a",
+        expectedGeneration: 3,
+        blobId,
+        fileId: "../../caller-path",
+      },
+    }),
+    (error) => error instanceof TicketStoreError && error.code === "invalid_ticket_command",
+  );
+});
+
 test("legacy mutation tickets migrate to an empty provisioned environment summary", async () => {
   const stateDir = await temporaryState();
   const first = new FileMutationTicketStore({ stateDir });

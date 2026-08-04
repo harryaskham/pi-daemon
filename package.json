@@ -41,6 +41,10 @@
       "types": "./dist/session-api.d.ts",
       "import": "./dist/session-api.js"
     },
+    "./blob-store": {
+      "types": "./dist/blob-store.d.ts",
+      "import": "./dist/blob-store.js"
+    },
     "./self-update": {
       "types": "./dist/self-update.d.ts",
       "import": "./dist/self-update.js"

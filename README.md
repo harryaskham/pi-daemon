@@ -270,6 +270,7 @@ per-target runner-capability checks and signed-substituter preservation; see
 - [`docs/quickstart.md`](docs/quickstart.md) — secure Home Manager, session API, RPC, and ACP operator quickstart
 - [`PLAN.md`](PLAN.md) — architecture, protocol, rollout, and provisional beads
 - [`docs/session-api.md`](docs/session-api.md) — additive session CRUD, Pi RPC attach, and `/apc` ACP contract
+- [`docs/blob-transfer.md`](docs/blob-transfer.md) — neutral SHA-256-addressed streaming uploads, quarantine, exact-generation authorization, daemon-owned references, and cleanup
 - [`docs/tool-adapter-protocol.md`](docs/tool-adapter-protocol.md) — protocol-v2 host/session-bound fixed filesystem capability
 - [`docs/dashboard-protocol.md`](docs/dashboard-protocol.md) — Dash browser/backend contract, limits, identity, and performance budgets
 - [`docs/dashboard-session-tree.md`](docs/dashboard-session-tree.md) — virtual branch navigation, active-leaf truth, compare/edit/fork/clone, and framed summarize/navigation

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { access, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { request as httpRequest } from "node:http";
 import { createConnection } from "node:net";
@@ -8,6 +9,7 @@ import test from "node:test";
 
 import { SERVICE_BEARER_ENV, ServiceBearerAuthenticator } from "../dist/api-auth.js";
 import { ApiServer } from "../dist/api-server.js";
+import { FileBlobStore } from "../dist/blob-store.js";
 import { DASH_DEFAULT_LIMITS } from "../dist/dashboard-contract.js";
 import { DASHBOARD_TUI_SUBPROTOCOL } from "../dist/session-api.js";
 import { runCli } from "../dist/cli.js";
@@ -448,6 +450,346 @@ test("authenticated CRUD mutations return durable deduplicated tickets and termi
     headers: { Authorization: auth.Authorization },
   });
   assert.equal(missing.status, 404);
+});
+
+test("authenticated blob transfer routes reserve, stream, quarantine-gate, and materialize without cwd authority", async (t) => {
+  const stateDir = await mkdtemp(join(tmpdir(), "pi-daemon-api-blobs-"));
+  t.after(async () => rm(stateDir, { recursive: true, force: true }));
+  const multiplexer = new Multiplexer({
+    factory: new SessionFactory(),
+    durability: new FileDurabilityStore({ stateDir }),
+    catalog: new FileSessionCatalog({ stateDir }),
+    hostInstanceId: "host-api-blobs",
+  });
+  await multiplexer.recover();
+  const tickets = new MutationTicketController(new FileMutationTicketStore({ stateDir }));
+  const blobs = new FileBlobStore({ stateDir });
+  const harness = await startApi(undefined, multiplexer, tickets, { blobs });
+  t.after(async () => harness.server.stop());
+  const auth = { Authorization: `Bearer ${TOKEN}`, "Content-Type": "application/json" };
+
+  const created = await requestJson(harness.address, {
+    method: "POST",
+    path: "/v1/session?waitForTerminal=true",
+    headers: { ...auth, "Idempotency-Key": "blob-session-create" },
+    body: JSON.stringify({
+      requestId: "blob-session-create",
+      sessionId: "blob-session",
+      spec: {
+        cwd: "/work/blob-session",
+        target: { mode: "memory" },
+        tools: { mode: "none" },
+        isolation: { mode: "unisolated" },
+      },
+    }),
+  });
+  assert.equal(created.value.data.state, "succeeded");
+  const generation = created.value.data.result.generation;
+  const content = "shared from a neutral client";
+  const sha256 = createHash("sha256").update(content).digest("hex");
+  const reservationBody = {
+    requestId: "blob-reserve-request",
+    expectedGeneration: generation,
+    metadata: { name: "client supplied name.txt", mediaType: "text/plain" },
+    sizeBytes: Buffer.byteLength(content),
+    sha256,
+  };
+
+  const denied = await requestJson(harness.address, {
+    method: "POST",
+    path: "/v1/session/private-name/blob",
+    headers: { "Content-Type": "application/json", "Idempotency-Key": "denied" },
+    body: JSON.stringify(reservationBody),
+  });
+  assert.equal(denied.status, 401);
+  assert.equal(JSON.stringify(denied.value).includes("private-name"), false);
+
+  const reserved = await requestJson(harness.address, {
+    method: "POST",
+    path: "/v1/session/blob-session/blob?waitForTerminal=true",
+    headers: { ...auth, "Idempotency-Key": "blob-reserve-once" },
+    body: JSON.stringify(reservationBody),
+  });
+  assert.equal(reserved.status, 202);
+  assert.equal(reserved.value.data.operation, "reserve_blob");
+  assert.equal(reserved.value.data.state, "succeeded");
+  const blob = reserved.value.data.result;
+  assert.equal(blob.state, "reserved");
+  assert.equal(blob.metadata.trust, "untrusted");
+
+  const wrongLength = await requestJson(harness.address, {
+    method: "PUT",
+    path: `${blob.links.content}?generation=${generation}`,
+    headers: {
+      Authorization: auth.Authorization,
+      "Content-Type": "application/octet-stream",
+      "Content-Length": "1",
+      "Idempotency-Key": "blob-upload-wrong-length",
+    },
+    body: "x",
+  });
+  assert.equal(wrongLength.status, 400);
+  assert.equal(wrongLength.value.error.code, "blob_size_mismatch");
+
+  const uploaded = await requestJson(harness.address, {
+    method: "PUT",
+    path: `${blob.links.content}?generation=${generation}`,
+    headers: {
+      Authorization: auth.Authorization,
+      "Content-Type": "application/octet-stream",
+      "Content-Length": String(Buffer.byteLength(content)),
+      "Idempotency-Key": "blob-upload-once",
+    },
+    body: content,
+  });
+  assert.equal(uploaded.status, 200);
+  assert.equal(uploaded.value.data.state, "available");
+  assert.equal(uploaded.value.data.sha256, sha256);
+
+  const metadata = await requestJson(harness.address, {
+    path: `${blob.links.self}?generation=${generation}`,
+    headers: { Authorization: auth.Authorization },
+  });
+  assert.equal(metadata.status, 200);
+  assert.equal(metadata.value.data.metadata.name, reservationBody.metadata.name);
+  const downloaded = await requestBytes(harness.address, {
+    path: `${blob.links.content}?generation=${generation}`,
+    headers: { Authorization: auth.Authorization },
+  });
+  assert.equal(downloaded.status, 200);
+  assert.equal(downloaded.headers["content-type"], "application/octet-stream");
+  assert.equal(downloaded.headers["x-content-type-options"], "nosniff");
+  assert.deepEqual(downloaded.body, Buffer.from(content));
+
+  const callerPath = await requestJson(harness.address, {
+    method: "POST",
+    path: "/v1/session/blob-session/file",
+    headers: { ...auth, "Idempotency-Key": "caller-path" },
+    body: JSON.stringify({
+      requestId: "caller-path",
+      expectedGeneration: generation,
+      blobId: blob.blobId,
+      path: "../../must-not-be-accepted",
+    }),
+  });
+  assert.equal(callerPath.status, 400);
+  assert.equal(callerPath.value.error.code, "invalid_blob_request");
+
+  const materialized = await requestJson(harness.address, {
+    method: "POST",
+    path: "/v1/session/blob-session/file?waitForTerminal=true",
+    headers: { ...auth, "Idempotency-Key": "materialize-once" },
+    body: JSON.stringify({
+      requestId: "materialize-request",
+      expectedGeneration: generation,
+      blobId: blob.blobId,
+    }),
+  });
+  assert.equal(materialized.status, 202);
+  assert.equal(materialized.value.data.operation, "materialize_blob");
+  assert.equal(materialized.value.data.state, "succeeded");
+  const file = materialized.value.data.result;
+  assert.match(file.relativeRef, /^uploads\/file-/);
+  assert.equal(file.relativeRef.includes(".."), false);
+  assert.equal(Object.hasOwn(file, "path"), false);
+  const fileMetadata = await requestJson(harness.address, {
+    path: `${file.links.self}?generation=${generation}`,
+    headers: { Authorization: auth.Authorization },
+  });
+  assert.equal(fileMetadata.value.data.relativeRef, file.relativeRef);
+
+  const stale = await requestJson(harness.address, {
+    path: `${file.links.self}?generation=${generation + 1}`,
+    headers: { Authorization: auth.Authorization },
+  });
+  assert.equal(stale.status, 412);
+  assert.equal(stale.value.error.code, "session_precondition_failed");
+  const inUse = await requestJson(harness.address, {
+    method: "DELETE",
+    path: `${blob.links.self}?generation=${generation}&waitForTerminal=true`,
+    headers: { Authorization: auth.Authorization, "Idempotency-Key": "delete-in-use" },
+  });
+  assert.equal(inUse.status, 202);
+  assert.equal(inUse.value.data.state, "failed");
+  assert.equal(inUse.value.data.error.code, "blob_in_use");
+  const deletedFile = await requestJson(harness.address, {
+    method: "DELETE",
+    path: `${file.links.self}?generation=${generation}&waitForTerminal=true`,
+    headers: { Authorization: auth.Authorization, "Idempotency-Key": "delete-file" },
+  });
+  assert.equal(deletedFile.status, 202);
+  assert.equal(deletedFile.value.data.operation, "delete_file");
+  assert.equal(deletedFile.value.data.state, "succeeded");
+  assert.equal(deletedFile.value.data.result.deleted, true);
+  const deletedFileReplay = await requestJson(harness.address, {
+    method: "DELETE",
+    path: `${file.links.self}?generation=${generation}&waitForTerminal=true`,
+    headers: { Authorization: auth.Authorization, "Idempotency-Key": "delete-file" },
+  });
+  assert.equal(deletedFileReplay.value.data.ticketId, deletedFile.value.data.ticketId);
+  assert.equal(deletedFileReplay.value.data.result.deleted, true);
+  const deletedBlob = await requestJson(harness.address, {
+    method: "DELETE",
+    path: `${blob.links.self}?generation=${generation}&waitForTerminal=true`,
+    headers: { Authorization: auth.Authorization, "Idempotency-Key": "delete-blob" },
+  });
+  assert.equal(deletedBlob.status, 202);
+  assert.equal(deletedBlob.value.data.operation, "delete_blob");
+  assert.equal(deletedBlob.value.data.state, "succeeded");
+  assert.equal(deletedBlob.value.data.result.deleted, true);
+
+  const client = new SessionApiClient({
+    baseUrl: `http://[${harness.address.host}]:${harness.address.port}`,
+    bearerToken: TOKEN,
+  });
+  const clientContent = Buffer.from("client helper content");
+  const clientReservation = (
+    await client.reserveBlob(
+      "blob-session",
+      {
+        requestId: "client-reserve",
+        expectedGeneration: generation,
+        metadata: { name: "client.bin", mediaType: "application/octet-stream" },
+        sizeBytes: clientContent.length,
+        sha256: createHash("sha256").update(clientContent).digest("hex"),
+      },
+      "client-reserve-once",
+      { waitForTerminal: true },
+    )
+  ).data.result;
+  assert.equal(
+    (
+      await client.uploadBlobContent(
+        "blob-session",
+        clientReservation.blobId,
+        generation,
+        clientContent,
+        "client-upload-once",
+      )
+    ).data.state,
+    "available",
+  );
+  assert.equal(
+    (await client.getBlob("blob-session", clientReservation.blobId, generation)).data.sha256,
+    clientReservation.sha256,
+  );
+  const clientFile = (
+    await client.materializeBlob(
+      "blob-session",
+      {
+        requestId: "client-materialize",
+        expectedGeneration: generation,
+        blobId: clientReservation.blobId,
+      },
+      "client-materialize-once",
+      { waitForTerminal: true },
+    )
+  ).data.result;
+  assert.equal(
+    (await client.getSessionUpload("blob-session", clientFile.fileId, generation)).data.relativeRef,
+    clientFile.relativeRef,
+  );
+  assert.equal(
+    (
+      await client.deleteSessionUpload(
+        "blob-session",
+        clientFile.fileId,
+        generation,
+        "client-delete-file",
+        { waitForTerminal: true },
+      )
+    ).data.result.deleted,
+    true,
+  );
+  assert.equal(
+    (
+      await client.deleteBlob(
+        "blob-session",
+        clientReservation.blobId,
+        generation,
+        "client-delete-blob",
+        { waitForTerminal: true },
+      )
+    ).data.result.deleted,
+    true,
+  );
+});
+
+test("queued blob reservations recover only after durable session and transfer state", async (t) => {
+  const stateDir = await mkdtemp(join(tmpdir(), "pi-daemon-api-blob-recovery-"));
+  t.after(async () => rm(stateDir, { recursive: true, force: true }));
+  const catalog = new FileSessionCatalog({ stateDir });
+  const first = new Multiplexer({
+    factory: new SessionFactory(),
+    durability: new FileDurabilityStore({ stateDir }),
+    catalog,
+    hostInstanceId: "host-api-blob-before-crash",
+  });
+  await first.recover();
+  await first.open({
+    protocolVersion: "1.0",
+    kind: "command",
+    requestId: "blob-recovery-open",
+    operation: "open",
+    sessionId: "blob-recovery-session",
+    generation: 1,
+    payload: {
+      cwd: "/work/blob-recovery",
+      session: { mode: "memory" },
+      resources: {
+        extensions: "none",
+        skills: "none",
+        promptTemplates: "none",
+        themes: "none",
+        contextFiles: "none",
+        tools: "none",
+      },
+    },
+  });
+  await first.dispose(1_000);
+
+  const ticketStore = new FileMutationTicketStore({ stateDir });
+  await ticketStore.recover();
+  const blobId = `blob-${"r".repeat(43)}`;
+  const queued = await ticketStore.begin({
+    method: "POST",
+    canonicalTarget: "/v1/session/blob-recovery-session/blob",
+    idempotencyKey: "recover-reservation",
+    command: {
+      operation: "reserve_blob",
+      requestId: "recover-reservation",
+      sessionId: "blob-recovery-session",
+      expectedGeneration: 1,
+      blobId,
+      metadata: { name: "recovered.bin", mediaType: "application/octet-stream" },
+      sizeBytes: 4,
+      sha256: createHash("sha256").update("test").digest("hex"),
+    },
+  });
+
+  const restarted = new Multiplexer({
+    factory: new SessionFactory(),
+    durability: new FileDurabilityStore({ stateDir }),
+    catalog: new FileSessionCatalog({ stateDir }),
+    hostInstanceId: "host-api-blob-after-crash",
+  });
+  await restarted.recover();
+  const tickets = new MutationTicketController(new FileMutationTicketStore({ stateDir }));
+  const blobs = new FileBlobStore({ stateDir });
+  const harness = await startApi(undefined, restarted, tickets, { blobs });
+  t.after(async () => {
+    await harness.server.stop();
+    await restarted.dispose(1_000);
+  });
+  const terminal = await waitForTicket(
+    harness.address,
+    queued.ticketId,
+    `Bearer ${TOKEN}`,
+  );
+  assert.equal(terminal.state, "succeeded");
+  assert.equal(terminal.result.blobId, blobId);
+  assert.equal(terminal.result.state, "reserved");
+  assert.equal((await blobs.getBlob(blobId, "blob-recovery-session", 1)).state, "reserved");
 });
 
 test("queued environment-dependent mutation fails credentials_required after restart", async (t) => {
@@ -1288,6 +1630,33 @@ const requestJsonOnce = async (address, options) =>
             reject(new Error(`invalid JSON response for ${options.path}: status=${response.statusCode} bytes=${body.length}`, { cause: error }));
           }
         });
+      },
+    );
+    request.on("error", reject);
+    if (options.body !== undefined) request.write(options.body);
+    request.end();
+  });
+
+const requestBytes = async (address, options) =>
+  new Promise((resolve, reject) => {
+    const request = httpRequest(
+      {
+        host: address.host,
+        port: address.port,
+        method: options.method ?? "GET",
+        path: options.path,
+        headers: options.headers,
+      },
+      (response) => {
+        const chunks = [];
+        response.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
+        response.on("end", () =>
+          resolve({
+            status: response.statusCode,
+            headers: response.headers,
+            body: Buffer.concat(chunks),
+          }),
+        );
       },
     );
     request.on("error", reject);

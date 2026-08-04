@@ -1,0 +1,21 @@
+{
+  "contractVersion": "1.0",
+  "fileId": "file-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "sessionId": "agent-a",
+  "generation": 3,
+  "blobId": "blob-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "relativeRef": "uploads/file-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "metadata": {
+    "name": "shared-document.pdf",
+    "mediaType": "application/pdf",
+    "trust": "untrusted"
+  },
+  "sizeBytes": 24,
+  "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "createdAt": "2026-08-03T10:00:02.000Z",
+  "expiresAt": "2026-08-04T10:00:02.000Z",
+  "links": {
+    "self": "/v1/session/agent-a/file/file-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "content": "/v1/session/agent-a/file/file-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/content"
+  }
+}

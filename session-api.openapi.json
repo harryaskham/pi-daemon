@@ -3,7 +3,7 @@
   "info": {
     "title": "Pi Daemon additive session API",
     "version": "1.0.0",
-    "description": "Authenticated REST session lifecycle plus WebSocket Pi RPC and upstream Agent Client Protocol attachment. The existing owner-only Unix NDJSON protocol remains additive and equivalent at the logical-session layer."
+    "description": "Authenticated REST session lifecycle, bounded SHA-256 blob/session file transfer, WebSocket Pi RPC, and upstream Agent Client Protocol attachment. The existing owner-only Unix NDJSON protocol remains additive and equivalent at the logical-session layer."
   },
   "servers": [
     {
@@ -320,6 +320,598 @@
           },
           "412": {
             "$ref": "#/components/responses/PreconditionFailed"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/session/{sessionRef}/blob": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/SessionRef"
+        },
+        {
+          "$ref": "#/components/parameters/RequestId"
+        }
+      ],
+      "post": {
+        "operationId": "reserveSessionBlob",
+        "summary": "Durably reserve one bounded opaque upload for an exact session generation",
+        "description": "Declares untrusted name/MIME, exact byte size and lowercase SHA-256. The response is a durable idempotent ticket; no content, path or filesystem authority is accepted.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          },
+          {
+            "$ref": "#/components/parameters/WaitForTerminal"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "./session-api.schema.json#/$defs/blobReservationRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Mutation durably admitted or joined",
+            "headers": {
+              "Location": {
+                "$ref": "#/components/headers/Location"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./session-api.schema.json#/$defs/ticketEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "412": {
+            "$ref": "#/components/responses/PreconditionFailed"
+          },
+          "413": {
+            "$ref": "#/components/responses/TooLarge"
+          },
+          "422": {
+            "$ref": "#/components/responses/Unsupported"
+          },
+          "429": {
+            "$ref": "#/components/responses/Capacity"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/session/{sessionRef}/blob/{blobId}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/SessionRef"
+        },
+        {
+          "$ref": "#/components/parameters/RequestId"
+        },
+        {
+          "$ref": "#/components/parameters/BlobId"
+        },
+        {
+          "$ref": "#/components/parameters/Generation"
+        }
+      ],
+      "get": {
+        "operationId": "getSessionBlob",
+        "summary": "Inspect bounded blob metadata without content",
+        "responses": {
+          "200": {
+            "description": "Bounded blob metadata; content is never embedded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./session-api.schema.json#/$defs/blobTransferEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "412": {
+            "$ref": "#/components/responses/PreconditionFailed"
+          },
+          "413": {
+            "$ref": "#/components/responses/TooLarge"
+          },
+          "422": {
+            "$ref": "#/components/responses/Unsupported"
+          },
+          "429": {
+            "$ref": "#/components/responses/Capacity"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteSessionBlob",
+        "summary": "Durably delete an unreferenced blob alias and prune its backing object when unused",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          },
+          {
+            "$ref": "#/components/parameters/WaitForTerminal"
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Mutation durably admitted or joined",
+            "headers": {
+              "Location": {
+                "$ref": "#/components/headers/Location"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./session-api.schema.json#/$defs/ticketEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "412": {
+            "$ref": "#/components/responses/PreconditionFailed"
+          },
+          "413": {
+            "$ref": "#/components/responses/TooLarge"
+          },
+          "422": {
+            "$ref": "#/components/responses/Unsupported"
+          },
+          "429": {
+            "$ref": "#/components/responses/Capacity"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/session/{sessionRef}/blob/{blobId}/content": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/SessionRef"
+        },
+        {
+          "$ref": "#/components/parameters/RequestId"
+        },
+        {
+          "$ref": "#/components/parameters/BlobId"
+        },
+        {
+          "$ref": "#/components/parameters/Generation"
+        }
+      ],
+      "put": {
+        "operationId": "uploadSessionBlobContent",
+        "summary": "Stream and verify reserved opaque content",
+        "description": "Content-Length, actual bytes and SHA-256 must match the reservation. The same idempotency key can safely retry an interrupted reserved upload; settled or quarantined content is never blindly replaced.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Bounded blob metadata; content is never embedded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./session-api.schema.json#/$defs/blobTransferEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "412": {
+            "$ref": "#/components/responses/PreconditionFailed"
+          },
+          "413": {
+            "$ref": "#/components/responses/TooLarge"
+          },
+          "422": {
+            "$ref": "#/components/responses/Unsupported"
+          },
+          "429": {
+            "$ref": "#/components/responses/Capacity"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      },
+      "get": {
+        "operationId": "downloadSessionBlobContent",
+        "summary": "Download available non-quarantined opaque content",
+        "responses": {
+          "200": {
+            "description": "Bounded opaque content download; declared MIME remains untrusted metadata",
+            "headers": {
+              "Digest": {
+                "description": "Verified SHA-256 digest",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Pi-Untrusted-Media-Type": {
+                "description": "Untrusted client-declared media type; never used as Content-Type",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "412": {
+            "$ref": "#/components/responses/PreconditionFailed"
+          },
+          "413": {
+            "$ref": "#/components/responses/TooLarge"
+          },
+          "422": {
+            "$ref": "#/components/responses/Unsupported"
+          },
+          "429": {
+            "$ref": "#/components/responses/Capacity"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/session/{sessionRef}/file": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/SessionRef"
+        },
+        {
+          "$ref": "#/components/parameters/RequestId"
+        }
+      ],
+      "post": {
+        "operationId": "materializeSessionBlob",
+        "summary": "Durably create a daemon-chosen session upload reference",
+        "description": "The body accepts only an authorized blob ID and exact generation. The daemon chooses uploads/<fileId> inside its owner-private session inbox; clients cannot supply cwd-relative or absolute paths.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          },
+          {
+            "$ref": "#/components/parameters/WaitForTerminal"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "./session-api.schema.json#/$defs/blobMaterializationRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Mutation durably admitted or joined",
+            "headers": {
+              "Location": {
+                "$ref": "#/components/headers/Location"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./session-api.schema.json#/$defs/ticketEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "412": {
+            "$ref": "#/components/responses/PreconditionFailed"
+          },
+          "413": {
+            "$ref": "#/components/responses/TooLarge"
+          },
+          "422": {
+            "$ref": "#/components/responses/Unsupported"
+          },
+          "429": {
+            "$ref": "#/components/responses/Capacity"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/session/{sessionRef}/file/{fileId}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/SessionRef"
+        },
+        {
+          "$ref": "#/components/parameters/RequestId"
+        },
+        {
+          "$ref": "#/components/parameters/FileId"
+        },
+        {
+          "$ref": "#/components/parameters/Generation"
+        }
+      ],
+      "get": {
+        "operationId": "getSessionUpload",
+        "summary": "Inspect a daemon-owned session upload reference",
+        "responses": {
+          "200": {
+            "description": "Daemon-chosen session upload reference metadata",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./session-api.schema.json#/$defs/sessionUploadEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "412": {
+            "$ref": "#/components/responses/PreconditionFailed"
+          },
+          "413": {
+            "$ref": "#/components/responses/TooLarge"
+          },
+          "422": {
+            "$ref": "#/components/responses/Unsupported"
+          },
+          "429": {
+            "$ref": "#/components/responses/Capacity"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteSessionUpload",
+        "summary": "Durably delete a session upload reference",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          },
+          {
+            "$ref": "#/components/parameters/WaitForTerminal"
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Mutation durably admitted or joined",
+            "headers": {
+              "Location": {
+                "$ref": "#/components/headers/Location"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./session-api.schema.json#/$defs/ticketEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "412": {
+            "$ref": "#/components/responses/PreconditionFailed"
+          },
+          "413": {
+            "$ref": "#/components/responses/TooLarge"
+          },
+          "422": {
+            "$ref": "#/components/responses/Unsupported"
+          },
+          "429": {
+            "$ref": "#/components/responses/Capacity"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/session/{sessionRef}/file/{fileId}/content": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/SessionRef"
+        },
+        {
+          "$ref": "#/components/parameters/RequestId"
+        },
+        {
+          "$ref": "#/components/parameters/FileId"
+        },
+        {
+          "$ref": "#/components/parameters/Generation"
+        }
+      ],
+      "get": {
+        "operationId": "downloadSessionUploadContent",
+        "summary": "Download content through an exact session upload reference",
+        "responses": {
+          "200": {
+            "description": "Bounded opaque content download; declared MIME remains untrusted metadata",
+            "headers": {
+              "Digest": {
+                "description": "Verified SHA-256 digest",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Pi-Untrusted-Media-Type": {
+                "description": "Untrusted client-declared media type; never used as Content-Type",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "412": {
+            "$ref": "#/components/responses/PreconditionFailed"
+          },
+          "413": {
+            "$ref": "#/components/responses/TooLarge"
+          },
+          "422": {
+            "$ref": "#/components/responses/Unsupported"
+          },
+          "429": {
+            "$ref": "#/components/responses/Capacity"
           },
           "503": {
             "$ref": "#/components/responses/Unavailable"
@@ -1838,6 +2430,34 @@
           "minimum": 1,
           "maximum": 100,
           "default": 50
+        }
+      },
+      "Generation": {
+        "name": "generation",
+        "in": "query",
+        "required": true,
+        "description": "Exact daemon session generation owning the blob or upload reference.",
+        "schema": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "BlobId": {
+        "name": "blobId",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "pattern": "^blob-[A-Za-z0-9_-]{43}$"
+        }
+      },
+      "FileId": {
+        "name": "fileId",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "pattern": "^file-[A-Za-z0-9_-]{43}$"
         }
       }
     },

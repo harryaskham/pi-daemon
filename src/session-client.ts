@@ -18,6 +18,12 @@ import type {
   TranscriptPage,
   TranscriptQuery,
 } from "./dashboard-contract.js";
+import type {
+  BlobMaterializationRequest,
+  BlobReservationRequest,
+  BlobTransferResource,
+  SessionUploadResource,
+} from "./blob-store.js";
 import type { DashboardDiagnosticsSnapshot } from "./dashboard-diagnostics.js";
 import { dashboardSessionDraftEtag } from "./dashboard-session-draft-contract.js";
 import {
@@ -100,13 +106,22 @@ export class SessionApiClient {
     path: string,
     options: {
       body?: unknown;
+      rawBody?: Uint8Array;
       headers?: Record<string, string>;
       timeoutMs?: number;
     } = {},
   ): Promise<SessionApiResult<T>> {
     const url = new URL(path, this.baseUrl);
     if (url.origin !== this.baseUrl.origin) throw new Error("session API path escaped base URL");
-    const body = options.body === undefined ? undefined : Buffer.from(JSON.stringify(options.body), "utf8");
+    if (options.body !== undefined && options.rawBody !== undefined) {
+      throw new Error("session API request cannot combine JSON and raw bodies");
+    }
+    const body =
+      options.rawBody === undefined
+        ? options.body === undefined
+          ? undefined
+          : Buffer.from(JSON.stringify(options.body), "utf8")
+        : Buffer.from(options.rawBody);
     const timeoutMs = positiveInteger(options.timeoutMs ?? this.timeoutMs, "timeoutMs");
     const transport = url.protocol === "https:" ? httpsRequest : httpRequest;
     return new Promise<SessionApiResult<T>>((resolve, reject) => {
@@ -120,7 +135,10 @@ export class SessionApiClient {
             ...(body === undefined
               ? {}
               : {
-                  "Content-Type": "application/json",
+                  "Content-Type":
+                    options.rawBody === undefined
+                      ? "application/json"
+                      : "application/octet-stream",
                   "Content-Length": String(body.length),
                 }),
             ...(options.headers ?? {}),
@@ -182,6 +200,117 @@ export class SessionApiClient {
 
   getTicket(ticketId: string): Promise<SessionApiResult<TicketResource>> {
     return this.request("GET", `/v1/ticket/${encodeURIComponent(ticketReference(ticketId))}`);
+  }
+
+  reserveBlob(
+    sessionRef: string,
+    request: BlobReservationRequest,
+    idempotencyKey: string,
+    options: { waitForTerminal?: boolean } = {},
+  ): Promise<SessionApiResult<TicketResource>> {
+    const wait = options.waitForTerminal === true ? "?waitForTerminal=true" : "";
+    return this.request(
+      "POST",
+      `/v1/session/${encodeURIComponent(sessionReference(sessionRef))}/blob${wait}`,
+      {
+        body: request,
+        headers: {
+          "Idempotency-Key": idempotencyKey,
+          "X-Request-Id": request.requestId,
+        },
+      },
+    );
+  }
+
+  uploadBlobContent(
+    sessionRef: string,
+    blobId: string,
+    generation: number,
+    content: Uint8Array,
+    idempotencyKey: string,
+  ): Promise<SessionApiResult<BlobTransferResource>> {
+    return this.request(
+      "PUT",
+      `/v1/session/${encodeURIComponent(sessionReference(sessionRef))}/blob/${encodeURIComponent(blobReference(blobId))}/content?generation=${generationNumber(generation)}`,
+      {
+        rawBody: content,
+        headers: { "Idempotency-Key": idempotencyKey },
+      },
+    );
+  }
+
+  getBlob(
+    sessionRef: string,
+    blobId: string,
+    generation: number,
+  ): Promise<SessionApiResult<BlobTransferResource>> {
+    return this.request(
+      "GET",
+      `/v1/session/${encodeURIComponent(sessionReference(sessionRef))}/blob/${encodeURIComponent(blobReference(blobId))}?generation=${generationNumber(generation)}`,
+    );
+  }
+
+  deleteBlob(
+    sessionRef: string,
+    blobId: string,
+    generation: number,
+    idempotencyKey: string,
+    options: { waitForTerminal?: boolean } = {},
+  ): Promise<SessionApiResult<TicketResource>> {
+    const query = new URLSearchParams({ generation: String(generationNumber(generation)) });
+    if (options.waitForTerminal === true) query.set("waitForTerminal", "true");
+    return this.request(
+      "DELETE",
+      `/v1/session/${encodeURIComponent(sessionReference(sessionRef))}/blob/${encodeURIComponent(blobReference(blobId))}?${query}`,
+      { headers: { "Idempotency-Key": idempotencyKey } },
+    );
+  }
+
+  materializeBlob(
+    sessionRef: string,
+    request: BlobMaterializationRequest,
+    idempotencyKey: string,
+    options: { waitForTerminal?: boolean } = {},
+  ): Promise<SessionApiResult<TicketResource>> {
+    const wait = options.waitForTerminal === true ? "?waitForTerminal=true" : "";
+    return this.request(
+      "POST",
+      `/v1/session/${encodeURIComponent(sessionReference(sessionRef))}/file${wait}`,
+      {
+        body: request,
+        headers: {
+          "Idempotency-Key": idempotencyKey,
+          "X-Request-Id": request.requestId,
+        },
+      },
+    );
+  }
+
+  getSessionUpload(
+    sessionRef: string,
+    fileId: string,
+    generation: number,
+  ): Promise<SessionApiResult<SessionUploadResource>> {
+    return this.request(
+      "GET",
+      `/v1/session/${encodeURIComponent(sessionReference(sessionRef))}/file/${encodeURIComponent(fileReference(fileId))}?generation=${generationNumber(generation)}`,
+    );
+  }
+
+  deleteSessionUpload(
+    sessionRef: string,
+    fileId: string,
+    generation: number,
+    idempotencyKey: string,
+    options: { waitForTerminal?: boolean } = {},
+  ): Promise<SessionApiResult<TicketResource>> {
+    const query = new URLSearchParams({ generation: String(generationNumber(generation)) });
+    if (options.waitForTerminal === true) query.set("waitForTerminal", "true");
+    return this.request(
+      "DELETE",
+      `/v1/session/${encodeURIComponent(sessionReference(sessionRef))}/file/${encodeURIComponent(fileReference(fileId))}?${query}`,
+      { headers: { "Idempotency-Key": idempotencyKey } },
+    );
   }
 
   async listSchedules(sessionRef?: string): Promise<SessionApiResult<{ schedules: ScheduleResource[] }>> {
@@ -691,6 +820,21 @@ function sessionReference(value: string): string {
 
 function ticketReference(value: string): string {
   if (value.length < 1 || value.length > 256) throw new Error("invalid ticket reference");
+  return value;
+}
+
+function blobReference(value: string): string {
+  if (!/^blob-[A-Za-z0-9_-]{43}$/u.test(value)) throw new Error("invalid blob reference");
+  return value;
+}
+
+function fileReference(value: string): string {
+  if (!/^file-[A-Za-z0-9_-]{43}$/u.test(value)) throw new Error("invalid file reference");
+  return value;
+}
+
+function generationNumber(value: number): number {
+  if (!Number.isSafeInteger(value) || value < 0) throw new Error("invalid generation");
   return value;
 }
 

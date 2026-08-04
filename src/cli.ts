@@ -8,6 +8,7 @@ import { getAgentDir } from "@earendil-works/pi-coding-agent";
 
 import { loadServiceBearer, SERVICE_BEARER_ENV } from "./api-auth.js";
 import { ApiServer } from "./api-server.js";
+import { FileBlobStore } from "./blob-store.js";
 import { bootstrapServicePaths } from "./bootstrap.js";
 import { PiDaemonClient, ProtocolResponseError } from "./client.js";
 import {
@@ -737,6 +738,7 @@ async function runServe(
   const durability = new FileDurabilityStore({ stateDir });
   const catalog = new FileSessionCatalog({ stateDir });
   const tickets = new MutationTicketController(new FileMutationTicketStore({ stateDir }));
+  const blobs = new FileBlobStore({ stateDir });
   const idleSessionTtlMs =
     integerSetting(
       options,
@@ -965,6 +967,7 @@ async function runServe(
         multiplexer,
         authenticator: loaded.authenticator,
         tickets,
+        blobs,
         schedules: scheduleStore,
         scheduler,
         ...(rpcAttachments === undefined ? {} : { rpcAttachments }),

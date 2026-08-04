@@ -52,6 +52,10 @@ test("session API fixtures validate against their published definitions", async 
     ["session.response.json", "sessionEnvelope"],
     ["list.response.json", "sessionListEnvelope"],
     ["ticket.response.json", "ticketEnvelope"],
+    ["blob.reserve.request.json", "blobReservationRequest"],
+    ["blob.materialize.request.json", "blobMaterializationRequest"],
+    ["blob.resource.json", "blobTransferResource"],
+    ["file.resource.json", "sessionUploadResource"],
     ["capabilities.response.json", "capabilitiesEnvelope"],
     ["schedule.list.response.json", "scheduleListEnvelope"],
     ["schedule.status.response.json", "scheduleStatusEnvelope"],
@@ -78,6 +82,18 @@ test("session API fixtures validate against their published definitions", async 
     ["dashboard.lease.response.json", "dashboardLeaseEnvelope"],
   ]) {
     validate(definition, await fixture(name));
+  }
+});
+
+test("invalid blob transfer fixtures reject client paths and incomplete quarantine state", async () => {
+  const { schema, ajv } = await contractValidator();
+  for (const [name, definition] of [
+    ["blob.materialize.invalid.json", "blobMaterializationRequest"],
+    ["blob.quarantine.invalid.json", "blobTransferResource"],
+  ]) {
+    const validate = ajv.getSchema(`${schema.$id}#/$defs/${definition}`);
+    assert.ok(validate, `${schema.$id}: missing ${definition}`);
+    assert.equal(validate(await fixture(name)), false, name);
   }
 });
 

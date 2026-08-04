@@ -175,6 +175,12 @@ for the exact supported mapping and limitations.
 | `GET /v1/session/{sessionRef}` | inspect by ID or exact name | `200` session envelope |
 | `PUT /v1/session/{sessionRef}` | replace desired spec with stale checks | `202` ticket envelope |
 | `DELETE /v1/session/{sessionRef}` | close and optionally remove artifacts | `202` ticket envelope |
+| `POST /v1/session/{sessionRef}/blob` | reserve bounded opaque bytes for an exact generation | `202` ticket envelope |
+| `GET\|DELETE /v1/session/{sessionRef}/blob/{blobId}` | inspect metadata or durably clean an alias | `200` resource / `202` ticket |
+| `PUT\|GET /v1/session/{sessionRef}/blob/{blobId}/content` | stream verified upload or bounded attachment-only download | `200` resource / opaque bytes |
+| `POST /v1/session/{sessionRef}/file` | create a daemon-chosen owner-private inbox reference | `202` ticket envelope |
+| `GET\|DELETE /v1/session/{sessionRef}/file/{fileId}` | inspect or durably clean a session reference | `200` resource / `202` ticket |
+| `GET /v1/session/{sessionRef}/file/{fileId}/content` | download through an exact session-generation reference | opaque bytes |
 | `GET /v1/ticket/{ticketId}` | inspect bounded mutation ticket | `200` ticket envelope |
 | `GET /v1/ticket?method=...&target=...` | exact lookup using `Idempotency-Key` | `200` ticket envelope |
 | `POST /v1/ticket/{ticketId}/reconcile` | resolve indeterminate work with retained Pi entry evidence | `200` ticket envelope |
@@ -183,10 +189,15 @@ for the exact supported mapping and limitations.
 | `GET|POST /v1/dashboard/*` | neutral inventory, preview, ownership/export/lease resources for dedicated Dash backends | versioned service envelopes/tickets |
 | `GET /v1/dashboard/session/{sessionRef}/tui` | capability-gated server-side TUI WebSocket (`pi-daemon-tui.v1`) | `101` or typed unavailable response |
 
-The complete neutral route set, idempotency rules, client methods, and separation
-from browser authentication are documented in the
-[Neutral Dash service API](dashboard-service-api). The daemon service bearer
-never crosses from the dedicated backend into browser storage.
+The blob/file routes are specified in [Neutral blob and session file
+transfer](blob-transfer): verified bytes are SHA-256-addressed, metadata remains
+untrusted, risky defaults quarantine, and materialization never accepts a client
+path or writes into cwd.
+
+The complete neutral Dashboard route set, idempotency rules, client methods, and
+separation from browser authentication are documented in the [Neutral Dash
+service API](dashboard-service-api). The daemon service bearer never crosses
+from the dedicated backend into browser storage.
 
 List ordering is stable by canonical session ID and includes both resident and
 dormant retained sessions. `limit` defaults to 50 and is bounded to 100.
@@ -449,9 +460,10 @@ event source.
 ## Bounds and compatibility gates
 
 The implementation must explicitly bound HTTP body bytes, environment entries
-and bytes, WebSocket frame bytes, clients, sessions, tickets, replay events,
-per-reader outbound bytes, in-flight commands, retained terminal results, and
-drain time. Limits are returned by capabilities/status without secret values.
+and bytes, blob aliases/content/session references/recovery, WebSocket frame
+bytes, clients, sessions, tickets, replay events, per-reader outbound bytes,
+in-flight commands, retained terminal results, and drain time. Limits are
+returned by capabilities/status without secret values.
 
 A protocol change is incomplete without:
 

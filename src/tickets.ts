@@ -57,6 +57,38 @@ export type MutationTicketCommand =
       expectedGeneration: number;
       expectedRevision: number;
       retainArtifacts: boolean;
+    }
+  | {
+      operation: "reserve_blob";
+      requestId: string;
+      sessionId: string;
+      expectedGeneration: number;
+      blobId: string;
+      metadata: { name: string; mediaType: string };
+      sizeBytes: number;
+      sha256: string;
+    }
+  | {
+      operation: "materialize_blob";
+      requestId: string;
+      sessionId: string;
+      expectedGeneration: number;
+      blobId: string;
+      fileId: string;
+    }
+  | {
+      operation: "delete_blob";
+      requestId: string;
+      sessionId: string;
+      expectedGeneration: number;
+      blobId: string;
+    }
+  | {
+      operation: "delete_file";
+      requestId: string;
+      sessionId: string;
+      expectedGeneration: number;
+      fileId: string;
     };
 
 export interface MutationTicketRecord {
@@ -205,9 +237,7 @@ export class FileMutationTicketStore implements MutationTicketStore {
         state: "queued",
         requestId: input.command.requestId,
         sessionId: input.command.sessionId,
-        ...(input.command.operation === "delete"
-          ? { generation: input.command.expectedGeneration }
-          : { generation: input.command.generation }),
+        generation: commandGeneration(input.command),
         command: structuredClone(input.command),
         submittedAt: now,
         updatedAt: now,
@@ -780,8 +810,9 @@ function validateRecord(value: unknown, path: string): asserts value is Mutation
     throw corrupt("ticket session does not match command", path);
   }
   if (
-    value.generation !== undefined &&
-    (!Number.isSafeInteger(value.generation) || (value.generation as number) < 0)
+    value.generation !== commandGeneration(value.command) ||
+    !Number.isSafeInteger(value.generation) ||
+    (value.generation as number) < 0
   ) {
     throw corrupt("ticket generation is invalid", path);
   }
@@ -795,7 +826,21 @@ function validateRecord(value: unknown, path: string): asserts value is Mutation
 
 function isMutationCommand(value: unknown): value is MutationTicketCommand {
   if (!isRecord(value)) return false;
-  if (!(["create", "update", "delete"] as unknown[]).includes(value.operation)) return false;
+  if (
+    !(
+      [
+        "create",
+        "update",
+        "delete",
+        "reserve_blob",
+        "materialize_blob",
+        "delete_blob",
+        "delete_file",
+      ] as unknown[]
+    ).includes(value.operation)
+  ) {
+    return false;
+  }
   if (
     typeof value.requestId !== "string" ||
     value.requestId.length === 0 ||
@@ -806,20 +851,48 @@ function isMutationCommand(value: unknown): value is MutationTicketCommand {
   }
   if (value.operation === "delete") {
     return (
-      Number.isSafeInteger(value.expectedGeneration) &&
-      (value.expectedGeneration as number) >= 0 &&
+      validGeneration(value.expectedGeneration) &&
       Number.isSafeInteger(value.expectedRevision) &&
       (value.expectedRevision as number) >= 1 &&
       typeof value.retainArtifacts === "boolean"
     );
   }
-  if (!Number.isSafeInteger(value.generation) || (value.generation as number) < 0) return false;
+  if (value.operation === "reserve_blob") {
+    return (
+      validGeneration(value.expectedGeneration) &&
+      isBlobId(value.blobId) &&
+      isRecord(value.metadata) &&
+      typeof value.metadata.name === "string" &&
+      value.metadata.name.length > 0 &&
+      Buffer.byteLength(value.metadata.name, "utf8") <= 512 &&
+      typeof value.metadata.mediaType === "string" &&
+      value.metadata.mediaType.length > 0 &&
+      value.metadata.mediaType.length <= 255 &&
+      Number.isSafeInteger(value.sizeBytes) &&
+      (value.sizeBytes as number) >= 0 &&
+      typeof value.sha256 === "string" &&
+      /^[a-f0-9]{64}$/u.test(value.sha256)
+    );
+  }
+  if (value.operation === "materialize_blob") {
+    return (
+      validGeneration(value.expectedGeneration) &&
+      isBlobId(value.blobId) &&
+      isFileId(value.fileId)
+    );
+  }
+  if (value.operation === "delete_blob") {
+    return validGeneration(value.expectedGeneration) && isBlobId(value.blobId);
+  }
+  if (value.operation === "delete_file") {
+    return validGeneration(value.expectedGeneration) && isFileId(value.fileId);
+  }
+  if (!validGeneration(value.generation)) return false;
   if (!isRecord(value.spec) || "env" in value.spec) return false;
   if (!isEnvironmentSummary(value.environmentSummary)) return false;
   if (value.operation === "update") {
     return (
-      Number.isSafeInteger(value.expectedGeneration) &&
-      (value.expectedGeneration as number) >= 0 &&
+      validGeneration(value.expectedGeneration) &&
       Number.isSafeInteger(value.expectedRevision) &&
       (value.expectedRevision as number) >= 1
     );
@@ -859,10 +932,40 @@ function isApiError(value: unknown): value is ApiErrorBody {
 }
 
 function operationMethod(operation: unknown): "POST" | "PUT" | "DELETE" | undefined {
-  if (operation === "create") return "POST";
+  if (
+    operation === "create" ||
+    operation === "reserve_blob" ||
+    operation === "materialize_blob"
+  ) {
+    return "POST";
+  }
   if (operation === "update") return "PUT";
-  if (operation === "delete") return "DELETE";
+  if (
+    operation === "delete" ||
+    operation === "delete_blob" ||
+    operation === "delete_file"
+  ) {
+    return "DELETE";
+  }
   return undefined;
+}
+
+function commandGeneration(command: MutationTicketCommand): number {
+  return command.operation === "create" || command.operation === "update"
+    ? command.generation
+    : command.expectedGeneration;
+}
+
+function validGeneration(value: unknown): value is number {
+  return Number.isSafeInteger(value) && (value as number) >= 0;
+}
+
+function isBlobId(value: unknown): value is string {
+  return typeof value === "string" && /^blob-[A-Za-z0-9_-]{43}$/u.test(value);
+}
+
+function isFileId(value: unknown): value is string {
+  return typeof value === "string" && /^file-[A-Za-z0-9_-]{43}$/u.test(value);
 }
 
 function allowedTransition(

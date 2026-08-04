@@ -1,0 +1,24 @@
+{
+  "contractVersion": "1.0",
+  "blobId": "blob-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "sessionId": "agent-a",
+  "generation": 3,
+  "revision": 1,
+  "state": "available",
+  "metadata": {
+    "name": "shared-document.pdf",
+    "mediaType": "application/pdf",
+    "trust": "untrusted"
+  },
+  "sizeBytes": 24,
+  "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "referenceCount": 1,
+  "createdAt": "2026-08-03T10:00:00.000Z",
+  "updatedAt": "2026-08-03T10:00:01.000Z",
+  "expiresAt": "2026-08-04T10:00:01.000Z",
+  "links": {
+    "self": "/v1/session/agent-a/blob/blob-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "content": "/v1/session/agent-a/blob/blob-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/content",
+    "materialize": "/v1/session/agent-a/file"
+  }
+}

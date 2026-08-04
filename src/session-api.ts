@@ -5,6 +5,12 @@ export const SESSION_API_PATHS = {
   capabilities: "/v1/capabilities",
   sessions: "/v1/session",
   session: "/v1/session/{sessionRef}",
+  blobs: "/v1/session/{sessionRef}/blob",
+  blob: "/v1/session/{sessionRef}/blob/{blobId}",
+  blobContent: "/v1/session/{sessionRef}/blob/{blobId}/content",
+  files: "/v1/session/{sessionRef}/file",
+  file: "/v1/session/{sessionRef}/file/{fileId}",
+  fileContent: "/v1/session/{sessionRef}/file/{fileId}/content",
   rpc: "/v1/session/{sessionRef}/rpc",
   apc: "/v1/session/{sessionRef}/apc",
   tickets: "/v1/ticket",
@@ -228,7 +234,15 @@ export interface TicketResource {
   ticketId: string;
   requestId: string;
   idempotencyKey: string;
-  operation: "create" | "update" | "delete" | "prompt";
+  operation:
+    | "create"
+    | "update"
+    | "delete"
+    | "prompt"
+    | "reserve_blob"
+    | "materialize_blob"
+    | "delete_blob"
+    | "delete_file";
   state: TicketState;
   submittedAt: string;
   updatedAt: string;

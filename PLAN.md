@@ -731,6 +731,10 @@ implementation order. This list is a human-readable crosswalk.
   - [x] `bd-ff2f8f` — bounded runtime registry/client and fixed filesystem-tool
     injection; final server persistence/wiring and cross-session acceptance stay
     with the parent.
+- [x] `bd-b2975c` — neutral bounded streaming blob/session file transfer with
+  immutable SHA-256 backing objects, exact-generation authority, quarantine,
+  durable idempotent tickets, daemon-owned inbox references, cleanup, public
+  schema/OpenAPI/fixtures, typed JavaScript client, and no cwd/tool authority.
 - [x] `bd-ba3623` — Pi Daemon Dash: exceptionally fast, polished browser
   session workspace with embedded/dedicated backends and Rich/TUI panes;
   detailed architecture and dependency board in `web/PLAN.md`.

@@ -24,6 +24,7 @@ remain neutral service surfaces—not Cacophony components.
 - [Protocol](protocol) — NDJSON operations, event flow, generations, and retry semantics
 - [Host tool-adapter protocol](tool-adapter-protocol) — protocol-v2 descriptor, fixed filesystem operations, bind/invoke/abort/revoke frames, and capability secrecy
 - [Session API](session-api) — additive CRUD, multi-reader Pi RPC attach, and `/apc` ACP contract
+- [Neutral blob and file transfer](blob-transfer) — SHA-256-addressed streaming uploads, exact generation authority, quarantine, daemon-owned inbox references, and cleanup
 - [Dash browser/backend protocol](dashboard-protocol) — preview-first resources, normalized transcripts, multiplexed Rich/TUI channels, replay, limits, and performance budgets
 - [Dashboard transport security](dashboard-transport-security) — native HTTPS/WSS, loopback reverse-proxy authority, SNI/HSTS, rotation, secret paths, and health
 - [Dashboard identity and authorization](dashboard-authorization) — multi-user threat model, provider/principal contract, central roles/policy/audit, migration, and enforcement map

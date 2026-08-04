@@ -1,0 +1,10 @@
+{
+  "requestId": "blob-reserve-fixture",
+  "expectedGeneration": 3,
+  "metadata": {
+    "name": "shared-document.pdf",
+    "mediaType": "application/pdf"
+  },
+  "sizeBytes": 24,
+  "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+}

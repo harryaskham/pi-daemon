@@ -85,6 +85,51 @@ const response = await client.request({
 });
 ```
 
+## Neutral blob/file transfer
+
+Authenticated HTTP clients use `SessionApiClient` to reserve exact bytes,
+stream them, and request a daemon-owned session reference. The caller never
+supplies a host path:
+
+```js
+import { createHash } from "node:crypto";
+import { SessionApiClient } from "@harryaskham/pi-daemon";
+
+const api = new SessionApiClient({
+  baseUrl: process.env.PI_DAEMON_API,
+  bearerToken: process.env.PI_DAEMON_BEARER
+});
+const bytes = Buffer.from("bounded example", "utf8");
+const sha256 = createHash("sha256").update(bytes).digest("hex");
+const reserved = await api.reserveBlob(
+  "worker-a",
+  {
+    requestId: "reserve-1",
+    expectedGeneration: 1,
+    metadata: { name: "example.txt", mediaType: "text/plain" },
+    sizeBytes: bytes.length,
+    sha256
+  },
+  "reserve-once",
+  { waitForTerminal: true }
+);
+const blobId = reserved.data.result.blobId;
+await api.uploadBlobContent("worker-a", blobId, 1, bytes, "upload-once");
+const materialized = await api.materializeBlob(
+  "worker-a",
+  { requestId: "materialize-1", expectedGeneration: 1, blobId },
+  "materialize-once",
+  { waitForTerminal: true }
+);
+console.log(materialized.data.result.relativeRef); // uploads/file-...
+```
+
+Treat name/MIME as untrusted, reconcile tickets before choosing fresh keys, and
+disable generic sharing when capabilities advertise
+`blobTransfers.available: false`. See [Neutral blob and session file
+transfer](blob-transfer) for quarantine, content-addressing, cleanup, and
+attachment-only download rules.
+
 ## Protocol-v2 host capabilities
 
 A trusted host may pass `tools: { mode: "host-adapter", descriptor: ... }` in a

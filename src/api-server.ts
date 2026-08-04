@@ -7,6 +7,7 @@ import {
 } from "node:http";
 import { isIP } from "node:net";
 import type { Duplex } from "node:stream";
+import { pipeline } from "node:stream/promises";
 
 import {
   ACP_WEBSOCKET_SUBPROTOCOL,
@@ -15,6 +16,15 @@ import {
   type AcpAdapterLimits,
 } from "./acp-adapter.js";
 import { ServiceBearerAuthenticator } from "./api-auth.js";
+import {
+  BlobStoreError,
+  FileBlobStore,
+  blobIdForScope,
+  contentReadStream,
+  fileIdForScope,
+  type BlobTransferResource,
+  type SessionUploadResource,
+} from "./blob-store.js";
 import {
   ApiRequestError,
   apiInteger,
@@ -124,6 +134,8 @@ export interface ApiServerOptions {
   /** Durable neutral schedules and, when configured, their native timer owner. */
   schedules?: FileScheduleStore;
   scheduler?: Pick<SchedulerRuntime, "recompute" | "status">;
+  /** Owner-private opaque blob reservations and daemon-owned session upload references. */
+  blobs?: FileBlobStore;
 }
 
 export interface ApiServerAddress {
@@ -161,6 +173,7 @@ export class ApiServer {
   readonly #dashboardTuiAttachments: DashboardTuiAttachmentManager | undefined;
   readonly #schedules: FileScheduleStore | undefined;
   readonly #scheduler: ApiServerOptions["scheduler"];
+  readonly #blobs: FileBlobStore | undefined;
   readonly #scheduleMutations = new Map<string, { fingerprint: string; status: number; data?: ScheduleResource }>();
   readonly #server: Server;
   readonly #upgradeSockets = new Set<Duplex>();
@@ -187,6 +200,7 @@ export class ApiServer {
     this.#dashboardTuiAttachments = options.dashboardTuiAttachments;
     this.#schedules = options.schedules;
     this.#scheduler = options.scheduler;
+    this.#blobs = options.blobs;
     this.limits = {
       maxConnections: positiveInteger(
         options.limits?.maxConnections ?? DEFAULT_API_SERVER_LIMITS.maxConnections,
@@ -233,6 +247,7 @@ export class ApiServer {
 
   async start(): Promise<ApiServerAddress> {
     if (this.#started) throw new Error("API server is already started");
+    await this.#blobs?.recover();
     this.#ticketRecovery = await this.#tickets?.recover(async (command, context) =>
       this.#executeMutation(command, context?.runtimeOptions),
     );
@@ -326,6 +341,9 @@ export class ApiServer {
             schedules: this.#schedules === undefined
               ? { available: false }
               : scheduleCapabilities(this.#schedules.limits, this.#scheduler !== undefined),
+            blobTransfers: this.#blobs === undefined
+              ? { available: false }
+              : this.#blobs.capabilities,
             ...(this.#dashboardApi === undefined
               ? {}
               : { dashboard: await this.#dashboardApi.capabilities() }),
@@ -343,6 +361,11 @@ export class ApiServer {
 
       if (url.pathname === "/v1/schedule" || url.pathname === "/v1/schedule/status" || url.pathname.startsWith("/v1/schedule/")) {
         await this.#handleScheduleRequest(request, response, url, requestId);
+        return;
+      }
+
+      if (blobTransferPath(url.pathname) !== undefined) {
+        await this.#handleBlobTransferRequest(request, response, url, requestId);
         return;
       }
 
@@ -541,6 +564,10 @@ export class ApiServer {
       }
       throw new ApiRequestError(404, "route_not_found", "API route not found");
     } catch (error) {
+      if (response.headersSent) {
+        response.destroy();
+        return;
+      }
       const normalized = normalizeApiError(error);
       this.#dashboardApi?.recordApiFailure?.({
         method: request.method,
@@ -554,6 +581,301 @@ export class ApiServer {
         errorEnvelope(requestId, this.#multiplexer.hostInstanceId, normalized.body),
       );
     }
+  }
+
+  async #handleBlobTransferRequest(
+    request: IncomingMessage,
+    response: ServerResponse,
+    url: URL,
+    requestId: string,
+  ): Promise<void> {
+    const store = this.#blobs;
+    if (store === undefined) {
+      throw new ApiRequestError(
+        501,
+        "blob_transfers_unavailable",
+        "blob transfer storage is not configured",
+      );
+    }
+    const route = blobTransferPath(url.pathname);
+    if (route === undefined) {
+      throw new ApiRequestError(404, "route_not_found", "API route not found");
+    }
+
+    if (route.kind === "blobs" && request.method === "POST") {
+      if (this.#tickets === undefined) {
+        throw new ApiRequestError(
+          501,
+          "not_implemented",
+          "blob reservation tickets are not configured",
+        );
+      }
+      const idempotencyKey = requiredIdempotencyKey(request.headers["idempotency-key"]);
+      const body = parseBlobReservationRequest(
+        await readBoundedJson(request, this.limits.maxBodyBytes),
+      );
+      assertMatchingRequestId(request.headers["x-request-id"], body.requestId);
+      const session = await this.#requireTransferSession(
+        route.sessionRef,
+        body.expectedGeneration,
+      );
+      const canonicalTarget = `/v1/session/${encodeURIComponent(session.sessionId)}/blob`;
+      const blobId = blobIdForScope(`POST\n${canonicalTarget}\n${idempotencyKey}`);
+      const ticket = await this.#tickets.submit({
+        method: "POST",
+        canonicalTarget,
+        idempotencyKey,
+        command: {
+          operation: "reserve_blob",
+          requestId: body.requestId,
+          sessionId: session.sessionId,
+          expectedGeneration: body.expectedGeneration,
+          blobId,
+          metadata: body.metadata,
+          sizeBytes: body.sizeBytes,
+          sha256: body.sha256,
+        },
+      });
+      const responseTicket = await this.#ticketForResponse(
+        booleanQuery(url.searchParams.get("waitForTerminal"), false),
+        ticket,
+      );
+      sendJson(
+        response,
+        202,
+        ticketEnvelope(body.requestId, this.#multiplexer.hostInstanceId, responseTicket),
+        { Location: `/v1/ticket/${encodeURIComponent(responseTicket.ticketId)}` },
+      );
+      return;
+    }
+
+    if (route.kind === "files" && request.method === "POST") {
+      if (this.#tickets === undefined) {
+        throw new ApiRequestError(
+          501,
+          "not_implemented",
+          "session upload materialization tickets are not configured",
+        );
+      }
+      const idempotencyKey = requiredIdempotencyKey(request.headers["idempotency-key"]);
+      const body = parseBlobMaterializationRequest(
+        await readBoundedJson(request, this.limits.maxBodyBytes),
+      );
+      assertMatchingRequestId(request.headers["x-request-id"], body.requestId);
+      const session = await this.#requireTransferSession(
+        route.sessionRef,
+        body.expectedGeneration,
+      );
+      const canonicalTarget = `/v1/session/${encodeURIComponent(session.sessionId)}/file`;
+      const fileId = fileIdForScope(`POST\n${canonicalTarget}\n${idempotencyKey}`);
+      const ticket = await this.#tickets.submit({
+        method: "POST",
+        canonicalTarget,
+        idempotencyKey,
+        command: {
+          operation: "materialize_blob",
+          requestId: body.requestId,
+          sessionId: session.sessionId,
+          expectedGeneration: body.expectedGeneration,
+          blobId: body.blobId,
+          fileId,
+        },
+      });
+      const responseTicket = await this.#ticketForResponse(
+        booleanQuery(url.searchParams.get("waitForTerminal"), false),
+        ticket,
+      );
+      sendJson(
+        response,
+        202,
+        ticketEnvelope(body.requestId, this.#multiplexer.hostInstanceId, responseTicket),
+        { Location: `/v1/ticket/${encodeURIComponent(responseTicket.ticketId)}` },
+      );
+      return;
+    }
+
+    const generation = transferGeneration(url.searchParams.get("generation"));
+    const session = await this.#requireTransferSession(route.sessionRef, generation);
+    if (route.kind === "blob") {
+      if (request.method === "GET") {
+        const resource = await store.getBlob(route.blobId, session.sessionId, generation);
+        if (resource === undefined) {
+          throw new ApiRequestError(404, "blob_not_found", "blob not found");
+        }
+        sendJson(
+          response,
+          200,
+          blobEnvelope(requestId, this.#multiplexer.hostInstanceId, resource),
+          { ETag: blobEtag(resource) },
+        );
+        return;
+      }
+      if (request.method === "DELETE") {
+        if (this.#tickets === undefined) {
+          throw new ApiRequestError(
+            501,
+            "not_implemented",
+            "blob cleanup tickets are not configured",
+          );
+        }
+        const idempotencyKey = requiredIdempotencyKey(
+          request.headers["idempotency-key"],
+        );
+        const ticket = await this.#tickets.submit({
+          method: "DELETE",
+          canonicalTarget: `/v1/session/${encodeURIComponent(session.sessionId)}/blob/${encodeURIComponent(route.blobId)}?generation=${generation}`,
+          idempotencyKey,
+          command: {
+            operation: "delete_blob",
+            requestId,
+            sessionId: session.sessionId,
+            expectedGeneration: generation,
+            blobId: route.blobId,
+          },
+        });
+        const responseTicket = await this.#ticketForResponse(
+          booleanQuery(url.searchParams.get("waitForTerminal"), false),
+          ticket,
+        );
+        sendJson(
+          response,
+          202,
+          ticketEnvelope(requestId, this.#multiplexer.hostInstanceId, responseTicket),
+          { Location: `/v1/ticket/${encodeURIComponent(responseTicket.ticketId)}` },
+        );
+        return;
+      }
+    }
+    if (route.kind === "blob-content") {
+      if (request.method === "PUT") {
+        const key = requiredIdempotencyKey(request.headers["idempotency-key"]);
+        const reserved = await store.getBlob(route.blobId, session.sessionId, generation);
+        if (reserved === undefined) {
+          throw new ApiRequestError(404, "blob_not_found", "blob not found");
+        }
+        assertContentLength(request.headers["content-length"], reserved.sizeBytes);
+        const resource = await store.uploadContent(
+          route.blobId,
+          session.sessionId,
+          generation,
+          key,
+          request,
+        );
+        sendJson(
+          response,
+          200,
+          blobEnvelope(requestId, this.#multiplexer.hostInstanceId, resource),
+          { ETag: blobEtag(resource) },
+        );
+        return;
+      }
+      if (request.method === "GET") {
+        const content = await store.blobContent(
+          route.blobId,
+          session.sessionId,
+          generation,
+        );
+        await sendTransferContent(
+          response,
+          requestId,
+          this.#multiplexer.hostInstanceId,
+          content.resource,
+          content.path,
+        );
+        return;
+      }
+    }
+    if (route.kind === "file") {
+      if (request.method === "GET") {
+        const resource = await store.getReference(
+          route.fileId,
+          session.sessionId,
+          generation,
+        );
+        if (resource === undefined) {
+          throw new ApiRequestError(
+            404,
+            "file_reference_not_found",
+            "session upload reference not found",
+          );
+        }
+        sendJson(
+          response,
+          200,
+          fileEnvelope(requestId, this.#multiplexer.hostInstanceId, resource),
+        );
+        return;
+      }
+      if (request.method === "DELETE") {
+        if (this.#tickets === undefined) {
+          throw new ApiRequestError(
+            501,
+            "not_implemented",
+            "session upload cleanup tickets are not configured",
+          );
+        }
+        const idempotencyKey = requiredIdempotencyKey(
+          request.headers["idempotency-key"],
+        );
+        const ticket = await this.#tickets.submit({
+          method: "DELETE",
+          canonicalTarget: `/v1/session/${encodeURIComponent(session.sessionId)}/file/${encodeURIComponent(route.fileId)}?generation=${generation}`,
+          idempotencyKey,
+          command: {
+            operation: "delete_file",
+            requestId,
+            sessionId: session.sessionId,
+            expectedGeneration: generation,
+            fileId: route.fileId,
+          },
+        });
+        const responseTicket = await this.#ticketForResponse(
+          booleanQuery(url.searchParams.get("waitForTerminal"), false),
+          ticket,
+        );
+        sendJson(
+          response,
+          202,
+          ticketEnvelope(requestId, this.#multiplexer.hostInstanceId, responseTicket),
+          { Location: `/v1/ticket/${encodeURIComponent(responseTicket.ticketId)}` },
+        );
+        return;
+      }
+    }
+    if (route.kind === "file-content" && request.method === "GET") {
+      const content = await store.referenceContent(
+        route.fileId,
+        session.sessionId,
+        generation,
+      );
+      await sendTransferContent(
+        response,
+        requestId,
+        this.#multiplexer.hostInstanceId,
+        content.resource,
+        content.path,
+      );
+      return;
+    }
+    throw new ApiRequestError(405, "method_not_allowed", "method is not allowed");
+  }
+
+  async #requireTransferSession(
+    sessionRef: string,
+    expectedGeneration: number,
+  ): Promise<{ sessionId: string; generation: number }> {
+    const session = await this.#multiplexer.retainedSession(sessionRef);
+    if (session === undefined) {
+      throw new ApiRequestError(404, "session_not_found", "session not found");
+    }
+    if (session.generation !== expectedGeneration) {
+      throw new ApiRequestError(
+        412,
+        "session_precondition_failed",
+        "session generation changed",
+      );
+    }
+    return { sessionId: session.sessionId, generation: session.generation };
   }
 
   async #handleScheduleRequest(
@@ -936,6 +1258,66 @@ export class ApiServer {
     command: MutationTicketCommand,
     suppliedRuntimeOptions?: PreparedSessionRuntimeOptions,
   ): Promise<unknown> {
+    if (
+      command.operation === "reserve_blob" ||
+      command.operation === "materialize_blob" ||
+      command.operation === "delete_blob" ||
+      command.operation === "delete_file"
+    ) {
+      if (this.#blobs === undefined) {
+        throw new BlobStoreError(
+          "blob_transfers_unavailable",
+          "blob transfer storage is not configured",
+        );
+      }
+      const current = await this.#multiplexer.retainedSession(command.sessionId);
+      if (current === undefined) {
+        throw new MultiplexerError("session_not_found", "session not found");
+      }
+      if (current.generation !== command.expectedGeneration) {
+        throw new MultiplexerError(
+          "session_precondition_failed",
+          "session generation changed",
+        );
+      }
+      if (command.operation === "reserve_blob") {
+        return this.#blobs.reserve({
+          blobId: command.blobId,
+          sessionId: command.sessionId,
+          generation: command.expectedGeneration,
+          metadata: command.metadata,
+          sizeBytes: command.sizeBytes,
+          sha256: command.sha256,
+        });
+      }
+      if (command.operation === "materialize_blob") {
+        return this.#blobs.materialize({
+          fileId: command.fileId,
+          sessionId: command.sessionId,
+          generation: command.expectedGeneration,
+          blobId: command.blobId,
+        });
+      }
+      if (command.operation === "delete_blob") {
+        return {
+          blobId: command.blobId,
+          deleted: await this.#blobs.deleteBlob(
+            command.blobId,
+            command.sessionId,
+            command.expectedGeneration,
+          ),
+        };
+      }
+      return {
+        fileId: command.fileId,
+        deleted: await this.#blobs.deleteReference(
+          command.fileId,
+          command.sessionId,
+          command.expectedGeneration,
+        ),
+      };
+    }
+
     const runtimeOptions =
       command.operation === "delete"
         ? undefined
@@ -979,6 +1361,7 @@ export class ApiServer {
         environmentSummary: command.environmentSummary,
         catalogSpec: command.spec,
       });
+      await this.#blobs?.deleteGeneration(command.sessionId, command.expectedGeneration);
       return this.#currentSessionResource(command.sessionId);
     }
 
@@ -997,6 +1380,9 @@ export class ApiServer {
           expectedRevision: command.expectedRevision,
         });
     if (!changed) throw new MultiplexerError("session_not_found", "session not found");
+    if (!command.retainArtifacts) {
+      await this.#blobs?.deleteGeneration(command.sessionId, command.expectedGeneration);
+    }
     return {
       sessionId: command.sessionId,
       retained: command.retainArtifacts,
@@ -1457,6 +1843,233 @@ function schedulePath(pathname: string): { scheduleId: string; action?: "enable"
   }
 }
 
+type BlobTransferPath =
+  | { kind: "blobs"; sessionRef: string }
+  | { kind: "blob"; sessionRef: string; blobId: string }
+  | { kind: "blob-content"; sessionRef: string; blobId: string }
+  | { kind: "files"; sessionRef: string }
+  | { kind: "file"; sessionRef: string; fileId: string }
+  | { kind: "file-content"; sessionRef: string; fileId: string };
+
+function blobTransferPath(pathname: string): BlobTransferPath | undefined {
+  const match = /^\/v1\/session\/([^/]+)\/(blob|file)(?:\/([^/]+)(?:\/(content))?)?$/u.exec(
+    pathname,
+  );
+  if (match === null) return undefined;
+  try {
+    const sessionRef = decodeURIComponent(match[1]!);
+    if (sessionRef.length === 0 || sessionRef.length > 256) {
+      throw new Error("invalid session reference");
+    }
+    const family = match[2]!;
+    const encodedId = match[3];
+    const content = match[4] === "content";
+    if (encodedId === undefined) {
+      return family === "blob"
+        ? { kind: "blobs", sessionRef }
+        : { kind: "files", sessionRef };
+    }
+    const id = decodeURIComponent(encodedId);
+    if (family === "blob") {
+      if (!/^blob-[A-Za-z0-9_-]{43}$/u.test(id)) throw new Error("invalid blob ID");
+      return content
+        ? { kind: "blob-content", sessionRef, blobId: id }
+        : { kind: "blob", sessionRef, blobId: id };
+    }
+    if (!/^file-[A-Za-z0-9_-]{43}$/u.test(id)) throw new Error("invalid file ID");
+    return content
+      ? { kind: "file-content", sessionRef, fileId: id }
+      : { kind: "file", sessionRef, fileId: id };
+  } catch {
+    throw new ApiRequestError(
+      400,
+      "invalid_blob_route",
+      "blob transfer route identifier is invalid",
+    );
+  }
+}
+
+interface BlobReservationRequestBody {
+  requestId: string;
+  expectedGeneration: number;
+  metadata: { name: string; mediaType: string };
+  sizeBytes: number;
+  sha256: string;
+}
+
+interface BlobMaterializationRequestBody {
+  requestId: string;
+  expectedGeneration: number;
+  blobId: string;
+}
+
+function parseBlobReservationRequest(value: unknown): BlobReservationRequestBody {
+  const body = transferRecord(
+    value,
+    ["requestId", "expectedGeneration", "metadata", "sizeBytes", "sha256"],
+    "blob reservation",
+  );
+  const metadata = transferRecord(valueField(body, "metadata"), ["name", "mediaType"], "blob metadata");
+  const requestId = transferString(body.requestId, "requestId", 128);
+  const expectedGeneration = transferInteger(body.expectedGeneration, "expectedGeneration");
+  const name = transferString(metadata.name, "metadata.name", 512, true);
+  const mediaType = transferString(metadata.mediaType, "metadata.mediaType", 255);
+  if (!/^[A-Za-z0-9!#$&^_.+-]+\/[A-Za-z0-9!#$&^_.+-]+$/u.test(mediaType)) {
+    throw new ApiRequestError(400, "invalid_blob_metadata", "metadata.mediaType is invalid");
+  }
+  const sizeBytes = transferInteger(body.sizeBytes, "sizeBytes");
+  const sha256 = transferString(body.sha256, "sha256", 64);
+  if (!/^[a-f0-9]{64}$/u.test(sha256)) {
+    throw new ApiRequestError(400, "invalid_blob_hash", "sha256 is invalid");
+  }
+  return {
+    requestId,
+    expectedGeneration,
+    metadata: { name, mediaType: mediaType.toLowerCase() },
+    sizeBytes,
+    sha256,
+  };
+}
+
+function parseBlobMaterializationRequest(value: unknown): BlobMaterializationRequestBody {
+  const body = transferRecord(
+    value,
+    ["requestId", "expectedGeneration", "blobId"],
+    "blob materialization",
+  );
+  const blobId = transferString(body.blobId, "blobId", 48);
+  if (!/^blob-[A-Za-z0-9_-]{43}$/u.test(blobId)) {
+    throw new ApiRequestError(400, "invalid_blob_id", "blobId is invalid");
+  }
+  return {
+    requestId: transferString(body.requestId, "requestId", 128),
+    expectedGeneration: transferInteger(body.expectedGeneration, "expectedGeneration"),
+    blobId,
+  };
+}
+
+function transferRecord(
+  value: unknown,
+  allowedKeys: readonly string[],
+  field: string,
+): Record<string, unknown> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new ApiRequestError(400, "invalid_blob_request", `${field} must be an object`);
+  }
+  const record = value as Record<string, unknown>;
+  if (Object.keys(record).some((key) => !allowedKeys.includes(key))) {
+    throw new ApiRequestError(400, "invalid_blob_request", `${field} has unknown fields`);
+  }
+  return record;
+}
+
+function valueField(value: Record<string, unknown>, field: string): unknown {
+  return value[field];
+}
+
+function transferString(
+  value: unknown,
+  field: string,
+  maxBytes: number,
+  unicodeBytes = false,
+): string {
+  if (
+    typeof value !== "string" ||
+    value.length === 0 ||
+    (unicodeBytes ? Buffer.byteLength(value, "utf8") : value.length) > maxBytes ||
+    /[\u0000-\u001f\u007f]/u.test(value)
+  ) {
+    throw new ApiRequestError(400, "invalid_blob_request", `${field} is invalid`);
+  }
+  return value;
+}
+
+function transferInteger(value: unknown, field: string): number {
+  if (!Number.isSafeInteger(value) || (value as number) < 0) {
+    throw new ApiRequestError(400, "invalid_blob_request", `${field} is invalid`);
+  }
+  return value as number;
+}
+
+function transferGeneration(value: string | null): number {
+  if (value === null || !/^\d+$/u.test(value)) {
+    throw new ApiRequestError(
+      400,
+      "missing_session_generation",
+      "generation query parameter is required",
+    );
+  }
+  return transferInteger(Number(value), "generation");
+}
+
+function assertContentLength(value: string | undefined, expectedBytes: number): void {
+  if (value === undefined) return;
+  if (!/^\d+$/u.test(value) || Number(value) !== expectedBytes) {
+    throw new ApiRequestError(
+      400,
+      "blob_size_mismatch",
+      "Content-Length does not match the reserved blob size",
+    );
+  }
+}
+
+function blobEnvelope(
+  requestId: string,
+  hostInstanceId: string,
+  resource: BlobTransferResource,
+) {
+  return {
+    apiVersion: SESSION_API_VERSION,
+    requestId,
+    hostInstanceId,
+    ok: true as const,
+    data: resource,
+  };
+}
+
+function fileEnvelope(
+  requestId: string,
+  hostInstanceId: string,
+  resource: SessionUploadResource,
+) {
+  return {
+    apiVersion: SESSION_API_VERSION,
+    requestId,
+    hostInstanceId,
+    ok: true as const,
+    data: resource,
+  };
+}
+
+function blobEtag(resource: BlobTransferResource): string {
+  return `"${resource.blobId}:${resource.revision}"`;
+}
+
+async function sendTransferContent(
+  response: ServerResponse,
+  requestId: string,
+  hostInstanceId: string,
+  resource: BlobTransferResource | SessionUploadResource,
+  path: string,
+): Promise<void> {
+  const encodedName = encodeURIComponent(resource.metadata.name).replace(
+    /[!'()*]/gu,
+    (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`,
+  );
+  response.writeHead(200, {
+    "Content-Type": "application/octet-stream",
+    "Content-Length": String(resource.sizeBytes),
+    "Content-Disposition": `attachment; filename*=UTF-8''${encodedName}`,
+    "X-Content-Type-Options": "nosniff",
+    "X-Pi-Request-Id": requestId,
+    "X-Pi-Host-Instance-Id": hostInstanceId,
+    "X-Pi-Untrusted-Media-Type": resource.metadata.mediaType,
+    Digest: `sha-256=${Buffer.from(resource.sha256, "hex").toString("base64")}`,
+    "Cache-Control": "no-store",
+  });
+  await pipeline(contentReadStream(path), response);
+}
+
 function sessionRefFromPath(pathname: string): string | undefined {
   const match = /^\/v1\/session\/([^/]+)$/.exec(pathname);
   if (match === null) return undefined;
@@ -1588,6 +2201,43 @@ function normalizeApiError(error: unknown): { status: number; body: ApiErrorBody
   if (error instanceof ScheduleStoreError) {
     const status = error.code === "not_found" ? 404 : error.code === "revision_conflict" ? 412 : error.code === "already_exists" ? 409 : error.code === "schedule_capacity" ? 429 : 503;
     return { status, body: { code: error.code, message: error.message, retryable: status === 429 || status === 503 } };
+  }
+  if (error instanceof BlobStoreError) {
+    const status =
+      error.code === "blob_not_found" || error.code === "file_reference_not_found"
+        ? 404
+        : error.code === "blob_session_precondition_failed"
+          ? 412
+          : error.code === "blob_capacity" || error.code === "blob_reference_capacity"
+            ? 429
+            : error.code === "blob_too_large"
+              ? 413
+              : error.code === "blob_hash_mismatch" ||
+                  error.code === "blob_size_mismatch" ||
+                  error.code === "blob_quarantined"
+                ? 422
+                : error.code === "blob_transfers_unavailable"
+                  ? 503
+                  : error.code === "corrupt_blob_state" ||
+                      error.code === "blob_recovery_limit"
+                    ? 500
+                    : error.code === "idempotency_conflict" ||
+                        error.code === "blob_reservation_conflict" ||
+                        error.code === "file_reference_conflict" ||
+                        error.code === "blob_in_use" ||
+                        error.code === "blob_not_ready" ||
+                        error.code === "blob_expired"
+                      ? 409
+                      : 400;
+    return {
+      status,
+      body: {
+        code: error.code,
+        message:
+          status === 500 ? "blob transfer state is unavailable" : error.message,
+        retryable: error.retryable || status === 429 || status === 503,
+      },
+    };
   }
   if (error instanceof SessionConfigurationError) {
     const status =

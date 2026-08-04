@@ -44,6 +44,10 @@ project code or tools.
 - no Cacophony node token, CA key, daemon state, or orchestration authority
 - structured logs redact prompts, output/content, environment, and credentials
 - accepted wake requests are never blindly replayed after a crash
+- neutral blob/file routes authenticate before existence, bind every resource to exact canonical session/generation, accept no client path, and never grant cwd/tool authority
+- uploaded bytes are incrementally size/hash verified into owner-private immutable SHA-256 objects; aliases deduplicate storage without sharing authorization, and startup rehashes settled objects before admission
+- blob names/MIME remain explicitly untrusted; downloads are attachment-only `application/octet-stream` with `nosniff`, archive/active defaults quarantine, and scanner failures fail closed without content execution
+- blob reservations, objects, references, recovery, queues, and TTL cleanup are bounded; accepted cleanup/materialization tickets and settled content are never blindly replayed
 - queued wake requests are never replayed into a missing, corrupt, or fresh replacement conversation
 - Unix event subscriptions require explicit generation-bound `attach` and `detach`
 - WebSocket RPC upgrades authenticate before subprotocol, session, cursor, or controller disclosure

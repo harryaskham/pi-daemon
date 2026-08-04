@@ -135,6 +135,29 @@
         "maxJitterMs": 86400000,
         "maxAdmissionDelayMs": 86400000
       }
+    },
+    "blobTransfers": {
+      "contractVersion": "1.0",
+      "opaqueContent": true,
+      "contentAddressedSha256": true,
+      "untrustedMetadata": true,
+      "cwdMaterialization": false,
+      "quarantine": true,
+      "limits": {
+        "maxBlobs": 256,
+        "maxBlobsPerSession": 32,
+        "maxBlobBytes": 67108864,
+        "maxTotalBytes": 536870912,
+        "maxReferences": 512,
+        "maxReferencesPerBlob": 16,
+        "maxNameBytes": 512,
+        "maxMediaTypeBytes": 255,
+        "maxRecordBytes": 65536,
+        "maxRecoveryBytes": 33554432,
+        "reservationTtlMs": 3600000,
+        "blobTtlMs": 86400000,
+        "referenceTtlMs": 86400000
+      }
     }
   }
 }

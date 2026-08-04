@@ -335,6 +335,8 @@ test(
       "scripts/check-release.mjs",
       "dist/session-api.js",
       "dist/session-api.d.ts",
+      "dist/blob-store.js",
+      "dist/blob-store.d.ts",
       "dist/session-client.js",
       "dist/session-client.d.ts",
       "dist/session-cli.js",
@@ -505,6 +507,8 @@ test(
       [
         'import { PI_DAEMON_VERSION, SessionApiClient } from "@harryaskham/pi-daemon";',
         'import { SESSION_API_VERSION } from "@harryaskham/pi-daemon/session-api";',
+        'import { FileBlobStore } from "@harryaskham/pi-daemon/blob-store";',
+        'void FileBlobStore;',
         'import { parseSessionConfiguration } from "@harryaskham/pi-daemon/session-config";',
         'import { DEFAULT_RPC_STDIO_BRIDGE_LIMITS } from "@harryaskham/pi-daemon/rpc-bridge";',
         'import schema from "@harryaskham/pi-daemon/protocol.schema.json" with { type: "json" };',

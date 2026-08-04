@@ -1,0 +1,6 @@
+{
+  "requestId": "blob-materialize-invalid",
+  "expectedGeneration": 3,
+  "blobId": "blob-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "path": "../../client-controlled"
+}
