@@ -32,7 +32,11 @@ test("interactive app delegates exact authority correlation tree and TUI state t
   assert.match(machine, /TuiFrameReducer/);
   assert.doesNotMatch(machine, /canReplay\([^)]*\)\s*=\s*true|blind.?replay/i);
   assert.match(repository, /SessionRole\.OBSERVER/);
+  assert.match(repository, /fun connectInteractiveObserver\(\)/);
+  assert.match(repository, /interactiveConnectMutex\.withLock/);
+  assert.match(repository, /observer_connect_failed/);
   assert.match(repository, /requestControl\(\)/);
+  assert.match(repository, /requireActiveInteractive\(\)/);
   assert.match(repository, /UUID\.randomUUID\(\)/);
   assert.match(repository, /interactive_send_indeterminate/);
   assert.match(repository, /INTERACTIVE_SAFE_CODE\s*=\s*Regex\("\^\[a-z\]\[a-z0-9_\]\{0,127\}\$"\)/);
@@ -46,8 +50,12 @@ test("interactive app delegates exact authority correlation tree and TUI state t
   assert.match(screen, /TuiSurface/);
   assert.match(screen, /Reconnect interactive session/);
   assert.match(screen, /ACTION RECEIVED · CONNECTING/);
+  assert.match(screen, /OBSERVER · READY/);
+  assert.match(screen, /Connect interactive observer/);
+  assert.match(screen, /enabled = interaction !is LiveInteractiveAppState\.Connecting/);
   assert.match(screen, /INTERACTIVE ERROR · PREFLIGHT_ERROR/);
   assert.match(screen, /InteractiveControllerRole\.REQUESTING/);
+  assert.match(activity, /connectInteractiveObserver/);
   assert.match(activity, /handleInteraction/);
   assert.match(activity, /is CommandAdmissionException -> error\.code/);
   assert.match(activity, /fun safeInteractiveFailureCode/);
@@ -88,8 +96,11 @@ test("disposable interactive proof uses private identity bounded cleanup and phy
   assert.ok(proof.indexOf("\nif ! wait_emulator_host_port") < proof.indexOf("shell am start"));
   assert.match(proof, /--interactive/);
   assert.match(proof, /tap_text "Request control"/);
-  assert.match(proof, /ACTION RECEIVED · CONNECTING\|REQUESTING\|CONTROLLER\|INTERACTIVE ERROR · PREFLIGHT_ERROR/);
+  assert.match(proof, /tap_text "Connect interactive observer"/);
+  assert.match(proof, /ACTION RECEIVED · CONNECTING\|OBSERVER · READY\|INTERACTIVE ERROR · PREFLIGHT_ERROR/);
+  assert.match(proof, /wait_ui 'OBSERVER · READY'/);
   assert.match(proof, /wait_ui 'REQUESTING\|CONTROLLER'/);
+  assert.ok(proof.indexOf('wait_ui \'OBSERVER · READY\'') < proof.indexOf('tap_text "Request control"'));
   assert.match(proof, /uiautomator-control-center\.py/);
   assert.match(selector, /clickable ancestor/);
   assert.match(selector, /item\.attrib\.get\("text"\) != label/);

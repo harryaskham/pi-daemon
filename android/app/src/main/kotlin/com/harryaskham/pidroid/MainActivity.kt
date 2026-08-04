@@ -69,6 +69,12 @@ class MainActivity : ComponentActivity() {
           }
         },
         onSelectHost = repository::selectHost,
+        onConnectInteractive = {
+          lifecycleScope.launch {
+            runCatching { repository.connectInteractiveObserver() }
+              .onFailure { repository.reportInteractiveFailure(safeInteractiveFailureCode(it)) }
+          }
+        },
         onInteractiveAction = { action ->
           lifecycleScope.launch {
             runCatching { repository.handleInteraction(action) }

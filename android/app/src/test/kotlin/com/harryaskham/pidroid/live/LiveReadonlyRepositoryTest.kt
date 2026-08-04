@@ -11,6 +11,7 @@ import com.harryaskham.pidroid.sdk.core.HostCredentialVault
 import com.harryaskham.pidroid.sdk.core.HostId
 import com.harryaskham.pidroid.sdk.core.HostRegistry
 import com.harryaskham.pidroid.sdk.core.HostRegistryStore
+import com.harryaskham.pidroid.sdk.core.InteractiveConnectionState
 import com.harryaskham.pidroid.sdk.core.InteractiveControllerRole
 import com.harryaskham.pidroid.sdk.core.NeutralHeaders
 import com.harryaskham.pidroid.sdk.core.NeutralHttpRequest
@@ -22,7 +23,9 @@ import com.harryaskham.pidroid.sdk.core.ProtectedCredential
 import com.harryaskham.pidroid.sdk.core.RegisteredHost
 import com.harryaskham.pidroid.sessionui.RichInteractionAction
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.filterIsInstance
@@ -175,7 +178,7 @@ class LiveReadonlyRepositoryTest {
         true,
       )
       harness.transport.unexpectedExecuteFailure = true
-      val error = runCatching { harness.repository.requestControl() }.exceptionOrNull()
+      val error = runCatching { harness.repository.connectInteractiveObserver() }.exceptionOrNull()
       assertEquals("interactive_attach_failed", (error as LiveReadonlyFailure).code)
       harness.repository.reportInteractiveFailure(safeInteractiveFailureCode(error))
       val failure = harness.repository.interactiveState.value as LiveInteractiveAppState.Failure
@@ -189,6 +192,50 @@ class LiveReadonlyRepositoryTest {
     }
 
   @Test
+  fun `interactive observer attach stages are bounded and concurrent connect is deduped`() =
+    runTest {
+      suspend fun stageFailure(configure: (FakeLiveTransport) -> Unit): String {
+        val harness = harness()
+        harness.repository.registerManual(
+          URI("http://10.0.2.2:48123"),
+          "Disposable daemon",
+          "bearer".toCharArray(),
+          null,
+          true,
+        )
+        configure(harness.transport)
+        return (runCatching { harness.repository.connectInteractiveObserver() }.exceptionOrNull() as LiveReadonlyFailure).code
+      }
+
+      assertEquals("interactive_attach_failed", stageFailure { it.unexpectedExecuteFailure = true })
+      assertEquals("observer_connect_failed", stageFailure { it.failRpcOpen = true })
+      assertEquals("observer_connect_failed", stageFailure { it.failRpcReady = true })
+      assertEquals("interactive_attach_failed", stageFailure { it.failTuiOpen = true })
+
+      val harness = harness()
+      harness.repository.registerManual(
+        URI("http://10.0.2.2:48123"),
+        "Disposable daemon",
+        "bearer".toCharArray(),
+        null,
+        true,
+      )
+      val rpcOpensBefore = harness.transport.rpcOpenCount
+      val tuiOpensBefore = harness.transport.tuiOpenCount
+      coroutineScope {
+        val first = async { harness.repository.connectInteractiveObserver() }
+        val second = async { harness.repository.connectInteractiveObserver() }
+        first.await()
+        second.await()
+      }
+      assertEquals(rpcOpensBefore + 1, harness.transport.rpcOpenCount)
+      assertEquals(tuiOpensBefore + 1, harness.transport.tuiOpenCount)
+      val ready = harness.repository.interactiveState.value as LiveInteractiveAppState.Ready
+      assertEquals(InteractiveConnectionState.READY, ready.snapshot.connection)
+      assertEquals(InteractiveControllerRole.OBSERVER, ready.snapshot.role)
+    }
+
+  @Test
   fun `send failure persists indeterminate stage and forbids retry`() =
     runTest {
       val harness = harness()
@@ -199,6 +246,7 @@ class LiveReadonlyRepositoryTest {
         null,
         true,
       )
+      harness.repository.connectInteractiveObserver()
       harness.repository.requestControl()
       val rpcSocket = requireNotNull(harness.transport.interactiveRpcSocket)
       rpcSocket.push(controlGranted())
@@ -246,8 +294,20 @@ class LiveReadonlyRepositoryTest {
         true,
       )
 
-      harness.repository.requestControl()
+      harness.repository.connectInteractiveObserver()
       var interactive = harness.repository.interactiveState.value as LiveInteractiveAppState.Ready
+      assertEquals(InteractiveConnectionState.READY, interactive.snapshot.connection)
+      assertEquals(InteractiveControllerRole.OBSERVER, interactive.snapshot.role)
+      assertEquals(
+        "OBSERVER · READY",
+        liveInteractiveStatusLabel(interactive, interactive.hostId, rpcObserverConnected = true),
+      )
+      val rpcOpens = harness.transport.rpcOpenCount
+      val tuiOpens = harness.transport.tuiOpenCount
+      harness.repository.requestControl()
+      assertEquals(rpcOpens, harness.transport.rpcOpenCount, "request control must reuse ready observer RPC")
+      assertEquals(tuiOpens, harness.transport.tuiOpenCount, "request control must reuse ready observer TUI")
+      interactive = harness.repository.interactiveState.value as LiveInteractiveAppState.Ready
       assertEquals(InteractiveControllerRole.REQUESTING, interactive.snapshot.role)
       assertEquals(
         "REQUESTING",
@@ -414,6 +474,11 @@ class LiveReadonlyRepositoryTest {
     var unexpectedExecuteFailure: Boolean = false
     var authorizationObserved: Boolean = false
     var interactiveRpcSocket: FakeSocket? = null
+    var rpcOpenCount: Int = 0
+    var tuiOpenCount: Int = 0
+    var failRpcOpen: Boolean = false
+    var failRpcReady: Boolean = false
+    var failTuiOpen: Boolean = false
     val paths = mutableListOf<String>()
 
     override fun replaceHosts(hosts: List<RegisteredHost>) = Unit
@@ -445,16 +510,24 @@ class LiveReadonlyRepositoryTest {
     ): PiDaemonSocket {
       val socket = FakeSocket()
       if (request.subprotocols.contains("pi-daemon-tui.v1")) {
+        tuiOpenCount += 1
+        if (failTuiOpen) throw IllegalStateException("https://secret.example/private tui response")
         socket.push(
           """{"kind":"snapshot","role":"observer","snapshot":{"identity":{"hostInstanceId":"$hostInstanceId","sessionId":"session-fixture-01","generation":3},"dimensions":{"rows":3,"columns":40},"rows":[{"row":0,"runs":[{"text":"Pi Droid interactive"}]}],"cursor":{"row":1,"column":0,"visible":true,"shape":"block"},"title":"Fixture","highWaterCursor":"tui:0"}}""",
         )
       } else {
+        rpcOpenCount += 1
+        if (failRpcOpen) throw IllegalStateException("https://secret.example/private rpc open")
         var frame = repositoryRoot.resolve("fixtures/session-api/rpc.ready.frame.json").toFile().readText()
         frame =
           frame
             .replace("host-01", hostInstanceId)
             .replace("agent-a", "session-fixture-01")
-        socket.push(frame)
+        if (failRpcReady) {
+          socket.disconnect()
+        } else {
+          socket.push(frame)
+        }
         if (interactiveRpcSocket == null || interactiveRpcSocket?.closed == true) {
           interactiveRpcSocket = socket
         } else {

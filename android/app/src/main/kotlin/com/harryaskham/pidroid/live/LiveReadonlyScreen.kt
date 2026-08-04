@@ -35,6 +35,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.harryaskham.pidroid.sdk.core.HostId
+import com.harryaskham.pidroid.sdk.core.InteractiveConnectionState
 import com.harryaskham.pidroid.sdk.core.InteractiveControllerRole
 import com.harryaskham.pidroid.sdk.core.SessionRole
 import com.harryaskham.pidroid.sessionui.InteractionContext
@@ -64,6 +65,7 @@ public fun LiveReadonlyScreen(
   onRegisterEnvelope: (String, Boolean) -> Unit,
   onRefresh: () -> Unit,
   onSelectHost: (HostId) -> Unit,
+  onConnectInteractive: () -> Unit,
   onInteractiveAction: (RichInteractionAction) -> Unit,
   onReconnectInteractive: () -> Unit,
 ) {
@@ -83,7 +85,15 @@ public fun LiveReadonlyScreen(
         }
 
         is LiveReadonlyState.Ready -> {
-          LiveSessionScreen(state, interaction, onRefresh, onSelectHost, onInteractiveAction, onReconnectInteractive)
+          LiveSessionScreen(
+            state,
+            interaction,
+            onRefresh,
+            onSelectHost,
+            onConnectInteractive,
+            onInteractiveAction,
+            onReconnectInteractive,
+          )
         }
       }
     }
@@ -208,6 +218,11 @@ internal fun liveInteractiveStatusLabel(
       "CONTROLLER"
     }
 
+    snapshot?.role == InteractiveControllerRole.OBSERVER &&
+      snapshot.connection == InteractiveConnectionState.READY -> {
+      "OBSERVER · READY"
+    }
+
     snapshot?.role == InteractiveControllerRole.REQUESTING -> {
       "REQUESTING"
     }
@@ -240,6 +255,7 @@ private fun LiveSessionScreen(
   interaction: LiveInteractiveAppState,
   onRefresh: () -> Unit,
   onSelectHost: (HostId) -> Unit,
+  onConnectInteractive: () -> Unit,
   onInteractiveAction: (RichInteractionAction) -> Unit,
   onReconnectInteractive: () -> Unit,
 ) {
@@ -317,19 +333,46 @@ private fun LiveSessionScreen(
         }
       when (presentation) {
         LivePresentation.RICH -> {
-          val rich =
-            interactiveSnapshot?.rich
-              ?: RichInteractiveState.observer(
-                ready.selected.session.session.modelLabel ?: "default model",
-                ready.selected.session.session.thinkingLevel ?: "default",
+          if (interactiveSnapshot == null) {
+            Box(Modifier.fillMaxSize()) {
+              SessionSurface(
+                state = ready.selected.session,
+                layout = layout,
+                chrome = SessionSurfaceChrome.READONLY,
+                modifier = Modifier.fillMaxSize().padding(bottom = 88.dp),
               )
-          RichInteractiveSessionSurface(
-            session = ready.selected.session,
-            interactive = rich,
-            layout = layout,
-            modifier = Modifier.fillMaxSize(),
-            onAction = onInteractiveAction,
-          )
+              Surface(
+                modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(10.dp),
+                color = LiveSurface,
+              ) {
+                Row(
+                  modifier = Modifier.fillMaxWidth().padding(14.dp),
+                  horizontalArrangement = Arrangement.spacedBy(12.dp),
+                  verticalAlignment = Alignment.CenterVertically,
+                ) {
+                  Column(Modifier.weight(1f)) {
+                    Text("Interactive observer not connected", color = LivePrimary, fontWeight = FontWeight.Bold)
+                    Text("Connect readonly first; request controller authority separately.", color = LiveMuted)
+                  }
+                  Button(
+                    onClick = onConnectInteractive,
+                    enabled = interaction !is LiveInteractiveAppState.Connecting,
+                    modifier = Modifier.semantics { contentDescription = "Connect interactive observer" },
+                  ) {
+                    Text(if (interaction is LiveInteractiveAppState.Connecting) "Connecting" else "Connect observer")
+                  }
+                }
+              }
+            }
+          } else {
+            RichInteractiveSessionSurface(
+              session = ready.selected.session,
+              interactive = interactiveSnapshot.rich,
+              layout = layout,
+              modifier = Modifier.fillMaxSize(),
+              onAction = onInteractiveAction,
+            )
+          }
         }
 
         LivePresentation.TREE -> {

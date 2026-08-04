@@ -272,10 +272,13 @@ fi
 adb -s "$emulator_serial" shell am start -W -a android.intent.action.VIEW \
   -d "$(< "$pairing_file")" com.harryaskham.pidroid.debug >/dev/null
 wait_ui 'Readonly session Contract fixture|READONLY RPC ATTACHED' 90
-adb -s "$emulator_serial" exec-out screencap -p > "$artifacts_dir/screenshots/observer-readonly.png"
+adb -s "$emulator_serial" exec-out screencap -p > "$artifacts_dir/screenshots/readonly-hydrated.png"
 
+tap_text "Connect interactive observer"
+wait_ui 'ACTION RECEIVED · CONNECTING|OBSERVER · READY|INTERACTIVE ERROR · PREFLIGHT_ERROR · [A-Z][A-Z0-9_]{0,127}' 15
+wait_ui 'OBSERVER · READY' 45
+adb -s "$emulator_serial" exec-out screencap -p > "$artifacts_dir/screenshots/observer-ready.png"
 tap_text "Request control"
-wait_ui 'ACTION RECEIVED · CONNECTING|REQUESTING|CONTROLLER|INTERACTIVE ERROR · PREFLIGHT_ERROR · [A-Z][A-Z0-9_]{0,127}' 15
 wait_ui 'REQUESTING|CONTROLLER' 45
 wait_ui 'CONTROLLER|Controller authority active' 45
 adb -s "$emulator_serial" exec-out screencap -p > "$artifacts_dir/screenshots/controller-granted.png"
@@ -308,6 +311,9 @@ host_instance_two="$(jq -er .hostInstanceId "$ready_file")"
 tap_text "Refresh readonly hosts"
 wait_ui 'Readonly session Contract fixture|READONLY RPC ATTACHED' 90
 tap_text "Reconnect interactive session"
+wait_ui 'OBSERVER · READY' 45
+tap_text "Request control"
+wait_ui 'REQUESTING|CONTROLLER' 45
 wait_ui 'CONTROLLER|Controller authority active' 45
 tap_text "Session prompt composer"
 adb -s "$emulator_serial" shell input text restart-reconciled
@@ -343,6 +349,7 @@ cat > "$artifacts_dir/live-interactive-receipt.json" <<EOF
   "hostInstanceBefore": "$host_instance_one",
   "hostInstanceAfter": "$host_instance_two",
   "hostPortGate": true,
+  "observerReadyBeforeControl": true,
   "observerDeniedUntilGrant": true,
   "controllerGranted": true,
   "uniquePromptSucceeded": true,
@@ -363,7 +370,8 @@ EOF
     emulator-diagnostics.log \
     emulator-host-port-gate.log \
     pi-droid-interactive.mp4 \
-    screenshots/observer-readonly.png \
+    screenshots/readonly-hydrated.png \
+    screenshots/observer-ready.png \
     screenshots/controller-granted.png \
     screenshots/prompt-succeeded.png \
     screenshots/tree-live.png \

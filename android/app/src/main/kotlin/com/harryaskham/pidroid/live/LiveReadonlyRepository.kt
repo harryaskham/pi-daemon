@@ -30,6 +30,7 @@ import com.harryaskham.pidroid.sessionui.SessionHostContext
 import com.harryaskham.pidroid.sessionui.SessionSurfaceReducer
 import com.harryaskham.pidroid.sessionui.SessionSurfaceState
 import com.harryaskham.pidroid.sessionui.TuiFrameState
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -41,6 +42,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -110,6 +113,7 @@ public class LiveReadonlyRepository(
   private val mutableState = MutableStateFlow<LiveReadonlyState>(LiveReadonlyState.Unconfigured)
   private val mutableInteractiveState = MutableStateFlow<LiveInteractiveAppState>(LiveInteractiveAppState.Inactive)
   private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+  private val interactiveConnectMutex = Mutex()
   private val json = Json
   private var activeInteractive: ActiveInteractive? = null
 
@@ -282,23 +286,29 @@ public class LiveReadonlyRepository(
     }
   }
 
+  public suspend fun connectInteractiveObserver() {
+    try {
+      ensureInteractive()
+    } catch (error: CommandAdmissionException) {
+      throw error
+    } catch (error: LiveReadonlyFailure) {
+      throw error
+    } catch (error: TransportFailure) {
+      throw error
+    } catch (error: ProtocolDecodeException) {
+      throw error
+    } catch (_: Throwable) {
+      val failure = LiveReadonlyFailure("interactive_attach_failed")
+      reportInteractiveFailure(failure.code)
+      throw failure
+    }
+  }
+
   public suspend fun requestControl() {
-    val active =
-      try {
-        ensureInteractive()
-      } catch (error: CommandAdmissionException) {
-        throw error
-      } catch (error: LiveReadonlyFailure) {
-        throw error
-      } catch (error: TransportFailure) {
-        throw error
-      } catch (error: ProtocolDecodeException) {
-        throw error
-      } catch (_: Throwable) {
-        val failure = LiveReadonlyFailure("interactive_attach_failed")
-        reportInteractiveFailure(failure.code)
-        throw failure
-      }
+    val active = requireActiveInteractive()
+    if (active.machine.snapshot.connection != InteractiveConnectionState.READY) {
+      throw LiveReadonlyFailure("interactive_session_not_ready")
+    }
     sendOnce(active, active.machine.requestControl())
   }
 
@@ -309,7 +319,7 @@ public class LiveReadonlyRepository(
 
   public suspend fun reconnectInteractive() {
     closeActiveInteractive()
-    requestControl()
+    connectInteractiveObserver()
   }
 
   override fun close() {
@@ -317,7 +327,12 @@ public class LiveReadonlyRepository(
     transport.close()
   }
 
-  private suspend fun ensureInteractive(): ActiveInteractive {
+  private suspend fun ensureInteractive(): ActiveInteractive =
+    interactiveConnectMutex.withLock {
+      ensureInteractiveLocked()
+    }
+
+  private suspend fun ensureInteractiveLocked(): ActiveInteractive {
     val ready = mutableState.value as? LiveReadonlyState.Ready ?: throw LiveReadonlyFailure("interactive_host_not_ready")
     val selected = ready.selected
     if (selected.session.host.freshness != CacheFreshness.FRESH) {
@@ -346,9 +361,11 @@ public class LiveReadonlyRepository(
           ).use { factory ->
             val client = PiDaemonClient(descriptor, factory, transport)
             val capabilities =
-              when (val result = client.capabilities()) {
-                is ApiResult.Success -> result.value
-                is ApiResult.Failure -> throw LiveReadonlyFailure(result.error.code)
+              attachStage("interactive_attach_failed") {
+                when (val result = client.capabilities()) {
+                  is ApiResult.Success -> result.value
+                  is ApiResult.Failure -> throw LiveReadonlyFailure(result.error.code)
+                }
               }
             val machine =
               LiveInteractiveSessionMachine(
@@ -358,34 +375,46 @@ public class LiveReadonlyRepository(
                 modelLabel = selected.session.session.modelLabel ?: "default model",
                 thinkingLevel = selected.session.session.thinkingLevel ?: "default",
               )
-            val rpcSocket = client.attach(SessionKey(sessionId, generation), SessionRole.OBSERVER)
-            val first = withTimeout(10_000) { rpcSocket.incomingText.first() }
-            machine.accept(first)
-            if (
-              machine.snapshot.connection != InteractiveConnectionState.READY ||
-              machine.snapshot.role != InteractiveControllerRole.OBSERVER
-            ) {
-              rpcSocket.close()
-              throw LiveReadonlyFailure("interactive_observer_attach_failed")
-            }
-            val tuiMachine = LiveTuiSessionMachine()
-            val encoded = URLEncoder.encode(sessionId, StandardCharsets.UTF_8.name()).replace("+", "%20")
-            val tuiSocket =
-              transport.openWebSocket(
-                selected.host.id,
-                factory.webSocket(
-                  path = "/v1/dashboard/session/$encoded/tui",
-                  query =
-                    listOf(
-                      "generation" to generation.toString(),
-                      "role" to "observer",
-                      "rows" to "24",
-                      "columns" to "80",
+            val rpcSocket =
+              attachStage("observer_connect_failed") {
+                client.attach(SessionKey(sessionId, generation), SessionRole.OBSERVER)
+              }
+            try {
+              val first =
+                attachStage("observer_connect_failed") {
+                  withTimeout(10_000) { rpcSocket.incomingText.first() }
+                }
+              machine.accept(first)
+              if (
+                machine.snapshot.connection != InteractiveConnectionState.READY ||
+                machine.snapshot.role != InteractiveControllerRole.OBSERVER
+              ) {
+                throw LiveReadonlyFailure("observer_connect_failed")
+              }
+              val tuiMachine = LiveTuiSessionMachine()
+              val encoded = URLEncoder.encode(sessionId, StandardCharsets.UTF_8.name()).replace("+", "%20")
+              val tuiSocket =
+                attachStage("interactive_attach_failed") {
+                  transport.openWebSocket(
+                    selected.host.id,
+                    factory.webSocket(
+                      path = "/v1/dashboard/session/$encoded/tui",
+                      query =
+                        listOf(
+                          "generation" to generation.toString(),
+                          "role" to "observer",
+                          "rows" to "24",
+                          "columns" to "80",
+                        ),
+                      subprotocols = listOf("pi-daemon-tui.v1"),
                     ),
-                  subprotocols = listOf("pi-daemon-tui.v1"),
-                ),
-              )
-            OpenedInteractive(machine, rpcSocket, tuiMachine, tuiSocket)
+                  )
+                }
+              OpenedInteractive(machine, rpcSocket, tuiMachine, tuiSocket)
+            } catch (error: Throwable) {
+              rpcSocket.close()
+              throw error
+            }
           }
       }
     val active =
@@ -633,6 +662,26 @@ private data class ActiveInteractive(
   var rpcJob: Job? = null,
   var tuiJob: Job? = null,
 )
+
+private suspend fun <T> attachStage(
+  fallbackCode: String,
+  block: suspend () -> T,
+): T =
+  try {
+    block()
+  } catch (error: CancellationException) {
+    throw error
+  } catch (error: CommandAdmissionException) {
+    throw error
+  } catch (error: LiveReadonlyFailure) {
+    throw error
+  } catch (error: TransportFailure) {
+    throw error
+  } catch (error: ProtocolDecodeException) {
+    throw error
+  } catch (_: Throwable) {
+    throw LiveReadonlyFailure(fallbackCode)
+  }
 
 private val INTERACTIVE_SAFE_CODE = Regex("^[a-z][a-z0-9_]{0,127}$")
 
