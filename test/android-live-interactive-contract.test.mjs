@@ -32,6 +32,9 @@ test("interactive app delegates exact authority correlation tree and TUI state t
   assert.match(machine, /TuiFrameReducer/);
   assert.doesNotMatch(machine, /canReplay\([^)]*\)\s*=\s*true|blind.?replay/i);
   assert.match(repository, /SessionRole\.OBSERVER/);
+  assert.match(repository, /interactiveCommands: Set<PiRpcCommandType>/);
+  assert.match(repository, /supportedCommands = selected\.interactiveCommands/);
+  assert.equal((repository.match(/client\.capabilities\(\)/g) ?? []).length, 1);
   assert.match(repository, /fun connectInteractiveObserver\(\)/);
   assert.match(repository, /interactiveConnectMutex\.withLock/);
   assert.match(repository, /interactive_credential_failed/);

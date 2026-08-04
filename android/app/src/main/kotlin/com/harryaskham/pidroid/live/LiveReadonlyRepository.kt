@@ -79,6 +79,7 @@ public data class LiveHostSession(
   public val host: RegisteredHost,
   public val session: SessionSurfaceState,
   public val rpcObserverConnected: Boolean,
+  public val interactiveCommands: Set<PiRpcCommandType>,
 )
 
 public sealed interface LiveInteractiveAppState {
@@ -361,17 +362,16 @@ public class LiveReadonlyRepository(
               allowInsecureHttp = selected.host.transportSecurity != TransportSecurity.HTTPS,
             ).use { factory ->
               val client = PiDaemonClient(descriptor, factory, transport)
-              val capabilities =
-                attachStage("interactive_capabilities_failed") {
-                  when (val result = client.capabilities()) {
-                    is ApiResult.Success -> result.value
-                    is ApiResult.Failure -> throw LiveReadonlyFailure(result.error.code)
-                  }
-                }
+              if (
+                PiRpcCommandType.PROMPT !in selected.interactiveCommands ||
+                PiRpcCommandType.GET_TREE !in selected.interactiveCommands
+              ) {
+                throw LiveReadonlyFailure("interactive_capabilities_failed")
+              }
               val machine =
                 LiveInteractiveSessionMachine(
                   session = SessionKey(sessionId, generation),
-                  supportedCommands = InteractiveCapabilities.from(capabilities).commands,
+                  supportedCommands = selected.interactiveCommands,
                   authority = selected.session.host.authority,
                   modelLabel = selected.session.session.modelLabel ?: "default model",
                   thinkingLevel = selected.session.session.thinkingLevel ?: "default",
@@ -602,7 +602,12 @@ public class LiveReadonlyRepository(
             } else {
               false
             }
-          LiveHostSession(host, session, rpcConnected)
+          LiveHostSession(
+            host = host,
+            session = session,
+            rpcObserverConnected = rpcConnected,
+            interactiveCommands = InteractiveCapabilities.from(capabilitySuccess.value).commands,
+          )
         }
     }
 

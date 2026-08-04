@@ -1,5 +1,6 @@
 package com.harryaskham.pidroid.live
 
+import com.harryaskham.pidroid.protocol.generated.PiRpcCommandType
 import com.harryaskham.pidroid.safeInteractiveFailureCode
 import com.harryaskham.pidroid.sdk.core.CacheFreshness
 import com.harryaskham.pidroid.sdk.core.CommandAdmissionException
@@ -102,6 +103,7 @@ class LiveReadonlyRepositoryTest {
       var ready = harness.repository.state.value as LiveReadonlyState.Ready
       assertEquals("host-fixture-02", ready.selected.session.host.authority.hostInstanceId)
       assertEquals(CacheFreshness.FRESH, ready.selected.session.host.freshness)
+      assertTrue(PiRpcCommandType.PROMPT in ready.selected.interactiveCommands)
 
       harness.transport.fail = true
       harness.repository.refresh()
@@ -167,7 +169,7 @@ class LiveReadonlyRepositoryTest {
   }
 
   @Test
-  fun `unknown capabilities failure persists typed stage without exception content`() =
+  fun `observer connect uses hydrated capabilities without a second request`() =
     runTest {
       val harness = harness()
       harness.repository.registerManual(
@@ -177,18 +179,13 @@ class LiveReadonlyRepositoryTest {
         null,
         true,
       )
+      val capabilitiesBefore = harness.transport.paths.count { it == "/v1/capabilities" }
       harness.transport.unexpectedExecuteFailure = true
-      val error = runCatching { harness.repository.connectInteractiveObserver() }.exceptionOrNull()
-      assertEquals("interactive_capabilities_failed", (error as LiveReadonlyFailure).code)
-      harness.repository.reportInteractiveFailure(safeInteractiveFailureCode(error))
-      val failure = harness.repository.interactiveState.value as LiveInteractiveAppState.Failure
-      assertEquals("interactive_capabilities_failed", failure.code)
-      assertFalse(failure.toString().contains("secret.example"))
-      harness.repository.reportInteractiveFailure("interactive_failed")
-      assertEquals(
-        "interactive_capabilities_failed",
-        (harness.repository.interactiveState.value as LiveInteractiveAppState.Failure).code,
-      )
+      harness.repository.connectInteractiveObserver()
+      assertEquals(capabilitiesBefore, harness.transport.paths.count { it == "/v1/capabilities" })
+      val ready = harness.repository.interactiveState.value as LiveInteractiveAppState.Ready
+      assertEquals(InteractiveConnectionState.READY, ready.snapshot.connection)
+      assertTrue(PiRpcCommandType.PROMPT in (harness.repository.state.value as LiveReadonlyState.Ready).selected.interactiveCommands)
     }
 
   @Test
@@ -215,10 +212,22 @@ class LiveReadonlyRepositoryTest {
         Triple("interactive_credential_failed", 0, 0),
         stageFailure { it.protector.failReveal = true },
       )
-      assertEquals(
-        Triple("interactive_capabilities_failed", 0, 0),
-        stageFailure { it.transport.unexpectedExecuteFailure = true },
+      val missingCapabilities = harness()
+      missingCapabilities.transport.capabilitiesWithoutInteractive = true
+      missingCapabilities.repository.registerManual(
+        URI("http://10.0.2.2:48123"),
+        "Disposable daemon",
+        "bearer".toCharArray(),
+        null,
+        true,
       )
+      val rpcBeforeMissing = missingCapabilities.transport.rpcOpenCount
+      val tuiBeforeMissing = missingCapabilities.transport.tuiOpenCount
+      val capabilitiesError =
+        runCatching { missingCapabilities.repository.connectInteractiveObserver() }.exceptionOrNull() as LiveReadonlyFailure
+      assertEquals("interactive_capabilities_failed", capabilitiesError.code)
+      assertEquals(rpcBeforeMissing, missingCapabilities.transport.rpcOpenCount)
+      assertEquals(tuiBeforeMissing, missingCapabilities.transport.tuiOpenCount)
       assertEquals(
         Triple("observer_connect_failed", 1, 0),
         stageFailure { it.transport.failRpcOpen = true },
@@ -242,6 +251,7 @@ class LiveReadonlyRepositoryTest {
       )
       val rpcOpensBefore = harness.transport.rpcOpenCount
       val tuiOpensBefore = harness.transport.tuiOpenCount
+      val capabilitiesBefore = harness.transport.paths.count { it == "/v1/capabilities" }
       coroutineScope {
         val first = async { harness.repository.connectInteractiveObserver() }
         val second = async { harness.repository.connectInteractiveObserver() }
@@ -250,6 +260,7 @@ class LiveReadonlyRepositoryTest {
       }
       assertEquals(rpcOpensBefore + 1, harness.transport.rpcOpenCount)
       assertEquals(tuiOpensBefore + 1, harness.transport.tuiOpenCount)
+      assertEquals(capabilitiesBefore, harness.transport.paths.count { it == "/v1/capabilities" })
       val ready = harness.repository.interactiveState.value as LiveInteractiveAppState.Ready
       assertEquals(InteractiveConnectionState.READY, ready.snapshot.connection)
       assertEquals(InteractiveControllerRole.OBSERVER, ready.snapshot.role)
@@ -494,6 +505,7 @@ class LiveReadonlyRepositoryTest {
     var hostInstanceId: String = "host-fixture-01"
     var fail: Boolean = false
     var unexpectedExecuteFailure: Boolean = false
+    var capabilitiesWithoutInteractive: Boolean = false
     var authorizationObserved: Boolean = false
     var interactiveRpcSocket: FakeSocket? = null
     var rpcOpenCount: Int = 0
@@ -523,6 +535,9 @@ class LiveReadonlyRepositoryTest {
         }
       var body = repositoryRoot.resolve(fixture).toFile().readText()
       body = body.replace("host-01", hostInstanceId).replace("host-fixture-01", hostInstanceId)
+      if (request.uri.path == "/v1/capabilities" && capabilitiesWithoutInteractive) {
+        body = body.replace("          \"prompt\",\n", "").replace("          \"get_tree\",\n", "")
+      }
       return NeutralHttpResponse(200, NeutralHeaders.empty(), body.encodeToByteArray())
     }
 
