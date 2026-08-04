@@ -123,6 +123,8 @@ export function buildSdkMavenMetadata({ repository, sourceRevision }) {
     version,
     artifacts,
     sourceRevision,
+    apiBaselineRevision: publication.apiBaselineRevision,
+    previouslyPublished: publication.previouslyPublished === "true",
     credentialsRequired: false,
     publication: "deterministic-local-maven-repository",
     javadocs: "omitted-in-alpha-sources-jar-is-authoritative",

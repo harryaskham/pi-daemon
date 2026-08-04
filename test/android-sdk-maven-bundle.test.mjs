@@ -78,6 +78,16 @@ test("Pi Droid SDK publication source contract is explicit and credential free",
   assert.match(properties, /^group=com\.harryaskham\.pidroid\.sdk$/m);
   assert.match(properties, /^version=0\.3\.0-alpha\.1$/m);
   assert.match(properties, /^artifacts=core,session-ui,workspace-ui$/m);
+  assert.match(properties, /^apiBaselineRevision=live-readonly-v2$/m);
+  assert.match(properties, /^previouslyPublished=false$/m);
+
+  const coreBaseline = read(join(android, "sdk-api", "core.api.txt"));
+  assert.match(coreBaseline, /withBearerSuspending/);
+  assert.match(coreBaseline, /NeutralHttpRequest http\([^\n]+java\.util\.List<kotlin\.Pair/);
+  const migrationText = read(migrations);
+  assert.match(migrationText, /live-readonly-v2/);
+  assert.match(migrationText, /HostCredentialVault\.withBearerSuspending/);
+  assert.match(migrationText, /ServiceBearerRequestFactory\.http/);
 
   const settings = read(join(android, "settings.gradle.kts"));
   assert.match(settings, /piDroidAndroidSdk/);
@@ -146,6 +156,8 @@ test("materialized local Maven repository has exact immutable artifacts and meta
   assert.equal(provenance.version, version);
   assert.deepEqual(provenance.artifacts, artifacts);
   assert.equal(provenance.credentialsRequired, false);
+  assert.equal(provenance.apiBaselineRevision, "live-readonly-v2");
+  assert.equal(provenance.previouslyPublished, false);
   assert.equal(provenance.records.length, artifacts.length);
   assert.ok(provenance.records.every((record) => /^[0-9a-f]{64}$/u.test(record.apiBaselineSha256)));
 

@@ -385,6 +385,7 @@ public final class com.harryaskham.pidroid.sdk.core.HostCredentialVault {
   public com.harryaskham.pidroid.sdk.core.HostCredentialVault(com.harryaskham.pidroid.sdk.core.CredentialProtector, com.harryaskham.pidroid.sdk.core.NoBackupCredentialStore);
   public final java.lang.Object put(com.harryaskham.pidroid.sdk.core.CredentialHandle, char[], kotlin.coroutines.Continuation<? super kotlin.Unit>);
   public final <T> java.lang.Object withBearer(com.harryaskham.pidroid.sdk.core.CredentialHandle, kotlin.jvm.functions.Function1<? super char[], ? extends T>, kotlin.coroutines.Continuation<? super T>);
+  public final <T> java.lang.Object withBearerSuspending(com.harryaskham.pidroid.sdk.core.CredentialHandle, kotlin.jvm.functions.Function2<? super char[], ? super kotlin.coroutines.Continuation<? super T>, ? extends java.lang.Object>, kotlin.coroutines.Continuation<? super T>);
   public final java.lang.Object remove(com.harryaskham.pidroid.sdk.core.CredentialHandle, kotlin.coroutines.Continuation<? super kotlin.Unit>);
   public java.lang.String toString();
 }
@@ -398,6 +399,10 @@ final class com.harryaskham.pidroid.sdk.core.HostCredentialVault$remove$1 extend
 }
 
 final class com.harryaskham.pidroid.sdk.core.HostCredentialVault$withBearer$1<T> extends kotlin.coroutines.jvm.internal.ContinuationImpl {
+  public final java.lang.Object invokeSuspend(java.lang.Object);
+}
+
+final class com.harryaskham.pidroid.sdk.core.HostCredentialVault$withBearerSuspending$1<T> extends kotlin.coroutines.jvm.internal.ContinuationImpl {
   public final java.lang.Object invokeSuspend(java.lang.Object);
 }
 
@@ -826,8 +831,8 @@ public final class com.harryaskham.pidroid.sdk.core.SafeApiError {
 public final class com.harryaskham.pidroid.sdk.core.ServiceBearerRequestFactory implements java.lang.AutoCloseable {
   public static final com.harryaskham.pidroid.sdk.core.ServiceBearerRequestFactory$Companion Companion;
   public final com.harryaskham.pidroid.sdk.core.PiDaemonHostDescriptor getHost();
-  public final com.harryaskham.pidroid.sdk.core.NeutralHttpRequest http(com.harryaskham.pidroid.sdk.core.HttpMethod, java.lang.String, byte[], java.util.Map<java.lang.String, java.lang.String>);
-  public static com.harryaskham.pidroid.sdk.core.NeutralHttpRequest http$default(com.harryaskham.pidroid.sdk.core.ServiceBearerRequestFactory, com.harryaskham.pidroid.sdk.core.HttpMethod, java.lang.String, byte[], java.util.Map, int, java.lang.Object);
+  public final com.harryaskham.pidroid.sdk.core.NeutralHttpRequest http(com.harryaskham.pidroid.sdk.core.HttpMethod, java.lang.String, java.util.List<kotlin.Pair<java.lang.String, java.lang.String>>, byte[], java.util.Map<java.lang.String, java.lang.String>);
+  public static com.harryaskham.pidroid.sdk.core.NeutralHttpRequest http$default(com.harryaskham.pidroid.sdk.core.ServiceBearerRequestFactory, com.harryaskham.pidroid.sdk.core.HttpMethod, java.lang.String, java.util.List, byte[], java.util.Map, int, java.lang.Object);
   public final com.harryaskham.pidroid.sdk.core.NeutralWebSocketRequest webSocket(java.lang.String, java.util.List<kotlin.Pair<java.lang.String, java.lang.String>>, java.util.List<java.lang.String>, java.util.Map<java.lang.String, java.lang.String>);
   public static com.harryaskham.pidroid.sdk.core.NeutralWebSocketRequest webSocket$default(com.harryaskham.pidroid.sdk.core.ServiceBearerRequestFactory, java.lang.String, java.util.List, java.util.List, java.util.Map, int, java.lang.Object);
   public synchronized void close();

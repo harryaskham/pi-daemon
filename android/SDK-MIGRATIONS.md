@@ -4,6 +4,20 @@
 
 Initial Cacophony-neutral Android SDK bundle.
 
+Pre-publication API baseline sync (`live-readonly-v2`):
+
+- `HostCredentialVault.withBearerSuspending` is an additive suspending callback
+  boundary for transport implementations that must use bearer bytes only inside
+  an asynchronous request scope.
+- `ServiceBearerRequestFactory.http` now accepts a bounded query-pair list before
+  body/headers. This changes the JVM method descriptor from the earlier internal
+  alpha draft, but no external Maven version containing that draft was released.
+  Callers should pass `query = emptyList()` when no query is needed.
+
+`previouslyPublished=false` is part of the reviewed publication metadata: no
+Maven coordinate or release archive using this group/version existed before this
+baseline sync, and the repository contains no remote publication endpoint.
+
 Coordinates:
 
 - `com.harryaskham.pidroid.sdk:core:0.3.0-alpha.1`
