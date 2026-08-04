@@ -3,7 +3,6 @@ package com.harryaskham.pidroid.androidui
 import com.harryaskham.pidroid.sdk.core.CacheFreshness
 import java.net.URLDecoder
 import java.net.URLEncoder
-import java.nio.charset.StandardCharsets
 
 public enum class WidgetMode {
   STATUS,
@@ -40,9 +39,11 @@ public object WidgetSelectionCodec {
       )
     }.getOrNull()
 
-  private fun String.decodeComponent(): String = URLDecoder.decode(this, StandardCharsets.UTF_8)
+  private fun String.decodeComponent(): String = URLDecoder.decode(this, UTF_8)
 
-  private fun encodeComponent(value: String): String = URLEncoder.encode(value, StandardCharsets.UTF_8)
+  private fun encodeComponent(value: String): String = URLEncoder.encode(value, UTF_8)
+
+  private const val UTF_8: String = "UTF-8"
 }
 
 public enum class WidgetAction {

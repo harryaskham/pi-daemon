@@ -44,11 +44,12 @@ public object PiDroidDeepLinkCodec {
       selection.takeIf(savedSelections::contains)
     }.getOrNull()
 
-  private fun encodeSegment(value: String): String = URLEncoder.encode(value, StandardCharsets.UTF_8).replace("+", "%20")
+  private fun encodeSegment(value: String): String = URLEncoder.encode(value, UTF_8).replace("+", "%20")
 
-  private fun decodeSegment(value: String): String = URLDecoder.decode(value, StandardCharsets.UTF_8)
+  private fun decodeSegment(value: String): String = URLDecoder.decode(value, UTF_8)
 
   public const val DEEP_LINK_SCHEME: String = "pidroid"
+  private const val UTF_8: String = "UTF-8"
 }
 
 public class SessionShortcut private constructor(

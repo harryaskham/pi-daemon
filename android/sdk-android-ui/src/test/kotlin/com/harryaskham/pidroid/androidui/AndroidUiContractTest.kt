@@ -21,6 +21,8 @@ class AndroidUiContractTest {
     assertEquals(WidgetSelection(selection, WidgetMode.INTERACTIVE), recreated)
     assertFalse(encoded.contains("bearer", ignoreCase = true))
     assertFalse(encoded.contains("token", ignoreCase = true))
+    assertNull(WidgetSelectionCodec.decode("widget-v1|%GG|session-01|STATUS"))
+    assertNull(WidgetSelectionCodec.decode("widget-v1|workstation|%FF|STATUS"))
 
     val stale =
       WidgetProjectionPolicy.project(
@@ -88,6 +90,12 @@ class AndroidUiContractTest {
     assertNull(PiDroidDeepLinkCodec.decode(java.net.URI("pidroid://host/workstation/arbitrary/session-01"), setOf(selection)))
     assertNull(PiDroidDeepLinkCodec.decode(java.net.URI("pidroid://host/workstation/session/session-01?bearer=secret"), setOf(selection)))
     assertNull(PiDroidDeepLinkCodec.decode(java.net.URI("pidroid://host/workstation/session/session-01#fragment"), setOf(selection)))
+
+    val reserved = SavedSessionSelection(HostId("workstation:one"), "session:01")
+    val reservedLink = PiDroidDeepLinkCodec.encode(reserved)
+    assertEquals("pidroid://host/workstation%3Aone/session/session%3A01", reservedLink.toASCIIString())
+    assertEquals(reserved, PiDroidDeepLinkCodec.decode(reservedLink, setOf(reserved)))
+    assertNull(PiDroidDeepLinkCodec.decode(java.net.URI("pidroid://host/%FF/session/session-01"), setOf(selection)))
 
     val shortcut = SessionShortcut.create(selection, "Build monitor")
     assertEquals(selection, PiDroidDeepLinkCodec.decode(shortcut.deepLink, setOf(selection)))
@@ -198,6 +206,8 @@ class AndroidUiContractTest {
   fun `Android intent boundaries convert neutral links once and remain package scoped`() {
     val shortcutSource = androidUiFile("src/main/kotlin/com/harryaskham/pidroid/androidui/AndroidSessionShortcutPublisher.kt").readText()
     val widgetSource = androidUiFile("src/main/kotlin/com/harryaskham/pidroid/androidui/AndroidWidgets.kt").readText()
+    val linkSource = androidUiFile("src/main/kotlin/com/harryaskham/pidroid/androidui/SessionLinks.kt").readText()
+    val projectionSource = androidUiFile("src/main/kotlin/com/harryaskham/pidroid/androidui/WidgetProjection.kt").readText()
 
     assertEquals(1, Regex("\\.toAndroidDeepLink\\(\\)").findAll(shortcutSource).count())
     assertEquals(3, Regex("\\.toAndroidDeepLink\\(\\)").findAll(widgetSource).count(), "two callsites plus one extension declaration")
@@ -205,10 +215,14 @@ class AndroidUiContractTest {
     assertTrue(".setPackage(applicationContext.packageName)" in shortcutSource)
     assertTrue(".setPackage(context.packageName)" in widgetSource)
     assertTrue("openAppTemplate(context, appWidgetId)" in widgetSource)
+    assertTrue("URLEncoder.encode(value, UTF_8)" in linkSource)
+    assertTrue("URLDecoder.decode(value, UTF_8)" in linkSource)
+    assertTrue("URLEncoder.encode(value, UTF_8)" in projectionSource)
+    assertTrue("URLDecoder.decode(this, UTF_8)" in projectionSource)
   }
 
   @Test
-  fun `manifest contract is app owned deep link bounded share and non-exported widgets`() {
+  fun `library manifest owns only private widget components and no consumer activity`() {
     assertEquals("pidroid", AndroidUiManifestContract.DEEP_LINK_SCHEME)
     assertEquals(setOf("text/plain", "image/png", "image/jpeg", "image/webp", "image/gif"), AndroidUiManifestContract.SHARE_MIME_TYPES)
     assertFalse(AndroidUiManifestContract.ACCEPTS_GENERIC_DOCUMENTS)
@@ -216,18 +230,18 @@ class AndroidUiContractTest {
     assertEquals(32, AndroidUiManifestContract.MAX_IMAGE_ITEMS)
 
     val manifest = androidUiFile("src/main/AndroidManifest.xml").readText()
-    assertTrue("android:scheme=\"pidroid\"" in manifest)
+    assertFalse("MainActivity" in manifest)
+    assertFalse("<activity" in manifest)
     assertTrue("android:name=\".PinnedSessionWidgetProvider\"" in manifest)
     assertTrue("android:name=\".SessionCollectionWidgetProvider\"" in manifest)
-    assertEquals(1, Regex("android:exported=\\\"true\\\"").findAll(manifest).count())
+    assertTrue("android:name=\".SessionCollectionRemoteViewsService\"" in manifest)
+    assertEquals(0, Regex("android:exported=\\\"true\\\"").findAll(manifest).count())
     assertEquals(3, Regex("android:exported=\\\"false\\\"").findAll(manifest).count())
-    assertEquals(1, Regex("android:name=\\\"android.intent.action.VIEW\\\"").findAll(manifest).count())
-    assertEquals(2, Regex("android:name=\\\"android.intent.action.SEND\\\"").findAll(manifest).count())
-    assertEquals(1, Regex("android:name=\\\"android.intent.action.SEND_MULTIPLE\\\"").findAll(manifest).count())
+    assertFalse("android.intent.action.VIEW" in manifest)
+    assertFalse("android.intent.action.SEND" in manifest)
+    assertFalse("android.intent.action.SEND_MULTIPLE" in manifest)
     assertFalse("android.intent.action.OPEN_DOCUMENT" in manifest)
     assertFalse("android.intent.action.GET_CONTENT" in manifest)
-    assertFalse("application/pdf" in manifest)
-    assertFalse("image/*" in manifest)
   }
 
   private fun androidUiFile(relative: String): java.io.File {
