@@ -46,8 +46,10 @@ test("interactive app delegates exact authority correlation tree and TUI state t
 });
 
 test("disposable interactive proof uses private identity bounded cleanup and physical evidence", async () => {
-  const [proof, server] = await Promise.all([
+  const [proof, selector, selectorFixture, server] = await Promise.all([
     source("android/build-logic/live-interactive-proof.sh"),
+    source("android/build-logic/uiautomator-control-center.py"),
+    source("fixtures/android/uiautomator.request-control.xml"),
     source("scripts/pi-droid-disposable-daemon.mjs"),
   ]);
 
@@ -61,7 +63,15 @@ test("disposable interactive proof uses private identity bounded cleanup and phy
   assert.doesNotMatch(proof, /adb[^\n]*wait-for-device/);
   assert.match(proof, /openssl rand -hex 32/);
   assert.match(proof, /--interactive/);
-  assert.match(proof, /Request session control/);
+  assert.match(proof, /tap_text "Request control"/);
+  assert.match(proof, /REQUESTING\|CONTROLLER/);
+  assert.match(proof, /uiautomator-control-center\.py/);
+  assert.match(selector, /clickable ancestor/);
+  assert.match(selector, /item\.attrib\.get\("text"\) != label/);
+  assert.match(selector, /control has no clickable ancestor/);
+  assert.match(selectorFixture, /text="Request control"/);
+  assert.match(selectorFixture, /content-desc="Request session control"/);
+  assert.match(selectorFixture, /clickable="true"[^>]*bounds="\[626,1682\]\[1012,1787\]"/);
   assert.match(proof, /hold-until-disconnect/);
   assert.match(proof, /PROMPT INDETERMINATE/);
   assert.match(proof, /Show tree presentation/);

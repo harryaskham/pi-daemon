@@ -241,18 +241,7 @@ tap_text() {
   local xml="$private_dir/window.xml"
   adb -s "$emulator_serial" shell uiautomator dump /sdcard/pi-droid-window.xml >/dev/null 2>&1
   adb -s "$emulator_serial" exec-out cat /sdcard/pi-droid-window.xml > "$xml"
-  read -r x y < <(python3 - "$xml" "$text" <<'PY'
-import re, sys, xml.etree.ElementTree as ET
-root = ET.parse(sys.argv[1]).getroot()
-for node in root.iter("node"):
-    if node.attrib.get("text") == sys.argv[2] or node.attrib.get("content-desc") == sys.argv[2]:
-        nums = [int(v) for v in re.findall(r"\d+", node.attrib["bounds"])]
-        print((nums[0] + nums[2]) // 2, (nums[1] + nums[3]) // 2)
-        break
-else:
-    raise SystemExit(f"control not found: {sys.argv[2]}")
-PY
-)
+  read -r x y < <(python3 "$repo_root/android/build-logic/uiautomator-control-center.py" "$xml" "$text")
   adb -s "$emulator_serial" shell input tap "$x" "$y"
 }
 
@@ -261,7 +250,8 @@ adb -s "$emulator_serial" shell am start -W -a android.intent.action.VIEW \
 wait_ui 'Readonly session Contract fixture|READONLY RPC ATTACHED' 90
 adb -s "$emulator_serial" exec-out screencap -p > "$artifacts_dir/screenshots/observer-readonly.png"
 
-tap_text "Request session control"
+tap_text "Request control"
+wait_ui 'REQUESTING|CONTROLLER|Controller authority active' 45
 wait_ui 'CONTROLLER|Controller authority active' 45
 adb -s "$emulator_serial" exec-out screencap -p > "$artifacts_dir/screenshots/controller-granted.png"
 
