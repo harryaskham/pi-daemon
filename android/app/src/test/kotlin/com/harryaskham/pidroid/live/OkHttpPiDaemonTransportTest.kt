@@ -142,7 +142,8 @@ class OkHttpPiDaemonTransportTest {
               },
             ).build(),
         )
-        val host = host(server.url("/").toString())
+        val serverAddress = server.url("/").toString()
+        val host = host(serverAddress)
         val transport = OkHttpPiDaemonTransport().also { it.replaceHosts(listOf(host)) }
         ServiceBearerRequestFactory.create(descriptor(host), "test".toCharArray(), allowInsecureHttp = true).use { factory ->
           val socket =
@@ -153,7 +154,10 @@ class OkHttpPiDaemonTransportTest {
           withTimeout(5_000) { opened.await() }
           server.close()
           serverClosed = true
-          assertTrue(withTimeout(15_000) { incoming.await().isEmpty() })
+          val failure = withTimeout(15_000) { runCatching { incoming.await() }.exceptionOrNull() }
+          assertTrue(failure is TransportFailure)
+          assertEquals("websocket_failed", (failure as TransportFailure).code)
+          assertFalse(failure.toString().contains(serverAddress))
           socket.close()
         }
         transport.close()

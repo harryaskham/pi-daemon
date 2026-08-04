@@ -15,7 +15,9 @@ async function source(relative) {
 }
 
 test("interactive app delegates exact authority correlation tree and TUI state to canonical SDK models", async () => {
-  const [machine, repository, screen, activity, transport, commands, rich] = await Promise.all([
+  const [catalog, appLock, machine, repository, screen, activity, transport, commands, rich] = await Promise.all([
+    source("android/gradle/libs.versions.toml"),
+    source("android/app/gradle.lockfile"),
     source("android/app/src/main/kotlin/com/harryaskham/pidroid/live/LiveInteractiveSession.kt"),
     source("android/app/src/main/kotlin/com/harryaskham/pidroid/live/LiveReadonlyRepository.kt"),
     source("android/app/src/main/kotlin/com/harryaskham/pidroid/live/LiveReadonlyScreen.kt"),
@@ -25,6 +27,10 @@ test("interactive app delegates exact authority correlation tree and TUI state t
     source("android/sdk-session-ui/src/main/kotlin/com/harryaskham/pidroid/sessionui/RichInteractiveModels.kt"),
   ]);
 
+  assert.match(catalog, /kotlinx-coroutines-test-android = \{ module = "org\.jetbrains\.kotlinx:kotlinx-coroutines-test", version\.ref = "kotlinx-coroutines" \}/);
+  assert.match(appLock, /org\.jetbrains\.kotlinx:kotlinx-coroutines-test-jvm:1\.11\.0=debugUnitTestCompileClasspath,debugUnitTestRuntimeClasspath/);
+  assert.match(appLock, /org\.jetbrains\.kotlinx:kotlinx-coroutines-test:1\.11\.0=debugUnitTestCompileClasspath,debugUnitTestRuntimeClasspath/);
+  assert.doesNotMatch(appLock, /org\.jetbrains\.kotlinx:kotlinx-coroutines-[^:\n]+:1\.9\.0=/);
   assert.match(machine, /InteractiveSessionController/);
   assert.match(machine, /CorrelationId\(idempotencyKey\)/);
   assert.match(machine, /CommandLifecycle\.INDETERMINATE|controller\.onDisconnect\(\)/);
