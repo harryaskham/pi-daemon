@@ -75,6 +75,17 @@ test("disposable interactive proof uses private identity bounded cleanup and phy
   assert.match(proof, /adb[^\n]*get-state/);
   assert.doesNotMatch(proof, /adb[^\n]*wait-for-device/);
   assert.match(proof, /openssl rand -hex 32/);
+  const gateStart = proof.indexOf("wait_emulator_host_port()");
+  const gateEnd = proof.indexOf("\n}\n\n", gateStart);
+  const hostPortGate = proof.slice(gateStart, gateEnd);
+  assert.ok(gateStart >= 0 && gateEnd > gateStart);
+  assert.match(hostPortGate, /max_attempts=60/);
+  assert.match(hostPortGate, /deadline_seconds=30/);
+  assert.match(hostPortGate, /toybox nc -z -w 1 10\.0\.2\.2/);
+  assert.match(hostPortGate, /sleep 0\.5/);
+  assert.match(hostPortGate, /host_port_unreachable/);
+  assert.doesNotMatch(hostPortGate, /token|bearer|authorization|https?:\/\//i);
+  assert.ok(proof.indexOf("\nif ! wait_emulator_host_port") < proof.indexOf("shell am start"));
   assert.match(proof, /--interactive/);
   assert.match(proof, /tap_text "Request control"/);
   assert.match(proof, /ACTION RECEIVED · CONNECTING\|REQUESTING\|CONTROLLER\|INTERACTIVE ERROR · PREFLIGHT_ERROR/);
@@ -95,6 +106,8 @@ test("disposable interactive proof uses private identity bounded cleanup and phy
   assert.match(proof, /reconnected-controller-phone\.png/);
   assert.match(proof, /reconnected-controller-tablet\.png/);
   assert.match(proof, /live-interactive-sha256sums\.txt/);
+  assert.match(proof, /emulator-host-port-gate\.log/);
+  assert.match(proof, /"hostPortGate": true/);
   assert.match(proof, /blindReplay\": false/);
   assert.doesNotMatch(proof, /(?:7463|8080|3000)/);
   assert.match(server, /options\.interactive/);

@@ -245,6 +245,30 @@ tap_text() {
   adb -s "$emulator_serial" shell input tap "$x" "$y"
 }
 
+wait_emulator_host_port() {
+  local max_attempts=60
+  local attempt=0
+  local gate_log="$artifacts_dir/emulator-host-port-gate.log"
+  : > "$gate_log"
+  printf 'port=%s max_attempts=%s deadline_seconds=30 safe_code=host_port_unreachable\n' \
+    "$api_port" "$max_attempts" >> "$gate_log"
+  while (( attempt < max_attempts )); do
+    attempt=$((attempt + 1))
+    if adb -s "$emulator_serial" shell toybox nc -z -w 1 10.0.2.2 "$api_port" >/dev/null 2>&1; then
+      printf 'status=reachable attempts=%s port=%s\n' "$attempt" "$api_port" >> "$gate_log"
+      return 0
+    fi
+    sleep 0.5
+  done
+  printf 'status=host_port_unreachable attempts=%s port=%s\n' "$attempt" "$api_port" >> "$gate_log"
+  return 1
+}
+
+if ! wait_emulator_host_port; then
+  printf 'host_port_unreachable: port=%s attempts=60 deadline_seconds=30\n' "$api_port" >&2
+  exit 70
+fi
+
 adb -s "$emulator_serial" shell am start -W -a android.intent.action.VIEW \
   -d "$(< "$pairing_file")" com.harryaskham.pidroid.debug >/dev/null
 wait_ui 'Readonly session Contract fixture|READONLY RPC ATTACHED' 90
@@ -318,6 +342,7 @@ cat > "$artifacts_dir/live-interactive-receipt.json" <<EOF
   "generation": 3,
   "hostInstanceBefore": "$host_instance_one",
   "hostInstanceAfter": "$host_instance_two",
+  "hostPortGate": true,
   "observerDeniedUntilGrant": true,
   "controllerGranted": true,
   "uniquePromptSucceeded": true,
@@ -336,6 +361,7 @@ EOF
     "daemon-$second_sequence.stderr.log" \
     app-logcat.txt \
     emulator-diagnostics.log \
+    emulator-host-port-gate.log \
     pi-droid-interactive.mp4 \
     screenshots/observer-readonly.png \
     screenshots/controller-granted.png \
