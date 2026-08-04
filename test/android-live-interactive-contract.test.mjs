@@ -15,11 +15,12 @@ async function source(relative) {
 }
 
 test("interactive app delegates exact authority correlation tree and TUI state to canonical SDK models", async () => {
-  const [machine, repository, screen, activity, commands, rich] = await Promise.all([
+  const [machine, repository, screen, activity, transport, commands, rich] = await Promise.all([
     source("android/app/src/main/kotlin/com/harryaskham/pidroid/live/LiveInteractiveSession.kt"),
     source("android/app/src/main/kotlin/com/harryaskham/pidroid/live/LiveReadonlyRepository.kt"),
     source("android/app/src/main/kotlin/com/harryaskham/pidroid/live/LiveReadonlyScreen.kt"),
     source("android/app/src/main/kotlin/com/harryaskham/pidroid/MainActivity.kt"),
+    source("android/app/src/main/kotlin/com/harryaskham/pidroid/live/OkHttpPiDaemonTransport.kt"),
     source("android/sdk-core/src/main/kotlin/com/harryaskham/pidroid/sdk/core/InteractiveCommands.kt"),
     source("android/sdk-session-ui/src/main/kotlin/com/harryaskham/pidroid/sessionui/RichInteractiveModels.kt"),
   ]);
@@ -45,12 +46,17 @@ test("interactive app delegates exact authority correlation tree and TUI state t
   assert.match(repository, /requireActiveInteractive\(\)/);
   assert.match(repository, /UUID\.randomUUID\(\)/);
   assert.match(repository, /interactive_send_indeterminate/);
+  assert.match(repository, /publishInteractive\(active, "transport_lost"\)/);
   assert.match(repository, /INTERACTIVE_SAFE_CODE\s*=\s*Regex\("\^\[a-z\]\[a-z0-9_\]\{0,127\}\$"\)/);
   assert.match(repository, /code\.takeIf\(INTERACTIVE_SAFE_CODE::matches\) \?: "interactive_failed"/);
   assert.match(repository, /LiveReadonlyFailure\("interactive_attach_failed"\)/);
   assert.match(repository, /publishInteractive\(active, "interactive_send_indeterminate"\)/);
   assert.match(repository, /throw LiveReadonlyFailure\("interactive_send_indeterminate"\)/);
   assert.match(repository, /safeCode == "interactive_failed"[^\n]*existing\.code != "interactive_failed"/);
+  assert.match(transport, /DEFAULT_WEBSOCKET_PING_INTERVAL: Duration = Duration\.ofSeconds\(5\)/);
+  assert.match(transport, /\.pingInterval\(webSocketPingInterval\)/);
+  assert.match(transport, /incomingClosed\.compareAndSet\(false, true\)/);
+  assert.match(transport, /retryOnConnectionFailure\(false\)/);
   assert.match(screen, /RichInteractiveSessionSurface/);
   assert.match(screen, /SessionTreeSurface/);
   assert.match(screen, /TuiSurface/);

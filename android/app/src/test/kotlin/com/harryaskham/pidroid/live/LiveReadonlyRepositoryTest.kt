@@ -388,6 +388,7 @@ class LiveReadonlyRepositoryTest {
       val lostId = (lostPrompt["id"] as JsonPrimitive).content
       assertTrue(lostId.startsWith("wake-"))
       assertFalse(lostId == promptId)
+      val sentBeforeDisconnect = rpcSocket.sent.size
       rpcSocket.disconnect()
       val failed =
         withTimeout(5_000) {
@@ -395,6 +396,7 @@ class LiveReadonlyRepositoryTest {
             .filterIsInstance<LiveInteractiveAppState.Failure>()
             .first()
         }
+      assertEquals("transport_lost", failed.code)
       assertEquals(
         CommandLifecycle.INDETERMINATE,
         requireNotNull(failed.lastSnapshot)
@@ -402,6 +404,29 @@ class LiveReadonlyRepositoryTest {
           .single { it.correlationId == lostId }
           .lifecycle,
       )
+      assertEquals(sentBeforeDisconnect, rpcSocket.sent.size)
+
+      harness.repository.reconnectInteractive()
+      val replacementSocket = requireNotNull(harness.transport.interactiveRpcSocket)
+      assertFalse(replacementSocket === rpcSocket)
+      val observer = harness.repository.interactiveState.value as LiveInteractiveAppState.Ready
+      assertEquals(InteractiveControllerRole.OBSERVER, observer.snapshot.role)
+      harness.repository.requestControl()
+      replacementSocket.push(controlGranted())
+      withTimeout(5_000) {
+        harness.repository.interactiveState
+          .filterIsInstance<LiveInteractiveAppState.Ready>()
+          .first { it.snapshot.role == InteractiveControllerRole.CONTROLLER }
+      }
+      harness.repository.handleInteraction(RichInteractionAction.SubmitPrompt("new prompt after reconciliation"))
+      val replacementPrompt =
+        Json
+          .parseToJsonElement(replacementSocket.sent.last())
+          .jsonObject
+          .getValue("command")
+          .jsonObject
+      assertFalse((replacementPrompt["id"] as JsonPrimitive).content == lostId)
+      assertEquals(1, replacementSocket.promptSendAttempts)
     }
 
   private fun controlGranted(): String =

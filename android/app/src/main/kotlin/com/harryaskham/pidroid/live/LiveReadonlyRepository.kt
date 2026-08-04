@@ -448,7 +448,7 @@ public class LiveReadonlyRepository(
           // The finally block converts every missing acknowledgement to indeterminate.
         } finally {
           active.machine.disconnected()
-          publishInteractive(active, "interactive_disconnected")
+          publishInteractive(active, "transport_lost")
         }
       }
     active.tuiJob =

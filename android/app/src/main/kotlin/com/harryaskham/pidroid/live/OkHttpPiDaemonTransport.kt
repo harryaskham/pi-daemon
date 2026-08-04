@@ -32,6 +32,7 @@ import java.security.cert.X509Certificate
 import java.time.Duration
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicBoolean
 import javax.net.ssl.SSLContext
 import javax.net.ssl.TrustManagerFactory
 import javax.net.ssl.X509TrustManager
@@ -49,9 +50,17 @@ public interface LiveHostTransport :
   public fun replaceHosts(hosts: List<RegisteredHost>)
 }
 
-public class OkHttpPiDaemonTransport : LiveHostTransport {
+public class OkHttpPiDaemonTransport(
+  internal val webSocketPingInterval: Duration = DEFAULT_WEBSOCKET_PING_INTERVAL,
+) : LiveHostTransport {
   private val descriptors = MutableStateFlow<List<PiDaemonHostDescriptor>>(emptyList())
   private val clients = ConcurrentHashMap<HostId, HostClient>()
+
+  init {
+    require(!webSocketPingInterval.isZero && !webSocketPingInterval.isNegative && webSocketPingInterval <= MAX_WEBSOCKET_PING_INTERVAL) {
+      "WebSocket ping interval is outside the liveness bound"
+    }
+  }
 
   override val hosts: Flow<List<PiDaemonHostDescriptor>> = descriptors
 
@@ -115,6 +124,12 @@ public class OkHttpPiDaemonTransport : LiveHostTransport {
   ): PiDaemonSocket {
     val hostClient = requireHost(host, request.uri)
     val incoming = Channel<String>(capacity = MAX_INCOMING_FRAMES)
+    val incomingClosed = AtomicBoolean(false)
+
+    fun closeIncoming(cause: Throwable? = null) {
+      if (!incomingClosed.compareAndSet(false, true)) return
+      if (cause == null) incoming.close() else incoming.close(cause)
+    }
     val listener =
       object : WebSocketListener() {
         override fun onMessage(
@@ -123,7 +138,7 @@ public class OkHttpPiDaemonTransport : LiveHostTransport {
         ) {
           if (text.length > MAX_WEBSOCKET_CHARS || incoming.trySend(text).isFailure) {
             webSocket.close(1_009, "bounded overflow")
-            incoming.close(IllegalStateException("bounded WebSocket overflow"))
+            closeIncoming(IllegalStateException("bounded WebSocket overflow"))
           }
         }
 
@@ -132,7 +147,7 @@ public class OkHttpPiDaemonTransport : LiveHostTransport {
           bytes: ByteString,
         ) {
           webSocket.close(1_003, "text frames required")
-          incoming.close(IllegalStateException("binary WebSocket frame rejected"))
+          closeIncoming(IllegalStateException("binary WebSocket frame rejected"))
         }
 
         override fun onClosed(
@@ -140,7 +155,7 @@ public class OkHttpPiDaemonTransport : LiveHostTransport {
           code: Int,
           reason: String,
         ) {
-          incoming.close()
+          closeIncoming()
         }
 
         override fun onFailure(
@@ -151,7 +166,7 @@ public class OkHttpPiDaemonTransport : LiveHostTransport {
           val safeBody = response?.body?.charStream()?.use { it.readText().take(4_096) }
           val apiCode = safeBody?.let { Regex("\\\"code\\\"\\s*:\\s*\\\"([a-z0-9_]{1,128})\\\"").find(it)?.groupValues?.get(1) }
           val code = apiCode?.let { "websocket_$it" } ?: response?.code?.let { "websocket_http_$it" } ?: "websocket_failed"
-          incoming.close(TransportFailure(code, t))
+          closeIncoming(TransportFailure(code, t))
         }
       }
     val builder = Request.Builder().url(request.uri.toString())
@@ -218,6 +233,7 @@ public class OkHttpPiDaemonTransport : LiveHostTransport {
         .readTimeout(Duration.ofSeconds(20))
         .writeTimeout(Duration.ofSeconds(20))
         .callTimeout(Duration.ofSeconds(30))
+        .pingInterval(webSocketPingInterval)
         .retryOnConnectionFailure(false)
     if (fingerprint != null) {
       val delegate = platformTrustManager()
@@ -254,6 +270,8 @@ public class OkHttpPiDaemonTransport : LiveHostTransport {
     const val MAX_RESPONSE_BYTES: Int = 4 * 1_024 * 1_024
     const val MAX_WEBSOCKET_CHARS: Int = 4 * 1_024 * 1_024
     const val MAX_INCOMING_FRAMES: Int = 128
+    val DEFAULT_WEBSOCKET_PING_INTERVAL: Duration = Duration.ofSeconds(5)
+    val MAX_WEBSOCKET_PING_INTERVAL: Duration = Duration.ofSeconds(30)
     val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
     val EMPTY_BODY = ByteArray(0).toRequestBody(JSON_MEDIA_TYPE)
   }

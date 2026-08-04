@@ -8,8 +8,11 @@ import com.harryaskham.pidroid.sdk.core.PiDaemonHostDescriptor
 import com.harryaskham.pidroid.sdk.core.RegisteredHost
 import com.harryaskham.pidroid.sdk.core.ServiceBearerRequestFactory
 import com.harryaskham.pidroid.sdk.core.TransportSecurity
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
@@ -26,6 +29,7 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import java.net.URI
 import java.security.cert.X509Certificate
+import java.time.Duration
 import java.util.concurrent.atomic.AtomicBoolean
 import javax.net.ssl.X509TrustManager
 
@@ -104,6 +108,57 @@ class OkHttpPiDaemonTransportTest {
         transport.close()
       } finally {
         server.close()
+      }
+    }
+
+  @Test
+  fun `WebSocket ping liveness interval is bounded and defaults to five seconds`() {
+    assertEquals(Duration.ofSeconds(5), OkHttpPiDaemonTransport().webSocketPingInterval)
+    assertEquals(Duration.ofSeconds(1), OkHttpPiDaemonTransport(Duration.ofSeconds(1)).webSocketPingInterval)
+    assertThrows(IllegalArgumentException::class.java) { OkHttpPiDaemonTransport(Duration.ZERO) }
+    assertThrows(IllegalArgumentException::class.java) { OkHttpPiDaemonTransport(Duration.ofSeconds(31)) }
+  }
+
+  @Test
+  fun `server loss closes incoming WebSocket within bounded ping interval`() =
+    runTest {
+      val server = MockWebServer()
+      server.start()
+      var serverClosed = false
+      try {
+        val opened = CompletableDeferred<Unit>()
+        server.enqueue(
+          MockResponse
+            .Builder()
+            .addHeader("Sec-WebSocket-Protocol", "pi-daemon-rpc.v1")
+            .webSocketUpgrade(
+              object : WebSocketListener() {
+                override fun onOpen(
+                  webSocket: WebSocket,
+                  response: Response,
+                ) {
+                  opened.complete(Unit)
+                }
+              },
+            ).build(),
+        )
+        val host = host(server.url("/").toString())
+        val transport = OkHttpPiDaemonTransport().also { it.replaceHosts(listOf(host)) }
+        ServiceBearerRequestFactory.create(descriptor(host), "test".toCharArray(), allowInsecureHttp = true).use { factory ->
+          val socket =
+            factory
+              .webSocket("/v1/session/test/rpc", emptyList(), listOf("pi-daemon-rpc.v1"))
+              .let { transport.openWebSocket(host.id, it) }
+          val incoming = async(Dispatchers.Default) { socket.incomingText.toList() }
+          withTimeout(5_000) { opened.await() }
+          server.close()
+          serverClosed = true
+          assertTrue(withTimeout(15_000) { incoming.await().isEmpty() })
+          socket.close()
+        }
+        transport.close()
+      } finally {
+        if (!serverClosed) server.close()
       }
     }
 
