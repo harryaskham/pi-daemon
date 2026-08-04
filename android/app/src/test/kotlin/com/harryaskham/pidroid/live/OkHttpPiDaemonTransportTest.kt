@@ -124,9 +124,8 @@ class OkHttpPiDaemonTransportTest {
     runTest {
       val server = MockWebServer()
       server.start()
-      var serverClosed = false
       try {
-        val opened = CompletableDeferred<Unit>()
+        val acceptedSocket = CompletableDeferred<WebSocket>()
         server.enqueue(
           MockResponse
             .Builder()
@@ -137,7 +136,7 @@ class OkHttpPiDaemonTransportTest {
                   webSocket: WebSocket,
                   response: Response,
                 ) {
-                  opened.complete(Unit)
+                  acceptedSocket.complete(webSocket)
                 }
               },
             ).build(),
@@ -151,9 +150,8 @@ class OkHttpPiDaemonTransportTest {
               .webSocket("/v1/session/test/rpc", emptyList(), listOf("pi-daemon-rpc.v1"))
               .let { transport.openWebSocket(host.id, it) }
           val incoming = async(Dispatchers.Default) { socket.incomingText.toList() }
-          withTimeout(5_000) { opened.await() }
-          server.close()
-          serverClosed = true
+          val serverSocket = withTimeout(5_000) { acceptedSocket.await() }
+          serverSocket.cancel()
           val failure = withTimeout(15_000) { runCatching { incoming.await() }.exceptionOrNull() }
           assertTrue(failure is TransportFailure)
           assertEquals("websocket_failed", (failure as TransportFailure).code)
@@ -162,7 +160,7 @@ class OkHttpPiDaemonTransportTest {
         }
         transport.close()
       } finally {
-        if (!serverClosed) server.close()
+        server.close()
       }
     }
 

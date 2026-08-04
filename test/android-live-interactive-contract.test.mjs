@@ -15,7 +15,7 @@ async function source(relative) {
 }
 
 test("interactive app delegates exact authority correlation tree and TUI state to canonical SDK models", async () => {
-  const [catalog, appLock, machine, repository, screen, activity, transport, commands, rich] = await Promise.all([
+  const [catalog, appLock, machine, repository, screen, activity, transport, transportTest, commands, rich] = await Promise.all([
     source("android/gradle/libs.versions.toml"),
     source("android/app/gradle.lockfile"),
     source("android/app/src/main/kotlin/com/harryaskham/pidroid/live/LiveInteractiveSession.kt"),
@@ -23,6 +23,7 @@ test("interactive app delegates exact authority correlation tree and TUI state t
     source("android/app/src/main/kotlin/com/harryaskham/pidroid/live/LiveReadonlyScreen.kt"),
     source("android/app/src/main/kotlin/com/harryaskham/pidroid/MainActivity.kt"),
     source("android/app/src/main/kotlin/com/harryaskham/pidroid/live/OkHttpPiDaemonTransport.kt"),
+    source("android/app/src/test/kotlin/com/harryaskham/pidroid/live/OkHttpPiDaemonTransportTest.kt"),
     source("android/sdk-core/src/main/kotlin/com/harryaskham/pidroid/sdk/core/InteractiveCommands.kt"),
     source("android/sdk-session-ui/src/main/kotlin/com/harryaskham/pidroid/sessionui/RichInteractiveModels.kt"),
   ]);
@@ -63,6 +64,10 @@ test("interactive app delegates exact authority correlation tree and TUI state t
   assert.match(transport, /\.pingInterval\(webSocketPingInterval\)/);
   assert.match(transport, /incomingClosed\.compareAndSet\(false, true\)/);
   assert.match(transport, /retryOnConnectionFailure\(false\)/);
+  assert.match(transportTest, /acceptedSocket = CompletableDeferred<WebSocket>\(\)/);
+  assert.match(transportTest, /serverSocket\.cancel\(\)/);
+  assert.ok(transportTest.indexOf("serverSocket.cancel()") < transportTest.indexOf("withTimeout(15_000)"));
+  assert.match(transportTest, /assertEquals\("websocket_failed", \(failure as TransportFailure\)\.code\)/);
   assert.match(screen, /RichInteractiveSessionSurface/);
   assert.match(screen, /SessionTreeSurface/);
   assert.match(screen, /TuiSurface/);
