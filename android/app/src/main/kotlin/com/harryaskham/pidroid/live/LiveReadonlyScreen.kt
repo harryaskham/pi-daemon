@@ -35,9 +35,18 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.harryaskham.pidroid.sdk.core.HostId
+import com.harryaskham.pidroid.sdk.core.InteractiveControllerRole
+import com.harryaskham.pidroid.sdk.core.SessionRole
+import com.harryaskham.pidroid.sessionui.InteractionContext
+import com.harryaskham.pidroid.sessionui.RichInteractionAction
+import com.harryaskham.pidroid.sessionui.RichInteractiveSessionSurface
+import com.harryaskham.pidroid.sessionui.RichInteractiveState
 import com.harryaskham.pidroid.sessionui.SessionSurface
 import com.harryaskham.pidroid.sessionui.SessionSurfaceChrome
 import com.harryaskham.pidroid.sessionui.SessionSurfaceLayout
+import com.harryaskham.pidroid.sessionui.SessionTreeSurface
+import com.harryaskham.pidroid.sessionui.TuiSurface
+import com.harryaskham.pidroid.sessionui.TuiSurfaceLayout
 
 private val LiveCanvas = Color(0xFF0C111B)
 private val LiveSurface = Color(0xFF121A28)
@@ -50,10 +59,13 @@ private val LiveWarning = Color(0xFFE7C987)
 @Composable
 public fun LiveReadonlyScreen(
   state: LiveReadonlyState,
+  interaction: LiveInteractiveAppState,
   onRegisterManual: (String, String, CharArray, String?, Boolean) -> Unit,
   onRegisterEnvelope: (String, Boolean) -> Unit,
   onRefresh: () -> Unit,
   onSelectHost: (HostId) -> Unit,
+  onInteractiveAction: (RichInteractionAction) -> Unit,
+  onReconnectInteractive: () -> Unit,
 ) {
   MaterialTheme {
     Surface(modifier = Modifier.fillMaxSize(), color = LiveCanvas) {
@@ -71,7 +83,7 @@ public fun LiveReadonlyScreen(
         }
 
         is LiveReadonlyState.Ready -> {
-          LiveSessionScreen(state, onRefresh, onSelectHost)
+          LiveSessionScreen(state, interaction, onRefresh, onSelectHost, onInteractiveAction, onReconnectInteractive)
         }
       }
     }
@@ -166,12 +178,31 @@ public fun HostRegistrationScreen(
   }
 }
 
+private enum class LivePresentation {
+  RICH,
+  TREE,
+  TUI,
+}
+
 @Composable
 private fun LiveSessionScreen(
   ready: LiveReadonlyState.Ready,
+  interaction: LiveInteractiveAppState,
   onRefresh: () -> Unit,
   onSelectHost: (HostId) -> Unit,
+  onInteractiveAction: (RichInteractionAction) -> Unit,
+  onReconnectInteractive: () -> Unit,
 ) {
+  var presentation by remember(ready.selectedHostId) { mutableStateOf(LivePresentation.RICH) }
+  val active =
+    (interaction as? LiveInteractiveAppState.Ready)
+      ?.takeIf { it.hostId == ready.selectedHostId }
+  val interactiveSnapshot =
+    when (interaction) {
+      is LiveInteractiveAppState.Ready -> interaction.snapshot.takeIf { interaction.hostId == ready.selectedHostId }
+      is LiveInteractiveAppState.Failure -> interaction.lastSnapshot.takeIf { interaction.hostId == ready.selectedHostId }
+      else -> null
+    }
   Column(Modifier.fillMaxSize()) {
     Row(
       modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
@@ -192,10 +223,44 @@ private fun LiveSessionScreen(
       }
       Spacer(Modifier.weight(1f))
       Text(
-        if (ready.selected.rpcObserverConnected) "READONLY RPC ATTACHED" else "READONLY REST",
-        color = if (ready.selected.rpcObserverConnected) LiveGreen else LiveWarning,
+        when {
+          interactiveSnapshot?.role == InteractiveControllerRole.CONTROLLER -> "CONTROLLER"
+          interactiveSnapshot != null -> "OBSERVER"
+          ready.selected.rpcObserverConnected -> "READONLY RPC ATTACHED"
+          else -> "READONLY REST"
+        },
+        color = if (interactiveSnapshot?.role == InteractiveControllerRole.CONTROLLER) LiveGreen else LiveWarning,
         fontWeight = FontWeight.Bold,
       )
+    }
+    Row(
+      modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+      horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+      LivePresentation.entries.forEach { item ->
+        OutlinedButton(
+          onClick = { presentation = item },
+          modifier = Modifier.semantics { contentDescription = "Show ${item.name.lowercase()} presentation" },
+        ) {
+          Text(item.name)
+        }
+      }
+      interactiveSnapshot?.receipts?.lastOrNull()?.let { receipt ->
+        Text(
+          "${receipt.kind.wireValue.uppercase()} ${receipt.lifecycle.name}",
+          modifier = Modifier.semantics { contentDescription = "Command ${receipt.kind.wireValue} ${receipt.lifecycle.name.lowercase()}" },
+          color = if (receipt.lifecycle.name == "SUCCEEDED") LiveGreen else LiveWarning,
+          fontWeight = FontWeight.Bold,
+        )
+      }
+      if (interaction is LiveInteractiveAppState.Failure) {
+        OutlinedButton(
+          onClick = onReconnectInteractive,
+          modifier = Modifier.semantics { contentDescription = "Reconnect interactive session" },
+        ) {
+          Text("Reconnect")
+        }
+      }
     }
     BoxWithConstraints(Modifier.fillMaxSize()) {
       val fontScale = LocalDensity.current.fontScale
@@ -205,12 +270,79 @@ private fun LiveSessionScreen(
         } else {
           SessionSurfaceLayout.tablet(fontScale)
         }
-      SessionSurface(
-        state = ready.selected.session,
-        layout = layout,
-        chrome = SessionSurfaceChrome.READONLY,
-        modifier = Modifier.fillMaxSize(),
-      )
+      when (presentation) {
+        LivePresentation.RICH -> {
+          val rich =
+            interactiveSnapshot?.rich
+              ?: RichInteractiveState.observer(
+                ready.selected.session.session.modelLabel ?: "default model",
+                ready.selected.session.session.thinkingLevel ?: "default",
+              )
+          RichInteractiveSessionSurface(
+            session = ready.selected.session,
+            interactive = rich,
+            layout = layout,
+            modifier = Modifier.fillMaxSize(),
+            onAction = onInteractiveAction,
+          )
+        }
+
+        LivePresentation.TREE -> {
+          val tree = interactiveSnapshot?.tree
+          if (tree == null) {
+            InteractiveStatus("Branch tree unavailable", "Request control to load the exact active tree")
+          } else {
+            SessionTreeSurface(
+              snapshot = tree,
+              context =
+                InteractionContext(
+                  identity = tree.identity,
+                  role =
+                    if (interactiveSnapshot.role ==
+                      InteractiveControllerRole.CONTROLLER
+                    ) {
+                      SessionRole.CONTROLLER
+                    } else {
+                      SessionRole.OBSERVER
+                    },
+                  freshness = ready.selected.session.host.freshness,
+                ),
+              modifier = Modifier.fillMaxSize(),
+            )
+          }
+        }
+
+        LivePresentation.TUI -> {
+          val tui = active?.tui
+          if (tui == null) {
+            InteractiveStatus("TUI unavailable", "Waiting for a canonical server-side TUI snapshot")
+          } else {
+            TuiSurface(
+              state = tui,
+              layout =
+                if (maxWidth < 720.dp) {
+                  TuiSurfaceLayout.phone(fontScale)
+                } else {
+                  TuiSurfaceLayout.tablet(fontScale)
+                },
+              modifier = Modifier.fillMaxSize(),
+            )
+          }
+        }
+      }
+    }
+  }
+}
+
+@Composable
+private fun InteractiveStatus(
+  title: String,
+  detail: String,
+) {
+  Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+      Text(title, color = LivePrimary, style = MaterialTheme.typography.headlineSmall)
+      Text(detail, color = LiveMuted)
     }
   }
 }

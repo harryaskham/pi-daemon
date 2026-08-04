@@ -31,7 +31,7 @@ test("Android manifest and network policy enable only reviewed bearer transport"
   assert.doesNotMatch(policy, /user/);
 });
 
-test("live app provides real bounded transport protected credentials and readonly repository", async () => {
+test("live app preserves bounded transport protected credentials and readonly hydration", async () => {
   const [catalog, build, transport, credentials, registry, repository, activity, screen] = await Promise.all([
     source("android/gradle/libs.versions.toml"),
     source("android/app/build.gradle.kts"),
@@ -65,7 +65,7 @@ test("live app provides real bounded transport protected credentials and readonl
   assert.match(repository, /CacheFreshness\.(?:RECONNECTING|RESYNCING|OFFLINE_CACHED)/);
   assert.match(activity, /LiveReadonlyScreen/);
   assert.match(screen, /SessionSurface/);
-  assert.doesNotMatch(activity, /prompt|wake|requestControl|RichInteractive|TuiSurface/i);
+  assert.match(repository, /SessionRole\.OBSERVER/);
 });
 
 test("disposable-daemon emulator proof is bounded readonly and release advances to version two", async () => {
@@ -81,6 +81,9 @@ test("disposable-daemon emulator proof is bounded readonly and release advances 
   assert.match(proof, /10\.0\.2\.2/);
   assert.match(proof, /am start/);
   assert.match(proof, /uiautomator dump/);
+  assert.match(proof, /emulator_abi='x86_64'/);
+  assert.match(proof, /adb[^\n]*get-state/);
+  assert.doesNotMatch(proof, /adb[^\n]*wait-for-device/);
   assert.match(proof, /Live readonly session/);
   assert.match(proof, /OFFLINE CACHED|Offline cached/);
   assert.match(proof, /hostInstanceId/);

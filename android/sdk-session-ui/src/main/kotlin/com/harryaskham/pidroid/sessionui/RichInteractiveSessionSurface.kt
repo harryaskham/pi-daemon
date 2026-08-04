@@ -190,7 +190,11 @@ private fun ObserverPanel(
   ) {
     Surface(color = InteractiveWarning.copy(alpha = 0.14f), shape = RoundedCornerShape(999.dp)) {
       Text(
-        if (state.authority == RichAuthorityRole.REQUESTING) "REQUESTING" else "OBSERVER",
+        when (state.authority) {
+          RichAuthorityRole.REQUESTING -> "REQUESTING"
+          RichAuthorityRole.LOST -> "CONNECTION LOST"
+          else -> "OBSERVER"
+        },
         modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
         color = InteractiveWarning,
         fontSize = 10.sp,
@@ -199,13 +203,18 @@ private fun ObserverPanel(
       )
     }
     Column(Modifier.weight(1f)) {
-      Text("Readonly until control is granted", color = InteractivePrimary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+      Text(
+        if (state.authority == RichAuthorityRole.LOST) "Reconnect before sending another command" else "Readonly until control is granted",
+        color = InteractivePrimary,
+        fontSize = 13.sp,
+        fontWeight = FontWeight.SemiBold,
+      )
       Text("${state.modelLabel} · ${state.thinkingLevel}", color = InteractiveMuted, fontSize = 11.sp)
     }
     Button(
       onClick = { onAction(RichInteractionAction.RequestControl) },
       modifier = Modifier.widthIn(min = 132.dp).semantics { contentDescription = "Request session control" },
-      enabled = state.authority != RichAuthorityRole.REQUESTING,
+      enabled = state.authority == RichAuthorityRole.OBSERVER,
       colors = ButtonDefaults.buttonColors(containerColor = InteractiveAccent, contentColor = InteractivePanel),
     ) {
       Text("Request control", fontWeight = FontWeight.Bold)

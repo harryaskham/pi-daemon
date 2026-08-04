@@ -162,6 +162,7 @@ export PI_DROID_PLAY_RECEIPT_FILE="$artifacts_dir/play-internal-receipt.json"
 export ANDROID_USER_HOME="$private_dir/android-user"
 export ANDROID_AVD_HOME="$private_dir/avd"
 mkdir -p "$ANDROID_USER_HOME" "$ANDROID_AVD_HOME"
+emulator_abi='x86_64'
 
 common_gradle_args=(
   -p "$repo_root/android"
@@ -239,7 +240,7 @@ if [[ "$upload_prepared" != 'true' ]]; then
   printf 'no\n' | avdmanager create avd \
   --force \
   --name pi-droid-release \
-  --package 'system-images;android-36;google_apis;x86_64' >/dev/null
+  --package "system-images;android-36;google_apis;$emulator_abi" >/dev/null
 emulator_port="$(python3 - <<'PY'
 import socket
 for port in range(5600, 5683, 2):
@@ -275,7 +276,24 @@ emulator \
   > "$private_dir/emulator.log" 2>&1 &
 emulator_pid="$!"
 
-adb -s "$emulator_serial" wait-for-device
+device_ready=''
+for _ in $(seq 1 120); do
+  if adb -s "$emulator_serial" get-state 2>/dev/null | grep -qx device; then
+    device_ready='true'
+    break
+  fi
+  if ! kill -0 "$emulator_pid" 2>/dev/null; then
+    wait "$emulator_pid" 2>/dev/null || true
+    printf 'Android emulator exited before ADB readiness for ABI %s\n' "$emulator_abi" >&2
+    tail -40 "$private_dir/emulator.log" >&2 || true
+    exit 70
+  fi
+  sleep 1
+done
+if [[ "$device_ready" != 'true' ]]; then
+  printf '%s\n' 'Android emulator ADB readiness timed out' >&2
+  exit 70
+fi
 booted=''
 for _ in $(seq 1 240); do
   booted="$(adb -s "$emulator_serial" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')"

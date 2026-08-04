@@ -14,7 +14,7 @@ async function source(relativePath) {
   }
 }
 
-test("Pi Droid app is conditional, fixed-identity, fixture-only, and release signed", async () => {
+test("Pi Droid app is conditional, fixed-identity, source-gated, and release signed", async () => {
   const [settings, catalog, build, manifest, activity, liveScreen] = await Promise.all([
     source("android/settings.gradle.kts"),
     source("android/gradle/libs.versions.toml"),
@@ -48,9 +48,20 @@ test("Pi Droid app is conditional, fixed-identity, fixture-only, and release sig
   assert.match(manifest, /android\.permission\.INTERNET/);
   assert.match(manifest, /android:name="\.MainActivity"/);
   assert.match(activity, /LiveReadonlyScreen/);
+  assert.match(activity, /interactiveState/);
+  assert.match(activity, /handleInteraction/);
   assert.match(liveScreen, /SessionSurface/);
   assert.match(liveScreen, /HostRegistrationScreen/);
-  assert.doesNotMatch(activity, /prompt|wake|requestControl|TuiSurface/i);
+});
+
+test("Android shells select the pinned platform-specific Java home", async () => {
+  const flake = await source("flake.nix");
+
+  assert.match(flake, /androidJavaHome\s*=/);
+  assert.match(flake, /if pkgs\.stdenv\.isDarwin/);
+  assert.match(flake, /Library\/Java\/JavaVirtualMachines\/zulu-21\.jdk\/Contents\/Home/);
+  assert.match(flake, /else "\$\{pkgs\.jdk21\}\/lib\/openjdk"/);
+  assert.equal((flake.match(/JAVA_HOME = androidJavaHome;/g) ?? []).length, 2);
 });
 
 test("release script materializes secrets privately and verifies fixed identity before upload", async () => {
@@ -80,6 +91,9 @@ test("release script materializes secrets privately and verifies fixed identity 
   assert.match(script, /play-internal-receipt\.json/);
   assert.match(script, /pi-droid-release\.aab/);
   assert.match(script, /mapping\.txt/);
+  assert.match(script, /emulator_abi='x86_64'/);
+  assert.match(script, /adb[^\n]*get-state/);
+  assert.doesNotMatch(script, /adb[^\n]*wait-for-device/);
   assert.doesNotMatch(script, /echo\s+.*(?:PASSWORD|SERVICE_ACCOUNT|KEYSTORE)/i);
 });
 

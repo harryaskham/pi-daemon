@@ -1,12 +1,18 @@
 # Pi Droid early internal application
 
-`com.harryaskham.pidroid` is a trusted-tailnet **readonly** Pi Daemon client. It
-registers hosts manually or from the stable ASCII/QR envelope, stores service
-bearers as Android-Keystore AES-GCM ciphertext under `noBackupFilesDir`, and
-projects authenticated capabilities, multi-host inventory, information,
-transcript and observer attach state into the canonical `SessionSurface`.
-Version 2 requests `INTERNET`, but still carries no prompt, wake or controller
-mutation authority; those remain later interactive milestones.
+`com.harryaskham.pidroid` is a trusted-tailnet Pi Daemon client. It registers
+hosts manually or from the stable ASCII/QR envelope, stores service bearers as
+Android-Keystore AES-GCM ciphertext under `noBackupFilesDir`, and projects
+authenticated capabilities, multi-host inventory, information and transcript
+state into canonical session surfaces.
+
+The currently released Play internal version 2 remains readonly. Current source
+adds the next opt-in interactive milestone: every live connection attaches as an
+observer, explicit control grant is required before mutation, command identity is
+unique and bounded, and a missing response becomes indeterminate rather than
+being replayed. Rich, bounded tree and canonical server-TUI presentations share
+the exact host/session/generation authority. This source is not version 3 and
+must not be signed or uploaded until the disposable physical proof passes.
 
 The module is excluded from ordinary Gradle settings and the Android fast lane.
 Enable it only with `-PpiDroidAndroidApp=true` inside the pinned
@@ -51,7 +57,12 @@ marker before taking phone/tablet/wide screenshots. The separate
 `live-readonly-proof.sh` uses only a random private disposable bearer and
 ApiServer, then proves emulator capabilities/inventory/info/transcript,
 observer attach, offline cache and a different host incarnation after restart.
-Upload uses Gradle Play Publisher's `IGNORE`
+`live-interactive-proof.sh` adds an explicitly interactive disposable host and
+proves observer denial, controller grant, one uniquely correlated prompt,
+redacted tree, TUI snapshot, in-flight disconnect to indeterminate, restart and
+a new unique prompt. It retains phone/tablet screenshots, bounded video and
+hashed daemon/app diagnostics; an architecture mismatch fails before an
+unbounded ADB wait. Upload uses Gradle Play Publisher's `IGNORE`
 resolution for idempotent version-code retries, targets only `internal`, commits
 no wider rollout, and opens a separate read edit to verify the highest remote
 version and track.

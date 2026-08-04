@@ -9,6 +9,7 @@ import { DashboardNeutralApiController } from "../dist/dashboard-neutral-api.js"
 import { createDashboardContractFixtures } from "../dist/dashboard-fixtures.js";
 import { Multiplexer } from "../dist/multiplexer.js";
 import { FileSessionCatalog } from "../dist/session-catalog.js";
+import { ShadowTuiAttachmentManager } from "../dist/shadow-tui-attachments.js";
 
 const options = parseArgs(process.argv.slice(2));
 const token = (await readFile(options.tokenFile, "utf8")).trim();
@@ -18,6 +19,10 @@ const fixture = createDashboardContractFixtures();
 
 class FixtureRpcController {
   #listeners = new Set();
+
+  constructor(interactive) {
+    this.interactive = interactive;
+  }
 
   snapshot() {
     return {
@@ -50,7 +55,47 @@ class FixtureRpcController {
         data: { entries: [], leafId: "entry-assistant-01" },
       };
     }
+    if (this.interactive && command.type === "get_tree") {
+      return {
+        id: command.id,
+        type: "response",
+        command: "get_tree",
+        success: true,
+        data: {
+          leafId: "entry-assistant-01",
+          tree: [
+            {
+              entry: { id: "entry-system-01", parentId: null, type: "session_info" },
+              label: "Session start",
+              children: [
+                {
+                  entry: { id: "entry-user-01", parentId: "entry-system-01", type: "message" },
+                  label: "User",
+                  children: [
+                    {
+                      entry: { id: "entry-assistant-01", parentId: "entry-user-01", type: "message" },
+                      label: "Assistant",
+                      children: [],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      };
+    }
+    if (this.interactive && command.type === "prompt") {
+      this.#emit({ type: "agent_start" });
+      if (command.message === "hold-until-disconnect") return new Promise(() => {});
+      setTimeout(() => this.#emit({ type: "agent_settled" }), 80);
+      return { id: command.id, type: "response", command: "prompt", success: true };
+    }
     return { id: command.id, type: "response", command: command.type, success: false, error: "readonly_fixture" };
+  }
+
+  #emit(event) {
+    for (const listener of this.#listeners) listener(event);
   }
 
   respondToExtensionUi() {
@@ -83,7 +128,9 @@ class FixtureAdapter {
 }
 
 class FixtureFactory {
-  controller = new FixtureRpcController();
+  constructor(interactive) {
+    this.controller = new FixtureRpcController(interactive);
+  }
 
   async open(request) {
     return new FixtureAdapter(request.sessionId, this.controller);
@@ -92,7 +139,7 @@ class FixtureFactory {
 
 const multiplexer =
   new Multiplexer({
-    factory: new FixtureFactory(),
+    factory: new FixtureFactory(options.interactive),
     catalog: new FileSessionCatalog({ stateDir: options.stateDir }),
     hostInstanceId,
   });
@@ -151,11 +198,54 @@ const dashboardApi =
     },
   });
 
+const dashboardTuiAttachments = options.interactive
+  ? new ShadowTuiAttachmentManager({
+      async openTuiChannel(channelOptions) {
+        if (channelOptions.sessionRef !== "session-fixture-01") throw new Error("fixture session not found");
+        let role = channelOptions.role;
+        const identity = { hostInstanceId, sessionId: "session-fixture-01", generation: 3 };
+        const snapshot = {
+          identity,
+          dimensions: channelOptions.dimensions,
+          rows: [
+            { row: 0, runs: [{ text: "Pi Droid interactive", style: { bold: true, foreground: "#88D5E7" } }] },
+            { row: 1, runs: [{ text: "Observer input is inert until control is granted" }] },
+            { row: 2, runs: [{ text: "Disposable daemon ready" }] },
+          ],
+          cursor: { row: 3, column: 0, visible: true, shape: "block" },
+          title: "Pi Droid disposable TUI",
+          highWaterCursor: "tui:fixture:0",
+        };
+        return {
+          presentation: "tui",
+          identity,
+          get role() { return role; },
+          snapshot,
+          async resize() {},
+          async sendInput() {
+            if (role !== "controller") throw new Error("controller_required");
+          },
+          async requestControl(correlationId) {
+            role = "controller";
+            return { correlationId, state: "completed" };
+          },
+          async releaseControl(correlationId) {
+            role = "observer";
+            return { correlationId, state: "completed" };
+          },
+          subscribe() { return () => {}; },
+          async close() {},
+        };
+      },
+    })
+  : undefined;
+
 const server =
   new ApiServer({
     multiplexer,
     authenticator: new ServiceBearerAuthenticator(token),
     dashboardApi,
+    dashboardTuiAttachments,
     host: "0.0.0.0",
     port: options.port,
     allowInsecureRemote: true,
@@ -246,9 +336,14 @@ async function verifyDisposableApi(port, bearer) {
 }
 
 function parseArgs(args) {
-  const result = { port: undefined, tokenFile: undefined, readyFile: undefined, stateDir: undefined };
-  for (let index = 0; index < args.length; index += 2) {
+  const result = { port: undefined, tokenFile: undefined, readyFile: undefined, stateDir: undefined, interactive: false };
+  for (let index = 0; index < args.length;) {
     const key = args[index];
+    if (key === "--interactive") {
+      result.interactive = true;
+      index += 1;
+      continue;
+    }
     const value = args[index + 1];
     if (value === undefined) throw new Error(`missing value for ${key}`);
     if (key === "--port") result.port = Number.parseInt(value, 10);
@@ -256,6 +351,7 @@ function parseArgs(args) {
     else if (key === "--ready-file") result.readyFile = value;
     else if (key === "--state-dir") result.stateDir = value;
     else throw new Error(`unknown option ${key}`);
+    index += 2;
   }
   if (!Number.isInteger(result.port) || result.port < 1024 || result.port > 65535) throw new Error("invalid port");
   if (![result.tokenFile, result.readyFile, result.stateDir].every((value) => typeof value === "string" && value.length > 0)) {

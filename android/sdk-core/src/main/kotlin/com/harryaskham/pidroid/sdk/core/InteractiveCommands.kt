@@ -34,7 +34,9 @@ public sealed class SessionCommandIntent protected constructor(
       )
   }
 
-  private class AbortIntent : SessionCommandIntent(PiRpcCommandType.ABORT) {
+  private class EmptyIntent(
+    kind: PiRpcCommandType,
+  ) : SessionCommandIntent(kind) {
     override fun fields(): Map<String, kotlinx.serialization.json.JsonElement> = linkedMapOf("type" to JsonPrimitive(kind.wireValue))
   }
 
@@ -78,7 +80,9 @@ public sealed class SessionCommandIntent protected constructor(
     public fun followUp(message: String): SessionCommandIntent =
       MessageIntent(PiRpcCommandType.FOLLOW_UP, boundedContent(message, "follow-up"))
 
-    public fun abort(): SessionCommandIntent = AbortIntent()
+    public fun abort(): SessionCommandIntent = EmptyIntent(PiRpcCommandType.ABORT)
+
+    public fun getTree(): SessionCommandIntent = EmptyIntent(PiRpcCommandType.GET_TREE)
 
     public fun setModel(
       provider: String,

@@ -309,6 +309,10 @@
         abiVersions = ["x86_64"];
         includeNDK = false;
       };
+      androidJavaHome =
+        if pkgs.stdenv.isDarwin
+        then "${pkgs.jdk21}/Library/Java/JavaVirtualMachines/zulu-21.jdk/Contents/Home"
+        else "${pkgs.jdk21}/lib/openjdk";
     in {
       default = pkgs.mkShell {
         packages = commonPackages;
@@ -343,7 +347,7 @@
           commonPackages
           ++ [pkgs.jdk21 pkgs.ktlint]
           ++ pkgs.lib.optionals pkgs.stdenv.isLinux [pkgs.xorg-server];
-        JAVA_HOME = "${pkgs.jdk21}/lib/openjdk";
+        JAVA_HOME = androidJavaHome;
         LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath androidComposeRuntimeLibraries;
         shellHook = ''
           echo "pi-droid contract shell: Java $(java -version 2>&1 | head -1), Node $(node --version)"
@@ -367,7 +371,7 @@
           ];
         ANDROID_HOME = "${androidReleaseSdk.androidsdk}/libexec/android-sdk";
         ANDROID_SDK_ROOT = "${androidReleaseSdk.androidsdk}/libexec/android-sdk";
-        JAVA_HOME = "${pkgs.jdk21}/lib/openjdk";
+        JAVA_HOME = androidJavaHome;
         shellHook = ''
           echo "pi-droid release shell: Android API 36, build-tools 36.0.0, Java $(java -version 2>&1 | head -1)"
         '';

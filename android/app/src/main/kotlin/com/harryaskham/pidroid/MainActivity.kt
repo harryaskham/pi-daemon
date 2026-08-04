@@ -38,8 +38,10 @@ class MainActivity : ComponentActivity() {
 
     setContent {
       val state by repository.state.collectAsState()
+      val interaction by repository.interactiveState.collectAsState()
       LiveReadonlyScreen(
         state = state,
+        interaction = interaction,
         onRegisterManual = { endpoint, displayName, bearer, fingerprint, confirmInsecure ->
           lifecycleScope.launch {
             runCatching {
@@ -66,6 +68,18 @@ class MainActivity : ComponentActivity() {
           }
         },
         onSelectHost = repository::selectHost,
+        onInteractiveAction = { action ->
+          lifecycleScope.launch {
+            runCatching { repository.handleInteraction(action) }
+              .onFailure { repository.reportInteractiveFailure(safeCode(it)) }
+          }
+        },
+        onReconnectInteractive = {
+          lifecycleScope.launch {
+            runCatching { repository.reconnectInteractive() }
+              .onFailure { repository.reportInteractiveFailure(safeCode(it)) }
+          }
+        },
       )
     }
   }
@@ -101,18 +115,37 @@ class MainActivity : ComponentActivity() {
 
   private fun safeCode(error: Throwable): String =
     when (error) {
-      is com.harryaskham.pidroid.live.LiveReadonlyFailure -> error.code
-      is com.harryaskham.pidroid.live.TransportFailure -> error.code
-      is com.harryaskham.pidroid.sdk.core.PairingPayloadException -> error.code
-      is com.harryaskham.pidroid.sdk.core.ProtocolDecodeException -> error.code
-      is com.harryaskham.pidroid.sessionui.SessionFixtureException -> error.code
-      is IllegalArgumentException ->
+      is com.harryaskham.pidroid.live.LiveReadonlyFailure -> {
+        error.code
+      }
+
+      is com.harryaskham.pidroid.live.TransportFailure -> {
+        error.code
+      }
+
+      is com.harryaskham.pidroid.sdk.core.PairingPayloadException -> {
+        error.code
+      }
+
+      is com.harryaskham.pidroid.sdk.core.ProtocolDecodeException -> {
+        error.code
+      }
+
+      is com.harryaskham.pidroid.sessionui.SessionFixtureException -> {
+        error.code
+      }
+
+      is IllegalArgumentException -> {
         error.message
           ?.take(96)
           ?.replace(Regex("[^A-Za-z0-9 _.-]"), "_")
           ?.let { "invalid_registration: $it" }
           ?: "invalid_registration"
-      else -> "host_unavailable_${error::class.simpleName?.take(64) ?: "unknown"}"
+      }
+
+      else -> {
+        "host_unavailable_${error::class.simpleName?.take(64) ?: "unknown"}"
+      }
     }
 
   private companion object {

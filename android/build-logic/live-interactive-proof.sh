@@ -4,17 +4,12 @@ umask 077
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 artifacts_dir=''
-tail_only='false'
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --artifacts)
       artifacts_dir="${2:-}"
       shift 2
-      ;;
-    --tail-only)
-      tail_only='true'
-      shift
       ;;
     *)
       printf 'unknown option: %s\n' "$1" >&2
@@ -23,7 +18,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 if [[ -z "$artifacts_dir" ]]; then
-  printf '%s\n' 'usage: live-readonly-proof.sh --artifacts DIR [--tail-only]' >&2
+  printf '%s\n' 'usage: live-interactive-proof.sh --artifacts DIR' >&2
   exit 64
 fi
 artifacts_dir="$(mkdir -p "$artifacts_dir" && cd "$artifacts_dir" && pwd)"
@@ -34,7 +29,12 @@ chmod 700 "$private_dir"
 daemon_pid=''
 emulator_pid=''
 emulator_serial=''
+screenrecord_pid=''
 cleanup() {
+  if [[ -n "$screenrecord_pid" ]] && kill -0 "$screenrecord_pid" 2>/dev/null; then
+    kill -INT "$screenrecord_pid" 2>/dev/null || true
+    wait "$screenrecord_pid" 2>/dev/null || true
+  fi
   if [[ -n "$daemon_pid" ]] && kill -0 "$daemon_pid" 2>/dev/null; then
     kill "$daemon_pid" 2>/dev/null || true
     wait "$daemon_pid" 2>/dev/null || true
@@ -83,13 +83,20 @@ state_dir="$private_dir/daemon-state"
 pairing_file="$private_dir/pairing-envelope"
 mkdir -p "$state_dir" "$private_dir/avd" "$artifacts_dir/screenshots"
 emulator_abi='x86_64'
+{
+  printf 'host_arch=%s\n' "$(uname -m)"
+  printf 'expected_emulator_abi=%s\n' "$emulator_abi"
+  printf 'emulator_binary=%s\n' "$(command -v emulator)"
+  emulator -version 2>&1 | head -3
+  emulator -accel-check 2>&1 || true
+  printf 'adb_binary=%s\n' "$(command -v adb)"
+  adb version 2>&1 | head -3
+} > "$artifacts_dir/emulator-diagnostics.log"
 openssl rand -hex 32 > "$token_file"
 chmod 600 "$token_file"
 
 cd "$repo_root"
-if [[ "$tail_only" != 'true' ]]; then
-  npm run build:src > "$artifacts_dir/node-build.log" 2>&1
-fi
+npm run build:src > "$artifacts_dir/node-build.log" 2>&1
 [[ -f "$repo_root/dist/api-server.js" ]] || { printf '%s\n' 'built disposable daemon modules are missing' >&2; exit 70; }
 
 start_daemon() {
@@ -98,6 +105,7 @@ start_daemon() {
   local generation_state="$state_dir-$sequence"
   mkdir -p "$generation_state"
   node scripts/pi-droid-disposable-daemon.mjs \
+    --interactive \
     --port "$api_port" \
     --token-file "$token_file" \
     --ready-file "$ready_file" \
@@ -123,12 +131,8 @@ stop_daemon() {
   daemon_pid=''
 }
 
-first_sequence='1'
-second_sequence='2'
-if [[ "$tail_only" == 'true' ]]; then
-  first_sequence='tail-base'
-  second_sequence='tail-restart'
-fi
+first_sequence='interactive-base'
+second_sequence='interactive-restart'
 start_daemon "$first_sequence"
 host_instance_one="$(jq -er .hostInstanceId "$ready_file")"
 
@@ -147,10 +151,8 @@ path.write_text(f"pidroid://pair/v1/{encoded}")
 os.chmod(path, 0o600)
 PY
 
-if [[ "$tail_only" != 'true' ]]; then
-  ./android/gradlew -p android --no-daemon --no-configuration-cache \
-    -PpiDroidAndroidApp=true :app:assembleDebug > "$artifacts_dir/android-build.log" 2>&1
-fi
+./android/gradlew -p android --no-daemon --no-configuration-cache \
+  -PpiDroidAndroidApp=true :app:assembleDebug > "$artifacts_dir/android-build.log" 2>&1
 apk="$repo_root/android/app/build/outputs/apk/debug/app-debug.apk"
 [[ -f "$apk" ]] || { printf '%s\n' 'debug APK missing' >&2; exit 70; }
 
@@ -171,13 +173,31 @@ for _ in $(seq 1 120); do
   fi
   if ! kill -0 "$emulator_pid" 2>/dev/null; then
     wait "$emulator_pid" 2>/dev/null || true
+    {
+      printf 'adb_state=%s\n' "$(adb -s "$emulator_serial" get-state 2>&1 || true)"
+      printf 'boot_completed=%s\n' "$(adb -s "$emulator_serial" shell getprop sys.boot_completed 2>&1 | tr -d '\r' || true)"
+      printf 'boot_animation=%s\n' "$(adb -s "$emulator_serial" shell getprop init.svc.bootanim 2>&1 | tr -d '\r' || true)"
+      printf 'emulator_exit=before_adb_ready\n'
+    } >> "$artifacts_dir/emulator-diagnostics.log"
     printf 'Android emulator exited before ADB readiness for ABI %s\n' "$emulator_abi" >&2
     tail -40 "$artifacts_dir/emulator.log" >&2 || true
     exit 70
   fi
   sleep 1
 done
-[[ "$device_ready" == 'true' ]] || { printf '%s\n' 'Android emulator ADB readiness timed out' >&2; exit 70; }
+if [[ "$device_ready" != 'true' ]]; then
+  {
+    printf 'adb_state=%s\n' "$(adb -s "$emulator_serial" get-state 2>&1 || true)"
+    printf 'boot_completed=%s\n' "$(adb -s "$emulator_serial" shell getprop sys.boot_completed 2>&1 | tr -d '\r' || true)"
+    printf 'boot_animation=%s\n' "$(adb -s "$emulator_serial" shell getprop init.svc.bootanim 2>&1 | tr -d '\r' || true)"
+  } >> "$artifacts_dir/emulator-diagnostics.log"
+  printf '%s\n' 'Android emulator ADB readiness timed out' >&2
+  exit 70
+fi
+{
+  printf 'adb_state=%s\n' "$(adb -s "$emulator_serial" get-state 2>&1 || true)"
+  printf 'device_abi=%s\n' "$(adb -s "$emulator_serial" shell getprop ro.product.cpu.abi 2>&1 | tr -d '\r' || true)"
+} >> "$artifacts_dir/emulator-diagnostics.log"
 booted=''
 for _ in $(seq 1 240); do
   booted="$(adb -s "$emulator_serial" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')"
@@ -185,8 +205,21 @@ for _ in $(seq 1 240); do
   kill -0 "$emulator_pid" 2>/dev/null || { printf '%s\n' 'emulator exited before boot' >&2; exit 70; }
   sleep 1
 done
-[[ "$booted" == '1' ]] || { printf '%s\n' 'emulator boot timed out' >&2; exit 70; }
+if [[ "$booted" != '1' ]]; then
+  {
+    printf 'boot_completed=%s\n' "$booted"
+    printf 'boot_animation=%s\n' "$(adb -s "$emulator_serial" shell getprop init.svc.bootanim 2>&1 | tr -d '\r' || true)"
+  } >> "$artifacts_dir/emulator-diagnostics.log"
+  printf '%s\n' 'emulator boot timed out' >&2
+  exit 70
+fi
+printf 'boot_completed=1\n' >> "$artifacts_dir/emulator-diagnostics.log"
 adb -s "$emulator_serial" install -r "$apk" >/dev/null
+adb -s "$emulator_serial" shell wm size 1080x2400 >/dev/null
+adb -s "$emulator_serial" shell wm density 420 >/dev/null
+adb -s "$emulator_serial" shell screenrecord --time-limit 180 /sdcard/pi-droid-interactive.mp4 \
+  > "$artifacts_dir/screenrecord.log" 2>&1 &
+screenrecord_pid="$!"
 
 wait_ui() {
   local pattern="$1"
@@ -199,7 +232,7 @@ wait_ui() {
   adb -s "$emulator_serial" exec-out screencap -p > "$artifacts_dir/screenshots/failure.png" 2>/dev/null || true
   adb -s "$emulator_serial" logcat -d -v threadtime > "$artifacts_dir/failure-logcat.txt" 2>/dev/null || true
   adb -s "$emulator_serial" exec-out cat /sdcard/pi-droid-window.xml > "$artifacts_dir/failure-window.xml" 2>/dev/null || true
-  printf 'UI did not expose expected readonly pattern: %s\n' "$pattern" >&2
+  printf 'UI did not expose expected interactive pattern: %s\n' "$pattern" >&2
   exit 70
 }
 
@@ -226,33 +259,66 @@ PY
 adb -s "$emulator_serial" shell am start -W -a android.intent.action.VIEW \
   -d "$(< "$pairing_file")" com.harryaskham.pidroid.debug >/dev/null
 wait_ui 'Readonly session Contract fixture|READONLY RPC ATTACHED' 90
-if [[ "$tail_only" == 'true' ]]; then
-  adb -s "$emulator_serial" exec-out screencap -p > "$artifacts_dir/screenshots/tail-live-connected.png"
-else
-  adb -s "$emulator_serial" exec-out screencap -p > "$artifacts_dir/screenshots/live-connected.png"
-fi
+adb -s "$emulator_serial" exec-out screencap -p > "$artifacts_dir/screenshots/observer-readonly.png"
 
+tap_text "Request session control"
+wait_ui 'CONTROLLER|Controller authority active' 45
+adb -s "$emulator_serial" exec-out screencap -p > "$artifacts_dir/screenshots/controller-granted.png"
+
+tap_text "Session prompt composer"
+adb -s "$emulator_serial" shell input text interactive-proof
+tap_text "Send prompt"
+wait_ui 'PROMPT SUCCEEDED|Command prompt succeeded' 45
+adb -s "$emulator_serial" exec-out screencap -p > "$artifacts_dir/screenshots/prompt-succeeded.png"
+
+tap_text "Show tree presentation"
+wait_ui 'Branch tree' 30
+adb -s "$emulator_serial" exec-out screencap -p > "$artifacts_dir/screenshots/tree-live.png"
+tap_text "Show tui presentation"
+wait_ui 'Pi Droid interactive|OBSERVER · INPUT INERT' 30
+adb -s "$emulator_serial" exec-out screencap -p > "$artifacts_dir/screenshots/tui-live.png"
+
+tap_text "Show rich presentation"
+tap_text "Session prompt composer"
+adb -s "$emulator_serial" shell input text hold-until-disconnect
+tap_text "Send prompt"
+wait_ui 'PROMPT IN_FLIGHT|Command prompt in_flight' 30
 stop_daemon
-if [[ "$tail_only" != 'true' ]]; then
-  tap_text "Refresh readonly hosts"
-  wait_ui 'Offline cached' 45
-  adb -s "$emulator_serial" exec-out screencap -p > "$artifacts_dir/screenshots/offline-cached.png"
-fi
+wait_ui 'PROMPT INDETERMINATE|Command prompt indeterminate' 45
+adb -s "$emulator_serial" exec-out screencap -p > "$artifacts_dir/screenshots/indeterminate-no-replay.png"
 
 start_daemon "$second_sequence"
 host_instance_two="$(jq -er .hostInstanceId "$ready_file")"
 [[ "$host_instance_one" != "$host_instance_two" ]] || { printf '%s\n' 'host restart did not change instance identity' >&2; exit 70; }
 tap_text "Refresh readonly hosts"
 wait_ui 'Readonly session Contract fixture|READONLY RPC ATTACHED' 90
-adb -s "$emulator_serial" exec-out screencap -p > "$artifacts_dir/screenshots/reconnected.png"
+tap_text "Reconnect interactive session"
+wait_ui 'CONTROLLER|Controller authority active' 45
+tap_text "Session prompt composer"
+adb -s "$emulator_serial" shell input text restart-reconciled
+tap_text "Send prompt"
+wait_ui 'PROMPT SUCCEEDED|Command prompt succeeded' 45
+adb -s "$emulator_serial" exec-out screencap -p > "$artifacts_dir/screenshots/reconnected-controller-phone.png"
+adb -s "$emulator_serial" shell wm size 1600x2560 >/dev/null
+adb -s "$emulator_serial" shell wm density 240 >/dev/null
+sleep 2
+wait_ui 'CONTROLLER|Controller authority active' 30
+adb -s "$emulator_serial" exec-out screencap -p > "$artifacts_dir/screenshots/reconnected-controller-tablet.png"
 adb -s "$emulator_serial" logcat -d -v threadtime > "$artifacts_dir/app-logcat.txt"
+
+if [[ -n "$screenrecord_pid" ]] && kill -0 "$screenrecord_pid" 2>/dev/null; then
+  kill -INT "$screenrecord_pid" 2>/dev/null || true
+  wait "$screenrecord_pid" 2>/dev/null || true
+fi
+screenrecord_pid=''
+adb -s "$emulator_serial" pull /sdcard/pi-droid-interactive.mp4 "$artifacts_dir/pi-droid-interactive.mp4" >/dev/null
 
 if grep -Fq "$(< "$token_file")" "$artifacts_dir"/*.log "$artifacts_dir"/*.txt 2>/dev/null; then
   printf '%s\n' 'disposable bearer leaked into retained logs' >&2
   exit 65
 fi
 
-cat > "$artifacts_dir/live-readonly-receipt.json" <<EOF
+cat > "$artifacts_dir/live-interactive-receipt.json" <<EOF
 {
   "schemaVersion": 1,
   "status": "verified",
@@ -261,31 +327,37 @@ cat > "$artifacts_dir/live-readonly-receipt.json" <<EOF
   "generation": 3,
   "hostInstanceBefore": "$host_instance_one",
   "hostInstanceAfter": "$host_instance_two",
-  "capabilities": true,
-  "inventory": true,
-  "information": true,
-  "transcript": true,
-  "observerAttach": true,
-  "offlineCached": true,
+  "observerDeniedUntilGrant": true,
+  "controllerGranted": true,
+  "uniquePromptSucceeded": true,
+  "treeRendered": true,
+  "tuiRendered": true,
+  "missingAcknowledgementIndeterminate": true,
+  "blindReplay": false,
   "reconnected": true,
-  "interactiveAuthority": false
+  "postRestartPromptSucceeded": true
 }
 EOF
 (
   cd "$artifacts_dir"
-  receipt_files=(
-    "daemon-$first_sequence.stderr.log"
-    "daemon-$second_sequence.stderr.log"
-    app-logcat.txt
-    screenshots/reconnected.png
-    live-readonly-receipt.json
-  )
-  [[ -f screenshots/live-connected.png ]] && receipt_files+=(screenshots/live-connected.png)
-  [[ -f screenshots/offline-cached.png ]] && receipt_files+=(screenshots/offline-cached.png)
-  [[ -f screenshots/tail-live-connected.png ]] && receipt_files+=(screenshots/tail-live-connected.png)
-  sha256sum "${receipt_files[@]}" > live-readonly-sha256sums.txt
+  sha256sum \
+    "daemon-$first_sequence.stderr.log" \
+    "daemon-$second_sequence.stderr.log" \
+    app-logcat.txt \
+    emulator-diagnostics.log \
+    pi-droid-interactive.mp4 \
+    screenshots/observer-readonly.png \
+    screenshots/controller-granted.png \
+    screenshots/prompt-succeeded.png \
+    screenshots/tree-live.png \
+    screenshots/tui-live.png \
+    screenshots/indeterminate-no-replay.png \
+    screenshots/reconnected-controller-phone.png \
+    screenshots/reconnected-controller-tablet.png \
+    live-interactive-receipt.json \
+    > live-interactive-sha256sums.txt
 )
 find "$artifacts_dir" -type d -exec chmod 700 {} +
 find "$artifacts_dir" -type f -exec chmod 600 {} +
-printf 'Live readonly session verified: session=%s hostBefore=%s hostAfter=%s artifacts=%s\n' \
+printf 'Live interactive session verified: session=%s hostBefore=%s hostAfter=%s artifacts=%s\n' \
   session-fixture-01 "$host_instance_one" "$host_instance_two" "$artifacts_dir"

@@ -42,6 +42,16 @@ public class RichInteractiveState private constructor(
       modelLabel: String,
       thinkingLevel: String,
     ): RichInteractiveState = RichInteractiveState(RichAuthorityRole.OBSERVER, "", modelLabel, thinkingLevel, streaming = false)
+
+    public fun requesting(
+      modelLabel: String,
+      thinkingLevel: String,
+    ): RichInteractiveState = RichInteractiveState(RichAuthorityRole.REQUESTING, "", modelLabel, thinkingLevel, streaming = false)
+
+    public fun lost(
+      modelLabel: String,
+      thinkingLevel: String,
+    ): RichInteractiveState = RichInteractiveState(RichAuthorityRole.LOST, "", modelLabel, thinkingLevel, streaming = false)
   }
 }
 

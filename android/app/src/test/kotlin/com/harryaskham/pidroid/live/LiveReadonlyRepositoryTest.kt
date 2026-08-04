@@ -1,6 +1,7 @@
 package com.harryaskham.pidroid.live
 
 import com.harryaskham.pidroid.sdk.core.CacheFreshness
+import com.harryaskham.pidroid.sdk.core.CommandLifecycle
 import com.harryaskham.pidroid.sdk.core.CredentialHandle
 import com.harryaskham.pidroid.sdk.core.CredentialProtector
 import com.harryaskham.pidroid.sdk.core.CredentialStorageClass
@@ -8,6 +9,7 @@ import com.harryaskham.pidroid.sdk.core.HostCredentialVault
 import com.harryaskham.pidroid.sdk.core.HostId
 import com.harryaskham.pidroid.sdk.core.HostRegistry
 import com.harryaskham.pidroid.sdk.core.HostRegistryStore
+import com.harryaskham.pidroid.sdk.core.InteractiveControllerRole
 import com.harryaskham.pidroid.sdk.core.NeutralHeaders
 import com.harryaskham.pidroid.sdk.core.NeutralHttpRequest
 import com.harryaskham.pidroid.sdk.core.NeutralHttpResponse
@@ -16,13 +18,22 @@ import com.harryaskham.pidroid.sdk.core.PiDaemonHostDescriptor
 import com.harryaskham.pidroid.sdk.core.PiDaemonSocket
 import com.harryaskham.pidroid.sdk.core.ProtectedCredential
 import com.harryaskham.pidroid.sdk.core.RegisteredHost
+import com.harryaskham.pidroid.sessionui.RichInteractionAction
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.filterIsInstance
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withTimeout
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonObject
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -94,6 +105,108 @@ class LiveReadonlyRepositoryTest {
       collector.cancel()
     }
 
+  @Test
+  fun `interactive repository requests control sends one unique prompt and marks lost response indeterminate`() =
+    runTest {
+      val harness = harness()
+      harness.repository.registerManual(
+        URI("http://10.0.2.2:48123"),
+        "Disposable daemon",
+        "bearer".toCharArray(),
+        null,
+        true,
+      )
+
+      harness.repository.requestControl()
+      var interactive = harness.repository.interactiveState.value as LiveInteractiveAppState.Ready
+      assertEquals(InteractiveControllerRole.REQUESTING, interactive.snapshot.role)
+      val rpcSocket = requireNotNull(harness.transport.interactiveRpcSocket)
+      assertTrue(rpcSocket.sent.single().contains("request_control"))
+
+      rpcSocket.push(controlGranted())
+      interactive =
+        withTimeout(5_000) {
+          harness.repository.interactiveState
+            .filterIsInstance<LiveInteractiveAppState.Ready>()
+            .first { it.snapshot.role == InteractiveControllerRole.CONTROLLER }
+        }
+      assertTrue(interactive.snapshot.rich.canMutate)
+
+      harness.repository.handleInteraction(RichInteractionAction.SubmitPrompt("one exact prompt"))
+      val prompt =
+        Json
+          .parseToJsonElement(rpcSocket.sent.last())
+          .jsonObject
+          .getValue("command")
+          .jsonObject
+      val promptId = (prompt["id"] as JsonPrimitive).content
+      assertTrue(promptId.startsWith("wake-"))
+      assertEquals("prompt", (prompt["type"] as JsonPrimitive).content)
+      rpcSocket.push(response(promptId, success = true))
+      withTimeout(5_000) {
+        harness.repository.interactiveState
+          .filterIsInstance<LiveInteractiveAppState.Ready>()
+          .first {
+            it.snapshot.receipts.any { receipt ->
+              receipt.correlationId == promptId &&
+                receipt.lifecycle == CommandLifecycle.SUCCEEDED
+            }
+          }
+      }
+
+      harness.repository.handleInteraction(RichInteractionAction.SubmitPrompt("lost acknowledgement"))
+      val lostPrompt =
+        Json
+          .parseToJsonElement(rpcSocket.sent.last())
+          .jsonObject
+          .getValue("command")
+          .jsonObject
+      val lostId = (lostPrompt["id"] as JsonPrimitive).content
+      assertTrue(lostId.startsWith("wake-"))
+      assertFalse(lostId == promptId)
+      rpcSocket.disconnect()
+      val failed =
+        withTimeout(5_000) {
+          harness.repository.interactiveState
+            .filterIsInstance<LiveInteractiveAppState.Failure>()
+            .first()
+        }
+      assertEquals(
+        CommandLifecycle.INDETERMINATE,
+        failed.lastSnapshot.receipts
+          .single { it.correlationId == lostId }
+          .lifecycle,
+      )
+    }
+
+  private fun controlGranted(): String =
+    JsonObject(
+      mapOf(
+        "kind" to JsonPrimitive("control"),
+        "action" to JsonPrimitive("control_granted"),
+        "connectionId" to JsonPrimitive("connection-live"),
+      ),
+    ).toString()
+
+  private fun response(
+    id: String,
+    success: Boolean,
+  ): String =
+    JsonObject(
+      mapOf(
+        "kind" to JsonPrimitive("response"),
+        "response" to
+          JsonObject(
+            mapOf(
+              "id" to JsonPrimitive(id),
+              "type" to JsonPrimitive("response"),
+              "command" to JsonPrimitive("prompt"),
+              "success" to JsonPrimitive(success),
+            ),
+          ),
+      ),
+    ).toString()
+
   private fun harness(): Harness {
     val protector = FakeProtector()
     val credentialStore = FakeCredentialStore()
@@ -161,6 +274,7 @@ class LiveReadonlyRepositoryTest {
     var hostInstanceId: String = "host-fixture-01"
     var fail: Boolean = false
     var authorizationObserved: Boolean = false
+    var interactiveRpcSocket: FakeSocket? = null
     val paths = mutableListOf<String>()
 
     override fun replaceHosts(hosts: List<RegisteredHost>) = Unit
@@ -189,24 +303,58 @@ class LiveReadonlyRepositoryTest {
       host: HostId,
       request: NeutralWebSocketRequest,
     ): PiDaemonSocket {
-      var frame = repositoryRoot.resolve("fixtures/session-api/rpc.ready.frame.json").toFile().readText()
-      frame =
-        frame
-          .replace("host-01", hostInstanceId)
-          .replace("agent-a", "session-fixture-01")
-      return object : PiDaemonSocket {
-        override val incomingText: Flow<String> = flowOf(frame)
-
-        override suspend fun sendText(text: String) = error("readonly socket must not send")
-
-        override suspend fun close(
-          code: Int,
-          reason: String,
-        ) = Unit
+      val socket = FakeSocket()
+      if (request.subprotocols.contains("pi-daemon-tui.v1")) {
+        socket.push(
+          """{"kind":"snapshot","role":"observer","snapshot":{"identity":{"hostInstanceId":"$hostInstanceId","sessionId":"session-fixture-01","generation":3},"dimensions":{"rows":3,"columns":40},"rows":[{"row":0,"runs":[{"text":"Pi Droid interactive"}]}],"cursor":{"row":1,"column":0,"visible":true,"shape":"block"},"title":"Fixture","highWaterCursor":"tui:0"}}""",
+        )
+      } else {
+        var frame = repositoryRoot.resolve("fixtures/session-api/rpc.ready.frame.json").toFile().readText()
+        frame =
+          frame
+            .replace("host-01", hostInstanceId)
+            .replace("agent-a", "session-fixture-01")
+        socket.push(frame)
+        if (interactiveRpcSocket == null || interactiveRpcSocket?.closed == true) {
+          interactiveRpcSocket = socket
+        } else {
+          interactiveRpcSocket = socket
+        }
       }
+      return socket
     }
 
     override fun close() = Unit
+  }
+
+  private class FakeSocket : PiDaemonSocket {
+    private val frames = Channel<String>(Channel.UNLIMITED)
+    val sent = mutableListOf<String>()
+    var closed: Boolean = false
+      private set
+
+    override val incomingText: Flow<String> = frames.receiveAsFlow()
+
+    fun push(text: String) {
+      check(frames.trySend(text).isSuccess)
+    }
+
+    fun disconnect() {
+      closed = true
+      frames.close()
+    }
+
+    override suspend fun sendText(text: String) {
+      check(!closed)
+      sent += text
+    }
+
+    override suspend fun close(
+      code: Int,
+      reason: String,
+    ) {
+      disconnect()
+    }
   }
 
   private companion object {
