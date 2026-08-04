@@ -1,0 +1,1317 @@
+# Pi Droid SDK binary API baseline
+# artifact=session-ui
+# version=0.3.0-alpha.1
+# Generated with jar+javap -public -constants; update only with migration notes.
+
+public final class com.harryaskham.pidroid.sessionui.ComposableSingletons$RichInteractiveSessionSurfaceKt {
+  public static final com.harryaskham.pidroid.sessionui.ComposableSingletons$RichInteractiveSessionSurfaceKt INSTANCE;
+  public com.harryaskham.pidroid.sessionui.ComposableSingletons$RichInteractiveSessionSurfaceKt();
+  public final kotlin.jvm.functions.Function2<androidx.compose.runtime.Composer, java.lang.Integer, kotlin.Unit> getLambda$1049052348$MODULE();
+  public final kotlin.jvm.functions.Function3<androidx.compose.foundation.layout.RowScope, androidx.compose.runtime.Composer, java.lang.Integer, kotlin.Unit> getLambda$1329442065$MODULE();
+  public final kotlin.jvm.functions.Function2<androidx.compose.runtime.Composer, java.lang.Integer, kotlin.Unit> getLambda$932299537$MODULE();
+  public final kotlin.jvm.functions.Function3<androidx.compose.foundation.layout.RowScope, androidx.compose.runtime.Composer, java.lang.Integer, kotlin.Unit> getLambda$814956579$MODULE();
+  public final kotlin.jvm.functions.Function3<androidx.compose.foundation.layout.RowScope, androidx.compose.runtime.Composer, java.lang.Integer, kotlin.Unit> getLambda$1870857836$MODULE();
+}
+
+public final class com.harryaskham.pidroid.sessionui.ComposableSingletons$SessionSurfaceKt {
+  public static final com.harryaskham.pidroid.sessionui.ComposableSingletons$SessionSurfaceKt INSTANCE;
+  public com.harryaskham.pidroid.sessionui.ComposableSingletons$SessionSurfaceKt();
+  public final kotlin.jvm.functions.Function2<androidx.compose.runtime.Composer, java.lang.Integer, kotlin.Unit> getLambda$2081019746$MODULE();
+  public final kotlin.jvm.functions.Function2<androidx.compose.runtime.Composer, java.lang.Integer, kotlin.Unit> getLambda$-1038938647$MODULE();
+}
+
+public final class com.harryaskham.pidroid.sessionui.DeclarativeExtensionModelsKt {
+  public static final boolean access$isInteractiveIdentifier(java.lang.String);
+}
+
+public final class com.harryaskham.pidroid.sessionui.ExtensionActionIntent {
+  public static final int $stable;
+  public com.harryaskham.pidroid.sessionui.ExtensionActionIntent(com.harryaskham.pidroid.sessionui.InteractiveSessionIdentity, java.lang.String, java.lang.String, java.lang.String, int, java.lang.String, java.util.Map<java.lang.String, ? extends com.harryaskham.pidroid.sessionui.ExtensionFormValue>);
+  public final com.harryaskham.pidroid.sessionui.InteractiveSessionIdentity getIdentity();
+  public final java.lang.String getCorrelationId();
+  public final java.lang.String getRequestId();
+  public final java.lang.String getViewId();
+  public final int getRevision();
+  public final java.lang.String getActionId();
+  public final java.util.Map<java.lang.String, com.harryaskham.pidroid.sessionui.ExtensionFormValue> getValues();
+  public java.lang.String toString();
+}
+
+public final class com.harryaskham.pidroid.sessionui.ExtensionFormField {
+  public static final int $stable;
+  public com.harryaskham.pidroid.sessionui.ExtensionFormField(java.lang.String, java.lang.String, java.lang.String, boolean, java.util.Set<java.lang.String>);
+  public final java.lang.String getType();
+  public final java.lang.String getName();
+  public final java.lang.String getLabel();
+  public final boolean getRequired();
+  public final java.util.Set<java.lang.String> getOptions();
+  public final java.lang.String component1();
+  public final java.lang.String component2();
+  public final java.lang.String component3();
+  public final boolean component4();
+  public final java.util.Set<java.lang.String> component5();
+  public final com.harryaskham.pidroid.sessionui.ExtensionFormField copy(java.lang.String, java.lang.String, java.lang.String, boolean, java.util.Set<java.lang.String>);
+  public static com.harryaskham.pidroid.sessionui.ExtensionFormField copy$default(com.harryaskham.pidroid.sessionui.ExtensionFormField, java.lang.String, java.lang.String, java.lang.String, boolean, java.util.Set, int, java.lang.Object);
+  public java.lang.String toString();
+  public int hashCode();
+  public boolean equals(java.lang.Object);
+}
+
+public interface com.harryaskham.pidroid.sessionui.ExtensionFormValue {
+}
+
+public final class com.harryaskham.pidroid.sessionui.ExtensionFormValue$Text implements com.harryaskham.pidroid.sessionui.ExtensionFormValue {
+  public static final int $stable;
+  public com.harryaskham.pidroid.sessionui.ExtensionFormValue$Text(java.lang.String);
+  public final java.lang.String getValue();
+  public java.lang.String toString();
+}
+
+public final class com.harryaskham.pidroid.sessionui.ExtensionFormValue$Toggle implements com.harryaskham.pidroid.sessionui.ExtensionFormValue {
+  public static final int $stable;
+  public com.harryaskham.pidroid.sessionui.ExtensionFormValue$Toggle(boolean);
+  public final boolean getValue();
+  public final boolean component1();
+  public final com.harryaskham.pidroid.sessionui.ExtensionFormValue$Toggle copy(boolean);
+  public static com.harryaskham.pidroid.sessionui.ExtensionFormValue$Toggle copy$default(com.harryaskham.pidroid.sessionui.ExtensionFormValue$Toggle, boolean, int, java.lang.Object);
+  public java.lang.String toString();
+  public int hashCode();
+  public boolean equals(java.lang.Object);
+}
+
+public final class com.harryaskham.pidroid.sessionui.ExtensionInteractionAuthority {
+  public static final com.harryaskham.pidroid.sessionui.ExtensionInteractionAuthority INSTANCE;
+  public static final int $stable;
+  public final com.harryaskham.pidroid.sessionui.InteractionDecision<com.harryaskham.pidroid.sessionui.ExtensionActionIntent> authorizeAction(com.harryaskham.pidroid.sessionui.ExtensionViewState, java.lang.String, java.util.Map<java.lang.String, ? extends com.harryaskham.pidroid.sessionui.ExtensionFormValue>, com.harryaskham.pidroid.sessionui.InteractionContext);
+}
+
+public interface com.harryaskham.pidroid.sessionui.ExtensionNode {
+  public abstract java.lang.String getWireType();
+  public abstract java.lang.String getAccessibilityLabel();
+}
+
+public final class com.harryaskham.pidroid.sessionui.ExtensionNode$Action implements com.harryaskham.pidroid.sessionui.ExtensionNode {
+  public static final int $stable;
+  public com.harryaskham.pidroid.sessionui.ExtensionNode$Action(java.lang.String, java.lang.String, java.lang.String);
+  public final java.lang.String getActionId();
+  public final java.lang.String getLabel();
+  public final java.lang.String getTone();
+  public java.lang.String getWireType();
+  public java.lang.String getAccessibilityLabel();
+  public final java.lang.String component1();
+  public final java.lang.String component2();
+  public final java.lang.String component3();
+  public final com.harryaskham.pidroid.sessionui.ExtensionNode$Action copy(java.lang.String, java.lang.String, java.lang.String);
+  public static com.harryaskham.pidroid.sessionui.ExtensionNode$Action copy$default(com.harryaskham.pidroid.sessionui.ExtensionNode$Action, java.lang.String, java.lang.String, java.lang.String, int, java.lang.Object);
+  public java.lang.String toString();
+  public int hashCode();
+  public boolean equals(java.lang.Object);
+}
+
+public final class com.harryaskham.pidroid.sessionui.ExtensionNode$Container implements com.harryaskham.pidroid.sessionui.ExtensionNode {
+  public static final int $stable;
+  public com.harryaskham.pidroid.sessionui.ExtensionNode$Container(java.lang.String, java.util.List<? extends com.harryaskham.pidroid.sessionui.ExtensionNode>);
+  public java.lang.String getWireType();
+  public final java.util.List<com.harryaskham.pidroid.sessionui.ExtensionNode> getChildren();
+  public java.lang.String getAccessibilityLabel();
+  public final java.lang.String component1();
+  public final java.util.List<com.harryaskham.pidroid.sessionui.ExtensionNode> component2();
+  public final com.harryaskham.pidroid.sessionui.ExtensionNode$Container copy(java.lang.String, java.util.List<? extends com.harryaskham.pidroid.sessionui.ExtensionNode>);
+  public static com.harryaskham.pidroid.sessionui.ExtensionNode$Container copy$default(com.harryaskham.pidroid.sessionui.ExtensionNode$Container, java.lang.String, java.util.List, int, java.lang.Object);
+  public java.lang.String toString();
+  public int hashCode();
+  public boolean equals(java.lang.Object);
+}
+
+public final class com.harryaskham.pidroid.sessionui.ExtensionNode$Content implements com.harryaskham.pidroid.sessionui.ExtensionNode {
+  public static final int $stable;
+  public com.harryaskham.pidroid.sessionui.ExtensionNode$Content(java.lang.String, java.lang.String, java.lang.String);
+  public java.lang.String getWireType();
+  public final java.lang.String getLabel();
+  public final java.lang.String getDetail();
+  public java.lang.String getAccessibilityLabel();
+  public java.lang.String toString();
+}
+
+public final class com.harryaskham.pidroid.sessionui.ExtensionNode$Form implements com.harryaskham.pidroid.sessionui.ExtensionNode {
+  public static final int $stable;
+  public com.harryaskham.pidroid.sessionui.ExtensionNode$Form(java.lang.String, java.lang.String, java.lang.String, java.util.List<com.harryaskham.pidroid.sessionui.ExtensionFormField>);
+  public final java.lang.String getFormId();
+  public final java.lang.String getSubmitActionId();
+  public final java.lang.String getSubmitLabel();
+  public final java.util.List<com.harryaskham.pidroid.sessionui.ExtensionFormField> getFields();
+  public java.lang.String getWireType();
+  public java.lang.String getAccessibilityLabel();
+  public final java.lang.String component1();
+  public final java.lang.String component2();
+  public final java.lang.String component3();
+  public final java.util.List<com.harryaskham.pidroid.sessionui.ExtensionFormField> component4();
+  public final com.harryaskham.pidroid.sessionui.ExtensionNode$Form copy(java.lang.String, java.lang.String, java.lang.String, java.util.List<com.harryaskham.pidroid.sessionui.ExtensionFormField>);
+  public static com.harryaskham.pidroid.sessionui.ExtensionNode$Form copy$default(com.harryaskham.pidroid.sessionui.ExtensionNode$Form, java.lang.String, java.lang.String, java.lang.String, java.util.List, int, java.lang.Object);
+  public java.lang.String toString();
+  public int hashCode();
+  public boolean equals(java.lang.Object);
+}
+
+public final class com.harryaskham.pidroid.sessionui.ExtensionNode$Unsupported implements com.harryaskham.pidroid.sessionui.ExtensionNode {
+  public static final int $stable;
+  public com.harryaskham.pidroid.sessionui.ExtensionNode$Unsupported(java.lang.String, java.lang.String);
+  public java.lang.String getWireType();
+  public final java.lang.String getFallbackText();
+  public java.lang.String getAccessibilityLabel();
+  public final java.lang.String component1();
+  public final java.lang.String component2();
+  public final com.harryaskham.pidroid.sessionui.ExtensionNode$Unsupported copy(java.lang.String, java.lang.String);
+  public static com.harryaskham.pidroid.sessionui.ExtensionNode$Unsupported copy$default(com.harryaskham.pidroid.sessionui.ExtensionNode$Unsupported, java.lang.String, java.lang.String, int, java.lang.Object);
+  public java.lang.String toString();
+  public int hashCode();
+  public boolean equals(java.lang.Object);
+}
+
+public final class com.harryaskham.pidroid.sessionui.ExtensionUiResponseReceipt {
+  public static final int $stable;
+  public com.harryaskham.pidroid.sessionui.ExtensionUiResponseReceipt(java.lang.String, java.lang.String, boolean);
+  public final java.lang.String getCorrelationId();
+  public final java.lang.String getRequestId();
+  public final boolean getConfirmed();
+  public final java.lang.String component1();
+  public final java.lang.String component2();
+  public final boolean component3();
+  public final com.harryaskham.pidroid.sessionui.ExtensionUiResponseReceipt copy(java.lang.String, java.lang.String, boolean);
+  public static com.harryaskham.pidroid.sessionui.ExtensionUiResponseReceipt copy$default(com.harryaskham.pidroid.sessionui.ExtensionUiResponseReceipt, java.lang.String, java.lang.String, boolean, int, java.lang.Object);
+  public java.lang.String toString();
+  public int hashCode();
+  public boolean equals(java.lang.Object);
+}
+
+public final class com.harryaskham.pidroid.sessionui.ExtensionViewFixtureCodec {
+  public static final com.harryaskham.pidroid.sessionui.ExtensionViewFixtureCodec INSTANCE;
+  public static final int $stable;
+  public final com.harryaskham.pidroid.sessionui.ExtensionViewState decodeStream-HZYlKro(java.lang.String, com.harryaskham.pidroid.sdk.core.CacheFreshness, java.lang.String, int);
+  public final com.harryaskham.pidroid.sessionui.ExtensionActionIntent decodeFormResponse(java.lang.String, com.harryaskham.pidroid.sessionui.ExtensionViewState, java.lang.String);
+  public final com.harryaskham.pidroid.sessionui.ExtensionUiResponseReceipt correlateUiResponse(java.lang.String, com.harryaskham.pidroid.sessionui.ExtensionActionIntent);
+}
+
+public final class com.harryaskham.pidroid.sessionui.ExtensionViewFixtureCodecKt {
+  public static final kotlinx.serialization.json.JsonArray interactiveRequiredArray(kotlinx.serialization.json.JsonObject, java.lang.String, int);
+  public static final java.util.Set<java.lang.String> interactiveRequiredStringSet(kotlinx.serialization.json.JsonObject, java.lang.String, int);
+  public static final int interactiveRequiredNonNegativeInt(kotlinx.serialization.json.JsonObject, java.lang.String);
+  public static final kotlinx.serialization.json.JsonObject interactiveRequiredObjectValue(kotlinx.serialization.json.JsonElement, java.lang.String);
+}
+
+public final class com.harryaskham.pidroid.sessionui.ExtensionViewState {
+  public static final com.harryaskham.pidroid.sessionui.ExtensionViewState$Companion Companion;
+  public static final int $stable;
+  public static final int MAX_NODES = 256;
+  public static final int MAX_DEPTH = 16;
+  public com.harryaskham.pidroid.sessionui.ExtensionViewState(com.harryaskham.pidroid.sessionui.InteractiveSessionIdentity, com.harryaskham.pidroid.sdk.core.CacheFreshness, java.lang.String, java.lang.String, java.lang.String, int, java.lang.String, java.lang.String, java.util.Set<java.lang.String>, com.harryaskham.pidroid.sessionui.ExtensionNode);
+  public final com.harryaskham.pidroid.sessionui.InteractiveSessionIdentity getIdentity();
+  public final com.harryaskham.pidroid.sdk.core.CacheFreshness getFreshness();
+  public final java.lang.String getCorrelationId();
+  public final java.lang.String getRequestId();
+  public final java.lang.String getViewId();
+  public final int getRevision();
+  public final java.lang.String getTitle();
+  public final java.lang.String getFallbackText();
+  public final java.util.Set<java.lang.String> getActions();
+  public final com.harryaskham.pidroid.sessionui.ExtensionNode getRoot();
+  public final java.util.List<com.harryaskham.pidroid.sessionui.ExtensionNode> getNodes();
+  public java.lang.String toString();
+  public final com.harryaskham.pidroid.sessionui.InteractiveSessionIdentity component1();
+  public final com.harryaskham.pidroid.sdk.core.CacheFreshness component2();
+  public final java.lang.String component3();
+  public final java.lang.String component4();
+  public final java.lang.String component5();
+  public final int component6();
+  public final java.lang.String component7();
+  public final java.lang.String component8();
+  public final java.util.Set<java.lang.String> component9();
+  public final com.harryaskham.pidroid.sessionui.ExtensionNode component10();
+  public final com.harryaskham.pidroid.sessionui.ExtensionViewState copy(com.harryaskham.pidroid.sessionui.InteractiveSessionIdentity, com.harryaskham.pidroid.sdk.core.CacheFreshness, java.lang.String, java.lang.String, java.lang.String, int, java.lang.String, java.lang.String, java.util.Set<java.lang.String>, com.harryaskham.pidroid.sessionui.ExtensionNode);
+  public static com.harryaskham.pidroid.sessionui.ExtensionViewState copy$default(com.harryaskham.pidroid.sessionui.ExtensionViewState, com.harryaskham.pidroid.sessionui.InteractiveSessionIdentity, com.harryaskham.pidroid.sdk.core.CacheFreshness, java.lang.String, java.lang.String, java.lang.String, int, java.lang.String, java.lang.String, java.util.Set, com.harryaskham.pidroid.sessionui.ExtensionNode, int, java.lang.Object);
+  public int hashCode();
+  public boolean equals(java.lang.Object);
+}
+
+public final class com.harryaskham.pidroid.sessionui.ExtensionViewState$Companion {
+  public static final java.util.List access$flatten(com.harryaskham.pidroid.sessionui.ExtensionViewState$Companion, com.harryaskham.pidroid.sessionui.ExtensionNode);
+  public com.harryaskham.pidroid.sessionui.ExtensionViewState$Companion(kotlin.jvm.internal.DefaultConstructorMarker);
+}
+
+public final class com.harryaskham.pidroid.sessionui.InteractionContext {
+  public static final int $stable;
+  public com.harryaskham.pidroid.sessionui.InteractionContext(com.harryaskham.pidroid.sessionui.InteractiveSessionIdentity, com.harryaskham.pidroid.sdk.core.SessionRole, com.harryaskham.pidroid.sdk.core.CacheFreshness);
+  public final com.harryaskham.pidroid.sessionui.InteractiveSessionIdentity getIdentity();
+  public final com.harryaskham.pidroid.sdk.core.SessionRole getRole();
+  public final com.harryaskham.pidroid.sdk.core.CacheFreshness getFreshness();
+  public final com.harryaskham.pidroid.sessionui.InteractiveSessionIdentity component1();
+  public final com.harryaskham.pidroid.sdk.core.SessionRole component2();
+  public final com.harryaskham.pidroid.sdk.core.CacheFreshness component3();
+  public final com.harryaskham.pidroid.sessionui.InteractionContext copy(com.harryaskham.pidroid.sessionui.InteractiveSessionIdentity, com.harryaskham.pidroid.sdk.core.SessionRole, com.harryaskham.pidroid.sdk.core.CacheFreshness);
+  public static com.harryaskham.pidroid.sessionui.InteractionContext copy$default(com.harryaskham.pidroid.sessionui.InteractionContext, com.harryaskham.pidroid.sessionui.InteractiveSessionIdentity, com.harryaskham.pidroid.sdk.core.SessionRole, com.harryaskham.pidroid.sdk.core.CacheFreshness, int, java.lang.Object);
+  public java.lang.String toString();
+  public int hashCode();
+  public boolean equals(java.lang.Object);
+}
+
+public interface com.harryaskham.pidroid.sessionui.InteractionDecision<T> {
+}
+
+public final class com.harryaskham.pidroid.sessionui.InteractionDecision$Blocked implements com.harryaskham.pidroid.sessionui.InteractionDecision {
+  public static final int $stable;
+  public com.harryaskham.pidroid.sessionui.InteractionDecision$Blocked(java.lang.String);
+  public final java.lang.String getReason();
+  public final java.lang.String component1();
+  public final com.harryaskham.pidroid.sessionui.InteractionDecision$Blocked copy(java.lang.String);
+  public static com.harryaskham.pidroid.sessionui.InteractionDecision$Blocked copy$default(com.harryaskham.pidroid.sessionui.InteractionDecision$Blocked, java.lang.String, int, java.lang.Object);
+  public java.lang.String toString();
+  public int hashCode();
+  public boolean equals(java.lang.Object);
+}
+
+public final class com.harryaskham.pidroid.sessionui.InteractionDecision$Ready<T> implements com.harryaskham.pidroid.sessionui.InteractionDecision<T> {
+  public static final int $stable;
+  public com.harryaskham.pidroid.sessionui.InteractionDecision$Ready(T);
+  public final T getIntent();
+  public final T component1();
+  public final com.harryaskham.pidroid.sessionui.InteractionDecision$Ready<T> copy(T);
+  public static com.harryaskham.pidroid.sessionui.InteractionDecision$Ready copy$default(com.harryaskham.pidroid.sessionui.InteractionDecision$Ready, java.lang.Object, int, java.lang.Object);
+  public java.lang.String toString();
+  public int hashCode();
+  public boolean equals(java.lang.Object);
+}
+
+public final class com.harryaskham.pidroid.sessionui.InteractiveScreenshotProfile {
+  public static final int $stable;
+  public com.harryaskham.pidroid.sessionui.InteractiveScreenshotProfile(java.lang.String, int, int, com.harryaskham.pidroid.sessionui.SessionSurfaceLayout, com.harryaskham.pidroid.sdk.core.CacheFreshness, long, com.harryaskham.pidroid.sessionui.RichInteractiveState);
+  public final java.lang.String getId();
+  public final int getWidthPx();
+  public final int getHeightPx();
+  public final com.harryaskham.pidroid.sessionui.SessionSurfaceLayout getLayout();
+  public final com.harryaskham.pidroid.sdk.core.CacheFreshness getFreshness();
+  public final long getObservedAgeMillis();
+  public final com.harryaskham.pidroid.sessionui.RichInteractiveState getInteractive();
+  public final java.lang.String component1();
+  public final int component2();
+  public final int component3();
+  public final com.harryaskham.pidroid.sessionui.SessionSurfaceLayout component4();
+  public final com.harryaskham.pidroid.sdk.core.CacheFreshness component5();
+  public final long component6();
+  public final com.harryaskham.pidroid.sessionui.RichInteractiveState component7();
+  public final com.harryaskham.pidroid.sessionui.InteractiveScreenshotProfile copy(java.lang.String, int, int, com.harryaskham.pidroid.sessionui.SessionSurfaceLayout, com.harryaskham.pidroid.sdk.core.CacheFreshness, long, com.harryaskham.pidroid.sessionui.RichInteractiveState);
+  public static com.harryaskham.pidroid.sessionui.InteractiveScreenshotProfile copy$default(com.harryaskham.pidroid.sessionui.InteractiveScreenshotProfile, java.lang.String, int, int, com.harryaskham.pidroid.sessionui.SessionSurfaceLayout, com.harryaskham.pidroid.sdk.core.CacheFreshness, long, com.harryaskham.pidroid.sessionui.RichInteractiveState, int, java.lang.Object);
+  public java.lang.String toString();
+  public int hashCode();
+  public boolean equals(java.lang.Object);
+}
+
+public final class com.harryaskham.pidroid.sessionui.InteractiveScreenshotProfiles {
+  public static final com.harryaskham.pidroid.sessionui.InteractiveScreenshotProfiles INSTANCE;
+  public static final int $stable;
+  public final java.util.List<com.harryaskham.pidroid.sessionui.InteractiveScreenshotProfile> getAll();
+}
+
+public final class com.harryaskham.pidroid.sessionui.InteractiveSessionIdentity {
+  public static final int $stable;
+  public com.harryaskham.pidroid.sessionui.InteractiveSessionIdentity(com.harryaskham.pidroid.sdk.core.HostAuthority, java.lang.String, int);
+  public final com.harryaskham.pidroid.sdk.core.HostAuthority getAuthority();
+  public final java.lang.String getSessionId();
+  public final int getGeneration();
+  public final com.harryaskham.pidroid.sdk.core.HostAuthority component1();
+  public final java.lang.String component2();
+  public final int component3();
+  public final com.harryaskham.pidroid.sessionui.InteractiveSessionIdentity copy(com.harryaskham.pidroid.sdk.core.HostAuthority, java.lang.String, int);
+  public static com.harryaskham.pidroid.sessionui.InteractiveSessionIdentity copy$default(com.harryaskham.pidroid.sessionui.InteractiveSessionIdentity, com.harryaskham.pidroid.sdk.core.HostAuthority, java.lang.String, int, int, java.lang.Object);
+  public java.lang.String toString();
+  public int hashCode();
+  public boolean equals(java.lang.Object);
+}
+
+public final class com.harryaskham.pidroid.sessionui.InteractiveSessionModelsKt {
+  public static final kotlin.text.Regex access$getINTERACTIVE_IDENTIFIER$p();
+}
+
+public final class com.harryaskham.pidroid.sessionui.InteractiveSessionSurfacesKt {
+  public static final void SessionTreeSurface(com.harryaskham.pidroid.sessionui.SessionTreeSnapshot, com.harryaskham.pidroid.sessionui.InteractionContext, androidx.compose.ui.Modifier, kotlin.jvm.functions.Function1<? super com.harryaskham.pidroid.sessionui.TreeNavigationIntent, kotlin.Unit>, androidx.compose.runtime.Composer, int, int);
+  public static final void DeclarativeExtensionSurface(com.harryaskham.pidroid.sessionui.ExtensionViewState, com.harryaskham.pidroid.sessionui.InteractionContext, androidx.compose.ui.Modifier, java.util.Map<java.lang.String, ? extends com.harryaskham.pidroid.sessionui.ExtensionFormValue>, kotlin.jvm.functions.Function1<? super com.harryaskham.pidroid.sessionui.ExtensionActionIntent, kotlin.Unit>, androidx.compose.runtime.Composer, int, int);
+}
+
+public final class com.harryaskham.pidroid.sessionui.InteractiveSurfaceException extends java.lang.IllegalArgumentException {
+  public static final int $stable;
+  public com.harryaskham.pidroid.sessionui.InteractiveSurfaceException(java.lang.String, java.lang.String);
+  public final java.lang.String getCode();
+}
+
+public final class com.harryaskham.pidroid.sessionui.RichAuthorityRole extends java.lang.Enum<com.harryaskham.pidroid.sessionui.RichAuthorityRole> {
+  public static final com.harryaskham.pidroid.sessionui.RichAuthorityRole CONTROLLER;
+  public static final com.harryaskham.pidroid.sessionui.RichAuthorityRole OBSERVER;
+  public static final com.harryaskham.pidroid.sessionui.RichAuthorityRole REQUESTING;
+  public static final com.harryaskham.pidroid.sessionui.RichAuthorityRole LOST;
+  public static com.harryaskham.pidroid.sessionui.RichAuthorityRole[] values();
+  public static com.harryaskham.pidroid.sessionui.RichAuthorityRole valueOf(java.lang.String);
+  public static kotlin.enums.EnumEntries<com.harryaskham.pidroid.sessionui.RichAuthorityRole> getEntries();
+}
+
+public abstract class com.harryaskham.pidroid.sessionui.RichInteractionAction {
+  public static final int $stable;
+  public java.lang.String toString();
+  public com.harryaskham.pidroid.sessionui.RichInteractionAction(kotlin.jvm.internal.DefaultConstructorMarker);
+  public static final com.harryaskham.pidroid.sessionui.RichInteractionAction$Companion access$getCompanion$p();
+}
+
+public final class com.harryaskham.pidroid.sessionui.RichInteractionAction$Abort extends com.harryaskham.pidroid.sessionui.RichInteractionAction {
+  public static final com.harryaskham.pidroid.sessionui.RichInteractionAction$Abort INSTANCE;
+  public static final int $stable;
+  public java.lang.String toString();
+  public int hashCode();
+  public boolean equals(java.lang.Object);
+}
+
+final class com.harryaskham.pidroid.sessionui.RichInteractionAction$Companion {
+  public final void requireContent(java.lang.String);
+  public final void requireWireValue(java.lang.String);
+  public com.harryaskham.pidroid.sessionui.RichInteractionAction$Companion(kotlin.jvm.internal.DefaultConstructorMarker);
+}
+
+public final class com.harryaskham.pidroid.sessionui.RichInteractionAction$DraftChanged extends com.harryaskham.pidroid.sessionui.RichInteractionAction {
+  public static final int $stable;
+  public com.harryaskham.pidroid.sessionui.RichInteractionAction$DraftChanged(java.lang.String);
+  public final java.lang.String getText();
+}
+
+public final class com.harryaskham.pidroid.sessionui.RichInteractionAction$ReleaseControl extends com.harryaskham.pidroid.sessionui.RichInteractionAction {
+  public static final com.harryaskham.pidroid.sessionui.RichInteractionAction$ReleaseControl INSTANCE;
+  public static final int $stable;
+  public java.lang.String toString();
+  public int hashCode();
+  public boolean equals(java.lang.Object);
+}
+
+public final class com.harryaskham.pidroid.sessionui.RichInteractionAction$RequestControl extends com.harryaskham.pidroid.sessionui.RichInteractionAction {
+  public static final com.harryaskham.pidroid.sessionui.RichInteractionAction$RequestControl INSTANCE;
+  public static final int $stable;
+  public java.lang.String toString();
+  public int hashCode();
+  public boolean equals(java.lang.Object);
+}
+
+public final class com.harryaskham.pidroid.sessionui.RichInteractionAction$SetModel extends com.harryaskham.pidroid.sessionui.RichInteractionAction {
+  public static final int $stable;
+  public com.harryaskham.pidroid.sessionui.RichInteractionAction$SetModel(java.lang.String, java.lang.String);
+  public final java.lang.String getProvider();
+  public final java.lang.String getModelId();
+}
+
+public final class com.harryaskham.pidroid.sessionui.RichInteractionAction$SetThinkingLevel extends com.harryaskham.pidroid.sessionui.RichInteractionAction {
+  public static final int $stable;
+  public com.harryaskham.pidroid.sessionui.RichInteractionAction$SetThinkingLevel(java.lang.String);
+  public final java.lang.String getLevel();
+}
+
+public final class com.harryaskham.pidroid.sessionui.RichInteractionAction$Steer extends com.harryaskham.pidroid.sessionui.RichInteractionAction {
+  public static final int $stable;
+  public com.harryaskham.pidroid.sessionui.RichInteractionAction$Steer(java.lang.String);
+  public final java.lang.String getText();
+}
+
+public final class com.harryaskham.pidroid.sessionui.RichInteractionAction$SubmitFollowUp extends com.harryaskham.pidroid.sessionui.RichInteractionAction {
+  public static final int $stable;
+  public com.harryaskham.pidroid.sessionui.RichInteractionAction$SubmitFollowUp(java.lang.String);
+  public final java.lang.String getText();
+}
+
+public final class com.harryaskham.pidroid.sessionui.RichInteractionAction$SubmitPrompt extends com.harryaskham.pidroid.sessionui.RichInteractionAction {
+  public static final int $stable;
+  public com.harryaskham.pidroid.sessionui.RichInteractionAction$SubmitPrompt(java.lang.String);
+  public final java.lang.String getText();
+}
+
+public final class com.harryaskham.pidroid.sessionui.RichInteractiveSessionSurfaceKt {
+  public static final void RichInteractiveSessionSurface(com.harryaskham.pidroid.sessionui.SessionSurfaceState, com.harryaskham.pidroid.sessionui.RichInteractiveState, com.harryaskham.pidroid.sessionui.SessionSurfaceLayout, androidx.compose.ui.Modifier, kotlin.jvm.functions.Function1<? super com.harryaskham.pidroid.sessionui.RichInteractionAction, kotlin.Unit>, androidx.compose.runtime.Composer, int, int);
+  public static final long access$getInteractiveGreen$p();
+  public static final long access$getInteractiveMuted$p();
+}
+
+public final class com.harryaskham.pidroid.sessionui.RichInteractiveState {
+  public static final com.harryaskham.pidroid.sessionui.RichInteractiveState$Companion Companion;
+  public static final int $stable;
+  public final com.harryaskham.pidroid.sessionui.RichAuthorityRole getAuthority();
+  public final java.lang.String getDraftText();
+  public final java.lang.String getModelLabel();
+  public final java.lang.String getThinkingLevel();
+  public final boolean getStreaming();
+  public final boolean getCanMutate();
+  public final com.harryaskham.pidroid.sessionui.RichInteractiveState withDraft(java.lang.String);
+  public java.lang.String toString();
+  public com.harryaskham.pidroid.sessionui.RichInteractiveState(com.harryaskham.pidroid.sessionui.RichAuthorityRole, java.lang.String, java.lang.String, java.lang.String, boolean, kotlin.jvm.internal.DefaultConstructorMarker);
+}
+
+public final class com.harryaskham.pidroid.sessionui.RichInteractiveState$Companion {
+  public final com.harryaskham.pidroid.sessionui.RichInteractiveState controller(java.lang.String, java.lang.String, java.lang.String, boolean);
+  public final com.harryaskham.pidroid.sessionui.RichInteractiveState observer(java.lang.String, java.lang.String);
+  public com.harryaskham.pidroid.sessionui.RichInteractiveState$Companion(kotlin.jvm.internal.DefaultConstructorMarker);
+}
+
+public final class com.harryaskham.pidroid.sessionui.SessionFixtureDecoder {
+  public static final com.harryaskham.pidroid.sessionui.SessionFixtureDecoder INSTANCE;
+  public static final int $stable;
+  public final com.harryaskham.pidroid.sessionui.SessionSurfaceState decode(com.harryaskham.pidroid.sessionui.SessionHostContext, java.lang.String, java.lang.String, java.lang.String, int, int);
+  public static com.harryaskham.pidroid.sessionui.SessionSurfaceState decode$default(com.harryaskham.pidroid.sessionui.SessionFixtureDecoder, com.harryaskham.pidroid.sessionui.SessionHostContext, java.lang.String, java.lang.String, java.lang.String, int, int, int, java.lang.Object);
+}
+
+public final class com.harryaskham.pidroid.sessionui.SessionFixtureDecoderKt {
+  public static final java.lang.String access$requiredString(kotlinx.serialization.json.JsonObject, java.lang.String);
+  public static final boolean access$requiredBoolean(kotlinx.serialization.json.JsonObject, java.lang.String);
+  public static final java.lang.String access$optionalString(kotlinx.serialization.json.JsonObject, java.lang.String);
+  public static final java.lang.Integer access$optionalNonNegativeInt(kotlinx.serialization.json.JsonObject, java.lang.String);
+  public static final java.lang.Boolean access$optionalBoolean(kotlinx.serialization.json.JsonObject, java.lang.String);
+  public static final java.lang.String access$optionalStringUnbounded(kotlinx.serialization.json.JsonObject, java.lang.String);
+}
+
+public final class com.harryaskham.pidroid.sessionui.SessionFixtureException extends java.lang.IllegalArgumentException {
+  public static final int $stable;
+  public com.harryaskham.pidroid.sessionui.SessionFixtureException(java.lang.String, java.lang.String);
+  public final java.lang.String getCode();
+}
+
+public final class com.harryaskham.pidroid.sessionui.SessionHostContext {
+  public static final int $stable;
+  public final java.lang.String getHostId-fjOQVoQ();
+  public final java.lang.String getDisplayName();
+  public final com.harryaskham.pidroid.sdk.core.HostAuthority getAuthority();
+  public final com.harryaskham.pidroid.sdk.core.CacheFreshness getFreshness();
+  public final long getObservedAgeMillis();
+  public final java.lang.String component1-fjOQVoQ();
+  public final java.lang.String component2();
+  public final com.harryaskham.pidroid.sdk.core.HostAuthority component3();
+  public final com.harryaskham.pidroid.sdk.core.CacheFreshness component4();
+  public final long component5();
+  public final com.harryaskham.pidroid.sessionui.SessionHostContext copy-H5pd-mI(java.lang.String, java.lang.String, com.harryaskham.pidroid.sdk.core.HostAuthority, com.harryaskham.pidroid.sdk.core.CacheFreshness, long);
+  public static com.harryaskham.pidroid.sessionui.SessionHostContext copy-H5pd-mI$default(com.harryaskham.pidroid.sessionui.SessionHostContext, java.lang.String, java.lang.String, com.harryaskham.pidroid.sdk.core.HostAuthority, com.harryaskham.pidroid.sdk.core.CacheFreshness, long, int, java.lang.Object);
+  public java.lang.String toString();
+  public int hashCode();
+  public boolean equals(java.lang.Object);
+  public com.harryaskham.pidroid.sessionui.SessionHostContext(java.lang.String, java.lang.String, com.harryaskham.pidroid.sdk.core.HostAuthority, com.harryaskham.pidroid.sdk.core.CacheFreshness, long, kotlin.jvm.internal.DefaultConstructorMarker);
+}
+
+public final class com.harryaskham.pidroid.sessionui.SessionInfoModel {
+  public static final int $stable;
+  public com.harryaskham.pidroid.sessionui.SessionInfoModel(java.lang.String, java.lang.String, java.lang.String, java.lang.String, java.lang.Integer, java.lang.Integer, java.lang.String, java.lang.String, java.lang.String, int, int);
+  public final java.lang.String getInventoryId();
+  public final java.lang.String getTitle();
+  public final java.lang.String getProjectLabel();
+  public final java.lang.String getSessionId();
+  public final java.lang.Integer getGeneration();
+  public final java.lang.Integer getRevision();
+  public final java.lang.String getState();
+  public final java.lang.String getModelLabel();
+  public final java.lang.String getThinkingLevel();
+  public final int getMessageCount();
+  public final int getToolCallCount();
+  public final java.lang.String component1();
+  public final java.lang.String component2();
+  public final java.lang.String component3();
+  public final java.lang.String component4();
+  public final java.lang.Integer component5();
+  public final java.lang.Integer component6();
+  public final java.lang.String component7();
+  public final java.lang.String component8();
+  public final java.lang.String component9();
+  public final int component10();
+  public final int component11();
+  public final com.harryaskham.pidroid.sessionui.SessionInfoModel copy(java.lang.String, java.lang.String, java.lang.String, java.lang.String, java.lang.Integer, java.lang.Integer, java.lang.String, java.lang.String, java.lang.String, int, int);
+  public static com.harryaskham.pidroid.sessionui.SessionInfoModel copy$default(com.harryaskham.pidroid.sessionui.SessionInfoModel, java.lang.String, java.lang.String, java.lang.String, java.lang.String, java.lang.Integer, java.lang.Integer, java.lang.String, java.lang.String, java.lang.String, int, int, int, java.lang.Object);
+  public java.lang.String toString();
+  public int hashCode();
+  public boolean equals(java.lang.Object);
+}
+
+public final class com.harryaskham.pidroid.sessionui.SessionInventoryItem {
+  public static final int $stable;
+  public com.harryaskham.pidroid.sessionui.SessionInventoryItem(java.lang.String, java.lang.String, java.lang.String, java.lang.String, java.lang.Integer, java.lang.String, boolean);
+  public final java.lang.String getInventoryId();
+  public final java.lang.String getTitle();
+  public final java.lang.String getProjectLabel();
+  public final java.lang.String getSessionId();
+  public final java.lang.Integer getGeneration();
+  public final java.lang.String getState();
+  public final boolean getUnread();
+  public final java.lang.String component1();
+  public final java.lang.String component2();
+  public final java.lang.String component3();
+  public final java.lang.String component4();
+  public final java.lang.Integer component5();
+  public final java.lang.String component6();
+  public final boolean component7();
+  public final com.harryaskham.pidroid.sessionui.SessionInventoryItem copy(java.lang.String, java.lang.String, java.lang.String, java.lang.String, java.lang.Integer, java.lang.String, boolean);
+  public static com.harryaskham.pidroid.sessionui.SessionInventoryItem copy$default(com.harryaskham.pidroid.sessionui.SessionInventoryItem, java.lang.String, java.lang.String, java.lang.String, java.lang.String, java.lang.Integer, java.lang.String, boolean, int, java.lang.Object);
+  public java.lang.String toString();
+  public int hashCode();
+  public boolean equals(java.lang.Object);
+}
+
+public final class com.harryaskham.pidroid.sessionui.SessionScreenshotProfile {
+  public static final int $stable;
+  public com.harryaskham.pidroid.sessionui.SessionScreenshotProfile(java.lang.String, int, int, com.harryaskham.pidroid.sessionui.SessionSurfaceLayout, com.harryaskham.pidroid.sdk.core.CacheFreshness, long);
+  public final java.lang.String getId();
+  public final int getWindowWidthPx();
+  public final int getWindowHeightPx();
+  public final com.harryaskham.pidroid.sessionui.SessionSurfaceLayout getLayout();
+  public final com.harryaskham.pidroid.sdk.core.CacheFreshness getFreshness();
+  public final long getObservedAgeMillis();
+  public final java.lang.String component1();
+  public final int component2();
+  public final int component3();
+  public final com.harryaskham.pidroid.sessionui.SessionSurfaceLayout component4();
+  public final com.harryaskham.pidroid.sdk.core.CacheFreshness component5();
+  public final long component6();
+  public final com.harryaskham.pidroid.sessionui.SessionScreenshotProfile copy(java.lang.String, int, int, com.harryaskham.pidroid.sessionui.SessionSurfaceLayout, com.harryaskham.pidroid.sdk.core.CacheFreshness, long);
+  public static com.harryaskham.pidroid.sessionui.SessionScreenshotProfile copy$default(com.harryaskham.pidroid.sessionui.SessionScreenshotProfile, java.lang.String, int, int, com.harryaskham.pidroid.sessionui.SessionSurfaceLayout, com.harryaskham.pidroid.sdk.core.CacheFreshness, long, int, java.lang.Object);
+  public java.lang.String toString();
+  public int hashCode();
+  public boolean equals(java.lang.Object);
+}
+
+public final class com.harryaskham.pidroid.sessionui.SessionScreenshotProfiles {
+  public static final com.harryaskham.pidroid.sessionui.SessionScreenshotProfiles INSTANCE;
+  public static final int $stable;
+  public final java.util.List<com.harryaskham.pidroid.sessionui.SessionScreenshotProfile> getAll();
+  public final com.harryaskham.pidroid.sessionui.SessionScreenshotProfile profile(java.lang.String);
+}
+
+public final class com.harryaskham.pidroid.sessionui.SessionSurfaceChrome extends java.lang.Enum<com.harryaskham.pidroid.sessionui.SessionSurfaceChrome> {
+  public static final com.harryaskham.pidroid.sessionui.SessionSurfaceChrome READONLY;
+  public static final com.harryaskham.pidroid.sessionui.SessionSurfaceChrome INTERACTIVE;
+  public static com.harryaskham.pidroid.sessionui.SessionSurfaceChrome[] values();
+  public static com.harryaskham.pidroid.sessionui.SessionSurfaceChrome valueOf(java.lang.String);
+  public static kotlin.enums.EnumEntries<com.harryaskham.pidroid.sessionui.SessionSurfaceChrome> getEntries();
+}
+
+public final class com.harryaskham.pidroid.sessionui.SessionSurfaceFormFactor extends java.lang.Enum<com.harryaskham.pidroid.sessionui.SessionSurfaceFormFactor> {
+  public static final com.harryaskham.pidroid.sessionui.SessionSurfaceFormFactor PHONE;
+  public static final com.harryaskham.pidroid.sessionui.SessionSurfaceFormFactor TABLET;
+  public static com.harryaskham.pidroid.sessionui.SessionSurfaceFormFactor[] values();
+  public static com.harryaskham.pidroid.sessionui.SessionSurfaceFormFactor valueOf(java.lang.String);
+  public static kotlin.enums.EnumEntries<com.harryaskham.pidroid.sessionui.SessionSurfaceFormFactor> getEntries();
+}
+
+public final class com.harryaskham.pidroid.sessionui.SessionSurfaceKt {
+  public static final void SessionSurface(com.harryaskham.pidroid.sessionui.SessionSurfaceState, com.harryaskham.pidroid.sessionui.SessionSurfaceLayout, androidx.compose.ui.Modifier, com.harryaskham.pidroid.sessionui.SessionSurfaceChrome, androidx.compose.runtime.Composer, int, int);
+  public static final long access$getNordMuted$p();
+  public static final long access$getNordAccent$p();
+  public static final void access$TranscriptRecordCard(com.harryaskham.pidroid.sessionui.TranscriptRecord, com.harryaskham.pidroid.sessionui.SessionSurfaceLayout, androidx.compose.runtime.Composer, int);
+}
+
+public final class com.harryaskham.pidroid.sessionui.SessionSurfaceKt$TranscriptList$lambda$0$0$0$$inlined$items$default$1 implements kotlin.jvm.functions.Function1 {
+  public static final com.harryaskham.pidroid.sessionui.SessionSurfaceKt$TranscriptList$lambda$0$0$0$$inlined$items$default$1 INSTANCE;
+  public com.harryaskham.pidroid.sessionui.SessionSurfaceKt$TranscriptList$lambda$0$0$0$$inlined$items$default$1();
+  public final java.lang.Void invoke(com.harryaskham.pidroid.sessionui.TranscriptRecord);
+  public java.lang.Object invoke(java.lang.Object);
+}
+
+public final class com.harryaskham.pidroid.sessionui.SessionSurfaceKt$TranscriptList$lambda$0$0$0$$inlined$items$default$2 implements kotlin.jvm.functions.Function1<java.lang.Integer, java.lang.Object> {
+  public com.harryaskham.pidroid.sessionui.SessionSurfaceKt$TranscriptList$lambda$0$0$0$$inlined$items$default$2(kotlin.jvm.functions.Function1, java.util.List);
+  public final java.lang.Object invoke(int);
+  public java.lang.Object invoke(java.lang.Object);
+}
+
+public final class com.harryaskham.pidroid.sessionui.SessionSurfaceKt$TranscriptList$lambda$0$0$0$$inlined$items$default$3 implements kotlin.jvm.functions.Function1<java.lang.Integer, java.lang.Object> {
+  public com.harryaskham.pidroid.sessionui.SessionSurfaceKt$TranscriptList$lambda$0$0$0$$inlined$items$default$3(kotlin.jvm.functions.Function1, java.util.List);
+  public final java.lang.Object invoke(int);
+  public java.lang.Object invoke(java.lang.Object);
+}
+
+public final class com.harryaskham.pidroid.sessionui.SessionSurfaceKt$TranscriptList$lambda$0$0$0$$inlined$items$default$4 implements kotlin.jvm.functions.Function4<androidx.compose.foundation.lazy.LazyItemScope, java.lang.Integer, androidx.compose.runtime.Composer, java.lang.Integer, kotlin.Unit> {
+  public com.harryaskham.pidroid.sessionui.SessionSurfaceKt$TranscriptList$lambda$0$0$0$$inlined$items$default$4(java.util.List, com.harryaskham.pidroid.sessionui.SessionSurfaceLayout);
+  public final void invoke(androidx.compose.foundation.lazy.LazyItemScope, int, androidx.compose.runtime.Composer, int);
+  public java.lang.Object invoke(java.lang.Object, java.lang.Object, java.lang.Object, java.lang.Object);
+}
+
+public final class com.harryaskham.pidroid.sessionui.SessionSurfaceKt$WhenMappings {
+  public static final int[] $EnumSwitchMapping$0;
+  public static final int[] $EnumSwitchMapping$1;
+}
+
+public final class com.harryaskham.pidroid.sessionui.SessionSurfaceLayout {
+  public static final com.harryaskham.pidroid.sessionui.SessionSurfaceLayout$Companion Companion;
+  public static final int $stable;
+  public com.harryaskham.pidroid.sessionui.SessionSurfaceLayout(com.harryaskham.pidroid.sessionui.SessionSurfaceFormFactor, float, float, float, float, float);
+  public final com.harryaskham.pidroid.sessionui.SessionSurfaceFormFactor getFormFactor();
+  public final float getFontScale();
+  public final float getMinimumTouchTargetDp();
+  public final float getMinimumRecordHeightDp();
+  public final float getInventoryWidthDp();
+  public final float getContentPaddingDp();
+  public final com.harryaskham.pidroid.sessionui.SessionSurfaceFormFactor component1();
+  public final float component2();
+  public final float component3();
+  public final float component4();
+  public final float component5();
+  public final float component6();
+  public final com.harryaskham.pidroid.sessionui.SessionSurfaceLayout copy(com.harryaskham.pidroid.sessionui.SessionSurfaceFormFactor, float, float, float, float, float);
+  public static com.harryaskham.pidroid.sessionui.SessionSurfaceLayout copy$default(com.harryaskham.pidroid.sessionui.SessionSurfaceLayout, com.harryaskham.pidroid.sessionui.SessionSurfaceFormFactor, float, float, float, float, float, int, java.lang.Object);
+  public java.lang.String toString();
+  public int hashCode();
+  public boolean equals(java.lang.Object);
+}
+
+public final class com.harryaskham.pidroid.sessionui.SessionSurfaceLayout$Companion {
+  public final com.harryaskham.pidroid.sessionui.SessionSurfaceLayout phone(float);
+  public static com.harryaskham.pidroid.sessionui.SessionSurfaceLayout phone$default(com.harryaskham.pidroid.sessionui.SessionSurfaceLayout$Companion, float, int, java.lang.Object);
+  public final com.harryaskham.pidroid.sessionui.SessionSurfaceLayout tablet(float);
+  public static com.harryaskham.pidroid.sessionui.SessionSurfaceLayout tablet$default(com.harryaskham.pidroid.sessionui.SessionSurfaceLayout$Companion, float, int, java.lang.Object);
+  public com.harryaskham.pidroid.sessionui.SessionSurfaceLayout$Companion(kotlin.jvm.internal.DefaultConstructorMarker);
+}
+
+public final class com.harryaskham.pidroid.sessionui.SessionSurfaceMode extends java.lang.Enum<com.harryaskham.pidroid.sessionui.SessionSurfaceMode> {
+  public static final com.harryaskham.pidroid.sessionui.SessionSurfaceMode READONLY;
+  public static com.harryaskham.pidroid.sessionui.SessionSurfaceMode[] values();
+  public static com.harryaskham.pidroid.sessionui.SessionSurfaceMode valueOf(java.lang.String);
+  public static kotlin.enums.EnumEntries<com.harryaskham.pidroid.sessionui.SessionSurfaceMode> getEntries();
+}
+
+public final class com.harryaskham.pidroid.sessionui.SessionSurfaceReducer {
+  public static final com.harryaskham.pidroid.sessionui.SessionSurfaceReducer INSTANCE;
+  public static final int $stable;
+  public final com.harryaskham.pidroid.sessionui.SessionSurfaceState withFreshness(com.harryaskham.pidroid.sessionui.SessionSurfaceState, com.harryaskham.pidroid.sdk.core.CacheFreshness, long);
+  public final java.lang.String freshnessLabel(com.harryaskham.pidroid.sdk.core.CacheFreshness, long);
+}
+
+public final class com.harryaskham.pidroid.sessionui.SessionSurfaceReducer$WhenMappings {
+  public static final int[] $EnumSwitchMapping$0;
+}
+
+public final class com.harryaskham.pidroid.sessionui.SessionSurfaceState {
+  public static final int $stable;
+  public com.harryaskham.pidroid.sessionui.SessionSurfaceState(com.harryaskham.pidroid.sessionui.SessionHostContext, java.util.List<com.harryaskham.pidroid.sessionui.SessionInventoryItem>, com.harryaskham.pidroid.sessionui.SessionInfoModel, java.util.List<com.harryaskham.pidroid.sessionui.TranscriptRecord>, com.harryaskham.pidroid.sessionui.SessionSurfaceMode, java.lang.String, boolean, int);
+  public final com.harryaskham.pidroid.sessionui.SessionHostContext getHost();
+  public final java.util.List<com.harryaskham.pidroid.sessionui.SessionInventoryItem> getInventory();
+  public final com.harryaskham.pidroid.sessionui.SessionInfoModel getSession();
+  public final java.util.List<com.harryaskham.pidroid.sessionui.TranscriptRecord> getRecords();
+  public final com.harryaskham.pidroid.sessionui.SessionSurfaceMode getMode();
+  public final java.lang.String getFreshnessLabel();
+  public final boolean getCanMutate();
+  public final int getRetainedRecordLimit();
+  public java.lang.String toString();
+}
+
+public final class com.harryaskham.pidroid.sessionui.SessionTreeAuthority {
+  public static final com.harryaskham.pidroid.sessionui.SessionTreeAuthority INSTANCE;
+  public static final int $stable;
+  public final com.harryaskham.pidroid.sessionui.InteractionDecision<com.harryaskham.pidroid.sessionui.TreeNavigationIntent> authorize(com.harryaskham.pidroid.sessionui.SessionTreeSnapshot, com.harryaskham.pidroid.sessionui.TreeNavigationIntent, com.harryaskham.pidroid.sessionui.InteractionContext);
+}
+
+public final class com.harryaskham.pidroid.sessionui.SessionTreeEntry {
+  public static final int $stable;
+  public com.harryaskham.pidroid.sessionui.SessionTreeEntry(java.lang.String, java.lang.String, com.harryaskham.pidroid.sessionui.SessionTreeEntryKind, java.lang.String, boolean);
+  public final java.lang.String getId();
+  public final java.lang.String getParentId();
+  public final com.harryaskham.pidroid.sessionui.SessionTreeEntryKind getKind();
+  public final java.lang.String getLabel();
+  public final boolean getActive();
+  public final java.lang.String component1();
+  public final java.lang.String component2();
+  public final com.harryaskham.pidroid.sessionui.SessionTreeEntryKind component3();
+  public final java.lang.String component4();
+  public final boolean component5();
+  public final com.harryaskham.pidroid.sessionui.SessionTreeEntry copy(java.lang.String, java.lang.String, com.harryaskham.pidroid.sessionui.SessionTreeEntryKind, java.lang.String, boolean);
+  public static com.harryaskham.pidroid.sessionui.SessionTreeEntry copy$default(com.harryaskham.pidroid.sessionui.SessionTreeEntry, java.lang.String, java.lang.String, com.harryaskham.pidroid.sessionui.SessionTreeEntryKind, java.lang.String, boolean, int, java.lang.Object);
+  public java.lang.String toString();
+  public int hashCode();
+  public boolean equals(java.lang.Object);
+}
+
+public final class com.harryaskham.pidroid.sessionui.SessionTreeEntryKind extends java.lang.Enum<com.harryaskham.pidroid.sessionui.SessionTreeEntryKind> {
+  public static final com.harryaskham.pidroid.sessionui.SessionTreeEntryKind SYSTEM;
+  public static final com.harryaskham.pidroid.sessionui.SessionTreeEntryKind USER;
+  public static final com.harryaskham.pidroid.sessionui.SessionTreeEntryKind ASSISTANT;
+  public static final com.harryaskham.pidroid.sessionui.SessionTreeEntryKind TOOL;
+  public static final com.harryaskham.pidroid.sessionui.SessionTreeEntryKind UNKNOWN;
+  public static com.harryaskham.pidroid.sessionui.SessionTreeEntryKind[] values();
+  public static com.harryaskham.pidroid.sessionui.SessionTreeEntryKind valueOf(java.lang.String);
+  public static kotlin.enums.EnumEntries<com.harryaskham.pidroid.sessionui.SessionTreeEntryKind> getEntries();
+}
+
+public final class com.harryaskham.pidroid.sessionui.SessionTreeFixtureCodec {
+  public static final com.harryaskham.pidroid.sessionui.SessionTreeFixtureCodec INSTANCE;
+  public static final int $stable;
+  public final com.harryaskham.pidroid.sessionui.TreeNavigationIntent decodeIntent(java.lang.String, com.harryaskham.pidroid.sessionui.InteractiveSessionIdentity);
+  public final com.harryaskham.pidroid.sessionui.TreeNavigationResult decodeResult(java.lang.String, com.harryaskham.pidroid.sessionui.TreeNavigationIntent);
+}
+
+public final class com.harryaskham.pidroid.sessionui.SessionTreeFixtureCodecKt {
+  public static final kotlinx.serialization.json.JsonObject interactiveRequiredObject(kotlinx.serialization.json.JsonObject, java.lang.String);
+  public static final java.lang.String interactiveRequiredString(kotlinx.serialization.json.JsonObject, java.lang.String, int);
+  public static java.lang.String interactiveRequiredString$default(kotlinx.serialization.json.JsonObject, java.lang.String, int, int, java.lang.Object);
+  public static final java.lang.String interactiveOptionalString(kotlinx.serialization.json.JsonObject, java.lang.String, int);
+  public static java.lang.String interactiveOptionalString$default(kotlinx.serialization.json.JsonObject, java.lang.String, int, int, java.lang.Object);
+  public static final java.lang.String interactiveRequiredIdentifier(kotlinx.serialization.json.JsonObject, java.lang.String);
+  public static final java.lang.String interactiveOptionalIdentifier(kotlinx.serialization.json.JsonObject, java.lang.String);
+  public static final boolean interactiveRequiredBoolean(kotlinx.serialization.json.JsonObject, java.lang.String);
+}
+
+public final class com.harryaskham.pidroid.sessionui.SessionTreeProjection {
+  public static final com.harryaskham.pidroid.sessionui.SessionTreeProjection INSTANCE;
+  public static final int $stable;
+  public final java.util.List<com.harryaskham.pidroid.sessionui.SessionTreeRow> rows(com.harryaskham.pidroid.sessionui.SessionTreeSnapshot);
+}
+
+public final class com.harryaskham.pidroid.sessionui.SessionTreeRow {
+  public static final int $stable;
+  public com.harryaskham.pidroid.sessionui.SessionTreeRow(com.harryaskham.pidroid.sessionui.SessionTreeEntry, int, java.lang.String);
+  public final com.harryaskham.pidroid.sessionui.SessionTreeEntry getEntry();
+  public final int getDepth();
+  public final java.lang.String getAccessibilityLabel();
+  public final com.harryaskham.pidroid.sessionui.SessionTreeEntry component1();
+  public final int component2();
+  public final java.lang.String component3();
+  public final com.harryaskham.pidroid.sessionui.SessionTreeRow copy(com.harryaskham.pidroid.sessionui.SessionTreeEntry, int, java.lang.String);
+  public static com.harryaskham.pidroid.sessionui.SessionTreeRow copy$default(com.harryaskham.pidroid.sessionui.SessionTreeRow, com.harryaskham.pidroid.sessionui.SessionTreeEntry, int, java.lang.String, int, java.lang.Object);
+  public java.lang.String toString();
+  public int hashCode();
+  public boolean equals(java.lang.Object);
+}
+
+public final class com.harryaskham.pidroid.sessionui.SessionTreeSnapshot {
+  public static final com.harryaskham.pidroid.sessionui.SessionTreeSnapshot$Companion Companion;
+  public static final int $stable;
+  public static final int MAX_ENTRIES = 256;
+  public com.harryaskham.pidroid.sessionui.SessionTreeSnapshot(com.harryaskham.pidroid.sessionui.InteractiveSessionIdentity, java.util.List<com.harryaskham.pidroid.sessionui.SessionTreeEntry>, java.lang.String);
+  public final com.harryaskham.pidroid.sessionui.InteractiveSessionIdentity getIdentity();
+  public final java.util.List<com.harryaskham.pidroid.sessionui.SessionTreeEntry> getEntries();
+  public final java.lang.String getActiveEntryId();
+  public final com.harryaskham.pidroid.sessionui.InteractiveSessionIdentity component1();
+  public final java.util.List<com.harryaskham.pidroid.sessionui.SessionTreeEntry> component2();
+  public final java.lang.String component3();
+  public final com.harryaskham.pidroid.sessionui.SessionTreeSnapshot copy(com.harryaskham.pidroid.sessionui.InteractiveSessionIdentity, java.util.List<com.harryaskham.pidroid.sessionui.SessionTreeEntry>, java.lang.String);
+  public static com.harryaskham.pidroid.sessionui.SessionTreeSnapshot copy$default(com.harryaskham.pidroid.sessionui.SessionTreeSnapshot, com.harryaskham.pidroid.sessionui.InteractiveSessionIdentity, java.util.List, java.lang.String, int, java.lang.Object);
+  public java.lang.String toString();
+  public int hashCode();
+  public boolean equals(java.lang.Object);
+}
+
+public final class com.harryaskham.pidroid.sessionui.SessionTreeSnapshot$Companion {
+  public com.harryaskham.pidroid.sessionui.SessionTreeSnapshot$Companion(kotlin.jvm.internal.DefaultConstructorMarker);
+}
+
+public final class com.harryaskham.pidroid.sessionui.StableRecordKey {
+  public final java.lang.String getValue();
+  public static java.lang.String toString-impl(java.lang.String);
+  public java.lang.String toString();
+  public static int hashCode-impl(java.lang.String);
+  public int hashCode();
+  public static boolean equals-impl(java.lang.String, java.lang.Object);
+  public boolean equals(java.lang.Object);
+  public static java.lang.String constructor-impl(java.lang.String);
+  public static final com.harryaskham.pidroid.sessionui.StableRecordKey box-impl(java.lang.String);
+  public final java.lang.String unbox-impl();
+  public static final boolean equals-impl0(java.lang.String, java.lang.String);
+}
+
+public final class com.harryaskham.pidroid.sessionui.TranscriptBlock {
+  public static final int $stable;
+  public com.harryaskham.pidroid.sessionui.TranscriptBlock(com.harryaskham.pidroid.sessionui.TranscriptBlockType, java.lang.String, boolean);
+  public final com.harryaskham.pidroid.sessionui.TranscriptBlockType getType();
+  public final java.lang.String getText();
+  public final boolean getTruncated();
+  public java.lang.String toString();
+}
+
+public final class com.harryaskham.pidroid.sessionui.TranscriptBlockType extends java.lang.Enum<com.harryaskham.pidroid.sessionui.TranscriptBlockType> {
+  public static final com.harryaskham.pidroid.sessionui.TranscriptBlockType TEXT;
+  public static final com.harryaskham.pidroid.sessionui.TranscriptBlockType MARKDOWN;
+  public static final com.harryaskham.pidroid.sessionui.TranscriptBlockType CODE;
+  public static final com.harryaskham.pidroid.sessionui.TranscriptBlockType STATUS;
+  public static final com.harryaskham.pidroid.sessionui.TranscriptBlockType UNKNOWN;
+  public static com.harryaskham.pidroid.sessionui.TranscriptBlockType[] values();
+  public static com.harryaskham.pidroid.sessionui.TranscriptBlockType valueOf(java.lang.String);
+  public static kotlin.enums.EnumEntries<com.harryaskham.pidroid.sessionui.TranscriptBlockType> getEntries();
+}
+
+public final class com.harryaskham.pidroid.sessionui.TranscriptRecord {
+  public static final int $stable;
+  public final java.lang.String getKey-oMWweoE();
+  public final java.lang.String getKind();
+  public final com.harryaskham.pidroid.sessionui.TranscriptRole getRole();
+  public final java.lang.String getState();
+  public final java.util.List<com.harryaskham.pidroid.sessionui.TranscriptBlock> getBlocks();
+  public java.lang.String toString();
+  public com.harryaskham.pidroid.sessionui.TranscriptRecord(java.lang.String, java.lang.String, com.harryaskham.pidroid.sessionui.TranscriptRole, java.lang.String, java.util.List, kotlin.jvm.internal.DefaultConstructorMarker);
+}
+
+public final class com.harryaskham.pidroid.sessionui.TranscriptRole extends java.lang.Enum<com.harryaskham.pidroid.sessionui.TranscriptRole> {
+  public static final com.harryaskham.pidroid.sessionui.TranscriptRole USER;
+  public static final com.harryaskham.pidroid.sessionui.TranscriptRole ASSISTANT;
+  public static final com.harryaskham.pidroid.sessionui.TranscriptRole TOOL;
+  public static final com.harryaskham.pidroid.sessionui.TranscriptRole SYSTEM;
+  public static final com.harryaskham.pidroid.sessionui.TranscriptRole UNKNOWN;
+  public final java.lang.String getWireValue();
+  public static com.harryaskham.pidroid.sessionui.TranscriptRole[] values();
+  public static com.harryaskham.pidroid.sessionui.TranscriptRole valueOf(java.lang.String);
+  public static kotlin.enums.EnumEntries<com.harryaskham.pidroid.sessionui.TranscriptRole> getEntries();
+}
+
+public final class com.harryaskham.pidroid.sessionui.TreeNavigationIntent {
+  public static final int $stable;
+  public com.harryaskham.pidroid.sessionui.TreeNavigationIntent(com.harryaskham.pidroid.sessionui.InteractiveSessionIdentity, java.lang.String, java.lang.String, boolean, java.lang.String, java.lang.String);
+  public final com.harryaskham.pidroid.sessionui.InteractiveSessionIdentity getIdentity();
+  public final java.lang.String getCorrelationId();
+  public final java.lang.String getEntryId();
+  public final boolean getSummarize();
+  public final java.lang.String getCustomInstructions();
+  public final java.lang.String getLabel();
+  public java.lang.String toString();
+}
+
+public final class com.harryaskham.pidroid.sessionui.TreeNavigationResult {
+  public static final int $stable;
+  public com.harryaskham.pidroid.sessionui.TreeNavigationResult(java.lang.String, boolean, java.lang.String, java.lang.String);
+  public final java.lang.String getCorrelationId();
+  public final boolean getCancelled();
+  public final java.lang.String getEditorText();
+  public final java.lang.String getSummaryEntryId();
+  public java.lang.String toString();
+}
+
+public final class com.harryaskham.pidroid.sessionui.TuiControlRole extends java.lang.Enum<com.harryaskham.pidroid.sessionui.TuiControlRole> {
+  public static final com.harryaskham.pidroid.sessionui.TuiControlRole OBSERVER;
+  public static final com.harryaskham.pidroid.sessionui.TuiControlRole CONTROLLER;
+  public static com.harryaskham.pidroid.sessionui.TuiControlRole[] values();
+  public static com.harryaskham.pidroid.sessionui.TuiControlRole valueOf(java.lang.String);
+  public static kotlin.enums.EnumEntries<com.harryaskham.pidroid.sessionui.TuiControlRole> getEntries();
+}
+
+public final class com.harryaskham.pidroid.sessionui.TuiCursorModel {
+  public static final int $stable;
+  public com.harryaskham.pidroid.sessionui.TuiCursorModel(int, int, boolean, com.harryaskham.pidroid.sessionui.TuiCursorShape);
+  public final int getRow();
+  public final int getColumn();
+  public final boolean getVisible();
+  public final com.harryaskham.pidroid.sessionui.TuiCursorShape getShape();
+  public final int component1();
+  public final int component2();
+  public final boolean component3();
+  public final com.harryaskham.pidroid.sessionui.TuiCursorShape component4();
+  public final com.harryaskham.pidroid.sessionui.TuiCursorModel copy(int, int, boolean, com.harryaskham.pidroid.sessionui.TuiCursorShape);
+  public static com.harryaskham.pidroid.sessionui.TuiCursorModel copy$default(com.harryaskham.pidroid.sessionui.TuiCursorModel, int, int, boolean, com.harryaskham.pidroid.sessionui.TuiCursorShape, int, java.lang.Object);
+  public java.lang.String toString();
+  public int hashCode();
+  public boolean equals(java.lang.Object);
+}
+
+public final class com.harryaskham.pidroid.sessionui.TuiCursorShape extends java.lang.Enum<com.harryaskham.pidroid.sessionui.TuiCursorShape> {
+  public static final com.harryaskham.pidroid.sessionui.TuiCursorShape BLOCK;
+  public static final com.harryaskham.pidroid.sessionui.TuiCursorShape BAR;
+  public static final com.harryaskham.pidroid.sessionui.TuiCursorShape UNDERLINE;
+  public static com.harryaskham.pidroid.sessionui.TuiCursorShape[] values();
+  public static com.harryaskham.pidroid.sessionui.TuiCursorShape valueOf(java.lang.String);
+  public static kotlin.enums.EnumEntries<com.harryaskham.pidroid.sessionui.TuiCursorShape> getEntries();
+}
+
+public final class com.harryaskham.pidroid.sessionui.TuiDeltaModel {
+  public static final int $stable;
+  public com.harryaskham.pidroid.sessionui.TuiDeltaModel(com.harryaskham.pidroid.sessionui.TuiSessionIdentity, java.lang.String, long, com.harryaskham.pidroid.sessionui.TuiDimensionsModel, java.util.List<com.harryaskham.pidroid.sessionui.TuiRowModel>, com.harryaskham.pidroid.sessionui.TuiCursorModel, java.lang.String);
+  public final com.harryaskham.pidroid.sessionui.TuiSessionIdentity getIdentity();
+  public final java.lang.String getCursor();
+  public final long getSequence();
+  public final com.harryaskham.pidroid.sessionui.TuiDimensionsModel getDimensions();
+  public final java.util.List<com.harryaskham.pidroid.sessionui.TuiRowModel> getChangedRows();
+  public final com.harryaskham.pidroid.sessionui.TuiCursorModel getCursorState();
+  public final java.lang.String getTitle();
+  public final com.harryaskham.pidroid.sessionui.TuiSessionIdentity component1();
+  public final java.lang.String component2();
+  public final long component3();
+  public final com.harryaskham.pidroid.sessionui.TuiDimensionsModel component4();
+  public final java.util.List<com.harryaskham.pidroid.sessionui.TuiRowModel> component5();
+  public final com.harryaskham.pidroid.sessionui.TuiCursorModel component6();
+  public final java.lang.String component7();
+  public final com.harryaskham.pidroid.sessionui.TuiDeltaModel copy(com.harryaskham.pidroid.sessionui.TuiSessionIdentity, java.lang.String, long, com.harryaskham.pidroid.sessionui.TuiDimensionsModel, java.util.List<com.harryaskham.pidroid.sessionui.TuiRowModel>, com.harryaskham.pidroid.sessionui.TuiCursorModel, java.lang.String);
+  public static com.harryaskham.pidroid.sessionui.TuiDeltaModel copy$default(com.harryaskham.pidroid.sessionui.TuiDeltaModel, com.harryaskham.pidroid.sessionui.TuiSessionIdentity, java.lang.String, long, com.harryaskham.pidroid.sessionui.TuiDimensionsModel, java.util.List, com.harryaskham.pidroid.sessionui.TuiCursorModel, java.lang.String, int, java.lang.Object);
+  public java.lang.String toString();
+  public int hashCode();
+  public boolean equals(java.lang.Object);
+}
+
+public final class com.harryaskham.pidroid.sessionui.TuiDimensionsModel {
+  public static final int $stable;
+  public com.harryaskham.pidroid.sessionui.TuiDimensionsModel(int, int);
+  public final int getRows();
+  public final int getColumns();
+  public final int component1();
+  public final int component2();
+  public final com.harryaskham.pidroid.sessionui.TuiDimensionsModel copy(int, int);
+  public static com.harryaskham.pidroid.sessionui.TuiDimensionsModel copy$default(com.harryaskham.pidroid.sessionui.TuiDimensionsModel, int, int, int, java.lang.Object);
+  public java.lang.String toString();
+  public int hashCode();
+  public boolean equals(java.lang.Object);
+}
+
+public final class com.harryaskham.pidroid.sessionui.TuiFrameDecoder {
+  public static final com.harryaskham.pidroid.sessionui.TuiFrameDecoder INSTANCE;
+  public static final int $stable;
+  public final com.harryaskham.pidroid.sessionui.TuiFrameState decodeSnapshot(java.lang.String, com.harryaskham.pidroid.sessionui.TuiControlRole);
+  public final com.harryaskham.pidroid.sessionui.TuiDeltaModel decodeDelta(java.lang.String);
+  public final com.harryaskham.pidroid.sessionui.TuiReplayGapModel decodeReplayGap(java.lang.String);
+}
+
+public final class com.harryaskham.pidroid.sessionui.TuiFrameException extends java.lang.IllegalArgumentException {
+  public static final int $stable;
+  public com.harryaskham.pidroid.sessionui.TuiFrameException(java.lang.String, java.lang.String);
+  public final java.lang.String getCode();
+}
+
+public final class com.harryaskham.pidroid.sessionui.TuiFramePhase extends java.lang.Enum<com.harryaskham.pidroid.sessionui.TuiFramePhase> {
+  public static final com.harryaskham.pidroid.sessionui.TuiFramePhase LIVE;
+  public static final com.harryaskham.pidroid.sessionui.TuiFramePhase REPLAY_GAP;
+  public static com.harryaskham.pidroid.sessionui.TuiFramePhase[] values();
+  public static com.harryaskham.pidroid.sessionui.TuiFramePhase valueOf(java.lang.String);
+  public static kotlin.enums.EnumEntries<com.harryaskham.pidroid.sessionui.TuiFramePhase> getEntries();
+}
+
+public final class com.harryaskham.pidroid.sessionui.TuiFrameReducer {
+  public static final com.harryaskham.pidroid.sessionui.TuiFrameReducer INSTANCE;
+  public static final int $stable;
+  public final com.harryaskham.pidroid.sessionui.TuiFrameState applySnapshot(com.harryaskham.pidroid.sessionui.TuiFrameState, com.harryaskham.pidroid.sessionui.TuiFrameState);
+  public final com.harryaskham.pidroid.sessionui.TuiFrameState applyDelta(com.harryaskham.pidroid.sessionui.TuiFrameState, com.harryaskham.pidroid.sessionui.TuiDeltaModel);
+  public final com.harryaskham.pidroid.sessionui.TuiFrameState applyReplayGap(com.harryaskham.pidroid.sessionui.TuiFrameState, com.harryaskham.pidroid.sessionui.TuiReplayGapModel);
+}
+
+public final class com.harryaskham.pidroid.sessionui.TuiFrameReducerKt {
+  public static final kotlinx.serialization.json.JsonObject access$requiredObject(kotlinx.serialization.json.JsonObject, java.lang.String);
+  public static final kotlinx.serialization.json.JsonArray access$requiredArray(kotlinx.serialization.json.JsonObject, java.lang.String);
+  public static final java.lang.String access$optionalBoundedString(kotlinx.serialization.json.JsonObject, java.lang.String, int);
+  public static final long access$requiredPositiveLong(kotlinx.serialization.json.JsonObject, java.lang.String);
+  public static final boolean access$requiredBoolean(kotlinx.serialization.json.JsonObject, java.lang.String);
+  public static final int access$requiredNonNegativeInt(kotlinx.serialization.json.JsonObject, java.lang.String);
+  public static final int access$requiredPositiveInt(kotlinx.serialization.json.JsonObject, java.lang.String);
+  public static final java.lang.String access$requiredBoundedString(kotlinx.serialization.json.JsonObject, java.lang.String, int, boolean);
+  public static final java.lang.String access$optionalColor(kotlinx.serialization.json.JsonObject, java.lang.String);
+  public static final java.lang.Boolean access$optionalBoolean(kotlinx.serialization.json.JsonObject, java.lang.String);
+}
+
+public final class com.harryaskham.pidroid.sessionui.TuiFrameState {
+  public static final int $stable;
+  public com.harryaskham.pidroid.sessionui.TuiFrameState(com.harryaskham.pidroid.sessionui.TuiSessionIdentity, com.harryaskham.pidroid.sessionui.TuiDimensionsModel, java.util.List<com.harryaskham.pidroid.sessionui.TuiRowModel>, com.harryaskham.pidroid.sessionui.TuiCursorModel, java.lang.String, java.lang.String, long, com.harryaskham.pidroid.sessionui.TuiFramePhase, com.harryaskham.pidroid.sessionui.TuiControlRole, java.lang.String);
+  public com.harryaskham.pidroid.sessionui.TuiFrameState(com.harryaskham.pidroid.sessionui.TuiSessionIdentity, com.harryaskham.pidroid.sessionui.TuiDimensionsModel, java.util.List, com.harryaskham.pidroid.sessionui.TuiCursorModel, java.lang.String, java.lang.String, long, com.harryaskham.pidroid.sessionui.TuiFramePhase, com.harryaskham.pidroid.sessionui.TuiControlRole, java.lang.String, int, kotlin.jvm.internal.DefaultConstructorMarker);
+  public final com.harryaskham.pidroid.sessionui.TuiSessionIdentity getIdentity();
+  public final com.harryaskham.pidroid.sessionui.TuiDimensionsModel getDimensions();
+  public final java.util.List<com.harryaskham.pidroid.sessionui.TuiRowModel> getRows();
+  public final com.harryaskham.pidroid.sessionui.TuiCursorModel getCursor();
+  public final java.lang.String getTitle();
+  public final java.lang.String getHighWaterCursor();
+  public final long getSequence();
+  public final com.harryaskham.pidroid.sessionui.TuiFramePhase getPhase();
+  public final com.harryaskham.pidroid.sessionui.TuiControlRole getRole();
+  public final java.lang.String getGapReason();
+  public final boolean getCanSendIntents();
+  public java.lang.String toString();
+  public final com.harryaskham.pidroid.sessionui.TuiSessionIdentity component1();
+  public final com.harryaskham.pidroid.sessionui.TuiDimensionsModel component2();
+  public final java.util.List<com.harryaskham.pidroid.sessionui.TuiRowModel> component3();
+  public final com.harryaskham.pidroid.sessionui.TuiCursorModel component4();
+  public final java.lang.String component5();
+  public final java.lang.String component6();
+  public final long component7();
+  public final com.harryaskham.pidroid.sessionui.TuiFramePhase component8();
+  public final com.harryaskham.pidroid.sessionui.TuiControlRole component9();
+  public final java.lang.String component10();
+  public final com.harryaskham.pidroid.sessionui.TuiFrameState copy(com.harryaskham.pidroid.sessionui.TuiSessionIdentity, com.harryaskham.pidroid.sessionui.TuiDimensionsModel, java.util.List<com.harryaskham.pidroid.sessionui.TuiRowModel>, com.harryaskham.pidroid.sessionui.TuiCursorModel, java.lang.String, java.lang.String, long, com.harryaskham.pidroid.sessionui.TuiFramePhase, com.harryaskham.pidroid.sessionui.TuiControlRole, java.lang.String);
+  public static com.harryaskham.pidroid.sessionui.TuiFrameState copy$default(com.harryaskham.pidroid.sessionui.TuiFrameState, com.harryaskham.pidroid.sessionui.TuiSessionIdentity, com.harryaskham.pidroid.sessionui.TuiDimensionsModel, java.util.List, com.harryaskham.pidroid.sessionui.TuiCursorModel, java.lang.String, java.lang.String, long, com.harryaskham.pidroid.sessionui.TuiFramePhase, com.harryaskham.pidroid.sessionui.TuiControlRole, java.lang.String, int, java.lang.Object);
+  public int hashCode();
+  public boolean equals(java.lang.Object);
+}
+
+public interface com.harryaskham.pidroid.sessionui.TuiInputModel {
+}
+
+public final class com.harryaskham.pidroid.sessionui.TuiInputModel$Key implements com.harryaskham.pidroid.sessionui.TuiInputModel {
+  public static final int $stable;
+  public com.harryaskham.pidroid.sessionui.TuiInputModel$Key(java.lang.String, java.util.Set<? extends com.harryaskham.pidroid.sessionui.TuiModifier>);
+  public com.harryaskham.pidroid.sessionui.TuiInputModel$Key(java.lang.String, java.util.Set, int, kotlin.jvm.internal.DefaultConstructorMarker);
+  public final java.lang.String getKey();
+  public final java.util.Set<com.harryaskham.pidroid.sessionui.TuiModifier> getModifiers();
+  public final java.lang.String component1();
+  public final java.util.Set<com.harryaskham.pidroid.sessionui.TuiModifier> component2();
+  public final com.harryaskham.pidroid.sessionui.TuiInputModel$Key copy(java.lang.String, java.util.Set<? extends com.harryaskham.pidroid.sessionui.TuiModifier>);
+  public static com.harryaskham.pidroid.sessionui.TuiInputModel$Key copy$default(com.harryaskham.pidroid.sessionui.TuiInputModel$Key, java.lang.String, java.util.Set, int, java.lang.Object);
+  public java.lang.String toString();
+  public int hashCode();
+  public boolean equals(java.lang.Object);
+}
+
+public final class com.harryaskham.pidroid.sessionui.TuiInputModel$Paste implements com.harryaskham.pidroid.sessionui.TuiInputModel {
+  public static final int $stable;
+  public com.harryaskham.pidroid.sessionui.TuiInputModel$Paste(java.lang.String);
+  public final java.lang.String getText();
+  public final java.lang.String component1();
+  public final com.harryaskham.pidroid.sessionui.TuiInputModel$Paste copy(java.lang.String);
+  public static com.harryaskham.pidroid.sessionui.TuiInputModel$Paste copy$default(com.harryaskham.pidroid.sessionui.TuiInputModel$Paste, java.lang.String, int, java.lang.Object);
+  public java.lang.String toString();
+  public int hashCode();
+  public boolean equals(java.lang.Object);
+}
+
+public final class com.harryaskham.pidroid.sessionui.TuiInputModel$Text implements com.harryaskham.pidroid.sessionui.TuiInputModel {
+  public static final int $stable;
+  public com.harryaskham.pidroid.sessionui.TuiInputModel$Text(java.lang.String);
+  public final java.lang.String getText();
+  public final java.lang.String component1();
+  public final com.harryaskham.pidroid.sessionui.TuiInputModel$Text copy(java.lang.String);
+  public static com.harryaskham.pidroid.sessionui.TuiInputModel$Text copy$default(com.harryaskham.pidroid.sessionui.TuiInputModel$Text, java.lang.String, int, java.lang.Object);
+  public java.lang.String toString();
+  public int hashCode();
+  public boolean equals(java.lang.Object);
+}
+
+public final class com.harryaskham.pidroid.sessionui.TuiIntentDecision {
+  public static final int $stable;
+  public com.harryaskham.pidroid.sessionui.TuiIntentDecision(com.harryaskham.pidroid.sessionui.TuiInteractionIntent, com.harryaskham.pidroid.sessionui.TuiIntentDisposition);
+  public final com.harryaskham.pidroid.sessionui.TuiInteractionIntent getIntent();
+  public final com.harryaskham.pidroid.sessionui.TuiIntentDisposition getDisposition();
+  public final boolean isDispatchable();
+  public final com.harryaskham.pidroid.sessionui.TuiInteractionIntent component1();
+  public final com.harryaskham.pidroid.sessionui.TuiIntentDisposition component2();
+  public final com.harryaskham.pidroid.sessionui.TuiIntentDecision copy(com.harryaskham.pidroid.sessionui.TuiInteractionIntent, com.harryaskham.pidroid.sessionui.TuiIntentDisposition);
+  public static com.harryaskham.pidroid.sessionui.TuiIntentDecision copy$default(com.harryaskham.pidroid.sessionui.TuiIntentDecision, com.harryaskham.pidroid.sessionui.TuiInteractionIntent, com.harryaskham.pidroid.sessionui.TuiIntentDisposition, int, java.lang.Object);
+  public java.lang.String toString();
+  public int hashCode();
+  public boolean equals(java.lang.Object);
+}
+
+public final class com.harryaskham.pidroid.sessionui.TuiIntentDisposition extends java.lang.Enum<com.harryaskham.pidroid.sessionui.TuiIntentDisposition> {
+  public static final com.harryaskham.pidroid.sessionui.TuiIntentDisposition READY;
+  public static final com.harryaskham.pidroid.sessionui.TuiIntentDisposition REQUIRES_CONTROLLER;
+  public static final com.harryaskham.pidroid.sessionui.TuiIntentDisposition RESYNC_REQUIRED;
+  public static com.harryaskham.pidroid.sessionui.TuiIntentDisposition[] values();
+  public static com.harryaskham.pidroid.sessionui.TuiIntentDisposition valueOf(java.lang.String);
+  public static kotlin.enums.EnumEntries<com.harryaskham.pidroid.sessionui.TuiIntentDisposition> getEntries();
+}
+
+public final class com.harryaskham.pidroid.sessionui.TuiIntentReducer {
+  public static final com.harryaskham.pidroid.sessionui.TuiIntentReducer INSTANCE;
+  public static final int $stable;
+  public final com.harryaskham.pidroid.sessionui.TuiIntentDecision input(com.harryaskham.pidroid.sessionui.TuiFrameState, com.harryaskham.pidroid.sessionui.TuiInputModel);
+  public final com.harryaskham.pidroid.sessionui.TuiIntentDecision resize(com.harryaskham.pidroid.sessionui.TuiFrameState, com.harryaskham.pidroid.sessionui.TuiDimensionsModel);
+}
+
+public interface com.harryaskham.pidroid.sessionui.TuiInteractionIntent {
+}
+
+public final class com.harryaskham.pidroid.sessionui.TuiInteractionIntent$Input implements com.harryaskham.pidroid.sessionui.TuiInteractionIntent {
+  public static final int $stable;
+  public com.harryaskham.pidroid.sessionui.TuiInteractionIntent$Input(com.harryaskham.pidroid.sessionui.TuiInputModel);
+  public final com.harryaskham.pidroid.sessionui.TuiInputModel getInput();
+  public final com.harryaskham.pidroid.sessionui.TuiInputModel component1();
+  public final com.harryaskham.pidroid.sessionui.TuiInteractionIntent$Input copy(com.harryaskham.pidroid.sessionui.TuiInputModel);
+  public static com.harryaskham.pidroid.sessionui.TuiInteractionIntent$Input copy$default(com.harryaskham.pidroid.sessionui.TuiInteractionIntent$Input, com.harryaskham.pidroid.sessionui.TuiInputModel, int, java.lang.Object);
+  public java.lang.String toString();
+  public int hashCode();
+  public boolean equals(java.lang.Object);
+}
+
+public final class com.harryaskham.pidroid.sessionui.TuiInteractionIntent$Resize implements com.harryaskham.pidroid.sessionui.TuiInteractionIntent {
+  public static final int $stable;
+  public com.harryaskham.pidroid.sessionui.TuiInteractionIntent$Resize(com.harryaskham.pidroid.sessionui.TuiDimensionsModel);
+  public final com.harryaskham.pidroid.sessionui.TuiDimensionsModel getDimensions();
+  public final com.harryaskham.pidroid.sessionui.TuiDimensionsModel component1();
+  public final com.harryaskham.pidroid.sessionui.TuiInteractionIntent$Resize copy(com.harryaskham.pidroid.sessionui.TuiDimensionsModel);
+  public static com.harryaskham.pidroid.sessionui.TuiInteractionIntent$Resize copy$default(com.harryaskham.pidroid.sessionui.TuiInteractionIntent$Resize, com.harryaskham.pidroid.sessionui.TuiDimensionsModel, int, java.lang.Object);
+  public java.lang.String toString();
+  public int hashCode();
+  public boolean equals(java.lang.Object);
+}
+
+public final class com.harryaskham.pidroid.sessionui.TuiModifier extends java.lang.Enum<com.harryaskham.pidroid.sessionui.TuiModifier> {
+  public static final com.harryaskham.pidroid.sessionui.TuiModifier CTRL;
+  public static final com.harryaskham.pidroid.sessionui.TuiModifier ALT;
+  public static final com.harryaskham.pidroid.sessionui.TuiModifier SHIFT;
+  public static final com.harryaskham.pidroid.sessionui.TuiModifier META;
+  public static com.harryaskham.pidroid.sessionui.TuiModifier[] values();
+  public static com.harryaskham.pidroid.sessionui.TuiModifier valueOf(java.lang.String);
+  public static kotlin.enums.EnumEntries<com.harryaskham.pidroid.sessionui.TuiModifier> getEntries();
+}
+
+public final class com.harryaskham.pidroid.sessionui.TuiReplayGapModel {
+  public static final int $stable;
+  public com.harryaskham.pidroid.sessionui.TuiReplayGapModel(com.harryaskham.pidroid.sessionui.TuiSessionIdentity, java.lang.String, java.lang.String, java.lang.String, java.lang.String, boolean);
+  public final com.harryaskham.pidroid.sessionui.TuiSessionIdentity getIdentity();
+  public final java.lang.String getReason();
+  public final java.lang.String getRequestedCursor();
+  public final java.lang.String getHighWaterCursor();
+  public final java.lang.String getOldestAvailableCursor();
+  public final boolean getSnapshotFollows();
+  public final com.harryaskham.pidroid.sessionui.TuiSessionIdentity component1();
+  public final java.lang.String component2();
+  public final java.lang.String component3();
+  public final java.lang.String component4();
+  public final java.lang.String component5();
+  public final boolean component6();
+  public final com.harryaskham.pidroid.sessionui.TuiReplayGapModel copy(com.harryaskham.pidroid.sessionui.TuiSessionIdentity, java.lang.String, java.lang.String, java.lang.String, java.lang.String, boolean);
+  public static com.harryaskham.pidroid.sessionui.TuiReplayGapModel copy$default(com.harryaskham.pidroid.sessionui.TuiReplayGapModel, com.harryaskham.pidroid.sessionui.TuiSessionIdentity, java.lang.String, java.lang.String, java.lang.String, java.lang.String, boolean, int, java.lang.Object);
+  public java.lang.String toString();
+  public int hashCode();
+  public boolean equals(java.lang.Object);
+}
+
+public final class com.harryaskham.pidroid.sessionui.TuiRowModel {
+  public static final com.harryaskham.pidroid.sessionui.TuiRowModel$Companion Companion;
+  public static final int $stable;
+  public com.harryaskham.pidroid.sessionui.TuiRowModel(int, java.util.List<com.harryaskham.pidroid.sessionui.TuiStyledRunModel>);
+  public final int getRow();
+  public final java.util.List<com.harryaskham.pidroid.sessionui.TuiStyledRunModel> getRuns();
+  public final java.lang.String getPlainText();
+  public java.lang.String toString();
+}
+
+public final class com.harryaskham.pidroid.sessionui.TuiRowModel$Companion {
+  public final com.harryaskham.pidroid.sessionui.TuiRowModel empty(int);
+  public com.harryaskham.pidroid.sessionui.TuiRowModel$Companion(kotlin.jvm.internal.DefaultConstructorMarker);
+}
+
+public final class com.harryaskham.pidroid.sessionui.TuiScreenshotProfile {
+  public static final int $stable;
+  public com.harryaskham.pidroid.sessionui.TuiScreenshotProfile(java.lang.String, int, int, com.harryaskham.pidroid.sessionui.TuiSurfaceLayout, com.harryaskham.pidroid.sessionui.TuiControlRole);
+  public final java.lang.String getId();
+  public final int getWindowWidthPx();
+  public final int getWindowHeightPx();
+  public final com.harryaskham.pidroid.sessionui.TuiSurfaceLayout getLayout();
+  public final com.harryaskham.pidroid.sessionui.TuiControlRole getRole();
+  public final java.lang.String component1();
+  public final int component2();
+  public final int component3();
+  public final com.harryaskham.pidroid.sessionui.TuiSurfaceLayout component4();
+  public final com.harryaskham.pidroid.sessionui.TuiControlRole component5();
+  public final com.harryaskham.pidroid.sessionui.TuiScreenshotProfile copy(java.lang.String, int, int, com.harryaskham.pidroid.sessionui.TuiSurfaceLayout, com.harryaskham.pidroid.sessionui.TuiControlRole);
+  public static com.harryaskham.pidroid.sessionui.TuiScreenshotProfile copy$default(com.harryaskham.pidroid.sessionui.TuiScreenshotProfile, java.lang.String, int, int, com.harryaskham.pidroid.sessionui.TuiSurfaceLayout, com.harryaskham.pidroid.sessionui.TuiControlRole, int, java.lang.Object);
+  public java.lang.String toString();
+  public int hashCode();
+  public boolean equals(java.lang.Object);
+}
+
+public final class com.harryaskham.pidroid.sessionui.TuiScreenshotProfiles {
+  public static final com.harryaskham.pidroid.sessionui.TuiScreenshotProfiles INSTANCE;
+  public static final int $stable;
+  public final java.util.List<com.harryaskham.pidroid.sessionui.TuiScreenshotProfile> getAll();
+}
+
+public final class com.harryaskham.pidroid.sessionui.TuiSessionIdentity {
+  public static final int $stable;
+  public com.harryaskham.pidroid.sessionui.TuiSessionIdentity(java.lang.String, java.lang.String, int);
+  public final java.lang.String getHostInstanceId();
+  public final java.lang.String getSessionId();
+  public final int getGeneration();
+  public final java.lang.String component1();
+  public final java.lang.String component2();
+  public final int component3();
+  public final com.harryaskham.pidroid.sessionui.TuiSessionIdentity copy(java.lang.String, java.lang.String, int);
+  public static com.harryaskham.pidroid.sessionui.TuiSessionIdentity copy$default(com.harryaskham.pidroid.sessionui.TuiSessionIdentity, java.lang.String, java.lang.String, int, int, java.lang.Object);
+  public java.lang.String toString();
+  public int hashCode();
+  public boolean equals(java.lang.Object);
+}
+
+public final class com.harryaskham.pidroid.sessionui.TuiStyleModel {
+  public static final int $stable;
+  public com.harryaskham.pidroid.sessionui.TuiStyleModel(java.lang.String, java.lang.String, boolean, boolean, boolean, boolean, boolean);
+  public com.harryaskham.pidroid.sessionui.TuiStyleModel(java.lang.String, java.lang.String, boolean, boolean, boolean, boolean, boolean, int, kotlin.jvm.internal.DefaultConstructorMarker);
+  public final java.lang.String getForeground();
+  public final java.lang.String getBackground();
+  public final boolean getBold();
+  public final boolean getDim();
+  public final boolean getItalic();
+  public final boolean getUnderline();
+  public final boolean getInverse();
+  public final java.lang.String component1();
+  public final java.lang.String component2();
+  public final boolean component3();
+  public final boolean component4();
+  public final boolean component5();
+  public final boolean component6();
+  public final boolean component7();
+  public final com.harryaskham.pidroid.sessionui.TuiStyleModel copy(java.lang.String, java.lang.String, boolean, boolean, boolean, boolean, boolean);
+  public static com.harryaskham.pidroid.sessionui.TuiStyleModel copy$default(com.harryaskham.pidroid.sessionui.TuiStyleModel, java.lang.String, java.lang.String, boolean, boolean, boolean, boolean, boolean, int, java.lang.Object);
+  public java.lang.String toString();
+  public int hashCode();
+  public boolean equals(java.lang.Object);
+  public com.harryaskham.pidroid.sessionui.TuiStyleModel();
+}
+
+public final class com.harryaskham.pidroid.sessionui.TuiStyledRunModel {
+  public static final int $stable;
+  public com.harryaskham.pidroid.sessionui.TuiStyledRunModel(java.lang.String, com.harryaskham.pidroid.sessionui.TuiStyleModel);
+  public final java.lang.String getText();
+  public final com.harryaskham.pidroid.sessionui.TuiStyleModel getStyle();
+  public java.lang.String toString();
+}
+
+public final class com.harryaskham.pidroid.sessionui.TuiSurfaceFormFactor extends java.lang.Enum<com.harryaskham.pidroid.sessionui.TuiSurfaceFormFactor> {
+  public static final com.harryaskham.pidroid.sessionui.TuiSurfaceFormFactor PHONE;
+  public static final com.harryaskham.pidroid.sessionui.TuiSurfaceFormFactor TABLET;
+  public static com.harryaskham.pidroid.sessionui.TuiSurfaceFormFactor[] values();
+  public static com.harryaskham.pidroid.sessionui.TuiSurfaceFormFactor valueOf(java.lang.String);
+  public static kotlin.enums.EnumEntries<com.harryaskham.pidroid.sessionui.TuiSurfaceFormFactor> getEntries();
+}
+
+public final class com.harryaskham.pidroid.sessionui.TuiSurfaceKt {
+  public static final void TuiSurface(com.harryaskham.pidroid.sessionui.TuiFrameState, com.harryaskham.pidroid.sessionui.TuiSurfaceLayout, androidx.compose.ui.Modifier, androidx.compose.runtime.Composer, int, int);
+  public static final void access$TerminalRow(com.harryaskham.pidroid.sessionui.TuiRowModel, com.harryaskham.pidroid.sessionui.TuiCursorModel, float, androidx.compose.runtime.Composer, int);
+}
+
+public final class com.harryaskham.pidroid.sessionui.TuiSurfaceKt$TerminalRows$lambda$0$0$0$$inlined$items$default$1 implements kotlin.jvm.functions.Function1 {
+  public static final com.harryaskham.pidroid.sessionui.TuiSurfaceKt$TerminalRows$lambda$0$0$0$$inlined$items$default$1 INSTANCE;
+  public com.harryaskham.pidroid.sessionui.TuiSurfaceKt$TerminalRows$lambda$0$0$0$$inlined$items$default$1();
+  public final java.lang.Void invoke(com.harryaskham.pidroid.sessionui.TuiRowModel);
+  public java.lang.Object invoke(java.lang.Object);
+}
+
+public final class com.harryaskham.pidroid.sessionui.TuiSurfaceKt$TerminalRows$lambda$0$0$0$$inlined$items$default$2 implements kotlin.jvm.functions.Function1<java.lang.Integer, java.lang.Object> {
+  public com.harryaskham.pidroid.sessionui.TuiSurfaceKt$TerminalRows$lambda$0$0$0$$inlined$items$default$2(kotlin.jvm.functions.Function1, java.util.List);
+  public final java.lang.Object invoke(int);
+  public java.lang.Object invoke(java.lang.Object);
+}
+
+public final class com.harryaskham.pidroid.sessionui.TuiSurfaceKt$TerminalRows$lambda$0$0$0$$inlined$items$default$3 implements kotlin.jvm.functions.Function1<java.lang.Integer, java.lang.Object> {
+  public com.harryaskham.pidroid.sessionui.TuiSurfaceKt$TerminalRows$lambda$0$0$0$$inlined$items$default$3(kotlin.jvm.functions.Function1, java.util.List);
+  public final java.lang.Object invoke(int);
+  public java.lang.Object invoke(java.lang.Object);
+}
+
+public final class com.harryaskham.pidroid.sessionui.TuiSurfaceKt$TerminalRows$lambda$0$0$0$$inlined$items$default$4 implements kotlin.jvm.functions.Function4<androidx.compose.foundation.lazy.LazyItemScope, java.lang.Integer, androidx.compose.runtime.Composer, java.lang.Integer, kotlin.Unit> {
+  public com.harryaskham.pidroid.sessionui.TuiSurfaceKt$TerminalRows$lambda$0$0$0$$inlined$items$default$4(java.util.List, com.harryaskham.pidroid.sessionui.TuiFrameState, com.harryaskham.pidroid.sessionui.TuiSurfaceLayout);
+  public final void invoke(androidx.compose.foundation.lazy.LazyItemScope, int, androidx.compose.runtime.Composer, int);
+  public java.lang.Object invoke(java.lang.Object, java.lang.Object, java.lang.Object, java.lang.Object);
+}
+
+public final class com.harryaskham.pidroid.sessionui.TuiSurfaceLayout {
+  public static final com.harryaskham.pidroid.sessionui.TuiSurfaceLayout$Companion Companion;
+  public static final int $stable;
+  public com.harryaskham.pidroid.sessionui.TuiSurfaceLayout(com.harryaskham.pidroid.sessionui.TuiSurfaceFormFactor, float, float, float, float);
+  public final com.harryaskham.pidroid.sessionui.TuiSurfaceFormFactor getFormFactor();
+  public final float getFontScale();
+  public final float getMinimumTouchTargetDp();
+  public final float getMinimumRowHeightDp();
+  public final float getTerminalPaddingDp();
+  public final com.harryaskham.pidroid.sessionui.TuiSurfaceFormFactor component1();
+  public final float component2();
+  public final float component3();
+  public final float component4();
+  public final float component5();
+  public final com.harryaskham.pidroid.sessionui.TuiSurfaceLayout copy(com.harryaskham.pidroid.sessionui.TuiSurfaceFormFactor, float, float, float, float);
+  public static com.harryaskham.pidroid.sessionui.TuiSurfaceLayout copy$default(com.harryaskham.pidroid.sessionui.TuiSurfaceLayout, com.harryaskham.pidroid.sessionui.TuiSurfaceFormFactor, float, float, float, float, int, java.lang.Object);
+  public java.lang.String toString();
+  public int hashCode();
+  public boolean equals(java.lang.Object);
+}
+
+public final class com.harryaskham.pidroid.sessionui.TuiSurfaceLayout$Companion {
+  public final com.harryaskham.pidroid.sessionui.TuiSurfaceLayout phone(float);
+  public static com.harryaskham.pidroid.sessionui.TuiSurfaceLayout phone$default(com.harryaskham.pidroid.sessionui.TuiSurfaceLayout$Companion, float, int, java.lang.Object);
+  public final com.harryaskham.pidroid.sessionui.TuiSurfaceLayout tablet(float);
+  public static com.harryaskham.pidroid.sessionui.TuiSurfaceLayout tablet$default(com.harryaskham.pidroid.sessionui.TuiSurfaceLayout$Companion, float, int, java.lang.Object);
+  public com.harryaskham.pidroid.sessionui.TuiSurfaceLayout$Companion(kotlin.jvm.internal.DefaultConstructorMarker);
+}
+
+public final class com.harryaskham.pidroid.sessionui.TuiSurfaceModelsKt {
+  public static final int TUI_MAX_ROWS = 200;
+  public static final int TUI_MAX_COLUMNS = 320;
+}

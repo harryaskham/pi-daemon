@@ -1,0 +1,668 @@
+# Pi Droid SDK binary API baseline
+# artifact=workspace-ui
+# version=0.3.0-alpha.1
+# Generated with jar+javap -public -constants; update only with migration notes.
+
+public final class com.harryaskham.pidroid.workspace.ComposableSingletons$WorkspaceComposeShellKt {
+  public static final com.harryaskham.pidroid.workspace.ComposableSingletons$WorkspaceComposeShellKt INSTANCE;
+  public com.harryaskham.pidroid.workspace.ComposableSingletons$WorkspaceComposeShellKt();
+  public final kotlin.jvm.functions.Function2<androidx.compose.runtime.Composer, java.lang.Integer, kotlin.Unit> getLambda$-698035927$MODULE();
+  public final kotlin.jvm.functions.Function2<androidx.compose.runtime.Composer, java.lang.Integer, kotlin.Unit> getLambda$-312385193$MODULE();
+  public final kotlin.jvm.functions.Function2<androidx.compose.runtime.Composer, java.lang.Integer, kotlin.Unit> getLambda$2143285629$MODULE();
+  public final kotlin.jvm.functions.Function2<androidx.compose.runtime.Composer, java.lang.Integer, kotlin.Unit> getLambda$137951938$MODULE();
+}
+
+public final class com.harryaskham.pidroid.workspace.SplitAxis extends java.lang.Enum<com.harryaskham.pidroid.workspace.SplitAxis> {
+  public static final com.harryaskham.pidroid.workspace.SplitAxis$Companion Companion;
+  public static final com.harryaskham.pidroid.workspace.SplitAxis HORIZONTAL;
+  public static final com.harryaskham.pidroid.workspace.SplitAxis VERTICAL;
+  public static com.harryaskham.pidroid.workspace.SplitAxis[] values();
+  public static com.harryaskham.pidroid.workspace.SplitAxis valueOf(java.lang.String);
+  public static kotlin.enums.EnumEntries<com.harryaskham.pidroid.workspace.SplitAxis> getEntries();
+  public static final kotlin.Lazy access$get$cachedSerializer$delegate$cp();
+}
+
+public final class com.harryaskham.pidroid.workspace.SplitAxis$Companion {
+  public final kotlinx.serialization.KSerializer<com.harryaskham.pidroid.workspace.SplitAxis> serializer();
+  public com.harryaskham.pidroid.workspace.SplitAxis$Companion(kotlin.jvm.internal.DefaultConstructorMarker);
+}
+
+public final class com.harryaskham.pidroid.workspace.SplitNode implements com.harryaskham.pidroid.workspace.WorkspaceNode {
+  public static final com.harryaskham.pidroid.workspace.SplitNode$Companion Companion;
+  public static final int $stable;
+  public com.harryaskham.pidroid.workspace.SplitNode(java.lang.String, com.harryaskham.pidroid.workspace.SplitAxis, float, com.harryaskham.pidroid.workspace.WorkspaceNode, com.harryaskham.pidroid.workspace.WorkspaceNode);
+  public java.lang.String getId();
+  public final com.harryaskham.pidroid.workspace.SplitAxis getAxis();
+  public final float getRatio();
+  public final com.harryaskham.pidroid.workspace.WorkspaceNode getFirst();
+  public final com.harryaskham.pidroid.workspace.WorkspaceNode getSecond();
+  public final java.lang.String component1();
+  public final com.harryaskham.pidroid.workspace.SplitAxis component2();
+  public final float component3();
+  public final com.harryaskham.pidroid.workspace.WorkspaceNode component4();
+  public final com.harryaskham.pidroid.workspace.WorkspaceNode component5();
+  public final com.harryaskham.pidroid.workspace.SplitNode copy(java.lang.String, com.harryaskham.pidroid.workspace.SplitAxis, float, com.harryaskham.pidroid.workspace.WorkspaceNode, com.harryaskham.pidroid.workspace.WorkspaceNode);
+  public static com.harryaskham.pidroid.workspace.SplitNode copy$default(com.harryaskham.pidroid.workspace.SplitNode, java.lang.String, com.harryaskham.pidroid.workspace.SplitAxis, float, com.harryaskham.pidroid.workspace.WorkspaceNode, com.harryaskham.pidroid.workspace.WorkspaceNode, int, java.lang.Object);
+  public java.lang.String toString();
+  public int hashCode();
+  public boolean equals(java.lang.Object);
+  public static final void write$Self$MODULE(com.harryaskham.pidroid.workspace.SplitNode, kotlinx.serialization.encoding.CompositeEncoder, kotlinx.serialization.descriptors.SerialDescriptor);
+  public com.harryaskham.pidroid.workspace.SplitNode(int, java.lang.String, com.harryaskham.pidroid.workspace.SplitAxis, float, com.harryaskham.pidroid.workspace.WorkspaceNode, com.harryaskham.pidroid.workspace.WorkspaceNode, kotlinx.serialization.internal.SerializationConstructorMarker);
+  public static final kotlin.Lazy[] access$get$childSerializers$cp();
+}
+
+public final class com.harryaskham.pidroid.workspace.SplitNode$$serializer implements kotlinx.serialization.internal.GeneratedSerializer<com.harryaskham.pidroid.workspace.SplitNode> {
+  public static final com.harryaskham.pidroid.workspace.SplitNode$$serializer INSTANCE;
+  public static final int $stable;
+  public final void serialize(kotlinx.serialization.encoding.Encoder, com.harryaskham.pidroid.workspace.SplitNode);
+  public final com.harryaskham.pidroid.workspace.SplitNode deserialize(kotlinx.serialization.encoding.Decoder);
+  public final kotlinx.serialization.descriptors.SerialDescriptor getDescriptor();
+  public final kotlinx.serialization.KSerializer<?>[] childSerializers();
+  public kotlinx.serialization.KSerializer<?>[] typeParametersSerializers();
+  public void serialize(kotlinx.serialization.encoding.Encoder, java.lang.Object);
+  public java.lang.Object deserialize(kotlinx.serialization.encoding.Decoder);
+}
+
+public final class com.harryaskham.pidroid.workspace.SplitNode$Companion {
+  public final kotlinx.serialization.KSerializer<com.harryaskham.pidroid.workspace.SplitNode> serializer();
+  public com.harryaskham.pidroid.workspace.SplitNode$Companion(kotlin.jvm.internal.DefaultConstructorMarker);
+}
+
+public final class com.harryaskham.pidroid.workspace.SplitPlacement extends java.lang.Enum<com.harryaskham.pidroid.workspace.SplitPlacement> {
+  public static final com.harryaskham.pidroid.workspace.SplitPlacement BEFORE;
+  public static final com.harryaskham.pidroid.workspace.SplitPlacement AFTER;
+  public static com.harryaskham.pidroid.workspace.SplitPlacement[] values();
+  public static com.harryaskham.pidroid.workspace.SplitPlacement valueOf(java.lang.String);
+  public static kotlin.enums.EnumEntries<com.harryaskham.pidroid.workspace.SplitPlacement> getEntries();
+}
+
+public final class com.harryaskham.pidroid.workspace.TabStackNode implements com.harryaskham.pidroid.workspace.WorkspaceNode {
+  public static final com.harryaskham.pidroid.workspace.TabStackNode$Companion Companion;
+  public static final int $stable;
+  public com.harryaskham.pidroid.workspace.TabStackNode(java.lang.String, java.lang.String, java.util.List<com.harryaskham.pidroid.workspace.WorkspaceTab>);
+  public java.lang.String getId();
+  public final java.lang.String getActiveTabId();
+  public final java.util.List<com.harryaskham.pidroid.workspace.WorkspaceTab> getTabs();
+  public final java.lang.String component1();
+  public final java.lang.String component2();
+  public final java.util.List<com.harryaskham.pidroid.workspace.WorkspaceTab> component3();
+  public final com.harryaskham.pidroid.workspace.TabStackNode copy(java.lang.String, java.lang.String, java.util.List<com.harryaskham.pidroid.workspace.WorkspaceTab>);
+  public static com.harryaskham.pidroid.workspace.TabStackNode copy$default(com.harryaskham.pidroid.workspace.TabStackNode, java.lang.String, java.lang.String, java.util.List, int, java.lang.Object);
+  public java.lang.String toString();
+  public int hashCode();
+  public boolean equals(java.lang.Object);
+  public static final void write$Self$MODULE(com.harryaskham.pidroid.workspace.TabStackNode, kotlinx.serialization.encoding.CompositeEncoder, kotlinx.serialization.descriptors.SerialDescriptor);
+  public com.harryaskham.pidroid.workspace.TabStackNode(int, java.lang.String, java.lang.String, java.util.List, kotlinx.serialization.internal.SerializationConstructorMarker);
+  public static final kotlin.Lazy[] access$get$childSerializers$cp();
+}
+
+public final class com.harryaskham.pidroid.workspace.TabStackNode$$serializer implements kotlinx.serialization.internal.GeneratedSerializer<com.harryaskham.pidroid.workspace.TabStackNode> {
+  public static final com.harryaskham.pidroid.workspace.TabStackNode$$serializer INSTANCE;
+  public static final int $stable;
+  public final void serialize(kotlinx.serialization.encoding.Encoder, com.harryaskham.pidroid.workspace.TabStackNode);
+  public final com.harryaskham.pidroid.workspace.TabStackNode deserialize(kotlinx.serialization.encoding.Decoder);
+  public final kotlinx.serialization.descriptors.SerialDescriptor getDescriptor();
+  public final kotlinx.serialization.KSerializer<?>[] childSerializers();
+  public kotlinx.serialization.KSerializer<?>[] typeParametersSerializers();
+  public void serialize(kotlinx.serialization.encoding.Encoder, java.lang.Object);
+  public java.lang.Object deserialize(kotlinx.serialization.encoding.Decoder);
+}
+
+public final class com.harryaskham.pidroid.workspace.TabStackNode$Companion {
+  public final kotlinx.serialization.KSerializer<com.harryaskham.pidroid.workspace.TabStackNode> serializer();
+  public com.harryaskham.pidroid.workspace.TabStackNode$Companion(kotlin.jvm.internal.DefaultConstructorMarker);
+}
+
+public final class com.harryaskham.pidroid.workspace.TargetKind extends java.lang.Enum<com.harryaskham.pidroid.workspace.TargetKind> {
+  public static final com.harryaskham.pidroid.workspace.TargetKind$Companion Companion;
+  public static final com.harryaskham.pidroid.workspace.TargetKind EMPTY;
+  public static final com.harryaskham.pidroid.workspace.TargetKind HOSTS;
+  public static final com.harryaskham.pidroid.workspace.TargetKind DIAGNOSTICS;
+  public static final com.harryaskham.pidroid.workspace.TargetKind SESSION_RICH;
+  public static final com.harryaskham.pidroid.workspace.TargetKind SESSION_TUI;
+  public static final com.harryaskham.pidroid.workspace.TargetKind SESSION_INFO;
+  public static com.harryaskham.pidroid.workspace.TargetKind[] values();
+  public static com.harryaskham.pidroid.workspace.TargetKind valueOf(java.lang.String);
+  public static kotlin.enums.EnumEntries<com.harryaskham.pidroid.workspace.TargetKind> getEntries();
+  public static final kotlin.Lazy access$get$cachedSerializer$delegate$cp();
+}
+
+public final class com.harryaskham.pidroid.workspace.TargetKind$Companion {
+  public final kotlinx.serialization.KSerializer<com.harryaskham.pidroid.workspace.TargetKind> serializer();
+  public com.harryaskham.pidroid.workspace.TargetKind$Companion(kotlin.jvm.internal.DefaultConstructorMarker);
+}
+
+public final class com.harryaskham.pidroid.workspace.WorkspaceAdaptivePolicy {
+  public static final com.harryaskham.pidroid.workspace.WorkspaceAdaptivePolicy INSTANCE;
+  public static final int $stable;
+  public final com.harryaskham.pidroid.workspace.WorkspaceShellLayout resolve(com.harryaskham.pidroid.workspace.WorkspaceViewport);
+}
+
+public final class com.harryaskham.pidroid.workspace.WorkspaceComposeShellKt {
+  public static final void PiDroidWorkspaceShell(com.harryaskham.pidroid.workspace.WorkspaceShellFixture, com.harryaskham.pidroid.workspace.WorkspaceShellLayout, com.harryaskham.pidroid.workspace.WorkspaceShellState, androidx.compose.ui.Modifier, kotlin.jvm.functions.Function1<? super com.harryaskham.pidroid.workspace.WorkspaceShellAction, kotlin.Unit>, androidx.compose.runtime.Composer, int, int);
+  public static final long access$getNordAccent$p();
+  public static final long access$getNordMuted$p();
+  public static final long access$getNordPrimary$p();
+  public static final void access$ProgressRail-RPmYEkk(float, long, androidx.compose.runtime.Composer, int);
+}
+
+public final class com.harryaskham.pidroid.workspace.WorkspaceComposeShellKt$WhenMappings {
+  public static final int[] $EnumSwitchMapping$0;
+  public static final int[] $EnumSwitchMapping$1;
+  public static final int[] $EnumSwitchMapping$2;
+}
+
+public final class com.harryaskham.pidroid.workspace.WorkspaceContentRegion {
+  public static final int $stable;
+  public com.harryaskham.pidroid.workspace.WorkspaceContentRegion(float, float);
+  public final float getStartDp();
+  public final float getWidthDp();
+  public final float getEndDp();
+  public final float component1();
+  public final float component2();
+  public final com.harryaskham.pidroid.workspace.WorkspaceContentRegion copy(float, float);
+  public static com.harryaskham.pidroid.workspace.WorkspaceContentRegion copy$default(com.harryaskham.pidroid.workspace.WorkspaceContentRegion, float, float, int, java.lang.Object);
+  public java.lang.String toString();
+  public int hashCode();
+  public boolean equals(java.lang.Object);
+}
+
+public final class com.harryaskham.pidroid.workspace.WorkspaceDefaults {
+  public static final com.harryaskham.pidroid.workspace.WorkspaceDefaults INSTANCE;
+  public static final java.lang.String ROOT_STACK_ID = "safe-root-stack";
+  public static final java.lang.String EMPTY_TAB_ID = "safe-empty-tab";
+  public static final int $stable;
+  public final com.harryaskham.pidroid.workspace.WorkspaceDocument document(long);
+  public static com.harryaskham.pidroid.workspace.WorkspaceDocument document$default(com.harryaskham.pidroid.workspace.WorkspaceDefaults, long, int, java.lang.Object);
+}
+
+public final class com.harryaskham.pidroid.workspace.WorkspaceDocument {
+  public static final com.harryaskham.pidroid.workspace.WorkspaceDocument$Companion Companion;
+  public static final int $stable;
+  public com.harryaskham.pidroid.workspace.WorkspaceDocument(int, long, com.harryaskham.pidroid.workspace.WorkspaceNode, java.lang.String);
+  public com.harryaskham.pidroid.workspace.WorkspaceDocument(int, long, com.harryaskham.pidroid.workspace.WorkspaceNode, java.lang.String, int, kotlin.jvm.internal.DefaultConstructorMarker);
+  public final int getSchemaVersion();
+  public final long getRevision();
+  public final com.harryaskham.pidroid.workspace.WorkspaceNode getRoot();
+  public final java.lang.String getFocusedTabId();
+  public final int component1();
+  public final long component2();
+  public final com.harryaskham.pidroid.workspace.WorkspaceNode component3();
+  public final java.lang.String component4();
+  public final com.harryaskham.pidroid.workspace.WorkspaceDocument copy(int, long, com.harryaskham.pidroid.workspace.WorkspaceNode, java.lang.String);
+  public static com.harryaskham.pidroid.workspace.WorkspaceDocument copy$default(com.harryaskham.pidroid.workspace.WorkspaceDocument, int, long, com.harryaskham.pidroid.workspace.WorkspaceNode, java.lang.String, int, java.lang.Object);
+  public java.lang.String toString();
+  public int hashCode();
+  public boolean equals(java.lang.Object);
+  public static final void write$Self$MODULE(com.harryaskham.pidroid.workspace.WorkspaceDocument, kotlinx.serialization.encoding.CompositeEncoder, kotlinx.serialization.descriptors.SerialDescriptor);
+  public com.harryaskham.pidroid.workspace.WorkspaceDocument(int, int, long, com.harryaskham.pidroid.workspace.WorkspaceNode, java.lang.String, kotlinx.serialization.internal.SerializationConstructorMarker);
+  public static final kotlin.Lazy[] access$get$childSerializers$cp();
+}
+
+public final class com.harryaskham.pidroid.workspace.WorkspaceDocument$$serializer implements kotlinx.serialization.internal.GeneratedSerializer<com.harryaskham.pidroid.workspace.WorkspaceDocument> {
+  public static final com.harryaskham.pidroid.workspace.WorkspaceDocument$$serializer INSTANCE;
+  public static final int $stable;
+  public final void serialize(kotlinx.serialization.encoding.Encoder, com.harryaskham.pidroid.workspace.WorkspaceDocument);
+  public final com.harryaskham.pidroid.workspace.WorkspaceDocument deserialize(kotlinx.serialization.encoding.Decoder);
+  public final kotlinx.serialization.descriptors.SerialDescriptor getDescriptor();
+  public final kotlinx.serialization.KSerializer<?>[] childSerializers();
+  public kotlinx.serialization.KSerializer<?>[] typeParametersSerializers();
+  public void serialize(kotlinx.serialization.encoding.Encoder, java.lang.Object);
+  public java.lang.Object deserialize(kotlinx.serialization.encoding.Decoder);
+}
+
+public final class com.harryaskham.pidroid.workspace.WorkspaceDocument$Companion {
+  public final kotlinx.serialization.KSerializer<com.harryaskham.pidroid.workspace.WorkspaceDocument> serializer();
+  public com.harryaskham.pidroid.workspace.WorkspaceDocument$Companion(kotlin.jvm.internal.DefaultConstructorMarker);
+}
+
+public final class com.harryaskham.pidroid.workspace.WorkspaceFixtureStatus extends java.lang.Enum<com.harryaskham.pidroid.workspace.WorkspaceFixtureStatus> {
+  public static final com.harryaskham.pidroid.workspace.WorkspaceFixtureStatus RUNNING;
+  public static final com.harryaskham.pidroid.workspace.WorkspaceFixtureStatus IDLE;
+  public static final com.harryaskham.pidroid.workspace.WorkspaceFixtureStatus SCHEDULED;
+  public static final com.harryaskham.pidroid.workspace.WorkspaceFixtureStatus OFFLINE;
+  public static com.harryaskham.pidroid.workspace.WorkspaceFixtureStatus[] values();
+  public static com.harryaskham.pidroid.workspace.WorkspaceFixtureStatus valueOf(java.lang.String);
+  public static kotlin.enums.EnumEntries<com.harryaskham.pidroid.workspace.WorkspaceFixtureStatus> getEntries();
+}
+
+public final class com.harryaskham.pidroid.workspace.WorkspaceFormFactor extends java.lang.Enum<com.harryaskham.pidroid.workspace.WorkspaceFormFactor> {
+  public static final com.harryaskham.pidroid.workspace.WorkspaceFormFactor PHONE;
+  public static final com.harryaskham.pidroid.workspace.WorkspaceFormFactor TABLET;
+  public static final com.harryaskham.pidroid.workspace.WorkspaceFormFactor FOLDABLE;
+  public static com.harryaskham.pidroid.workspace.WorkspaceFormFactor[] values();
+  public static com.harryaskham.pidroid.workspace.WorkspaceFormFactor valueOf(java.lang.String);
+  public static kotlin.enums.EnumEntries<com.harryaskham.pidroid.workspace.WorkspaceFormFactor> getEntries();
+}
+
+public final class com.harryaskham.pidroid.workspace.WorkspaceHinge {
+  public static final int $stable;
+  public com.harryaskham.pidroid.workspace.WorkspaceHinge(int, int);
+  public final int getOffsetDp();
+  public final int getWidthDp();
+  public final int component1();
+  public final int component2();
+  public final com.harryaskham.pidroid.workspace.WorkspaceHinge copy(int, int);
+  public static com.harryaskham.pidroid.workspace.WorkspaceHinge copy$default(com.harryaskham.pidroid.workspace.WorkspaceHinge, int, int, int, java.lang.Object);
+  public java.lang.String toString();
+  public int hashCode();
+  public boolean equals(java.lang.Object);
+}
+
+public final class com.harryaskham.pidroid.workspace.WorkspaceLimits {
+  public static final com.harryaskham.pidroid.workspace.WorkspaceLimits INSTANCE;
+  public static final int MAX_DEPTH = 32;
+  public static final int MAX_NODES = 127;
+  public static final int MAX_TABS = 64;
+  public static final int MAX_ID_LENGTH = 128;
+  public static final int MAX_TITLE_LENGTH = 160;
+  public static final int $stable;
+}
+
+public final class com.harryaskham.pidroid.workspace.WorkspaceModel {
+  public static final com.harryaskham.pidroid.workspace.WorkspaceModel INSTANCE;
+  public static final int $stable;
+  public final com.harryaskham.pidroid.workspace.WorkspaceDocument normalize(com.harryaskham.pidroid.workspace.WorkspaceDocument);
+  public final com.harryaskham.pidroid.workspace.WorkspaceDocument addTab(com.harryaskham.pidroid.workspace.WorkspaceDocument, java.lang.String, com.harryaskham.pidroid.workspace.WorkspaceTab, int);
+  public static com.harryaskham.pidroid.workspace.WorkspaceDocument addTab$default(com.harryaskham.pidroid.workspace.WorkspaceModel, com.harryaskham.pidroid.workspace.WorkspaceDocument, java.lang.String, com.harryaskham.pidroid.workspace.WorkspaceTab, int, int, java.lang.Object);
+  public final com.harryaskham.pidroid.workspace.WorkspaceDocument split(com.harryaskham.pidroid.workspace.WorkspaceDocument, java.lang.String, java.lang.String, java.lang.String, com.harryaskham.pidroid.workspace.WorkspaceTab, com.harryaskham.pidroid.workspace.SplitAxis, com.harryaskham.pidroid.workspace.SplitPlacement, float);
+  public static com.harryaskham.pidroid.workspace.WorkspaceDocument split$default(com.harryaskham.pidroid.workspace.WorkspaceModel, com.harryaskham.pidroid.workspace.WorkspaceDocument, java.lang.String, java.lang.String, java.lang.String, com.harryaskham.pidroid.workspace.WorkspaceTab, com.harryaskham.pidroid.workspace.SplitAxis, com.harryaskham.pidroid.workspace.SplitPlacement, float, int, java.lang.Object);
+  public final com.harryaskham.pidroid.workspace.WorkspaceDocument moveTab(com.harryaskham.pidroid.workspace.WorkspaceDocument, java.lang.String, java.lang.String, int);
+  public final com.harryaskham.pidroid.workspace.WorkspaceDocument closeTab(com.harryaskham.pidroid.workspace.WorkspaceDocument, java.lang.String);
+  public final com.harryaskham.pidroid.workspace.WorkspaceDocument resizeSplit(com.harryaskham.pidroid.workspace.WorkspaceDocument, java.lang.String, float);
+  public final com.harryaskham.pidroid.workspace.WorkspaceDocument focusTab(com.harryaskham.pidroid.workspace.WorkspaceDocument, java.lang.String);
+  public final com.harryaskham.pidroid.workspace.WorkspaceDocument duplicateTab(com.harryaskham.pidroid.workspace.WorkspaceDocument, java.lang.String, com.harryaskham.pidroid.workspace.WorkspaceTab);
+  public final com.harryaskham.pidroid.workspace.WorkspaceDocument setPinned(com.harryaskham.pidroid.workspace.WorkspaceDocument, java.lang.String, boolean);
+  public final java.util.List<java.lang.String> invariantViolations(com.harryaskham.pidroid.workspace.WorkspaceDocument);
+}
+
+public final class com.harryaskham.pidroid.workspace.WorkspaceModel$WhenMappings {
+  public static final int[] $EnumSwitchMapping$0;
+}
+
+public final class com.harryaskham.pidroid.workspace.WorkspaceModelKt {
+  public static final int CURRENT_WORKSPACE_SCHEMA_VERSION = 2;
+}
+
+public final class com.harryaskham.pidroid.workspace.WorkspaceNavigation extends java.lang.Enum<com.harryaskham.pidroid.workspace.WorkspaceNavigation> {
+  public static final com.harryaskham.pidroid.workspace.WorkspaceNavigation DRAWER;
+  public static final com.harryaskham.pidroid.workspace.WorkspaceNavigation COLLAPSIBLE_SIDEBAR;
+  public static com.harryaskham.pidroid.workspace.WorkspaceNavigation[] values();
+  public static com.harryaskham.pidroid.workspace.WorkspaceNavigation valueOf(java.lang.String);
+  public static kotlin.enums.EnumEntries<com.harryaskham.pidroid.workspace.WorkspaceNavigation> getEntries();
+}
+
+public interface com.harryaskham.pidroid.workspace.WorkspaceNode {
+  public static final com.harryaskham.pidroid.workspace.WorkspaceNode$Companion Companion;
+  public abstract java.lang.String getId();
+}
+
+public final class com.harryaskham.pidroid.workspace.WorkspaceNode$Companion {
+  public final kotlinx.serialization.KSerializer<com.harryaskham.pidroid.workspace.WorkspaceNode> serializer();
+}
+
+public final class com.harryaskham.pidroid.workspace.WorkspacePersistence {
+  public static final com.harryaskham.pidroid.workspace.WorkspacePersistence INSTANCE;
+  public static final int $stable;
+  public final java.lang.String encode(com.harryaskham.pidroid.workspace.WorkspaceDocument);
+  public final com.harryaskham.pidroid.workspace.WorkspaceRestoreResult restore(java.lang.String);
+}
+
+public final class com.harryaskham.pidroid.workspace.WorkspaceRatios {
+  public static final com.harryaskham.pidroid.workspace.WorkspaceRatios INSTANCE;
+  public static final float MIN = 0.2f;
+  public static final float MAX = 0.8f;
+  public static final int $stable;
+  public final float clamp(float);
+}
+
+public interface com.harryaskham.pidroid.workspace.WorkspaceRestoreResult {
+}
+
+public final class com.harryaskham.pidroid.workspace.WorkspaceRestoreResult$Loaded implements com.harryaskham.pidroid.workspace.WorkspaceRestoreResult {
+  public static final int $stable;
+  public com.harryaskham.pidroid.workspace.WorkspaceRestoreResult$Loaded(com.harryaskham.pidroid.workspace.WorkspaceDocument, java.lang.Integer);
+  public final com.harryaskham.pidroid.workspace.WorkspaceDocument getDocument();
+  public final java.lang.Integer getMigratedFrom();
+  public final com.harryaskham.pidroid.workspace.WorkspaceDocument component1();
+  public final java.lang.Integer component2();
+  public final com.harryaskham.pidroid.workspace.WorkspaceRestoreResult$Loaded copy(com.harryaskham.pidroid.workspace.WorkspaceDocument, java.lang.Integer);
+  public static com.harryaskham.pidroid.workspace.WorkspaceRestoreResult$Loaded copy$default(com.harryaskham.pidroid.workspace.WorkspaceRestoreResult$Loaded, com.harryaskham.pidroid.workspace.WorkspaceDocument, java.lang.Integer, int, java.lang.Object);
+  public java.lang.String toString();
+  public int hashCode();
+  public boolean equals(java.lang.Object);
+}
+
+public final class com.harryaskham.pidroid.workspace.WorkspaceRestoreResult$Quarantined implements com.harryaskham.pidroid.workspace.WorkspaceRestoreResult {
+  public static final int $stable;
+  public com.harryaskham.pidroid.workspace.WorkspaceRestoreResult$Quarantined(java.lang.String, com.harryaskham.pidroid.workspace.WorkspaceDocument);
+  public final java.lang.String getReason();
+  public final com.harryaskham.pidroid.workspace.WorkspaceDocument getFallback();
+  public final java.lang.String component1();
+  public final com.harryaskham.pidroid.workspace.WorkspaceDocument component2();
+  public final com.harryaskham.pidroid.workspace.WorkspaceRestoreResult$Quarantined copy(java.lang.String, com.harryaskham.pidroid.workspace.WorkspaceDocument);
+  public static com.harryaskham.pidroid.workspace.WorkspaceRestoreResult$Quarantined copy$default(com.harryaskham.pidroid.workspace.WorkspaceRestoreResult$Quarantined, java.lang.String, com.harryaskham.pidroid.workspace.WorkspaceDocument, int, java.lang.Object);
+  public java.lang.String toString();
+  public int hashCode();
+  public boolean equals(java.lang.Object);
+}
+
+public final class com.harryaskham.pidroid.workspace.WorkspaceScreenshotFixtures {
+  public static final com.harryaskham.pidroid.workspace.WorkspaceScreenshotFixtures INSTANCE;
+  public static final int $stable;
+  public final java.util.List<com.harryaskham.pidroid.workspace.WorkspaceScreenshotProfile> getAll();
+  public final com.harryaskham.pidroid.workspace.WorkspaceScreenshotProfile profile(java.lang.String);
+}
+
+public final class com.harryaskham.pidroid.workspace.WorkspaceScreenshotProfile {
+  public static final int $stable;
+  public com.harryaskham.pidroid.workspace.WorkspaceScreenshotProfile(java.lang.String, java.lang.String, com.harryaskham.pidroid.workspace.WorkspaceViewport, int, int, boolean);
+  public final java.lang.String getId();
+  public final java.lang.String getTitle();
+  public final com.harryaskham.pidroid.workspace.WorkspaceViewport getViewport();
+  public final int getWindowWidthPx();
+  public final int getWindowHeightPx();
+  public final boolean getSidebarExpanded();
+  public final java.lang.String component1();
+  public final java.lang.String component2();
+  public final com.harryaskham.pidroid.workspace.WorkspaceViewport component3();
+  public final int component4();
+  public final int component5();
+  public final boolean component6();
+  public final com.harryaskham.pidroid.workspace.WorkspaceScreenshotProfile copy(java.lang.String, java.lang.String, com.harryaskham.pidroid.workspace.WorkspaceViewport, int, int, boolean);
+  public static com.harryaskham.pidroid.workspace.WorkspaceScreenshotProfile copy$default(com.harryaskham.pidroid.workspace.WorkspaceScreenshotProfile, java.lang.String, java.lang.String, com.harryaskham.pidroid.workspace.WorkspaceViewport, int, int, boolean, int, java.lang.Object);
+  public java.lang.String toString();
+  public int hashCode();
+  public boolean equals(java.lang.Object);
+}
+
+public final class com.harryaskham.pidroid.workspace.WorkspaceSemanticsSnapshot {
+  public static final int $stable;
+  public com.harryaskham.pidroid.workspace.WorkspaceSemanticsSnapshot(java.util.Set<java.lang.String>, java.util.Set<java.lang.String>);
+  public final java.util.Set<java.lang.String> getControlLabels();
+  public final java.util.Set<java.lang.String> getRegionLabels();
+  public final java.util.Set<java.lang.String> component1();
+  public final java.util.Set<java.lang.String> component2();
+  public final com.harryaskham.pidroid.workspace.WorkspaceSemanticsSnapshot copy(java.util.Set<java.lang.String>, java.util.Set<java.lang.String>);
+  public static com.harryaskham.pidroid.workspace.WorkspaceSemanticsSnapshot copy$default(com.harryaskham.pidroid.workspace.WorkspaceSemanticsSnapshot, java.util.Set, java.util.Set, int, java.lang.Object);
+  public java.lang.String toString();
+  public int hashCode();
+  public boolean equals(java.lang.Object);
+}
+
+public interface com.harryaskham.pidroid.workspace.WorkspaceShellAction {
+}
+
+public final class com.harryaskham.pidroid.workspace.WorkspaceShellAction$CloseTab implements com.harryaskham.pidroid.workspace.WorkspaceShellAction {
+  public static final int $stable;
+  public com.harryaskham.pidroid.workspace.WorkspaceShellAction$CloseTab(java.lang.String);
+  public final java.lang.String getTabId();
+  public final java.lang.String component1();
+  public final com.harryaskham.pidroid.workspace.WorkspaceShellAction$CloseTab copy(java.lang.String);
+  public static com.harryaskham.pidroid.workspace.WorkspaceShellAction$CloseTab copy$default(com.harryaskham.pidroid.workspace.WorkspaceShellAction$CloseTab, java.lang.String, int, java.lang.Object);
+  public java.lang.String toString();
+  public int hashCode();
+  public boolean equals(java.lang.Object);
+}
+
+public final class com.harryaskham.pidroid.workspace.WorkspaceShellAction$FocusTab implements com.harryaskham.pidroid.workspace.WorkspaceShellAction {
+  public static final int $stable;
+  public com.harryaskham.pidroid.workspace.WorkspaceShellAction$FocusTab(java.lang.String);
+  public final java.lang.String getTabId();
+  public final java.lang.String component1();
+  public final com.harryaskham.pidroid.workspace.WorkspaceShellAction$FocusTab copy(java.lang.String);
+  public static com.harryaskham.pidroid.workspace.WorkspaceShellAction$FocusTab copy$default(com.harryaskham.pidroid.workspace.WorkspaceShellAction$FocusTab, java.lang.String, int, java.lang.Object);
+  public java.lang.String toString();
+  public int hashCode();
+  public boolean equals(java.lang.Object);
+}
+
+public final class com.harryaskham.pidroid.workspace.WorkspaceShellAction$Restore implements com.harryaskham.pidroid.workspace.WorkspaceShellAction {
+  public static final int $stable;
+  public com.harryaskham.pidroid.workspace.WorkspaceShellAction$Restore(java.lang.String);
+  public final java.lang.String getEncoded();
+  public final java.lang.String component1();
+  public final com.harryaskham.pidroid.workspace.WorkspaceShellAction$Restore copy(java.lang.String);
+  public static com.harryaskham.pidroid.workspace.WorkspaceShellAction$Restore copy$default(com.harryaskham.pidroid.workspace.WorkspaceShellAction$Restore, java.lang.String, int, java.lang.Object);
+  public java.lang.String toString();
+  public int hashCode();
+  public boolean equals(java.lang.Object);
+}
+
+public final class com.harryaskham.pidroid.workspace.WorkspaceShellAction$ToggleSidebar implements com.harryaskham.pidroid.workspace.WorkspaceShellAction {
+  public static final com.harryaskham.pidroid.workspace.WorkspaceShellAction$ToggleSidebar INSTANCE;
+  public static final int $stable;
+  public java.lang.String toString();
+  public int hashCode();
+  public boolean equals(java.lang.Object);
+}
+
+public final class com.harryaskham.pidroid.workspace.WorkspaceShellFixture {
+  public static final int $stable;
+  public com.harryaskham.pidroid.workspace.WorkspaceShellFixture(java.lang.String, com.harryaskham.pidroid.workspace.WorkspaceDocument, java.util.List<com.harryaskham.pidroid.workspace.WorkspaceSidebarFixture>);
+  public final java.lang.String getName();
+  public final com.harryaskham.pidroid.workspace.WorkspaceDocument getDocument();
+  public final java.util.List<com.harryaskham.pidroid.workspace.WorkspaceSidebarFixture> getSidebarItems();
+  public final java.lang.String component1();
+  public final com.harryaskham.pidroid.workspace.WorkspaceDocument component2();
+  public final java.util.List<com.harryaskham.pidroid.workspace.WorkspaceSidebarFixture> component3();
+  public final com.harryaskham.pidroid.workspace.WorkspaceShellFixture copy(java.lang.String, com.harryaskham.pidroid.workspace.WorkspaceDocument, java.util.List<com.harryaskham.pidroid.workspace.WorkspaceSidebarFixture>);
+  public static com.harryaskham.pidroid.workspace.WorkspaceShellFixture copy$default(com.harryaskham.pidroid.workspace.WorkspaceShellFixture, java.lang.String, com.harryaskham.pidroid.workspace.WorkspaceDocument, java.util.List, int, java.lang.Object);
+  public java.lang.String toString();
+  public int hashCode();
+  public boolean equals(java.lang.Object);
+}
+
+public final class com.harryaskham.pidroid.workspace.WorkspaceShellFixtures {
+  public static final com.harryaskham.pidroid.workspace.WorkspaceShellFixtures INSTANCE;
+  public static final int $stable;
+  public final com.harryaskham.pidroid.workspace.WorkspaceShellFixture nestedWorkspace();
+}
+
+public final class com.harryaskham.pidroid.workspace.WorkspaceShellLayout {
+  public static final int $stable;
+  public com.harryaskham.pidroid.workspace.WorkspaceShellLayout(com.harryaskham.pidroid.workspace.WorkspaceFormFactor, com.harryaskham.pidroid.workspace.WorkspaceNavigation, boolean, boolean, float, float, float, float, boolean, boolean, java.util.List<com.harryaskham.pidroid.workspace.WorkspaceContentRegion>);
+  public final com.harryaskham.pidroid.workspace.WorkspaceFormFactor getFormFactor();
+  public final com.harryaskham.pidroid.workspace.WorkspaceNavigation getNavigation();
+  public final boolean getRenderAllPanes();
+  public final boolean getSidebarInitiallyExpanded();
+  public final float getSidebarWidthDp();
+  public final float getMinimumTouchTargetDp();
+  public final float getMinimumTabHeightDp();
+  public final float getFontScale();
+  public final boolean getTabRowScrollable();
+  public final boolean getCompactChrome();
+  public final java.util.List<com.harryaskham.pidroid.workspace.WorkspaceContentRegion> getContentRegions();
+  public final com.harryaskham.pidroid.workspace.WorkspaceFormFactor component1();
+  public final com.harryaskham.pidroid.workspace.WorkspaceNavigation component2();
+  public final boolean component3();
+  public final boolean component4();
+  public final float component5();
+  public final float component6();
+  public final float component7();
+  public final float component8();
+  public final boolean component9();
+  public final boolean component10();
+  public final java.util.List<com.harryaskham.pidroid.workspace.WorkspaceContentRegion> component11();
+  public final com.harryaskham.pidroid.workspace.WorkspaceShellLayout copy(com.harryaskham.pidroid.workspace.WorkspaceFormFactor, com.harryaskham.pidroid.workspace.WorkspaceNavigation, boolean, boolean, float, float, float, float, boolean, boolean, java.util.List<com.harryaskham.pidroid.workspace.WorkspaceContentRegion>);
+  public static com.harryaskham.pidroid.workspace.WorkspaceShellLayout copy$default(com.harryaskham.pidroid.workspace.WorkspaceShellLayout, com.harryaskham.pidroid.workspace.WorkspaceFormFactor, com.harryaskham.pidroid.workspace.WorkspaceNavigation, boolean, boolean, float, float, float, float, boolean, boolean, java.util.List, int, java.lang.Object);
+  public java.lang.String toString();
+  public int hashCode();
+  public boolean equals(java.lang.Object);
+}
+
+public final class com.harryaskham.pidroid.workspace.WorkspaceShellProjection {
+  public static final com.harryaskham.pidroid.workspace.WorkspaceShellProjection$Companion Companion;
+  public static final int $stable;
+  public com.harryaskham.pidroid.workspace.WorkspaceShellProjection(java.util.List<java.lang.String>, java.util.List<java.lang.String>, java.util.List<java.lang.String>, java.lang.String);
+  public final java.util.List<java.lang.String> getVisibleSplitIds();
+  public final java.util.List<java.lang.String> getVisibleStackIds();
+  public final java.util.List<java.lang.String> getVisibleTabIds();
+  public final java.lang.String getFocusedTabId();
+  public final java.util.List<java.lang.String> component1();
+  public final java.util.List<java.lang.String> component2();
+  public final java.util.List<java.lang.String> component3();
+  public final java.lang.String component4();
+  public final com.harryaskham.pidroid.workspace.WorkspaceShellProjection copy(java.util.List<java.lang.String>, java.util.List<java.lang.String>, java.util.List<java.lang.String>, java.lang.String);
+  public static com.harryaskham.pidroid.workspace.WorkspaceShellProjection copy$default(com.harryaskham.pidroid.workspace.WorkspaceShellProjection, java.util.List, java.util.List, java.util.List, java.lang.String, int, java.lang.Object);
+  public java.lang.String toString();
+  public int hashCode();
+  public boolean equals(java.lang.Object);
+}
+
+public final class com.harryaskham.pidroid.workspace.WorkspaceShellProjection$Companion {
+  public final com.harryaskham.pidroid.workspace.WorkspaceShellProjection project(com.harryaskham.pidroid.workspace.WorkspaceDocument, com.harryaskham.pidroid.workspace.WorkspaceShellLayout);
+  public final java.util.List<java.lang.String> allTabIds(com.harryaskham.pidroid.workspace.WorkspaceDocument);
+  public final java.util.List<com.harryaskham.pidroid.workspace.TabStackNode> collectStacks$MODULE(com.harryaskham.pidroid.workspace.WorkspaceNode);
+  public final java.util.List<com.harryaskham.pidroid.workspace.SplitNode> collectSplits$MODULE(com.harryaskham.pidroid.workspace.WorkspaceNode);
+  public final com.harryaskham.pidroid.workspace.TabStackNode findStackContaining$MODULE(com.harryaskham.pidroid.workspace.WorkspaceNode, java.lang.String);
+  public com.harryaskham.pidroid.workspace.WorkspaceShellProjection$Companion(kotlin.jvm.internal.DefaultConstructorMarker);
+}
+
+public final class com.harryaskham.pidroid.workspace.WorkspaceShellReducer {
+  public static final com.harryaskham.pidroid.workspace.WorkspaceShellReducer INSTANCE;
+  public static final int $stable;
+  public final com.harryaskham.pidroid.workspace.WorkspaceShellState reduce(com.harryaskham.pidroid.workspace.WorkspaceShellState, com.harryaskham.pidroid.workspace.WorkspaceShellAction);
+}
+
+public final class com.harryaskham.pidroid.workspace.WorkspaceShellSemantics {
+  public static final com.harryaskham.pidroid.workspace.WorkspaceShellSemantics INSTANCE;
+  public static final int $stable;
+  public final com.harryaskham.pidroid.workspace.WorkspaceSemanticsSnapshot describe(com.harryaskham.pidroid.workspace.WorkspaceShellFixture, com.harryaskham.pidroid.workspace.WorkspaceShellLayout);
+}
+
+public final class com.harryaskham.pidroid.workspace.WorkspaceShellState {
+  public static final int $stable;
+  public com.harryaskham.pidroid.workspace.WorkspaceShellState(com.harryaskham.pidroid.workspace.WorkspaceDocument, boolean, java.lang.String);
+  public com.harryaskham.pidroid.workspace.WorkspaceShellState(com.harryaskham.pidroid.workspace.WorkspaceDocument, boolean, java.lang.String, int, kotlin.jvm.internal.DefaultConstructorMarker);
+  public final com.harryaskham.pidroid.workspace.WorkspaceDocument getDocument();
+  public final boolean getSidebarExpanded();
+  public final java.lang.String getQuarantineReason();
+  public final com.harryaskham.pidroid.workspace.WorkspaceDocument component1();
+  public final boolean component2();
+  public final java.lang.String component3();
+  public final com.harryaskham.pidroid.workspace.WorkspaceShellState copy(com.harryaskham.pidroid.workspace.WorkspaceDocument, boolean, java.lang.String);
+  public static com.harryaskham.pidroid.workspace.WorkspaceShellState copy$default(com.harryaskham.pidroid.workspace.WorkspaceShellState, com.harryaskham.pidroid.workspace.WorkspaceDocument, boolean, java.lang.String, int, java.lang.Object);
+  public java.lang.String toString();
+  public int hashCode();
+  public boolean equals(java.lang.Object);
+}
+
+public final class com.harryaskham.pidroid.workspace.WorkspaceSidebarFixture {
+  public static final int $stable;
+  public com.harryaskham.pidroid.workspace.WorkspaceSidebarFixture(java.lang.String, java.lang.String, com.harryaskham.pidroid.workspace.WorkspaceFixtureStatus, boolean, boolean);
+  public com.harryaskham.pidroid.workspace.WorkspaceSidebarFixture(java.lang.String, java.lang.String, com.harryaskham.pidroid.workspace.WorkspaceFixtureStatus, boolean, boolean, int, kotlin.jvm.internal.DefaultConstructorMarker);
+  public final java.lang.String getTitle();
+  public final java.lang.String getSubtitle();
+  public final com.harryaskham.pidroid.workspace.WorkspaceFixtureStatus getStatus();
+  public final boolean getSelected();
+  public final boolean getUnread();
+  public final java.lang.String component1();
+  public final java.lang.String component2();
+  public final com.harryaskham.pidroid.workspace.WorkspaceFixtureStatus component3();
+  public final boolean component4();
+  public final boolean component5();
+  public final com.harryaskham.pidroid.workspace.WorkspaceSidebarFixture copy(java.lang.String, java.lang.String, com.harryaskham.pidroid.workspace.WorkspaceFixtureStatus, boolean, boolean);
+  public static com.harryaskham.pidroid.workspace.WorkspaceSidebarFixture copy$default(com.harryaskham.pidroid.workspace.WorkspaceSidebarFixture, java.lang.String, java.lang.String, com.harryaskham.pidroid.workspace.WorkspaceFixtureStatus, boolean, boolean, int, java.lang.Object);
+  public java.lang.String toString();
+  public int hashCode();
+  public boolean equals(java.lang.Object);
+}
+
+public final class com.harryaskham.pidroid.workspace.WorkspaceTab {
+  public static final com.harryaskham.pidroid.workspace.WorkspaceTab$Companion Companion;
+  public static final int $stable;
+  public com.harryaskham.pidroid.workspace.WorkspaceTab(java.lang.String, java.lang.String, com.harryaskham.pidroid.workspace.WorkspaceTarget, boolean);
+  public com.harryaskham.pidroid.workspace.WorkspaceTab(java.lang.String, java.lang.String, com.harryaskham.pidroid.workspace.WorkspaceTarget, boolean, int, kotlin.jvm.internal.DefaultConstructorMarker);
+  public final java.lang.String getId();
+  public final java.lang.String getTitle();
+  public final com.harryaskham.pidroid.workspace.WorkspaceTarget getTarget();
+  public final boolean getPinned();
+  public final java.lang.String component1();
+  public final java.lang.String component2();
+  public final com.harryaskham.pidroid.workspace.WorkspaceTarget component3();
+  public final boolean component4();
+  public final com.harryaskham.pidroid.workspace.WorkspaceTab copy(java.lang.String, java.lang.String, com.harryaskham.pidroid.workspace.WorkspaceTarget, boolean);
+  public static com.harryaskham.pidroid.workspace.WorkspaceTab copy$default(com.harryaskham.pidroid.workspace.WorkspaceTab, java.lang.String, java.lang.String, com.harryaskham.pidroid.workspace.WorkspaceTarget, boolean, int, java.lang.Object);
+  public java.lang.String toString();
+  public int hashCode();
+  public boolean equals(java.lang.Object);
+  public static final void write$Self$MODULE(com.harryaskham.pidroid.workspace.WorkspaceTab, kotlinx.serialization.encoding.CompositeEncoder, kotlinx.serialization.descriptors.SerialDescriptor);
+  public com.harryaskham.pidroid.workspace.WorkspaceTab(int, java.lang.String, java.lang.String, com.harryaskham.pidroid.workspace.WorkspaceTarget, boolean, kotlinx.serialization.internal.SerializationConstructorMarker);
+}
+
+public final class com.harryaskham.pidroid.workspace.WorkspaceTab$$serializer implements kotlinx.serialization.internal.GeneratedSerializer<com.harryaskham.pidroid.workspace.WorkspaceTab> {
+  public static final com.harryaskham.pidroid.workspace.WorkspaceTab$$serializer INSTANCE;
+  public static final int $stable;
+  public final void serialize(kotlinx.serialization.encoding.Encoder, com.harryaskham.pidroid.workspace.WorkspaceTab);
+  public final com.harryaskham.pidroid.workspace.WorkspaceTab deserialize(kotlinx.serialization.encoding.Decoder);
+  public final kotlinx.serialization.descriptors.SerialDescriptor getDescriptor();
+  public final kotlinx.serialization.KSerializer<?>[] childSerializers();
+  public kotlinx.serialization.KSerializer<?>[] typeParametersSerializers();
+  public void serialize(kotlinx.serialization.encoding.Encoder, java.lang.Object);
+  public java.lang.Object deserialize(kotlinx.serialization.encoding.Decoder);
+}
+
+public final class com.harryaskham.pidroid.workspace.WorkspaceTab$Companion {
+  public final kotlinx.serialization.KSerializer<com.harryaskham.pidroid.workspace.WorkspaceTab> serializer();
+  public com.harryaskham.pidroid.workspace.WorkspaceTab$Companion(kotlin.jvm.internal.DefaultConstructorMarker);
+}
+
+public final class com.harryaskham.pidroid.workspace.WorkspaceTarget {
+  public static final com.harryaskham.pidroid.workspace.WorkspaceTarget$Companion Companion;
+  public static final int $stable;
+  public com.harryaskham.pidroid.workspace.WorkspaceTarget(com.harryaskham.pidroid.workspace.TargetKind, java.lang.String, java.lang.String, java.lang.String);
+  public com.harryaskham.pidroid.workspace.WorkspaceTarget(com.harryaskham.pidroid.workspace.TargetKind, java.lang.String, java.lang.String, java.lang.String, int, kotlin.jvm.internal.DefaultConstructorMarker);
+  public final com.harryaskham.pidroid.workspace.TargetKind getKind();
+  public final java.lang.String getHostId();
+  public final java.lang.String getSessionId();
+  public final java.lang.String getPresentationState();
+  public final com.harryaskham.pidroid.workspace.TargetKind component1();
+  public final java.lang.String component2();
+  public final java.lang.String component3();
+  public final java.lang.String component4();
+  public final com.harryaskham.pidroid.workspace.WorkspaceTarget copy(com.harryaskham.pidroid.workspace.TargetKind, java.lang.String, java.lang.String, java.lang.String);
+  public static com.harryaskham.pidroid.workspace.WorkspaceTarget copy$default(com.harryaskham.pidroid.workspace.WorkspaceTarget, com.harryaskham.pidroid.workspace.TargetKind, java.lang.String, java.lang.String, java.lang.String, int, java.lang.Object);
+  public java.lang.String toString();
+  public int hashCode();
+  public boolean equals(java.lang.Object);
+  public static final void write$Self$MODULE(com.harryaskham.pidroid.workspace.WorkspaceTarget, kotlinx.serialization.encoding.CompositeEncoder, kotlinx.serialization.descriptors.SerialDescriptor);
+  public com.harryaskham.pidroid.workspace.WorkspaceTarget(int, com.harryaskham.pidroid.workspace.TargetKind, java.lang.String, java.lang.String, java.lang.String, kotlinx.serialization.internal.SerializationConstructorMarker);
+  public static final kotlin.Lazy[] access$get$childSerializers$cp();
+}
+
+public final class com.harryaskham.pidroid.workspace.WorkspaceTarget$$serializer implements kotlinx.serialization.internal.GeneratedSerializer<com.harryaskham.pidroid.workspace.WorkspaceTarget> {
+  public static final com.harryaskham.pidroid.workspace.WorkspaceTarget$$serializer INSTANCE;
+  public static final int $stable;
+  public final void serialize(kotlinx.serialization.encoding.Encoder, com.harryaskham.pidroid.workspace.WorkspaceTarget);
+  public final com.harryaskham.pidroid.workspace.WorkspaceTarget deserialize(kotlinx.serialization.encoding.Decoder);
+  public final kotlinx.serialization.descriptors.SerialDescriptor getDescriptor();
+  public final kotlinx.serialization.KSerializer<?>[] childSerializers();
+  public kotlinx.serialization.KSerializer<?>[] typeParametersSerializers();
+  public void serialize(kotlinx.serialization.encoding.Encoder, java.lang.Object);
+  public java.lang.Object deserialize(kotlinx.serialization.encoding.Decoder);
+}
+
+public final class com.harryaskham.pidroid.workspace.WorkspaceTarget$Companion {
+  public final kotlinx.serialization.KSerializer<com.harryaskham.pidroid.workspace.WorkspaceTarget> serializer();
+  public com.harryaskham.pidroid.workspace.WorkspaceTarget$Companion(kotlin.jvm.internal.DefaultConstructorMarker);
+}
+
+public final class com.harryaskham.pidroid.workspace.WorkspaceViewport {
+  public static final int $stable;
+  public com.harryaskham.pidroid.workspace.WorkspaceViewport(int, int, float, com.harryaskham.pidroid.workspace.WorkspaceHinge);
+  public com.harryaskham.pidroid.workspace.WorkspaceViewport(int, int, float, com.harryaskham.pidroid.workspace.WorkspaceHinge, int, kotlin.jvm.internal.DefaultConstructorMarker);
+  public final int getWidthDp();
+  public final int getHeightDp();
+  public final float getFontScale();
+  public final com.harryaskham.pidroid.workspace.WorkspaceHinge getHinge();
+  public final int component1();
+  public final int component2();
+  public final float component3();
+  public final com.harryaskham.pidroid.workspace.WorkspaceHinge component4();
+  public final com.harryaskham.pidroid.workspace.WorkspaceViewport copy(int, int, float, com.harryaskham.pidroid.workspace.WorkspaceHinge);
+  public static com.harryaskham.pidroid.workspace.WorkspaceViewport copy$default(com.harryaskham.pidroid.workspace.WorkspaceViewport, int, int, float, com.harryaskham.pidroid.workspace.WorkspaceHinge, int, java.lang.Object);
+  public java.lang.String toString();
+  public int hashCode();
+  public boolean equals(java.lang.Object);
+}

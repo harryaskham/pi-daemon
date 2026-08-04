@@ -5,6 +5,8 @@ import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
 import test from "node:test";
 
+import { snapshotSdkApi } from "../android/build-logic/snapshot-sdk-api.mjs";
+
 const repositoryRoot = resolve(import.meta.dirname, "..");
 const androidRoot = join(repositoryRoot, "android");
 
@@ -14,6 +16,7 @@ const modules = [
     source: "../sdk-core/src/main/kotlin",
     expectedClasses: ["com/harryaskham/pidroid/sdk/core/PiDaemonTransport.class"],
     forbiddenClasses: [],
+    apiExcludePrefixes: [],
   },
   {
     name: "sdk-session-ui-android",
@@ -24,12 +27,17 @@ const modules = [
       "com/harryaskham/pidroid/sessionui/TuiSurfaceKt.class",
     ],
     forbiddenClasses: [],
+    apiExcludePrefixes: [],
   },
   {
     name: "sdk-workspace-ui-android",
     source: "../sdk-workspace-ui/src/main/kotlin",
     expectedClasses: ["com/harryaskham/pidroid/workspace/WorkspaceComposeShellKt.class"],
     forbiddenClasses: ["com/harryaskham/pidroid/workspace/WorkspaceFixtureAppKt.class"],
+    apiExcludePrefixes: [
+      "com.harryaskham.pidroid.workspace.WorkspaceFixtureAppKt",
+      "com.harryaskham.pidroid.workspace.ComposableSingletons$WorkspaceFixtureAppKt",
+    ],
   },
 ];
 
@@ -70,6 +78,11 @@ function inspectAar(module, aarPath) {
       assert.equal(classes.includes(forbidden), false, `${module.name}: forbidden class packaged: ${forbidden}`);
     }
     assert.equal(classes.some((entry) => /cacophony/i.test(entry)), false, `${module.name}: Cacophony class leaked`);
+
+    const artifact = module.name.replace(/^sdk-/u, "").replace(/-android$/u, "");
+    const baseline = readFileSync(join(repositoryRoot, "android", "sdk-api", `${artifact}.api.txt`), "utf8");
+    const actualApi = snapshotSdkApi({ artifact, jar: classesJar, excludePrefixes: module.apiExcludePrefixes });
+    assert.equal(actualApi, baseline, `${module.name}: public binary API changed without migration baseline update`);
   } finally {
     rmSync(temporary, { recursive: true, force: true });
   }
@@ -93,6 +106,8 @@ test("Android SDK wrapper modules reuse canonical source with strict isolated bo
 
     assert.ok(existsSync(join(directory, "consumer-rules.pro")), `${module.name}: consumer rules missing`);
     assert.ok(existsSync(join(directory, "gradle.lockfile")), `${module.name}: strict lock missing`);
+    const artifact = module.name.replace(/^sdk-/u, "").replace(/-android$/u, "");
+    assert.ok(existsSync(join(androidRoot, "sdk-api", `${artifact}.api.txt`)), `${module.name}: API baseline missing`);
   }
 
   const workspaceBuild = text(join(androidRoot, "sdk-workspace-ui-android", "build.gradle.kts"));

@@ -27,6 +27,15 @@
     homeManagerModules.pi-daemon = import ./nix/home-manager-module.nix {inherit self;};
     homeManagerModules.default = self.homeManagerModules.pi-daemon;
 
+    lib.piDroidSdkMavenArchive = {
+      pkgs,
+      repository,
+      version ? "0.3.0-alpha.1",
+    }:
+      import ./nix/pi-droid-sdk-maven-archive.nix {
+        inherit pkgs repository version;
+      };
+
     packages = forAllSystems (system: let
       pkgs = import nixpkgs {inherit system;};
       npmDeps = import ./nix/npm-deps.nix {
