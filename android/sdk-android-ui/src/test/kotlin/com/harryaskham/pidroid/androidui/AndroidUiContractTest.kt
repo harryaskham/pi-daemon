@@ -84,6 +84,7 @@ class AndroidUiContractTest {
     assertEquals(selection, PiDroidDeepLinkCodec.decode(link, setOf(selection)))
     assertNull(PiDroidDeepLinkCodec.decode(link, emptySet()))
     assertNull(PiDroidDeepLinkCodec.decode(java.net.URI("https://host/workstation/session/session-01"), setOf(selection)))
+    assertNull(PiDroidDeepLinkCodec.decode(java.net.URI("pidroid://host/workstation/arbitrary/session-01"), setOf(selection)))
     assertNull(PiDroidDeepLinkCodec.decode(java.net.URI("pidroid://host/workstation/session/session-01?bearer=secret"), setOf(selection)))
 
     val shortcut = SessionShortcut.create(selection, "Build monitor")
@@ -203,7 +204,13 @@ class AndroidUiContractTest {
     assertTrue("android:scheme=\"pidroid\"" in manifest)
     assertTrue("android:name=\".PinnedSessionWidgetProvider\"" in manifest)
     assertTrue("android:name=\".SessionCollectionWidgetProvider\"" in manifest)
+    assertEquals(1, Regex("android:exported=\\\"true\\\"").findAll(manifest).count())
     assertEquals(3, Regex("android:exported=\\\"false\\\"").findAll(manifest).count())
+    assertEquals(1, Regex("android:name=\\\"android.intent.action.VIEW\\\"").findAll(manifest).count())
+    assertEquals(2, Regex("android:name=\\\"android.intent.action.SEND\\\"").findAll(manifest).count())
+    assertEquals(1, Regex("android:name=\\\"android.intent.action.SEND_MULTIPLE\\\"").findAll(manifest).count())
+    assertFalse("android.intent.action.OPEN_DOCUMENT" in manifest)
+    assertFalse("android.intent.action.GET_CONTENT" in manifest)
     assertFalse("application/pdf" in manifest)
     assertFalse("image/*" in manifest)
   }
