@@ -37,6 +37,10 @@ test("interactive app delegates exact authority correlation tree and TUI state t
   assert.match(repository, /interactive_send_indeterminate/);
   assert.match(repository, /INTERACTIVE_SAFE_CODE\s*=\s*Regex\("\^\[a-z\]\[a-z0-9_\]\{0,127\}\$"\)/);
   assert.match(repository, /code\.takeIf\(INTERACTIVE_SAFE_CODE::matches\) \?: "interactive_failed"/);
+  assert.match(repository, /LiveReadonlyFailure\("interactive_attach_failed"\)/);
+  assert.match(repository, /publishInteractive\(active, "interactive_send_indeterminate"\)/);
+  assert.match(repository, /throw LiveReadonlyFailure\("interactive_send_indeterminate"\)/);
+  assert.match(repository, /safeCode == "interactive_failed"[^\n]*existing\.code != "interactive_failed"/);
   assert.match(screen, /RichInteractiveSessionSurface/);
   assert.match(screen, /SessionTreeSurface/);
   assert.match(screen, /TuiSurface/);

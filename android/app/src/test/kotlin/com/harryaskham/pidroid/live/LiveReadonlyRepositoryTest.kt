@@ -133,31 +133,106 @@ class LiveReadonlyRepositoryTest {
 
   @Test
   fun `connecting and pre-active failure remain observable instead of collapsing to observer`() {
-    val harness = harness()
     val hostId = HostId("workstation")
     assertEquals(
       "ACTION RECEIVED · CONNECTING",
       liveInteractiveStatusLabel(LiveInteractiveAppState.Connecting(hostId), hostId, rpcObserverConnected = true),
     )
 
-    harness.repository.reportInteractiveFailure("observer_attach_failed")
-    val failure = harness.repository.interactiveState.value as LiveInteractiveAppState.Failure
-    assertEquals("observer_attach_failed", failure.code)
-    assertNull(failure.lastSnapshot)
-    assertEquals(
-      "INTERACTIVE ERROR · PREFLIGHT_ERROR · OBSERVER_ATTACH_FAILED",
-      liveInteractiveStatusLabel(failure, hostId, rpcObserverConnected = true),
-    )
-
-    harness.repository.reportInteractiveFailure("http://secret.example/private path response body")
-    val redacted = harness.repository.interactiveState.value as LiveInteractiveAppState.Failure
+    val unsafeHarness = harness()
+    unsafeHarness.repository.reportInteractiveFailure("http://secret.example/private path response body")
+    val redacted = unsafeHarness.repository.interactiveState.value as LiveInteractiveAppState.Failure
     assertEquals("interactive_failed", redacted.code)
     assertEquals(
       "INTERACTIVE ERROR · PREFLIGHT_ERROR · INTERACTIVE_FAILED",
       liveInteractiveStatusLabel(redacted, hostId, rpcObserverConnected = true),
     )
     assertFalse(redacted.toString().contains("secret.example"))
+
+    val strongHarness = harness()
+    strongHarness.repository.reportInteractiveFailure("observer_attach_failed")
+    var failure = strongHarness.repository.interactiveState.value as LiveInteractiveAppState.Failure
+    assertEquals("observer_attach_failed", failure.code)
+    assertNull(failure.lastSnapshot)
+    assertEquals(
+      "INTERACTIVE ERROR · PREFLIGHT_ERROR · OBSERVER_ATTACH_FAILED",
+      liveInteractiveStatusLabel(failure, hostId, rpcObserverConnected = true),
+    )
+    strongHarness.repository.reportInteractiveFailure("interactive_failed")
+    failure = strongHarness.repository.interactiveState.value as LiveInteractiveAppState.Failure
+    assertEquals("observer_attach_failed", failure.code, "generic catch must not downgrade a stronger stage failure")
   }
+
+  @Test
+  fun `unknown attach failure persists typed stage without exception content`() =
+    runTest {
+      val harness = harness()
+      harness.repository.registerManual(
+        URI("http://10.0.2.2:48123"),
+        "Disposable daemon",
+        "bearer".toCharArray(),
+        null,
+        true,
+      )
+      harness.transport.unexpectedExecuteFailure = true
+      val error = runCatching { harness.repository.requestControl() }.exceptionOrNull()
+      assertEquals("interactive_attach_failed", (error as LiveReadonlyFailure).code)
+      harness.repository.reportInteractiveFailure(safeInteractiveFailureCode(error))
+      val failure = harness.repository.interactiveState.value as LiveInteractiveAppState.Failure
+      assertEquals("interactive_attach_failed", failure.code)
+      assertFalse(failure.toString().contains("secret.example"))
+      harness.repository.reportInteractiveFailure("interactive_failed")
+      assertEquals(
+        "interactive_attach_failed",
+        (harness.repository.interactiveState.value as LiveInteractiveAppState.Failure).code,
+      )
+    }
+
+  @Test
+  fun `send failure persists indeterminate stage and forbids retry`() =
+    runTest {
+      val harness = harness()
+      harness.repository.registerManual(
+        URI("http://10.0.2.2:48123"),
+        "Disposable daemon",
+        "bearer".toCharArray(),
+        null,
+        true,
+      )
+      harness.repository.requestControl()
+      val rpcSocket = requireNotNull(harness.transport.interactiveRpcSocket)
+      rpcSocket.push(controlGranted())
+      withTimeout(5_000) {
+        harness.repository.interactiveState
+          .filterIsInstance<LiveInteractiveAppState.Ready>()
+          .first {
+            it.snapshot.role == InteractiveControllerRole.CONTROLLER &&
+              it.snapshot.receipts.any { receipt -> receipt.kind.wireValue == "get_tree" }
+          }
+      }
+      rpcSocket.failSend = true
+      val sentBefore = rpcSocket.sent.size
+      val error =
+        runCatching {
+          harness.repository.handleInteraction(RichInteractionAction.SubmitPrompt("must become indeterminate"))
+        }.exceptionOrNull()
+      assertEquals("interactive_send_indeterminate", (error as LiveReadonlyFailure).code)
+      var failure = harness.repository.interactiveState.value as LiveInteractiveAppState.Failure
+      assertEquals("interactive_send_indeterminate", failure.code)
+      val receipt = requireNotNull(failure.lastSnapshot).receipts.last()
+      assertEquals(CommandLifecycle.INDETERMINATE, receipt.lifecycle)
+      assertEquals(sentBefore, rpcSocket.sent.size)
+      harness.repository.reportInteractiveFailure("interactive_failed")
+      failure = harness.repository.interactiveState.value as LiveInteractiveAppState.Failure
+      assertEquals("interactive_send_indeterminate", failure.code)
+
+      val retry =
+        runCatching {
+          harness.repository.handleInteraction(RichInteractionAction.SubmitPrompt("blind retry forbidden"))
+        }.exceptionOrNull() as CommandAdmissionException
+      assertEquals("session_not_ready", retry.code)
+      assertEquals(sentBefore, rpcSocket.sent.size)
+    }
 
   @Test
   fun `interactive repository requests control sends one unique prompt and marks lost response indeterminate`() =
@@ -336,6 +411,7 @@ class LiveReadonlyRepositoryTest {
     override val hosts: Flow<List<PiDaemonHostDescriptor>> = MutableStateFlow(emptyList())
     var hostInstanceId: String = "host-fixture-01"
     var fail: Boolean = false
+    var unexpectedExecuteFailure: Boolean = false
     var authorizationObserved: Boolean = false
     var interactiveRpcSocket: FakeSocket? = null
     val paths = mutableListOf<String>()
@@ -346,6 +422,7 @@ class LiveReadonlyRepositoryTest {
       host: HostId,
       request: NeutralHttpRequest,
     ): NeutralHttpResponse {
+      if (unexpectedExecuteFailure) throw IllegalStateException("https://secret.example/private response body")
       if (fail) throw TransportFailure("disposable_offline")
       authorizationObserved = request.headers["Authorization"]?.startsWith("Bearer ") == true
       paths += request.uri.path
@@ -393,6 +470,7 @@ class LiveReadonlyRepositoryTest {
   private class FakeSocket : PiDaemonSocket {
     private val frames = Channel<String>(Channel.UNLIMITED)
     val sent = mutableListOf<String>()
+    var failSend: Boolean = false
     var closed: Boolean = false
       private set
 
@@ -409,6 +487,7 @@ class LiveReadonlyRepositoryTest {
 
     override suspend fun sendText(text: String) {
       check(!closed)
+      if (failSend) throw IllegalStateException("https://secret.example/private send response")
       sent += text
     }
 

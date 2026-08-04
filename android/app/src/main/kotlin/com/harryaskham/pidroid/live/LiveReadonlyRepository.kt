@@ -3,6 +3,7 @@ package com.harryaskham.pidroid.live
 import com.harryaskham.pidroid.protocol.generated.PiRpcCommandType
 import com.harryaskham.pidroid.sdk.core.ApiResult
 import com.harryaskham.pidroid.sdk.core.CacheFreshness
+import com.harryaskham.pidroid.sdk.core.CommandAdmissionException
 import com.harryaskham.pidroid.sdk.core.HostAuthority
 import com.harryaskham.pidroid.sdk.core.HostCredentialVault
 import com.harryaskham.pidroid.sdk.core.HostId
@@ -15,6 +16,7 @@ import com.harryaskham.pidroid.sdk.core.PairingPayload
 import com.harryaskham.pidroid.sdk.core.PairingPayloadCodec
 import com.harryaskham.pidroid.sdk.core.PiDaemonClient
 import com.harryaskham.pidroid.sdk.core.PiDaemonHostDescriptor
+import com.harryaskham.pidroid.sdk.core.ProtocolDecodeException
 import com.harryaskham.pidroid.sdk.core.RegisteredHost
 import com.harryaskham.pidroid.sdk.core.ServiceBearerRequestFactory
 import com.harryaskham.pidroid.sdk.core.SessionKey
@@ -214,6 +216,8 @@ public class LiveReadonlyRepository(
 
   public fun reportInteractiveFailure(code: String) {
     val safeCode = code.takeIf(INTERACTIVE_SAFE_CODE::matches) ?: "interactive_failed"
+    val existing = mutableInteractiveState.value as? LiveInteractiveAppState.Failure
+    if (safeCode == "interactive_failed" && existing != null && existing.code != "interactive_failed") return
     val active = activeInteractive
     if (active == null) {
       val selected = (mutableState.value as? LiveReadonlyState.Ready)?.selected
@@ -279,7 +283,22 @@ public class LiveReadonlyRepository(
   }
 
   public suspend fun requestControl() {
-    val active = ensureInteractive()
+    val active =
+      try {
+        ensureInteractive()
+      } catch (error: CommandAdmissionException) {
+        throw error
+      } catch (error: LiveReadonlyFailure) {
+        throw error
+      } catch (error: TransportFailure) {
+        throw error
+      } catch (error: ProtocolDecodeException) {
+        throw error
+      } catch (_: Throwable) {
+        val failure = LiveReadonlyFailure("interactive_attach_failed")
+        reportInteractiveFailure(failure.code)
+        throw failure
+      }
     sendOnce(active, active.machine.requestControl())
   }
 
@@ -440,10 +459,10 @@ public class LiveReadonlyRepository(
     try {
       active.rpcSocket.sendText(text)
       publishInteractive(active)
-    } catch (error: Throwable) {
+    } catch (_: Throwable) {
       active.machine.disconnected()
       publishInteractive(active, "interactive_send_indeterminate")
-      throw error
+      throw LiveReadonlyFailure("interactive_send_indeterminate")
     }
   }
 
