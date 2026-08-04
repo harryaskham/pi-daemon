@@ -13,6 +13,7 @@ import com.harryaskham.pidroid.live.AndroidHostRegistry
 import com.harryaskham.pidroid.live.LiveReadonlyRepository
 import com.harryaskham.pidroid.live.LiveReadonlyScreen
 import com.harryaskham.pidroid.live.OkHttpPiDaemonTransport
+import com.harryaskham.pidroid.sdk.core.CommandAdmissionException
 import com.harryaskham.pidroid.sdk.core.PairingPayloadCodec
 import kotlinx.coroutines.launch
 import java.net.URI
@@ -71,13 +72,13 @@ class MainActivity : ComponentActivity() {
         onInteractiveAction = { action ->
           lifecycleScope.launch {
             runCatching { repository.handleInteraction(action) }
-              .onFailure { repository.reportInteractiveFailure(safeCode(it)) }
+              .onFailure { repository.reportInteractiveFailure(safeInteractiveFailureCode(it)) }
           }
         },
         onReconnectInteractive = {
           lifecycleScope.launch {
             runCatching { repository.reconnectInteractive() }
-              .onFailure { repository.reportInteractiveFailure(safeCode(it)) }
+              .onFailure { repository.reportInteractiveFailure(safeInteractiveFailureCode(it)) }
           }
         },
       )
@@ -115,6 +116,10 @@ class MainActivity : ComponentActivity() {
 
   private fun safeCode(error: Throwable): String =
     when (error) {
+      is CommandAdmissionException -> {
+        error.code
+      }
+
       is com.harryaskham.pidroid.live.LiveReadonlyFailure -> {
         error.code
       }
@@ -144,7 +149,7 @@ class MainActivity : ComponentActivity() {
       }
 
       else -> {
-        "host_unavailable_${error::class.simpleName?.take(64) ?: "unknown"}"
+        "host_unavailable"
       }
     }
 
@@ -152,4 +157,18 @@ class MainActivity : ComponentActivity() {
     const val PAIRING_PREFIX: String = "pidroid://pair/v1/"
     const val DISPOSABLE_EMULATOR_METADATA: String = "com.harryaskham.pidroid.ALLOW_DISPOSABLE_EMULATOR_BRIDGE"
   }
+}
+
+private val INTERACTIVE_FAILURE_CODE = Regex("^[a-z][a-z0-9_]{0,127}$")
+
+internal fun safeInteractiveFailureCode(error: Throwable): String {
+  val candidate =
+    when (error) {
+      is CommandAdmissionException -> error.code
+      is com.harryaskham.pidroid.live.LiveReadonlyFailure -> error.code
+      is com.harryaskham.pidroid.live.TransportFailure -> error.code
+      is com.harryaskham.pidroid.sdk.core.ProtocolDecodeException -> error.code
+      else -> return "interactive_failed"
+    }
+  return candidate.takeIf(INTERACTIVE_FAILURE_CODE::matches) ?: "interactive_failed"
 }

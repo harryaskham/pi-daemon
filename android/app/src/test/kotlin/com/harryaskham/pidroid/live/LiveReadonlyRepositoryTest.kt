@@ -1,6 +1,8 @@
 package com.harryaskham.pidroid.live
 
+import com.harryaskham.pidroid.safeInteractiveFailureCode
 import com.harryaskham.pidroid.sdk.core.CacheFreshness
+import com.harryaskham.pidroid.sdk.core.CommandAdmissionException
 import com.harryaskham.pidroid.sdk.core.CommandLifecycle
 import com.harryaskham.pidroid.sdk.core.CredentialHandle
 import com.harryaskham.pidroid.sdk.core.CredentialProtector
@@ -105,6 +107,29 @@ class LiveReadonlyRepositoryTest {
       assertFalse(ready.selected.rpcObserverConnected)
       collector.cancel()
     }
+
+  @Test
+  fun `interactive error mapper preserves only bounded lowercase typed codes`() {
+    val secret = "https://secret.example/private response body"
+    assertEquals(
+      "session_not_ready",
+      safeInteractiveFailureCode(CommandAdmissionException("session_not_ready", secret)),
+    )
+    assertEquals(
+      "controller_required",
+      safeInteractiveFailureCode(CommandAdmissionException("controller_required", secret)),
+    )
+    assertEquals(
+      "interactive_failed",
+      safeInteractiveFailureCode(CommandAdmissionException("SESSION_NOT_READY", secret)),
+    )
+    assertEquals(
+      "interactive_failed",
+      safeInteractiveFailureCode(CommandAdmissionException("x".repeat(129), secret)),
+    )
+    assertEquals("interactive_failed", safeInteractiveFailureCode(IllegalStateException(secret)))
+    assertFalse(safeInteractiveFailureCode(IllegalStateException(secret)).contains("secret.example"))
+  }
 
   @Test
   fun `connecting and pre-active failure remain observable instead of collapsing to observer`() {

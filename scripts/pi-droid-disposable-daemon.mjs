@@ -251,7 +251,7 @@ const server =
     allowInsecureRemote: true,
   });
 const address = await server.start();
-const selfProbe = await verifyDisposableApi(address.port, token);
+const selfProbe = await verifyDisposableApi(address.port, token, options.interactive);
 await writeFile(
   options.readyFile,
   `${JSON.stringify({
@@ -281,7 +281,7 @@ async function stop(signal) {
 process.on("SIGTERM", () => void stop("SIGTERM"));
 process.on("SIGINT", () => void stop("SIGINT"));
 
-async function verifyDisposableApi(port, bearer) {
+async function verifyDisposableApi(port, bearer, requireControlGrant) {
   const headers = { Authorization: `Bearer ${bearer}` };
   const origin = `http://127.0.0.1:${port}`;
   for (const path of [
@@ -297,29 +297,49 @@ async function verifyDisposableApi(port, bearer) {
       throw new Error(`disposable API self-probe envelope failed: ${path}`);
     }
   }
-  const attach = await new Promise((resolve, reject) => {
+  const rpcProbe = await new Promise((resolve, reject) => {
     const socket = new WebSocket(
       `ws://127.0.0.1:${port}/v1/session/session-fixture-01/rpc?generation=3&role=observer`,
       "pi-daemon-rpc.v1",
       { headers },
     );
+    let observerAttached = false;
     const timeout = setTimeout(() => {
       socket.terminate();
       reject(new Error("disposable RPC self-probe timed out"));
     }, 10_000);
-    socket.once("message", (data) => {
-      clearTimeout(timeout);
+    socket.on("message", (data) => {
       const frame = JSON.parse(data.toString());
-      socket.close();
-      if (
-        frame.kind !== "attach_ready" || frame.role !== "observer" ||
-        frame.hostInstanceId !== hostInstanceId || frame.sessionId !== "session-fixture-01" ||
-        frame.generation !== 3
-      ) {
-        reject(new Error("disposable RPC self-probe identity mismatch"));
-      } else {
-        resolve(true);
+      if (!observerAttached) {
+        if (
+          frame.kind !== "attach_ready" || frame.role !== "observer" ||
+          frame.hostInstanceId !== hostInstanceId || frame.sessionId !== "session-fixture-01" ||
+          frame.generation !== 3
+        ) {
+          clearTimeout(timeout);
+          socket.close();
+          reject(new Error("disposable RPC self-probe identity mismatch"));
+          return;
+        }
+        observerAttached = true;
+        if (requireControlGrant) {
+          socket.send(JSON.stringify({ kind: "control", action: "request_control" }));
+          return;
+        }
+        clearTimeout(timeout);
+        socket.close();
+        resolve({ observerAttach: true, controlGrant: false });
+        return;
       }
+      if (frame.kind !== "control" || frame.action !== "control_granted") {
+        clearTimeout(timeout);
+        socket.close();
+        reject(new Error("disposable RPC control self-probe failed"));
+        return;
+      }
+      clearTimeout(timeout);
+      socket.close();
+      resolve({ observerAttach: true, controlGrant: true });
     });
     socket.once("error", (error) => {
       clearTimeout(timeout);
@@ -331,7 +351,8 @@ async function verifyDisposableApi(port, bearer) {
     inventory: true,
     information: true,
     transcript: true,
-    observerAttach: attach,
+    observerAttach: rpcProbe.observerAttach,
+    controlGrant: rpcProbe.controlGrant,
   };
 }
 

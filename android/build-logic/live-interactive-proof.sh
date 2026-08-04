@@ -251,7 +251,7 @@ wait_ui 'Readonly session Contract fixture|READONLY RPC ATTACHED' 90
 adb -s "$emulator_serial" exec-out screencap -p > "$artifacts_dir/screenshots/observer-readonly.png"
 
 tap_text "Request control"
-wait_ui 'ACTION RECEIVED · CONNECTING|REQUESTING|CONTROLLER|INTERACTIVE ERROR' 15
+wait_ui 'ACTION RECEIVED · CONNECTING|REQUESTING|CONTROLLER|INTERACTIVE ERROR · PREFLIGHT_ERROR · [A-Z][A-Z0-9_]{0,127}' 15
 wait_ui 'REQUESTING|CONTROLLER' 45
 wait_ui 'CONTROLLER|Controller authority active' 45
 adb -s "$emulator_serial" exec-out screencap -p > "$artifacts_dir/screenshots/controller-granted.png"

@@ -45,6 +45,10 @@ test("interactive app delegates exact authority correlation tree and TUI state t
   assert.match(screen, /INTERACTIVE ERROR · PREFLIGHT_ERROR/);
   assert.match(screen, /InteractiveControllerRole\.REQUESTING/);
   assert.match(activity, /handleInteraction/);
+  assert.match(activity, /is CommandAdmissionException -> error\.code/);
+  assert.match(activity, /fun safeInteractiveFailureCode/);
+  assert.match(activity, /INTERACTIVE_FAILURE_CODE/);
+  assert.doesNotMatch(activity, /host_unavailable_\$\{error::class/);
   assert.match(commands, /fun getTree\(\)/);
   assert.match(rich, /fun requesting\(/);
   assert.match(rich, /fun lost\(/);
@@ -69,7 +73,7 @@ test("disposable interactive proof uses private identity bounded cleanup and phy
   assert.match(proof, /openssl rand -hex 32/);
   assert.match(proof, /--interactive/);
   assert.match(proof, /tap_text "Request control"/);
-  assert.match(proof, /ACTION RECEIVED · CONNECTING\|REQUESTING\|CONTROLLER\|INTERACTIVE ERROR/);
+  assert.match(proof, /ACTION RECEIVED · CONNECTING\|REQUESTING\|CONTROLLER\|INTERACTIVE ERROR · PREFLIGHT_ERROR/);
   assert.match(proof, /wait_ui 'REQUESTING\|CONTROLLER'/);
   assert.match(proof, /uiautomator-control-center\.py/);
   assert.match(selector, /clickable ancestor/);
@@ -93,5 +97,8 @@ test("disposable interactive proof uses private identity bounded cleanup and phy
   assert.match(server, /ShadowTuiAttachmentManager/);
   assert.match(server, /command\.type === "prompt"/);
   assert.match(server, /command\.type === "get_tree"/);
+  assert.match(server, /request_control/);
+  assert.match(server, /control_granted/);
+  assert.match(server, /controlGrant: rpcProbe\.controlGrant/);
   assert.match(server, /hold-until-disconnect/);
 });
