@@ -351,71 +351,73 @@ public class LiveReadonlyRepository(
     closeActiveInteractive()
     mutableInteractiveState.value = LiveInteractiveAppState.Connecting(selected.host.id)
     val opened =
-      credentials.withBearerSuspending(selected.host.credential) { bearer ->
-        val descriptor = PiDaemonHostDescriptor(selected.host.id, selected.host.displayName, selected.host.baseUri)
-        ServiceBearerRequestFactory
-          .create(
-            host = descriptor,
-            bearer = bearer,
-            allowInsecureHttp = selected.host.transportSecurity != TransportSecurity.HTTPS,
-          ).use { factory ->
-            val client = PiDaemonClient(descriptor, factory, transport)
-            val capabilities =
-              attachStage("interactive_attach_failed") {
-                when (val result = client.capabilities()) {
-                  is ApiResult.Success -> result.value
-                  is ApiResult.Failure -> throw LiveReadonlyFailure(result.error.code)
+      attachStage("interactive_credential_failed") {
+        credentials.withBearerSuspending(selected.host.credential) { bearer ->
+          val descriptor = PiDaemonHostDescriptor(selected.host.id, selected.host.displayName, selected.host.baseUri)
+          ServiceBearerRequestFactory
+            .create(
+              host = descriptor,
+              bearer = bearer,
+              allowInsecureHttp = selected.host.transportSecurity != TransportSecurity.HTTPS,
+            ).use { factory ->
+              val client = PiDaemonClient(descriptor, factory, transport)
+              val capabilities =
+                attachStage("interactive_capabilities_failed") {
+                  when (val result = client.capabilities()) {
+                    is ApiResult.Success -> result.value
+                    is ApiResult.Failure -> throw LiveReadonlyFailure(result.error.code)
+                  }
                 }
-              }
-            val machine =
-              LiveInteractiveSessionMachine(
-                session = SessionKey(sessionId, generation),
-                supportedCommands = InteractiveCapabilities.from(capabilities).commands,
-                authority = selected.session.host.authority,
-                modelLabel = selected.session.session.modelLabel ?: "default model",
-                thinkingLevel = selected.session.session.thinkingLevel ?: "default",
-              )
-            val rpcSocket =
-              attachStage("observer_connect_failed") {
-                client.attach(SessionKey(sessionId, generation), SessionRole.OBSERVER)
-              }
-            try {
-              val first =
+              val machine =
+                LiveInteractiveSessionMachine(
+                  session = SessionKey(sessionId, generation),
+                  supportedCommands = InteractiveCapabilities.from(capabilities).commands,
+                  authority = selected.session.host.authority,
+                  modelLabel = selected.session.session.modelLabel ?: "default model",
+                  thinkingLevel = selected.session.session.thinkingLevel ?: "default",
+                )
+              val rpcSocket =
                 attachStage("observer_connect_failed") {
-                  withTimeout(10_000) { rpcSocket.incomingText.first() }
+                  client.attach(SessionKey(sessionId, generation), SessionRole.OBSERVER)
                 }
-              machine.accept(first)
-              if (
-                machine.snapshot.connection != InteractiveConnectionState.READY ||
-                machine.snapshot.role != InteractiveControllerRole.OBSERVER
-              ) {
-                throw LiveReadonlyFailure("observer_connect_failed")
+              try {
+                val first =
+                  attachStage("observer_connect_failed") {
+                    withTimeout(10_000) { rpcSocket.incomingText.first() }
+                  }
+                machine.accept(first)
+                if (
+                  machine.snapshot.connection != InteractiveConnectionState.READY ||
+                  machine.snapshot.role != InteractiveControllerRole.OBSERVER
+                ) {
+                  throw LiveReadonlyFailure("observer_connect_failed")
+                }
+                val tuiMachine = LiveTuiSessionMachine()
+                val encoded = URLEncoder.encode(sessionId, StandardCharsets.UTF_8.name()).replace("+", "%20")
+                val tuiSocket =
+                  attachStage("interactive_tui_open_failed") {
+                    transport.openWebSocket(
+                      selected.host.id,
+                      factory.webSocket(
+                        path = "/v1/dashboard/session/$encoded/tui",
+                        query =
+                          listOf(
+                            "generation" to generation.toString(),
+                            "role" to "observer",
+                            "rows" to "24",
+                            "columns" to "80",
+                          ),
+                        subprotocols = listOf("pi-daemon-tui.v1"),
+                      ),
+                    )
+                  }
+                OpenedInteractive(machine, rpcSocket, tuiMachine, tuiSocket)
+              } catch (error: Throwable) {
+                rpcSocket.close()
+                throw error
               }
-              val tuiMachine = LiveTuiSessionMachine()
-              val encoded = URLEncoder.encode(sessionId, StandardCharsets.UTF_8.name()).replace("+", "%20")
-              val tuiSocket =
-                attachStage("interactive_attach_failed") {
-                  transport.openWebSocket(
-                    selected.host.id,
-                    factory.webSocket(
-                      path = "/v1/dashboard/session/$encoded/tui",
-                      query =
-                        listOf(
-                          "generation" to generation.toString(),
-                          "role" to "observer",
-                          "rows" to "24",
-                          "columns" to "80",
-                        ),
-                      subprotocols = listOf("pi-daemon-tui.v1"),
-                    ),
-                  )
-                }
-              OpenedInteractive(machine, rpcSocket, tuiMachine, tuiSocket)
-            } catch (error: Throwable) {
-              rpcSocket.close()
-              throw error
             }
-          }
+        }
       }
     val active =
       ActiveInteractive(

@@ -34,7 +34,10 @@ test("interactive app delegates exact authority correlation tree and TUI state t
   assert.match(repository, /SessionRole\.OBSERVER/);
   assert.match(repository, /fun connectInteractiveObserver\(\)/);
   assert.match(repository, /interactiveConnectMutex\.withLock/);
+  assert.match(repository, /interactive_credential_failed/);
+  assert.match(repository, /interactive_capabilities_failed/);
   assert.match(repository, /observer_connect_failed/);
+  assert.match(repository, /interactive_tui_open_failed/);
   assert.match(repository, /requestControl\(\)/);
   assert.match(repository, /requireActiveInteractive\(\)/);
   assert.match(repository, /UUID\.randomUUID\(\)/);

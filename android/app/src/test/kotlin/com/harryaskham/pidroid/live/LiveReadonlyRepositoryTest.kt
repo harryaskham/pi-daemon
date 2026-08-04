@@ -167,7 +167,7 @@ class LiveReadonlyRepositoryTest {
   }
 
   @Test
-  fun `unknown attach failure persists typed stage without exception content`() =
+  fun `unknown capabilities failure persists typed stage without exception content`() =
     runTest {
       val harness = harness()
       harness.repository.registerManual(
@@ -179,14 +179,14 @@ class LiveReadonlyRepositoryTest {
       )
       harness.transport.unexpectedExecuteFailure = true
       val error = runCatching { harness.repository.connectInteractiveObserver() }.exceptionOrNull()
-      assertEquals("interactive_attach_failed", (error as LiveReadonlyFailure).code)
+      assertEquals("interactive_capabilities_failed", (error as LiveReadonlyFailure).code)
       harness.repository.reportInteractiveFailure(safeInteractiveFailureCode(error))
       val failure = harness.repository.interactiveState.value as LiveInteractiveAppState.Failure
-      assertEquals("interactive_attach_failed", failure.code)
+      assertEquals("interactive_capabilities_failed", failure.code)
       assertFalse(failure.toString().contains("secret.example"))
       harness.repository.reportInteractiveFailure("interactive_failed")
       assertEquals(
-        "interactive_attach_failed",
+        "interactive_capabilities_failed",
         (harness.repository.interactiveState.value as LiveInteractiveAppState.Failure).code,
       )
     }
@@ -194,7 +194,7 @@ class LiveReadonlyRepositoryTest {
   @Test
   fun `interactive observer attach stages are bounded and concurrent connect is deduped`() =
     runTest {
-      suspend fun stageFailure(configure: (FakeLiveTransport) -> Unit): String {
+      suspend fun stageFailure(configure: (Harness) -> Unit): Triple<String, Int, Int> {
         val harness = harness()
         harness.repository.registerManual(
           URI("http://10.0.2.2:48123"),
@@ -203,14 +203,34 @@ class LiveReadonlyRepositoryTest {
           null,
           true,
         )
-        configure(harness.transport)
-        return (runCatching { harness.repository.connectInteractiveObserver() }.exceptionOrNull() as LiveReadonlyFailure).code
+        val rpcBefore = harness.transport.rpcOpenCount
+        val tuiBefore = harness.transport.tuiOpenCount
+        configure(harness)
+        val error = runCatching { harness.repository.connectInteractiveObserver() }.exceptionOrNull() as LiveReadonlyFailure
+        assertFalse(error.toString().contains("secret.example"))
+        return Triple(error.code, harness.transport.rpcOpenCount - rpcBefore, harness.transport.tuiOpenCount - tuiBefore)
       }
 
-      assertEquals("interactive_attach_failed", stageFailure { it.unexpectedExecuteFailure = true })
-      assertEquals("observer_connect_failed", stageFailure { it.failRpcOpen = true })
-      assertEquals("observer_connect_failed", stageFailure { it.failRpcReady = true })
-      assertEquals("interactive_attach_failed", stageFailure { it.failTuiOpen = true })
+      assertEquals(
+        Triple("interactive_credential_failed", 0, 0),
+        stageFailure { it.protector.failReveal = true },
+      )
+      assertEquals(
+        Triple("interactive_capabilities_failed", 0, 0),
+        stageFailure { it.transport.unexpectedExecuteFailure = true },
+      )
+      assertEquals(
+        Triple("observer_connect_failed", 1, 0),
+        stageFailure { it.transport.failRpcOpen = true },
+      )
+      assertEquals(
+        Triple("observer_connect_failed", 1, 0),
+        stageFailure { it.transport.failRpcReady = true },
+      )
+      assertEquals(
+        Triple("interactive_tui_open_failed", 1, 1),
+        stageFailure { it.transport.failTuiOpen = true },
+      )
 
       val harness = harness()
       harness.repository.registerManual(
@@ -253,13 +273,9 @@ class LiveReadonlyRepositoryTest {
       withTimeout(5_000) {
         harness.repository.interactiveState
           .filterIsInstance<LiveInteractiveAppState.Ready>()
-          .first {
-            it.snapshot.role == InteractiveControllerRole.CONTROLLER &&
-              it.snapshot.receipts.any { receipt -> receipt.kind.wireValue == "get_tree" }
-          }
+          .first { it.snapshot.role == InteractiveControllerRole.CONTROLLER }
       }
-      rpcSocket.failSend = true
-      val sentBefore = rpcSocket.sent.size
+      rpcSocket.failPromptSend = true
       val error =
         runCatching {
           harness.repository.handleInteraction(RichInteractionAction.SubmitPrompt("must become indeterminate"))
@@ -269,7 +285,7 @@ class LiveReadonlyRepositoryTest {
       assertEquals("interactive_send_indeterminate", failure.code)
       val receipt = requireNotNull(failure.lastSnapshot).receipts.last()
       assertEquals(CommandLifecycle.INDETERMINATE, receipt.lifecycle)
-      assertEquals(sentBefore, rpcSocket.sent.size)
+      assertEquals(1, rpcSocket.promptSendAttempts)
       harness.repository.reportInteractiveFailure("interactive_failed")
       failure = harness.repository.interactiveState.value as LiveInteractiveAppState.Failure
       assertEquals("interactive_send_indeterminate", failure.code)
@@ -279,7 +295,7 @@ class LiveReadonlyRepositoryTest {
           harness.repository.handleInteraction(RichInteractionAction.SubmitPrompt("blind retry forbidden"))
         }.exceptionOrNull() as CommandAdmissionException
       assertEquals("session_not_ready", retry.code)
-      assertEquals(sentBefore, rpcSocket.sent.size)
+      assertEquals(1, rpcSocket.promptSendAttempts)
     }
 
   @Test
@@ -413,12 +429,13 @@ class LiveReadonlyRepositoryTest {
     val registry = HostRegistry(registryStore, vault) { HostId("workstation") }
     val transport = FakeLiveTransport()
     val repository = LiveReadonlyRepository(registry, vault, transport)
-    return Harness(repository, transport)
+    return Harness(repository, transport, protector)
   }
 
   private data class Harness(
     val repository: LiveReadonlyRepository,
     val transport: FakeLiveTransport,
+    val protector: FakeProtector,
   )
 
   private class FakeHostStore : HostRegistryStore {
@@ -436,6 +453,8 @@ class LiveReadonlyRepositoryTest {
   }
 
   private class FakeProtector : CredentialProtector {
+    var failReveal: Boolean = false
+
     override suspend fun protect(
       handle: CredentialHandle,
       bearer: CharArray,
@@ -444,7 +463,10 @@ class LiveReadonlyRepositoryTest {
     override suspend fun reveal(
       handle: CredentialHandle,
       credential: ProtectedCredential,
-    ): CharArray = credential.copyBytes().decodeToString().toCharArray()
+    ): CharArray {
+      if (failReveal) throw IllegalStateException("https://secret.example/private credential response")
+      return credential.copyBytes().decodeToString().toCharArray()
+    }
 
     override suspend fun destroy(handle: CredentialHandle) = Unit
   }
@@ -543,7 +565,8 @@ class LiveReadonlyRepositoryTest {
   private class FakeSocket : PiDaemonSocket {
     private val frames = Channel<String>(Channel.UNLIMITED)
     val sent = mutableListOf<String>()
-    var failSend: Boolean = false
+    var failPromptSend: Boolean = false
+    var promptSendAttempts: Int = 0
     var closed: Boolean = false
       private set
 
@@ -560,7 +583,10 @@ class LiveReadonlyRepositoryTest {
 
     override suspend fun sendText(text: String) {
       check(!closed)
-      if (failSend) throw IllegalStateException("https://secret.example/private send response")
+      if (text.contains("\"type\":\"prompt\"")) {
+        promptSendAttempts += 1
+        if (failPromptSend) throw IllegalStateException("https://secret.example/private send response")
+      }
       sent += text
     }
 
