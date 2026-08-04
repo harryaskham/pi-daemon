@@ -238,7 +238,7 @@ public class ServiceBearerRequestFactory private constructor(
         require(value.length <= 2_048 && '\r' !in value && '\n' !in value) {
           "invalid query parameter value"
         }
-        "$name=${URLEncoder.encode(value, StandardCharsets.UTF_8)}"
+        "$name=${URLEncoder.encode(value, StandardCharsets.UTF_8.name())}"
       }
     val scheme =
       when {

@@ -65,5 +65,5 @@ public class PiDaemonClient(
 
   override fun toString(): String = "PiDaemonClient(host=${host.id.value}, transport=[INJECTED])"
 
-  private fun encodePathSegment(value: String): String = URLEncoder.encode(value, StandardCharsets.UTF_8).replace("+", "%20")
+  private fun encodePathSegment(value: String): String = URLEncoder.encode(value, StandardCharsets.UTF_8.name()).replace("+", "%20")
 }

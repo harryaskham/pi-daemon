@@ -208,15 +208,16 @@ class PiDaemonSdkCoreContractTest {
 
     val socket =
       client.attach(
-        session = SessionKey(sessionId = "agent-a", generation = 3),
+        session = SessionKey(sessionId = "agent:a", generation = 3),
         role = SessionRole.OBSERVER,
-        cursor = "host-01:agent-a:3:41",
+        cursor = "résumé + /?",
       )
 
     assertSame(transport.socket, socket)
     val request = requireNotNull(transport.lastWebSocketRequest)
-    assertEquals("/v1/session/agent-a/rpc", request.uri.path)
-    assertEquals("generation=3&role=observer&cursor=host-01%3Aagent-a%3A3%3A41", request.uri.rawQuery)
+    assertEquals("/v1/session/agent:a/rpc", request.uri.path)
+    assertEquals("/v1/session/agent%3Aa/rpc", request.uri.rawPath)
+    assertEquals("generation=3&role=observer&cursor=r%C3%A9sum%C3%A9+%2B+%2F%3F", request.uri.rawQuery)
     assertEquals(listOf("pi-daemon-rpc.v1"), request.subprotocols)
     assertEquals("Bearer fixture-service-bearer", request.headers["Authorization"])
     assertFalse(request.toString().contains("fixture-service-bearer"))
