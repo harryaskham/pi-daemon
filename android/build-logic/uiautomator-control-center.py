@@ -9,6 +9,13 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 
+def parse_bounds(value: str) -> tuple[int, int, int, int]:
+    match = re.fullmatch(r"\[(-?\d+),(-?\d+)\]\[(-?\d+),(-?\d+)\]", value)
+    if match is None:
+        raise ValueError("invalid bounds encoding")
+    return tuple(int(item) for item in match.groups())
+
+
 def control_center(xml_path: Path, label: str) -> tuple[int, int]:
     root = ET.parse(xml_path).getroot()
     parents = {child: parent for parent in root.iter() for child in parent}
@@ -32,10 +39,27 @@ def control_center(xml_path: Path, label: str) -> tuple[int, int]:
         node = parents[node]
     if node.attrib.get("clickable") != "true":
         raise ValueError(f"control has no clickable ancestor: {label}")
-    values = [int(value) for value in re.findall(r"\d+", node.attrib.get("bounds", ""))]
-    if len(values) != 4 or values[0] >= values[2] or values[1] >= values[3]:
-        raise ValueError(f"control has invalid bounds: {label}")
-    return ((values[0] + values[2]) // 2, (values[1] + values[3]) // 2)
+    if node.attrib.get("enabled") == "false" or node.attrib.get("visible-to-user") == "false":
+        raise ValueError(f"control is not visible and enabled: {label}")
+    try:
+        left, top, right, bottom = parse_bounds(node.attrib.get("bounds", ""))
+    except ValueError:
+        raise ValueError(f"control has invalid bounds: {label}") from None
+    viewport_nodes = [item for item in root.iter("node") if "bounds" in item.attrib]
+    try:
+        viewport_left, viewport_top, viewport_right, viewport_bottom = parse_bounds(viewport_nodes[0].attrib["bounds"])
+    except (IndexError, ValueError):
+        raise ValueError("UI hierarchy has invalid viewport bounds") from None
+    if (
+        left >= right
+        or top >= bottom
+        or left < viewport_left
+        or top < viewport_top
+        or right > viewport_right
+        or bottom > viewport_bottom
+    ):
+        raise ValueError(f"control has invalid or offscreen bounds: {label}")
+    return ((left + right) // 2, (top + bottom) // 2)
 
 
 def main(argv: list[str]) -> int:

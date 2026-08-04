@@ -116,6 +116,16 @@ test("disposable interactive proof uses private identity bounded cleanup and phy
   assert.match(selectorFixture, /clickable="true"[^>]*bounds="\[626,1682\]\[1012,1787\]"/);
   assert.match(proof, /hold-until-disconnect/);
   assert.match(proof, /PROMPT INDETERMINATE/);
+  const promptSucceeded = proof.indexOf('screenshots/prompt-succeeded.png');
+  const dismissIme = proof.indexOf('keyevent KEYCODE_BACK');
+  const waitForTree = proof.indexOf('wait_control "Show tree presentation" 30');
+  const tapTree = proof.indexOf('shell input tap "$tree_x" "$tree_y"');
+  assert.ok(promptSucceeded >= 0 && promptSucceeded < dismissIme);
+  assert.ok(dismissIme < waitForTree && waitForTree < tapTree);
+  assert.match(proof, /tree_control_occluded/);
+  assert.match(proof, /tree-control-occluded\.xml/);
+  assert.match(proof, /tree-control-occluded\.png/);
+  assert.match(proof, /tree-control-occluded-sha256sums\.txt/);
   assert.match(proof, /Show tree presentation/);
   assert.match(proof, /Show tui presentation/);
   assert.match(proof, /screenrecord/);

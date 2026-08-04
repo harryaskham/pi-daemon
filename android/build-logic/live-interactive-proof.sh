@@ -236,12 +236,29 @@ wait_ui() {
   exit 70
 }
 
+wait_control() {
+  local text="$1"
+  local attempts="${2:-30}"
+  local xml="$private_dir/window.xml"
+  local center=''
+  for _ in $(seq 1 "$attempts"); do
+    adb -s "$emulator_serial" shell uiautomator dump /sdcard/pi-droid-window.xml >/dev/null 2>&1 || true
+    adb -s "$emulator_serial" exec-out cat /sdcard/pi-droid-window.xml > "$xml" 2>/dev/null || true
+    if center="$(python3 "$repo_root/android/build-logic/uiautomator-control-center.py" "$xml" "$text" 2>/dev/null)"; then
+      printf '%s\n' "$center"
+      return 0
+    fi
+    sleep 1
+  done
+  cp "$xml" "$artifacts_dir/failure-control.xml" 2>/dev/null || true
+  printf 'visible clickable control unavailable: %s\n' "$text" >&2
+  return 1
+}
+
 tap_text() {
   local text="$1"
-  local xml="$private_dir/window.xml"
-  adb -s "$emulator_serial" shell uiautomator dump /sdcard/pi-droid-window.xml >/dev/null 2>&1
-  adb -s "$emulator_serial" exec-out cat /sdcard/pi-droid-window.xml > "$xml"
-  read -r x y < <(python3 "$repo_root/android/build-logic/uiautomator-control-center.py" "$xml" "$text")
+  local x y
+  read -r x y < <(wait_control "$text")
   adb -s "$emulator_serial" shell input tap "$x" "$y"
 }
 
@@ -288,8 +305,21 @@ adb -s "$emulator_serial" shell input text interactive-proof
 tap_text "Send prompt"
 wait_ui 'PROMPT SUCCEEDED|Command prompt succeeded' 45
 adb -s "$emulator_serial" exec-out screencap -p > "$artifacts_dir/screenshots/prompt-succeeded.png"
-
-tap_text "Show tree presentation"
+adb -s "$emulator_serial" shell input keyevent KEYCODE_BACK
+sleep 1
+tree_center=''
+if ! tree_center="$(wait_control "Show tree presentation" 30)"; then
+  adb -s "$emulator_serial" exec-out screencap -p > "$artifacts_dir/screenshots/tree-control-occluded.png" 2>/dev/null || true
+  cp "$private_dir/window.xml" "$artifacts_dir/tree-control-occluded.xml" 2>/dev/null || true
+  (
+    cd "$artifacts_dir"
+    sha256sum screenshots/tree-control-occluded.png tree-control-occluded.xml > tree-control-occluded-sha256sums.txt 2>/dev/null || true
+  )
+  printf '%s\n' 'tree_control_occluded' >&2
+  exit 70
+fi
+read -r tree_x tree_y <<< "$tree_center"
+adb -s "$emulator_serial" shell input tap "$tree_x" "$tree_y"
 wait_ui 'Branch tree' 30
 adb -s "$emulator_serial" exec-out screencap -p > "$artifacts_dir/screenshots/tree-live.png"
 tap_text "Show tui presentation"
