@@ -26,4 +26,7 @@ if (providers.gradleProperty("piDroidAndroidApp").orNull == "true") {
   include(":app")
   include(":play-receipt")
   include(":sdk-android-ui")
+  include(":sdk-core-android")
+  include(":sdk-session-ui-android")
+  include(":sdk-workspace-ui-android")
 }
