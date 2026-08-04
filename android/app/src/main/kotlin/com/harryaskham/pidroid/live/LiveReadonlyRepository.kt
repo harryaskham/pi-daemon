@@ -92,11 +92,11 @@ public sealed interface LiveInteractiveAppState {
   ) : LiveInteractiveAppState
 
   public data class Failure(
-    public val hostId: HostId,
-    public val sessionId: String,
-    public val generation: Int,
+    public val hostId: HostId?,
+    public val sessionId: String?,
+    public val generation: Int?,
     public val code: String,
-    public val lastSnapshot: LiveInteractiveSnapshot,
+    public val lastSnapshot: LiveInteractiveSnapshot?,
   ) : LiveInteractiveAppState
 }
 
@@ -213,11 +213,20 @@ public class LiveReadonlyRepository(
   }
 
   public fun reportInteractiveFailure(code: String) {
+    val safeCode = code.takeIf(INTERACTIVE_SAFE_CODE::matches) ?: "interactive_failed"
     val active = activeInteractive
     if (active == null) {
-      mutableInteractiveState.value = LiveInteractiveAppState.Inactive
+      val selected = (mutableState.value as? LiveReadonlyState.Ready)?.selected
+      mutableInteractiveState.value =
+        LiveInteractiveAppState.Failure(
+          hostId = selected?.host?.id,
+          sessionId = selected?.session?.session?.sessionId,
+          generation = selected?.session?.session?.generation,
+          code = safeCode,
+          lastSnapshot = null,
+        )
     } else {
-      publishInteractive(active, code.take(128))
+      publishInteractive(active, safeCode)
     }
   }
 
@@ -605,6 +614,8 @@ private data class ActiveInteractive(
   var rpcJob: Job? = null,
   var tuiJob: Job? = null,
 )
+
+private val INTERACTIVE_SAFE_CODE = Regex("^[a-z][a-z0-9_]{0,127}$")
 
 public class LiveReadonlyFailure(
   public val code: String,

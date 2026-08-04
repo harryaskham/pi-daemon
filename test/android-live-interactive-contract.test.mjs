@@ -35,10 +35,15 @@ test("interactive app delegates exact authority correlation tree and TUI state t
   assert.match(repository, /requestControl\(\)/);
   assert.match(repository, /UUID\.randomUUID\(\)/);
   assert.match(repository, /interactive_send_indeterminate/);
+  assert.match(repository, /INTERACTIVE_SAFE_CODE\s*=\s*Regex\("\^\[a-z\]\[a-z0-9_\]\{0,127\}\$"\)/);
+  assert.match(repository, /code\.takeIf\(INTERACTIVE_SAFE_CODE::matches\) \?: "interactive_failed"/);
   assert.match(screen, /RichInteractiveSessionSurface/);
   assert.match(screen, /SessionTreeSurface/);
   assert.match(screen, /TuiSurface/);
   assert.match(screen, /Reconnect interactive session/);
+  assert.match(screen, /ACTION RECEIVED · CONNECTING/);
+  assert.match(screen, /INTERACTIVE ERROR · PREFLIGHT_ERROR/);
+  assert.match(screen, /InteractiveControllerRole\.REQUESTING/);
   assert.match(activity, /handleInteraction/);
   assert.match(commands, /fun getTree\(\)/);
   assert.match(rich, /fun requesting\(/);
@@ -64,7 +69,8 @@ test("disposable interactive proof uses private identity bounded cleanup and phy
   assert.match(proof, /openssl rand -hex 32/);
   assert.match(proof, /--interactive/);
   assert.match(proof, /tap_text "Request control"/);
-  assert.match(proof, /REQUESTING\|CONTROLLER/);
+  assert.match(proof, /ACTION RECEIVED · CONNECTING\|REQUESTING\|CONTROLLER\|INTERACTIVE ERROR/);
+  assert.match(proof, /wait_ui 'REQUESTING\|CONTROLLER'/);
   assert.match(proof, /uiautomator-control-center\.py/);
   assert.match(selector, /clickable ancestor/);
   assert.match(selector, /item\.attrib\.get\("text"\) != label/);

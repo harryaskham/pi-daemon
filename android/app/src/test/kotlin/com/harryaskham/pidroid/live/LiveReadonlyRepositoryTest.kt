@@ -36,6 +36,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonObject
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import java.net.URI
@@ -106,6 +107,34 @@ class LiveReadonlyRepositoryTest {
     }
 
   @Test
+  fun `connecting and pre-active failure remain observable instead of collapsing to observer`() {
+    val harness = harness()
+    val hostId = HostId("workstation")
+    assertEquals(
+      "ACTION RECEIVED · CONNECTING",
+      liveInteractiveStatusLabel(LiveInteractiveAppState.Connecting(hostId), hostId, rpcObserverConnected = true),
+    )
+
+    harness.repository.reportInteractiveFailure("observer_attach_failed")
+    val failure = harness.repository.interactiveState.value as LiveInteractiveAppState.Failure
+    assertEquals("observer_attach_failed", failure.code)
+    assertNull(failure.lastSnapshot)
+    assertEquals(
+      "INTERACTIVE ERROR · PREFLIGHT_ERROR · OBSERVER_ATTACH_FAILED",
+      liveInteractiveStatusLabel(failure, hostId, rpcObserverConnected = true),
+    )
+
+    harness.repository.reportInteractiveFailure("http://secret.example/private path response body")
+    val redacted = harness.repository.interactiveState.value as LiveInteractiveAppState.Failure
+    assertEquals("interactive_failed", redacted.code)
+    assertEquals(
+      "INTERACTIVE ERROR · PREFLIGHT_ERROR · INTERACTIVE_FAILED",
+      liveInteractiveStatusLabel(redacted, hostId, rpcObserverConnected = true),
+    )
+    assertFalse(redacted.toString().contains("secret.example"))
+  }
+
+  @Test
   fun `interactive repository requests control sends one unique prompt and marks lost response indeterminate`() =
     runTest {
       val harness = harness()
@@ -120,6 +149,10 @@ class LiveReadonlyRepositoryTest {
       harness.repository.requestControl()
       var interactive = harness.repository.interactiveState.value as LiveInteractiveAppState.Ready
       assertEquals(InteractiveControllerRole.REQUESTING, interactive.snapshot.role)
+      assertEquals(
+        "REQUESTING",
+        liveInteractiveStatusLabel(interactive, interactive.hostId, rpcObserverConnected = true),
+      )
       val rpcSocket = requireNotNull(harness.transport.interactiveRpcSocket)
       assertTrue(rpcSocket.sent.single().contains("request_control"))
 
@@ -131,6 +164,10 @@ class LiveReadonlyRepositoryTest {
             .first { it.snapshot.role == InteractiveControllerRole.CONTROLLER }
         }
       assertTrue(interactive.snapshot.rich.canMutate)
+      assertEquals(
+        "CONTROLLER",
+        liveInteractiveStatusLabel(interactive, interactive.hostId, rpcObserverConnected = true),
+      )
 
       harness.repository.handleInteraction(RichInteractionAction.SubmitPrompt("one exact prompt"))
       val prompt =
@@ -173,7 +210,8 @@ class LiveReadonlyRepositoryTest {
         }
       assertEquals(
         CommandLifecycle.INDETERMINATE,
-        failed.lastSnapshot.receipts
+        requireNotNull(failed.lastSnapshot)
+          .receipts
           .single { it.correlationId == lostId }
           .lifecycle,
       )

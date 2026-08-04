@@ -184,6 +184,56 @@ private enum class LivePresentation {
   TUI,
 }
 
+internal fun liveInteractiveStatusLabel(
+  interaction: LiveInteractiveAppState,
+  selectedHostId: HostId,
+  rpcObserverConnected: Boolean,
+): String {
+  val snapshot =
+    when (interaction) {
+      is LiveInteractiveAppState.Ready -> interaction.snapshot.takeIf { interaction.hostId == selectedHostId }
+      is LiveInteractiveAppState.Failure -> interaction.lastSnapshot?.takeIf { interaction.hostId == selectedHostId }
+      else -> null
+    }
+  return when {
+    interaction is LiveInteractiveAppState.Connecting && interaction.hostId == selectedHostId -> {
+      "ACTION RECEIVED · CONNECTING"
+    }
+
+    interaction is LiveInteractiveAppState.Failure && (interaction.hostId == null || interaction.hostId == selectedHostId) -> {
+      "INTERACTIVE ERROR · PREFLIGHT_ERROR · ${interaction.code.uppercase()}"
+    }
+
+    snapshot?.role == InteractiveControllerRole.CONTROLLER -> {
+      "CONTROLLER"
+    }
+
+    snapshot?.role == InteractiveControllerRole.REQUESTING -> {
+      "REQUESTING"
+    }
+
+    snapshot?.role == InteractiveControllerRole.LOST -> {
+      "CONNECTION LOST"
+    }
+
+    snapshot?.role == InteractiveControllerRole.DENIED -> {
+      "CONTROL DENIED"
+    }
+
+    snapshot != null -> {
+      "OBSERVER"
+    }
+
+    rpcObserverConnected -> {
+      "READONLY RPC ATTACHED"
+    }
+
+    else -> {
+      "READONLY REST"
+    }
+  }
+}
+
 @Composable
 private fun LiveSessionScreen(
   ready: LiveReadonlyState.Ready,
@@ -200,7 +250,7 @@ private fun LiveSessionScreen(
   val interactiveSnapshot =
     when (interaction) {
       is LiveInteractiveAppState.Ready -> interaction.snapshot.takeIf { interaction.hostId == ready.selectedHostId }
-      is LiveInteractiveAppState.Failure -> interaction.lastSnapshot.takeIf { interaction.hostId == ready.selectedHostId }
+      is LiveInteractiveAppState.Failure -> interaction.lastSnapshot?.takeIf { interaction.hostId == ready.selectedHostId }
       else -> null
     }
   Column(Modifier.fillMaxSize()) {
@@ -223,12 +273,7 @@ private fun LiveSessionScreen(
       }
       Spacer(Modifier.weight(1f))
       Text(
-        when {
-          interactiveSnapshot?.role == InteractiveControllerRole.CONTROLLER -> "CONTROLLER"
-          interactiveSnapshot != null -> "OBSERVER"
-          ready.selected.rpcObserverConnected -> "READONLY RPC ATTACHED"
-          else -> "READONLY REST"
-        },
+        liveInteractiveStatusLabel(interaction, ready.selectedHostId, ready.selected.rpcObserverConnected),
         color = if (interactiveSnapshot?.role == InteractiveControllerRole.CONTROLLER) LiveGreen else LiveWarning,
         fontWeight = FontWeight.Bold,
       )
