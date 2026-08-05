@@ -500,6 +500,10 @@ process appears per wake.
   in safe diagnostics and receipts.
 - [x] `bd-bd2ed9` Latch accepted isolated ADB transports so offline, unauthorized,
   and other bounded state polls cannot trigger blind reconnects during readiness.
+- [x] `bd-8e79ac` Make the isolated ADB readiness contract hermetic under Nix by
+  using the active pinned Bash for its fake executables, replacing expiring sleep
+  processes with owned blocking sentinels, and reporting only bounded redacted
+  assertion labels when its shell fixture fails.
 - [x] `bd-ed4382` Reopen retained imported Dash sessions from their exact managed
   JSONL/session directory without replaying or resolving the original fork source.
 - [x] `bd-486f8c` Accept ordinary owner-controlled, non-writable Pi session

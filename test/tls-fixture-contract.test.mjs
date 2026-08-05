@@ -45,7 +45,7 @@ test("the openssl dependency is declared in every lane that runs the suite", asy
   // The package build and the dev shells. bd-833b3e adds pinned Bash to
   // package checks because NixOS/sandbox has neither /bin/bash nor an exported
   // BASH; keep that execution dependency explicit alongside OpenSSL.
-  assert.match(flake, /nativeBuildInputs = \[pkgs\.makeWrapper pkgs\.openssl pkgs\.bash\]/);
+  assert.match(flake, /nativeBuildInputs = \[[^\]]*pkgs\.makeWrapper[^\]]*pkgs\.openssl[^\]]*pkgs\.bash[^\]]*\]/);
   assert.match(flake, /commonPackages = \[[^\]]*pkgs\.openssl/s);
   // The plain Node lane, which has no Nix shell, from the same pinned nixpkgs.
   const provide = ci.indexOf("nixpkgs#openssl.bin");

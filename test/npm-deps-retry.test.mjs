@@ -116,7 +116,7 @@ test("retry fixture uses pinned Nix Bash instead of /bin/bash", async () => {
   assert.match(source, /process\.env\.BASH \|\| "bash"/);
   assert.match(
     flake,
-    /nativeBuildInputs = \[pkgs\.makeWrapper pkgs\.openssl pkgs\.bash\]/,
+    /nativeBuildInputs = \[[^\]]*pkgs\.makeWrapper[^\]]*pkgs\.openssl[^\]]*pkgs\.bash[^\]]*\]/,
     "Nix package checks must put pinned Bash on PATH",
   );
 });

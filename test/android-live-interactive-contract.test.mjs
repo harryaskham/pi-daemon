@@ -16,6 +16,24 @@ async function source(relative) {
   }
 }
 
+function formatReadinessFixtureFailure(error) {
+  const rawStderr = error && typeof error === "object" && "stderr" in error
+    ? error.stderr
+    : "";
+  const stderr = Buffer.isBuffer(rawStderr)
+    ? rawStderr.toString("utf8")
+    : typeof rawStderr === "string"
+      ? rawStderr
+      : "";
+  const marker = stderr
+    .slice(-4096)
+    .match(/(?:^|\n)readiness_fixture_failure=([a-z0-9_]{1,64}) exit_status=([0-9]{1,3})(?:\n|$)/);
+  if (!marker) {
+    return "readiness fixture failed: assertion=unclassified exit_status=unknown";
+  }
+  return `readiness fixture failed: assertion=${marker[1]} exit_status=${marker[2]}`;
+}
+
 test("interactive app delegates exact authority correlation tree and TUI state to canonical SDK models", async () => {
   const [catalog, appLock, machine, repository, repositoryTest, screen, activity, transport, transportTest, commands, rich] = await Promise.all([
     source("android/gradle/libs.versions.toml"),
@@ -279,8 +297,8 @@ bin_dir="$sandbox/bin"
 diagnostics="$sandbox/diagnostics.log"
 adb_log="$sandbox/adb.log"
 mkdir -p "$private_root" "$bin_dir"
-cat > "$bin_dir/adb" <<'ADB'
-#!/usr/bin/env bash
+printf '#!%s\n' "$BASH" > "$bin_dir/adb"
+cat >> "$bin_dir/adb" <<'ADB'
 set -euo pipefail
 {
   printf 'port=%s user=%s emulator=%s avd=%s keys=%s args=' \
@@ -370,12 +388,49 @@ printf '%s\n' 'fake_adb_contract=ok private_key_cleanup=ok'
   assert.doesNotMatch(output, /SENSITIVE|cHVibGlj|android-user|adbkey|private_root|sandbox/);
 });
 
+test("readiness fixture failure context is bounded and secret-free", () => {
+  const sensitiveContext = "sensitive-token=S3CR3T key=/private/path server=private-server ".repeat(100);
+  const formatted = formatReadinessFixtureFailure({
+    stderr: `${sensitiveContext}\nreadiness_fixture_failure=ready_sentinel_alive exit_status=1\n`,
+  });
+
+  assert.equal(formatted, "readiness fixture failed: assertion=ready_sentinel_alive exit_status=1");
+  assert.doesNotMatch(formatted, /sensitive|S3CR3T|private\/path|private-server|token|key=/);
+  assert.equal(
+    formatReadinessFixtureFailure({ stderr: sensitiveContext }),
+    "readiness fixture failed: assertion=unclassified exit_status=unknown",
+  );
+});
+
 test("shared emulator ADB readiness latches accepted transport across bounded safe state transitions", () => {
   const helperPath = path.join(root, "android/build-logic/emulator-adb-readiness.sh");
-  const output = execFileSync("bash", ["-c", String.raw`
-set -euo pipefail
+  let output = "";
+  try {
+    output = execFileSync("bash", ["-c", String.raw`
+set -Eeuo pipefail
 umask 077
 source "$1"
+readiness_fixture_step='initialize'
+report_readiness_fixture_failure() {
+  local exit_status="$1"
+  local assertion="$2"
+  if [[ ! "$exit_status" =~ ^[0-9]{1,3}$ ]]; then
+    exit_status=1
+  fi
+  if [[ ! "$assertion" =~ ^[a-z0-9_]{1,64}$ ]]; then
+    assertion=unclassified
+  fi
+  printf 'readiness_fixture_failure=%s exit_status=%s\n' "$assertion" "$exit_status"
+}
+on_readiness_fixture_error() {
+  local exit_status=$?
+  trap - ERR
+  report_readiness_fixture_failure "$exit_status" "$readiness_fixture_step" >&2
+  exit "$exit_status"
+}
+trap on_readiness_fixture_error ERR
+
+readiness_fixture_step='create_sandbox'
 sandbox="$(mktemp -d)"
 diagnostics="$sandbox/diagnostics.log"
 connect_calls="$sandbox/connect.calls"
@@ -384,8 +439,9 @@ state_calls="$sandbox/state.calls"
 : > "$connect_calls"
 : > "$state_calls"
 mkdir -p "$sandbox/bin"
-cat > "$sandbox/bin/adb" <<'FAKE_ADB'
-#!/usr/bin/env bash
+readiness_fixture_step='write_fake_adb'
+printf '#!%s\n' "$BASH" > "$sandbox/bin/adb"
+cat >> "$sandbox/bin/adb" <<'FAKE_ADB'
 case "$FAKE_ADB_STATE" in
   secret) { printf '%s' 'arbitrary failure sensitive-token=S3CR3T key=/private/path serial=tcp-secret server=private-server '; printf '%05000d' 0; } >&2 ;;
   offline) printf '%s\n' 'error: device offline' >&2 ;;
@@ -398,9 +454,11 @@ chmod 700 "$sandbox/bin/adb"
 original_path="$PATH"
 PATH="$sandbox/bin:$PATH"
 for fixture in secret offline unauthorized not_found; do
+  readiness_fixture_step="sanitize_$fixture"_state
   export FAKE_ADB_STATE="$fixture"
   raw_fixture="$(poll_emulator_adb_state '127.0.0.1:5559' 42085 1 || true)"
   if [[ "$fixture" == secret ]]; then
+    readiness_fixture_step='secret_output_bound'
     [[ "$(printf '%s' "$raw_fixture" | wc -c)" == 4096 ]]
   fi
   printf 'stderr_fixture=%s adb_state=%s\n' \
@@ -438,12 +496,22 @@ poll_emulator_adb_state() {
     *) printf '%s\n' 'device' ;;
   esac
 }
-command sleep 5 &
+readiness_fixture_step='connected_sentinel_start'
+mkfifo "$sandbox/connected.sentinel"
+command cat "$sandbox/connected.sentinel" >/dev/null &
 ready_pid=$!
+readiness_fixture_step='connected_sentinel_alive'
+kill -0 "$ready_pid" 2>/dev/null
 sleep() { :; }
+readiness_fixture_step='connected_transport_wait'
 wait_for_emulator_adb "$ready_pid" '127.0.0.1:5559' 42085 "$diagnostics" 2
+readiness_fixture_step='connected_transport_connect_attempts'
 [[ "$(wc -l < "$connect_calls")" == 2 ]]
+readiness_fixture_step='connected_transport_state_attempts'
 [[ "$(wc -l < "$state_calls")" == 3 ]]
+readiness_fixture_step='connected_sentinel_survived'
+kill -0 "$ready_pid" 2>/dev/null
+readiness_fixture_step='connected_sentinel_stop'
 kill "$ready_pid"
 wait "$ready_pid" 2>/dev/null || true
 ready_pid=''
@@ -462,44 +530,72 @@ poll_emulator_adb_state() {
     *) printf '%s\n' 'device' ;;
   esac
 }
-command sleep 5 &
+readiness_fixture_step='latched_sentinel_start'
+mkfifo "$sandbox/latched.sentinel"
+command cat "$sandbox/latched.sentinel" >/dev/null &
 ready_pid=$!
+readiness_fixture_step='latched_sentinel_alive'
+kill -0 "$ready_pid" 2>/dev/null
+readiness_fixture_step='latched_transport_wait'
 wait_for_emulator_adb "$ready_pid" '127.0.0.1:5559' 42085 "$diagnostics" 2
+readiness_fixture_step='latched_transport_connect_attempts'
 [[ "$(wc -l < "$connect_calls")" == 1 ]]
+readiness_fixture_step='latched_transport_state_attempts'
 [[ "$(wc -l < "$state_calls")" == 2 ]]
+readiness_fixture_step='latched_sentinel_survived'
+kill -0 "$ready_pid" 2>/dev/null
+readiness_fixture_step='latched_sentinel_stop'
 kill "$ready_pid"
 wait "$ready_pid" 2>/dev/null || true
 ready_pid=''
 unset -f sleep
 
+readiness_fixture_step='dead_process_start'
 (exit 0) &
 dead_pid=$!
 wait "$dead_pid"
 exit_status=0
 wait_for_emulator_adb "$dead_pid" '127.0.0.1:5559' 42085 "$diagnostics" 2 || exit_status=$?
+readiness_fixture_step='dead_process_return_code'
 [[ "$exit_status" == 69 ]]
 
 connect_emulator_adb_transport() { printf '%s\n' 'failed to connect: Connection refused'; }
 poll_emulator_adb_state() { printf '%s\n' 'offline'; }
-command sleep 5 &
+readiness_fixture_step='timeout_sentinel_start'
+mkfifo "$sandbox/timeout.sentinel"
+command cat "$sandbox/timeout.sentinel" >/dev/null &
 timeout_pid=$!
+readiness_fixture_step='timeout_sentinel_alive'
+kill -0 "$timeout_pid" 2>/dev/null
+invalid_case=0
 for invalid_args in \
   "$timeout_pid emulator-5558 42085 2" \
   "$timeout_pid 127.0.0.1:5559 5037 2" \
   "$timeout_pid 127.0.0.1:5559 42085 241"; do
+  invalid_case=$((invalid_case + 1))
   invalid_status=0
   read -r invalid_pid invalid_serial invalid_server invalid_seconds <<< "$invalid_args"
   wait_for_emulator_adb "$invalid_pid" "$invalid_serial" "$invalid_server" "$diagnostics" "$invalid_seconds" || invalid_status=$?
+  readiness_fixture_step="invalid_arguments_$invalid_case"
   [[ "$invalid_status" == 64 ]]
 done
 timeout_status=0
 wait_for_emulator_adb "$timeout_pid" '127.0.0.1:5559' 42085 "$diagnostics" 2 || timeout_status=$?
+readiness_fixture_step='timeout_return_code'
+[[ "$timeout_status" == 70 ]]
+readiness_fixture_step='timeout_sentinel_survived'
+kill -0 "$timeout_pid" 2>/dev/null
+readiness_fixture_step='timeout_sentinel_stop'
 kill "$timeout_pid"
 wait "$timeout_pid" 2>/dev/null || true
 timeout_pid=''
-[[ "$timeout_status" == 70 ]]
+readiness_fixture_step='diagnostics_output'
 cat "$diagnostics"
+printf '%s\n' 'fixture_sentinel_mode=blocking_fifo lifecycle=owned'
 `, "adb-readiness-test", helperPath], { encoding: "utf8" });
+  } catch (error) {
+    assert.fail(formatReadinessFixtureFailure(error));
+  }
 
   assert.match(output, /stderr_fixture=secret adb_state=other/);
   assert.match(output, /stderr_fixture=offline adb_state=offline/);
@@ -512,6 +608,7 @@ cat "$diagnostics"
   assert.match(output, /status=ready attempts=2 connect_attempts=1 deadline_seconds=2[^\n]*connect_state=already_connected adb_state=device transport_connected=true/);
   assert.match(output, /status=emulator_exited attempts=0 connect_attempts=0 deadline_seconds=2[^\n]*connect_state=unavailable adb_state=unavailable transport_connected=false/);
   assert.match(output, /status=timed_out attempts=[12] connect_attempts=[12] deadline_seconds=2[^\n]*connect_state=refused adb_state=offline transport_connected=false/);
+  assert.match(output, /fixture_sentinel_mode=blocking_fifo lifecycle=owned/);
   assert.doesNotMatch(output, /sensitive|S3CR3T|private\/path|private-server|tcp-secret|serial|token|5037/);
 });
 
