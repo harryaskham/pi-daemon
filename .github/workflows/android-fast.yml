@@ -40,6 +40,8 @@ jobs:
           github_access_token: ${{ secrets.GITHUB_TOKEN }}
       - name: Expose pinned Java to Gradle action
         run: |
+          # shellcheck disable=SC2016
+          # The pinned inner shell expands these environment values.
           nix develop .#android --command bash -euo pipefail -c '
             gradle_user_home="$RUNNER_TEMP/gradle-user-home"
             mkdir -p "$gradle_user_home"

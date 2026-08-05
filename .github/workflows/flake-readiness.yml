@@ -1,0 +1,45 @@
+name: Flake readiness
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: flake-readiness-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  readiness:
+    name: Flake readiness
+    runs-on: [self-hosted, nix, x86_64-linux]
+    timeout-minutes: 30
+    environment: pi-daemon-aarch64-cache
+    env:
+      ATTIC_ENDPOINT: ${{ vars.PI_DAEMON_ATTIC_ENDPOINT }}
+      ATTIC_CACHE: ${{ vars.PI_DAEMON_ATTIC_CACHE }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: cachix/install-nix-action@v31
+        with:
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+          set_as_trusted_user: false
+      - name: Verify signed Attic readiness cache
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! "$ATTIC_ENDPOINT" =~ ^https?:// ]] || [[ ! "$ATTIC_CACHE" =~ ^[A-Za-z0-9._-]+$ ]]; then
+            echo '::error title=Attic readiness cache is not configured::Set the existing endpoint/cache environment variables.'
+            exit 1
+          fi
+          expected="${ATTIC_ENDPOINT%/}/${ATTIC_CACHE}"
+          nix config show substituters | tr ' ' '\n' | sed 's#/$##' | grep -Fx "${expected%/}"
+          nix config show trusted-public-keys | tr ' ' '\n' | grep -E '^collective:'
+          nix config show require-sigs | grep -Fx true
+      - name: Require the full flake to build and check
+        run: nix flake check --print-build-logs --option require-sigs true
+        timeout-minutes: 25
