@@ -73,10 +73,11 @@ commands.
 
 The dedicated macOS lane first records the current system, signature policy,
 credential-redacted substituter identities, trusted key names, and offline store
-presence for both the exact package and npm dependency cache. It then rebuilds
-the package with `--rebuild` under a 90-minute bound before running the complete
-flake under a separate 30-minute bound. This intentionally exercises the Node
-suite and both installed-version assertions even on a warm self-hosted store,
+presence for both the exact package and npm dependency cache. It then builds a
+missing package normally, or uses `--rebuild` only when that exact output is
+already valid, under a 90-minute bound before running the complete flake under a
+separate 30-minute bound. Both paths intentionally exercise the Node suite and
+both installed-version assertions, including on a warm self-hosted store,
 while keeping Pages, Home Manager, generated contracts, and workflow syntax in
 the final verdict. Nix builder logs emit start/end timestamps and durations for
 build, check, install, fixup, and install-check; the workflow retains those logs

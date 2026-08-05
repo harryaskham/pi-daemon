@@ -66,15 +66,23 @@ jobs:
         timeout-minutes: 5
 
       # PR 26 measured 12m08s in install and 29m27s in fixup alone before the
-      # former monolithic 50-minute step expired. Rebuild makes every verdict
-      # exercise npm tests and both install checks even when this self-hosted
-      # store already contains the exact output; 90 minutes is an evidence-based
-      # cold-package ceiling rather than another warm-cache estimate.
-      - name: Rebuild package, tests, fixup, and install checks
+      # former monolithic 50-minute step expired. A missing output takes the real
+      # cold build path; an already-valid output uses --rebuild so every verdict
+      # still exercises npm tests and both install checks. (Nix refuses
+      # --rebuild when an output is missing rather than treating it as a build.)
+      # The 90-minute bound is therefore based on the cold package tail, not
+      # another warm-cache estimate.
+      - name: Build package, tests, fixup, and install checks
         shell: bash
         run: |
-          bash scripts/run-nix-ci-phase.sh package-rebuild \
-            nix build --rebuild --no-link --print-build-logs \
+          package_mode=()
+          case "${{ steps.nix-state.outputs.package_store_state }}" in
+            present) package_mode+=(--rebuild) ;;
+            missing) ;;
+            *) echo '::error title=Unknown package store state::Cache telemetry must report present or missing.'; exit 1 ;;
+          esac
+          bash scripts/run-nix-ci-phase.sh package-build \
+            nix build "${package_mode[@]}" --no-link --print-build-logs \
             ".#checks.${{ steps.nix-state.outputs.system }}.package"
         timeout-minutes: 90
 

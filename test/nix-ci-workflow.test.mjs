@@ -58,9 +58,12 @@ test("macOS CI forces an exact package rebuild before the bounded full-flake ver
   assert.match(workflow, /cancel-in-progress: false/);
   assert.match(workflow, /timeout-minutes: 150/);
   assert.match(workflow, /bash scripts\/report-nix-ci-cache-state\.sh/);
+  assert.match(workflow, /case "\$\{\{ steps\.nix-state\.outputs\.package_store_state \}\}" in/);
+  assert.match(workflow, /present\) package_mode\+=\(--rebuild\)/);
+  assert.match(workflow, /missing\) ;;/);
   assert.match(
     workflow,
-    /run-nix-ci-phase\.sh package-rebuild[\s\\]+nix build --rebuild --no-link --print-build-logs/,
+    /run-nix-ci-phase\.sh package-build[\s\\]+nix build "\$\{package_mode\[@\]\}" --no-link --print-build-logs/,
   );
   assert.match(workflow, /timeout-minutes: 90/);
   assert.match(
@@ -78,6 +81,7 @@ test("macOS CI forces an exact package rebuild before the bounded full-flake ver
   assert.match(cacheReporter, /Nix signature verification must remain enabled/);
   assert.match(cacheReporter, /nix path-info --offline "\$package_path"/);
   assert.match(cacheReporter, /nix path-info --offline "\$npm_deps_path"/);
+  assert.match(cacheReporter, /package_store_state=%s/);
   assert.match(cacheReporter, /nix build --dry-run --no-link "\$package_installable"/);
   assert.doesNotMatch(cacheReporter, /access-tokens|github_access_token/);
 
