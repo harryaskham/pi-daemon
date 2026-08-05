@@ -504,6 +504,10 @@ process appears per wake.
   using the active pinned Bash for its fake executables, replacing expiring sleep
   processes with owned blocking sentinels, and reporting only bounded redacted
   assertion labels when its shell fixture fails.
+- [x] `bd-6033b6` Detect only the exact System UI ANR during physical Pi Droid
+  proof waits, retain XML/screenshot/safe-logcat hashes, choose Wait at most once,
+  require SystemUI process/readiness recovery, and give Pi Droid fatal/ANR evidence
+  fail-closed precedence without dismissing arbitrary application failures.
 - [x] `bd-988946` Make Android fast verification self-contained by exposing the
   flake-pinned Python runtime to both plain Node CI versions and executing the
   Java environment export directly in its pinned Nix shell without nested quote
