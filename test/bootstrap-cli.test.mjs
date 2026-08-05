@@ -5,31 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import { PiDaemonClient } from "../dist/client.js";
-
-const delay = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
-
-// A generous hang bound, not a performance budget: the daemon normally binds in
-// well under a second, but a loaded builder can deschedule a correct process for
-// many seconds. A genuinely hung or crashed daemon still fails fast through the
-// early `child.exitCode` check below rather than waiting for this bound.
-const SOCKET_HANG_BOUND_MS = 120_000;
-
-async function waitForSocket(path, child) {
-  const deadline = Date.now() + SOCKET_HANG_BOUND_MS;
-  while (Date.now() < deadline) {
-    if (child.exitCode !== null) throw new Error(`daemon exited before listening: ${child.exitCode}`);
-    try {
-      if ((await stat(path)).isSocket()) return;
-    } catch (error) {
-      if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
-    }
-    await delay(20);
-  }
-  throw new Error(
-    `daemon did not create its socket within ${SOCKET_HANG_BOUND_MS / 1_000} seconds`,
-  );
-}
+import { captureChildOutput, waitForDaemonReady } from "./daemon-readiness.mjs";
 
 test("serve bootstraps an empty standalone instance before constructing the Pi factory", async (t) => {
   const root = await mkdtemp(join(tmpdir(), "pi-daemon-first-serve-"));
@@ -75,18 +51,17 @@ test("serve bootstraps an empty standalone instance before constructing the Pi f
       stdio: ["ignore", "pipe", "pipe"],
     },
   );
-  let output = "";
-  child.stdout.setEncoding("utf8");
-  child.stderr.setEncoding("utf8");
-  child.stdout.on("data", (chunk) => { output += chunk; });
-  child.stderr.on("data", (chunk) => { output += chunk; });
+  const output = captureChildOutput(child);
   t.after(() => {
     if (child.exitCode === null) child.kill("SIGKILL");
   });
 
-  await waitForSocket(socketPath, child);
-  const client = await PiDaemonClient.connect({ socketPath });
-  await client.handshake("bootstrap-cli-handshake");
+  const client = await waitForDaemonReady({
+    socketPath,
+    child,
+    handshakeRequestId: "bootstrap-cli-handshake",
+    diagnostics: output.diagnostics,
+  });
   client.close();
 
   const tokenFile = join(stateDir, "api-token");
@@ -111,8 +86,12 @@ test("serve bootstraps an empty standalone instance before constructing the Pi f
   child.kill("SIGTERM");
   assert.deepEqual(await exit, { code: 0, signal: null });
   const bearer = (await readFile(tokenFile, "utf8")).trimEnd();
+  const capturedOutput = output.text();
+  const outputSnapshot = output.snapshot();
   assert.ok(bearer.length >= 16);
-  assert.equal(output.includes(bearer), false);
-  assert.equal(output.includes(authMarker), false);
-  assert.match(output, /"bootstrap":\{"bearerCreated":true,"auth":"seeded"\}/);
+  assert.equal(outputSnapshot.stdout.droppedBytes, 0);
+  assert.equal(outputSnapshot.stderr.droppedBytes, 0);
+  assert.equal(capturedOutput.includes(bearer), false);
+  assert.equal(capturedOutput.includes(authMarker), false);
+  assert.match(capturedOutput, /"bootstrap":\{"bearerCreated":true,"auth":"seeded"\}/);
 });
