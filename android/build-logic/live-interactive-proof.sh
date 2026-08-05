@@ -32,7 +32,7 @@ private_dir="$(mktemp -d)"
 chmod 700 "$private_dir"
 daemon_pid=''
 emulator_pid=''
-emulator_serial=''
+emulator_device_serial=''
 emulator_port=''
 emulator_adb_port=''
 emulator_port_attempts=''
@@ -51,7 +51,8 @@ cleanup() {
     kill "$daemon_pid" 2>/dev/null || true
     wait "$daemon_pid" 2>/dev/null || true
   fi
-  if [[ -n "$emulator_serial" ]]; then adb -s "$emulator_serial" emu kill >/dev/null 2>&1 || true; fi
+  # The emulator process is owned by PID and console port; never route process
+  # cleanup through the TCP device transport or a shared ADB server.
   if [[ -n "$emulator_pid" ]] && kill -0 "$emulator_pid" 2>/dev/null; then
     kill "$emulator_pid" 2>/dev/null || true
     wait "$emulator_pid" 2>/dev/null || true
@@ -67,6 +68,7 @@ start_isolated_adb_server \
   "$private_dir" \
   "$emulator_diagnostics" \
   "$repo_root/android/build-logic/select-adb-server-port.py"
+isolated_adb_command=(adb -H 127.0.0.1 -P "$adb_server_port")
 
 reserve_port_pair() {
   local start="${1:-49152}"
@@ -197,13 +199,18 @@ if ! select_emulator_port_pair; then
   printf '%s\n' 'emulator_port_unavailable: no supported localhost console/ADB pair is free after 16 attempts' >&2
   exit 70
 fi
-emulator_serial="emulator-$emulator_port"
+# The console port and emulator PID remain process-cleanup identity. Device
+# commands use only the paired loopback TCP transport registered explicitly
+# with this run's isolated ADB server.
+emulator_device_serial="127.0.0.1:$emulator_adb_port"
 emulator -avd pi-droid-live -port "$emulator_port" -no-window -noaudio -no-boot-anim \
   -no-metrics -no-snapshot -wipe-data -gpu swiftshader_indirect \
   > "$artifacts_dir/emulator.log" 2>&1 &
 emulator_pid="$!"
 adb_readiness_status=0
-wait_for_emulator_adb "$emulator_pid" "$emulator_serial" "$emulator_diagnostics" 240 || adb_readiness_status="$?"
+wait_for_emulator_adb \
+  "$emulator_pid" "$emulator_device_serial" "$adb_server_port" "$emulator_diagnostics" 240 || \
+  adb_readiness_status="$?"
 if (( adb_readiness_status != 0 )); then
   if (( adb_readiness_status == 69 )); then
     wait "$emulator_pid" 2>/dev/null || true
@@ -217,12 +224,12 @@ if (( adb_readiness_status != 0 )); then
   exit 70
 fi
 {
-  printf 'adb_state=%s\n' "$(adb -s "$emulator_serial" get-state 2>&1 || true)"
-  printf 'device_abi=%s\n' "$(adb -s "$emulator_serial" shell getprop ro.product.cpu.abi 2>&1 | tr -d '\r' || true)"
+  printf 'adb_state=%s\n' "$("${isolated_adb_command[@]}" -s "$emulator_device_serial" get-state 2>&1 || true)"
+  printf 'device_abi=%s\n' "$("${isolated_adb_command[@]}" -s "$emulator_device_serial" shell getprop ro.product.cpu.abi 2>&1 | tr -d '\r' || true)"
 } >> "$artifacts_dir/emulator-diagnostics.log"
 booted=''
 for _ in $(seq 1 240); do
-  booted="$(adb -s "$emulator_serial" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')"
+  booted="$("${isolated_adb_command[@]}" -s "$emulator_device_serial" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')"
   [[ "$booted" == '1' ]] && break
   kill -0 "$emulator_pid" 2>/dev/null || { printf '%s\n' 'emulator exited before boot' >&2; exit 70; }
   sleep 1
@@ -230,16 +237,16 @@ done
 if [[ "$booted" != '1' ]]; then
   {
     printf 'boot_completed=%s\n' "$booted"
-    printf 'boot_animation=%s\n' "$(adb -s "$emulator_serial" shell getprop init.svc.bootanim 2>&1 | tr -d '\r' || true)"
+    printf 'boot_animation=%s\n' "$("${isolated_adb_command[@]}" -s "$emulator_device_serial" shell getprop init.svc.bootanim 2>&1 | tr -d '\r' || true)"
   } >> "$artifacts_dir/emulator-diagnostics.log"
   printf '%s\n' 'emulator boot timed out' >&2
   exit 70
 fi
 printf 'boot_completed=1\n' >> "$artifacts_dir/emulator-diagnostics.log"
-adb -s "$emulator_serial" install -r "$apk" >/dev/null
-adb -s "$emulator_serial" shell wm size 1080x2400 >/dev/null
-adb -s "$emulator_serial" shell wm density 420 >/dev/null
-adb -s "$emulator_serial" shell screenrecord --time-limit 180 /sdcard/pi-droid-interactive.mp4 \
+"${isolated_adb_command[@]}" -s "$emulator_device_serial" install -r "$apk" >/dev/null
+"${isolated_adb_command[@]}" -s "$emulator_device_serial" shell wm size 1080x2400 >/dev/null
+"${isolated_adb_command[@]}" -s "$emulator_device_serial" shell wm density 420 >/dev/null
+"${isolated_adb_command[@]}" -s "$emulator_device_serial" shell screenrecord --time-limit 180 /sdcard/pi-droid-interactive.mp4 \
   > "$artifacts_dir/screenrecord.log" 2>&1 &
 screenrecord_pid="$!"
 
@@ -247,13 +254,13 @@ wait_ui() {
   local pattern="$1"
   local attempts="${2:-60}"
   for _ in $(seq 1 "$attempts"); do
-    adb -s "$emulator_serial" shell uiautomator dump /sdcard/pi-droid-window.xml >/dev/null 2>&1 || true
-    if adb -s "$emulator_serial" exec-out cat /sdcard/pi-droid-window.xml 2>/dev/null | grep -Eq "$pattern"; then return; fi
+    "${isolated_adb_command[@]}" -s "$emulator_device_serial" shell uiautomator dump /sdcard/pi-droid-window.xml >/dev/null 2>&1 || true
+    if "${isolated_adb_command[@]}" -s "$emulator_device_serial" exec-out cat /sdcard/pi-droid-window.xml 2>/dev/null | grep -Eq "$pattern"; then return; fi
     sleep 1
   done
-  adb -s "$emulator_serial" exec-out screencap -p > "$artifacts_dir/screenshots/failure.png" 2>/dev/null || true
-  adb -s "$emulator_serial" logcat -d -v threadtime > "$artifacts_dir/failure-logcat.txt" 2>/dev/null || true
-  adb -s "$emulator_serial" exec-out cat /sdcard/pi-droid-window.xml > "$artifacts_dir/failure-window.xml" 2>/dev/null || true
+  "${isolated_adb_command[@]}" -s "$emulator_device_serial" exec-out screencap -p > "$artifacts_dir/screenshots/failure.png" 2>/dev/null || true
+  "${isolated_adb_command[@]}" -s "$emulator_device_serial" logcat -d -v threadtime > "$artifacts_dir/failure-logcat.txt" 2>/dev/null || true
+  "${isolated_adb_command[@]}" -s "$emulator_device_serial" exec-out cat /sdcard/pi-droid-window.xml > "$artifacts_dir/failure-window.xml" 2>/dev/null || true
   printf 'UI did not expose expected interactive pattern: %s\n' "$pattern" >&2
   exit 70
 }
@@ -264,8 +271,8 @@ wait_control() {
   local xml="$private_dir/window.xml"
   local center=''
   for _ in $(seq 1 "$attempts"); do
-    adb -s "$emulator_serial" shell uiautomator dump /sdcard/pi-droid-window.xml >/dev/null 2>&1 || true
-    adb -s "$emulator_serial" exec-out cat /sdcard/pi-droid-window.xml > "$xml" 2>/dev/null || true
+    "${isolated_adb_command[@]}" -s "$emulator_device_serial" shell uiautomator dump /sdcard/pi-droid-window.xml >/dev/null 2>&1 || true
+    "${isolated_adb_command[@]}" -s "$emulator_device_serial" exec-out cat /sdcard/pi-droid-window.xml > "$xml" 2>/dev/null || true
     if center="$(python3 "$repo_root/android/build-logic/uiautomator-control-center.py" "$xml" "$text" 2>/dev/null)"; then
       printf '%s\n' "$center"
       return 0
@@ -281,7 +288,7 @@ tap_text() {
   local text="$1"
   local x y
   read -r x y < <(wait_control "$text")
-  adb -s "$emulator_serial" shell input tap "$x" "$y"
+  "${isolated_adb_command[@]}" -s "$emulator_device_serial" shell input tap "$x" "$y"
 }
 
 wait_emulator_host_port() {
@@ -293,7 +300,7 @@ wait_emulator_host_port() {
     "$api_port" "$max_attempts" >> "$gate_log"
   while (( attempt < max_attempts )); do
     attempt=$((attempt + 1))
-    if adb -s "$emulator_serial" shell toybox nc -z -w 1 10.0.2.2 "$api_port" >/dev/null 2>&1; then
+    if "${isolated_adb_command[@]}" -s "$emulator_device_serial" shell toybox nc -z -w 1 10.0.2.2 "$api_port" >/dev/null 2>&1; then
       printf 'status=reachable attempts=%s port=%s\n' "$attempt" "$api_port" >> "$gate_log"
       return 0
     fi
@@ -308,30 +315,30 @@ if ! wait_emulator_host_port; then
   exit 70
 fi
 
-adb -s "$emulator_serial" shell am start -W -a android.intent.action.VIEW \
+"${isolated_adb_command[@]}" -s "$emulator_device_serial" shell am start -W -a android.intent.action.VIEW \
   -d "$(< "$pairing_file")" com.harryaskham.pidroid.debug >/dev/null
 wait_ui 'Readonly session Contract fixture|READONLY RPC ATTACHED' 90
-adb -s "$emulator_serial" exec-out screencap -p > "$artifacts_dir/screenshots/readonly-hydrated.png"
+"${isolated_adb_command[@]}" -s "$emulator_device_serial" exec-out screencap -p > "$artifacts_dir/screenshots/readonly-hydrated.png"
 
 tap_text "Connect interactive observer"
 wait_ui 'ACTION RECEIVED · CONNECTING|OBSERVER · READY|INTERACTIVE ERROR · PREFLIGHT_ERROR · [A-Z][A-Z0-9_]{0,127}' 15
 wait_ui 'OBSERVER · READY' 45
-adb -s "$emulator_serial" exec-out screencap -p > "$artifacts_dir/screenshots/observer-ready.png"
+"${isolated_adb_command[@]}" -s "$emulator_device_serial" exec-out screencap -p > "$artifacts_dir/screenshots/observer-ready.png"
 tap_text "Request control"
 wait_ui 'REQUESTING|CONTROLLER' 45
 wait_ui 'CONTROLLER|Controller authority active' 45
-adb -s "$emulator_serial" exec-out screencap -p > "$artifacts_dir/screenshots/controller-granted.png"
+"${isolated_adb_command[@]}" -s "$emulator_device_serial" exec-out screencap -p > "$artifacts_dir/screenshots/controller-granted.png"
 
 tap_text "Session prompt composer"
-adb -s "$emulator_serial" shell input text interactive-proof
+"${isolated_adb_command[@]}" -s "$emulator_device_serial" shell input text interactive-proof
 tap_text "Send prompt"
 wait_ui 'PROMPT SUCCEEDED|Command prompt succeeded' 45
-adb -s "$emulator_serial" exec-out screencap -p > "$artifacts_dir/screenshots/prompt-succeeded.png"
-adb -s "$emulator_serial" shell input keyevent KEYCODE_BACK
+"${isolated_adb_command[@]}" -s "$emulator_device_serial" exec-out screencap -p > "$artifacts_dir/screenshots/prompt-succeeded.png"
+"${isolated_adb_command[@]}" -s "$emulator_device_serial" shell input keyevent KEYCODE_BACK
 sleep 1
 tree_center=''
 if ! tree_center="$(wait_control "Show tree presentation" 30)"; then
-  adb -s "$emulator_serial" exec-out screencap -p > "$artifacts_dir/screenshots/tree-control-occluded.png" 2>/dev/null || true
+  "${isolated_adb_command[@]}" -s "$emulator_device_serial" exec-out screencap -p > "$artifacts_dir/screenshots/tree-control-occluded.png" 2>/dev/null || true
   cp "$private_dir/window.xml" "$artifacts_dir/tree-control-occluded.xml" 2>/dev/null || true
   (
     cd "$artifacts_dir"
@@ -341,21 +348,21 @@ if ! tree_center="$(wait_control "Show tree presentation" 30)"; then
   exit 70
 fi
 read -r tree_x tree_y <<< "$tree_center"
-adb -s "$emulator_serial" shell input tap "$tree_x" "$tree_y"
+"${isolated_adb_command[@]}" -s "$emulator_device_serial" shell input tap "$tree_x" "$tree_y"
 wait_ui 'Branch tree' 30
-adb -s "$emulator_serial" exec-out screencap -p > "$artifacts_dir/screenshots/tree-live.png"
+"${isolated_adb_command[@]}" -s "$emulator_device_serial" exec-out screencap -p > "$artifacts_dir/screenshots/tree-live.png"
 tap_text "Show tui presentation"
 wait_ui 'Pi Droid interactive|OBSERVER · INPUT INERT' 30
-adb -s "$emulator_serial" exec-out screencap -p > "$artifacts_dir/screenshots/tui-live.png"
+"${isolated_adb_command[@]}" -s "$emulator_device_serial" exec-out screencap -p > "$artifacts_dir/screenshots/tui-live.png"
 
 tap_text "Show rich presentation"
 tap_text "Session prompt composer"
-adb -s "$emulator_serial" shell input text hold-until-disconnect
+"${isolated_adb_command[@]}" -s "$emulator_device_serial" shell input text hold-until-disconnect
 tap_text "Send prompt"
 wait_ui 'PROMPT IN_FLIGHT|Command prompt in_flight' 30
 stop_daemon
 wait_ui 'PROMPT INDETERMINATE|Command prompt indeterminate' 45
-adb -s "$emulator_serial" exec-out screencap -p > "$artifacts_dir/screenshots/indeterminate-no-replay.png"
+"${isolated_adb_command[@]}" -s "$emulator_device_serial" exec-out screencap -p > "$artifacts_dir/screenshots/indeterminate-no-replay.png"
 
 start_daemon "$second_sequence"
 host_instance_two="$(jq -er .hostInstanceId "$ready_file")"
@@ -368,23 +375,23 @@ tap_text "Request control"
 wait_ui 'REQUESTING|CONTROLLER' 45
 wait_ui 'CONTROLLER|Controller authority active' 45
 tap_text "Session prompt composer"
-adb -s "$emulator_serial" shell input text restart-reconciled
+"${isolated_adb_command[@]}" -s "$emulator_device_serial" shell input text restart-reconciled
 tap_text "Send prompt"
 wait_ui 'PROMPT SUCCEEDED|Command prompt succeeded' 45
-adb -s "$emulator_serial" exec-out screencap -p > "$artifacts_dir/screenshots/reconnected-controller-phone.png"
-adb -s "$emulator_serial" shell wm size 1600x2560 >/dev/null
-adb -s "$emulator_serial" shell wm density 240 >/dev/null
+"${isolated_adb_command[@]}" -s "$emulator_device_serial" exec-out screencap -p > "$artifacts_dir/screenshots/reconnected-controller-phone.png"
+"${isolated_adb_command[@]}" -s "$emulator_device_serial" shell wm size 1600x2560 >/dev/null
+"${isolated_adb_command[@]}" -s "$emulator_device_serial" shell wm density 240 >/dev/null
 sleep 2
 wait_ui 'CONTROLLER|Controller authority active' 30
-adb -s "$emulator_serial" exec-out screencap -p > "$artifacts_dir/screenshots/reconnected-controller-tablet.png"
-adb -s "$emulator_serial" logcat -d -v threadtime > "$artifacts_dir/app-logcat.txt"
+"${isolated_adb_command[@]}" -s "$emulator_device_serial" exec-out screencap -p > "$artifacts_dir/screenshots/reconnected-controller-tablet.png"
+"${isolated_adb_command[@]}" -s "$emulator_device_serial" logcat -d -v threadtime > "$artifacts_dir/app-logcat.txt"
 
 if [[ -n "$screenrecord_pid" ]] && kill -0 "$screenrecord_pid" 2>/dev/null; then
   kill -INT "$screenrecord_pid" 2>/dev/null || true
   wait "$screenrecord_pid" 2>/dev/null || true
 fi
 screenrecord_pid=''
-adb -s "$emulator_serial" pull /sdcard/pi-droid-interactive.mp4 "$artifacts_dir/pi-droid-interactive.mp4" >/dev/null
+"${isolated_adb_command[@]}" -s "$emulator_device_serial" pull /sdcard/pi-droid-interactive.mp4 "$artifacts_dir/pi-droid-interactive.mp4" >/dev/null
 
 if grep -Fq "$(< "$token_file")" "$artifacts_dir"/*.log "$artifacts_dir"/*.txt 2>/dev/null; then
   printf '%s\n' 'disposable bearer leaked into retained logs' >&2
@@ -403,6 +410,8 @@ cat > "$artifacts_dir/live-interactive-receipt.json" <<EOF
   "adbServerPortSelectionAttempts": $adb_server_port_attempts,
   "adbServerIsolated": true,
   "adbKeyHomePrivate": true,
+  "adbTransportExplicitlyConnected": true,
+  "adbDeviceSerialTcp": true,
   "sessionId": "session-fixture-01",
   "generation": 3,
   "hostInstanceBefore": "$host_instance_one",

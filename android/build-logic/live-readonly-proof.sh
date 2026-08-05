@@ -37,7 +37,7 @@ private_dir="$(mktemp -d)"
 chmod 700 "$private_dir"
 daemon_pid=''
 emulator_pid=''
-emulator_serial=''
+emulator_device_serial=''
 emulator_port=''
 emulator_adb_port=''
 emulator_port_attempts=''
@@ -51,7 +51,8 @@ cleanup() {
     kill "$daemon_pid" 2>/dev/null || true
     wait "$daemon_pid" 2>/dev/null || true
   fi
-  if [[ -n "$emulator_serial" ]]; then adb -s "$emulator_serial" emu kill >/dev/null 2>&1 || true; fi
+  # The emulator process is owned by PID and console port; never route process
+  # cleanup through the TCP device transport or a shared ADB server.
   if [[ -n "$emulator_pid" ]] && kill -0 "$emulator_pid" 2>/dev/null; then
     kill "$emulator_pid" 2>/dev/null || true
     wait "$emulator_pid" 2>/dev/null || true
@@ -67,6 +68,7 @@ start_isolated_adb_server \
   "$private_dir" \
   "$emulator_diagnostics" \
   "$repo_root/android/build-logic/select-adb-server-port.py"
+isolated_adb_command=(adb -H 127.0.0.1 -P "$adb_server_port")
 
 reserve_port_pair() {
   local start="${1:-49152}"
@@ -195,13 +197,18 @@ if ! select_emulator_port_pair; then
   printf '%s\n' 'emulator_port_unavailable: no supported localhost console/ADB pair is free after 16 attempts' >&2
   exit 70
 fi
-emulator_serial="emulator-$emulator_port"
+# The console port and emulator PID remain process-cleanup identity. Device
+# commands use only the paired loopback TCP transport registered explicitly
+# with this run's isolated ADB server.
+emulator_device_serial="127.0.0.1:$emulator_adb_port"
 emulator -avd pi-droid-live -port "$emulator_port" -no-window -noaudio -no-boot-anim \
   -no-metrics -no-snapshot -wipe-data -gpu swiftshader_indirect \
   > "$artifacts_dir/emulator.log" 2>&1 &
 emulator_pid="$!"
 adb_readiness_status=0
-wait_for_emulator_adb "$emulator_pid" "$emulator_serial" "$emulator_diagnostics" 240 || adb_readiness_status="$?"
+wait_for_emulator_adb \
+  "$emulator_pid" "$emulator_device_serial" "$adb_server_port" "$emulator_diagnostics" 240 || \
+  adb_readiness_status="$?"
 if (( adb_readiness_status != 0 )); then
   if (( adb_readiness_status == 69 )); then
     wait "$emulator_pid" 2>/dev/null || true
@@ -216,25 +223,25 @@ if (( adb_readiness_status != 0 )); then
 fi
 booted=''
 for _ in $(seq 1 240); do
-  booted="$(adb -s "$emulator_serial" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')"
+  booted="$("${isolated_adb_command[@]}" -s "$emulator_device_serial" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')"
   [[ "$booted" == '1' ]] && break
   kill -0 "$emulator_pid" 2>/dev/null || { printf '%s\n' 'emulator exited before boot' >&2; exit 70; }
   sleep 1
 done
 [[ "$booted" == '1' ]] || { printf '%s\n' 'emulator boot timed out' >&2; exit 70; }
-adb -s "$emulator_serial" install -r "$apk" >/dev/null
+"${isolated_adb_command[@]}" -s "$emulator_device_serial" install -r "$apk" >/dev/null
 
 wait_ui() {
   local pattern="$1"
   local attempts="${2:-60}"
   for _ in $(seq 1 "$attempts"); do
-    adb -s "$emulator_serial" shell uiautomator dump /sdcard/pi-droid-window.xml >/dev/null 2>&1 || true
-    if adb -s "$emulator_serial" exec-out cat /sdcard/pi-droid-window.xml 2>/dev/null | grep -Eq "$pattern"; then return; fi
+    "${isolated_adb_command[@]}" -s "$emulator_device_serial" shell uiautomator dump /sdcard/pi-droid-window.xml >/dev/null 2>&1 || true
+    if "${isolated_adb_command[@]}" -s "$emulator_device_serial" exec-out cat /sdcard/pi-droid-window.xml 2>/dev/null | grep -Eq "$pattern"; then return; fi
     sleep 1
   done
-  adb -s "$emulator_serial" exec-out screencap -p > "$artifacts_dir/screenshots/failure.png" 2>/dev/null || true
-  adb -s "$emulator_serial" logcat -d -v threadtime > "$artifacts_dir/failure-logcat.txt" 2>/dev/null || true
-  adb -s "$emulator_serial" exec-out cat /sdcard/pi-droid-window.xml > "$artifacts_dir/failure-window.xml" 2>/dev/null || true
+  "${isolated_adb_command[@]}" -s "$emulator_device_serial" exec-out screencap -p > "$artifacts_dir/screenshots/failure.png" 2>/dev/null || true
+  "${isolated_adb_command[@]}" -s "$emulator_device_serial" logcat -d -v threadtime > "$artifacts_dir/failure-logcat.txt" 2>/dev/null || true
+  "${isolated_adb_command[@]}" -s "$emulator_device_serial" exec-out cat /sdcard/pi-droid-window.xml > "$artifacts_dir/failure-window.xml" 2>/dev/null || true
   printf 'UI did not expose expected readonly pattern: %s\n' "$pattern" >&2
   exit 70
 }
@@ -242,8 +249,8 @@ wait_ui() {
 tap_text() {
   local text="$1"
   local xml="$private_dir/window.xml"
-  adb -s "$emulator_serial" shell uiautomator dump /sdcard/pi-droid-window.xml >/dev/null 2>&1
-  adb -s "$emulator_serial" exec-out cat /sdcard/pi-droid-window.xml > "$xml"
+  "${isolated_adb_command[@]}" -s "$emulator_device_serial" shell uiautomator dump /sdcard/pi-droid-window.xml >/dev/null 2>&1
+  "${isolated_adb_command[@]}" -s "$emulator_device_serial" exec-out cat /sdcard/pi-droid-window.xml > "$xml"
   read -r x y < <(python3 - "$xml" "$text" <<'PY'
 import re, sys, xml.etree.ElementTree as ET
 root = ET.parse(sys.argv[1]).getroot()
@@ -256,23 +263,23 @@ else:
     raise SystemExit(f"control not found: {sys.argv[2]}")
 PY
 )
-  adb -s "$emulator_serial" shell input tap "$x" "$y"
+  "${isolated_adb_command[@]}" -s "$emulator_device_serial" shell input tap "$x" "$y"
 }
 
-adb -s "$emulator_serial" shell am start -W -a android.intent.action.VIEW \
+"${isolated_adb_command[@]}" -s "$emulator_device_serial" shell am start -W -a android.intent.action.VIEW \
   -d "$(< "$pairing_file")" com.harryaskham.pidroid.debug >/dev/null
 wait_ui 'Readonly session Contract fixture|READONLY RPC ATTACHED' 90
 if [[ "$tail_only" == 'true' ]]; then
-  adb -s "$emulator_serial" exec-out screencap -p > "$artifacts_dir/screenshots/tail-live-connected.png"
+  "${isolated_adb_command[@]}" -s "$emulator_device_serial" exec-out screencap -p > "$artifacts_dir/screenshots/tail-live-connected.png"
 else
-  adb -s "$emulator_serial" exec-out screencap -p > "$artifacts_dir/screenshots/live-connected.png"
+  "${isolated_adb_command[@]}" -s "$emulator_device_serial" exec-out screencap -p > "$artifacts_dir/screenshots/live-connected.png"
 fi
 
 stop_daemon
 if [[ "$tail_only" != 'true' ]]; then
   tap_text "Refresh readonly hosts"
   wait_ui 'Offline cached' 45
-  adb -s "$emulator_serial" exec-out screencap -p > "$artifacts_dir/screenshots/offline-cached.png"
+  "${isolated_adb_command[@]}" -s "$emulator_device_serial" exec-out screencap -p > "$artifacts_dir/screenshots/offline-cached.png"
 fi
 
 start_daemon "$second_sequence"
@@ -280,8 +287,8 @@ host_instance_two="$(jq -er .hostInstanceId "$ready_file")"
 [[ "$host_instance_one" != "$host_instance_two" ]] || { printf '%s\n' 'host restart did not change instance identity' >&2; exit 70; }
 tap_text "Refresh readonly hosts"
 wait_ui 'Readonly session Contract fixture|READONLY RPC ATTACHED' 90
-adb -s "$emulator_serial" exec-out screencap -p > "$artifacts_dir/screenshots/reconnected.png"
-adb -s "$emulator_serial" logcat -d -v threadtime > "$artifacts_dir/app-logcat.txt"
+"${isolated_adb_command[@]}" -s "$emulator_device_serial" exec-out screencap -p > "$artifacts_dir/screenshots/reconnected.png"
+"${isolated_adb_command[@]}" -s "$emulator_device_serial" logcat -d -v threadtime > "$artifacts_dir/app-logcat.txt"
 
 if grep -Fq "$(< "$token_file")" "$artifacts_dir"/*.log "$artifacts_dir"/*.txt 2>/dev/null; then
   printf '%s\n' 'disposable bearer leaked into retained logs' >&2
@@ -300,6 +307,8 @@ cat > "$artifacts_dir/live-readonly-receipt.json" <<EOF
   "adbServerPortSelectionAttempts": $adb_server_port_attempts,
   "adbServerIsolated": true,
   "adbKeyHomePrivate": true,
+  "adbTransportExplicitlyConnected": true,
+  "adbDeviceSerialTcp": true,
   "sessionId": "session-fixture-01",
   "generation": 3,
   "hostInstanceBefore": "$host_instance_one",

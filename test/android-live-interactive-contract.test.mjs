@@ -363,13 +363,19 @@ printf '%s\n' 'fake_adb_contract=ok private_key_cleanup=ok'
   assert.match(output, /fake_adb_contract=ok private_key_cleanup=ok/);
 });
 
-test("shared emulator ADB readiness is deadline bounded, sanitized, and process aware", () => {
+test("shared emulator ADB readiness explicitly connects with bounded safe state transitions", () => {
   const helperPath = path.join(root, "android/build-logic/emulator-adb-readiness.sh");
   const output = execFileSync("bash", ["-c", String.raw`
 set -euo pipefail
 umask 077
 source "$1"
-diagnostics="$(mktemp)"
+sandbox="$(mktemp -d)"
+diagnostics="$sandbox/diagnostics.log"
+connect_calls="$sandbox/connect.calls"
+state_calls="$sandbox/state.calls"
+: > "$diagnostics"
+: > "$connect_calls"
+: > "$state_calls"
 ready_pid=''
 timeout_pid=''
 cleanup() {
@@ -379,33 +385,62 @@ cleanup() {
       wait "$pid" 2>/dev/null || true
     fi
   done
-  rm -f "$diagnostics"
+  rm -rf "$sandbox"
 }
 trap cleanup EXIT
 
-poll_emulator_adb_state() { printf '%s\n' 'device'; }
-sleep 5 &
+connect_emulator_adb_transport() {
+  local attempt=$(( $(wc -l < "$connect_calls") + 1 ))
+  printf '%s\n' "$attempt" >> "$connect_calls"
+  case "$attempt" in
+    1) printf '%s\n' 'failed to connect to private transport: Connection refused' ;;
+    2) printf '%s\n' 'connected to private transport' ;;
+    *) printf '%s\n' 'already connected to private transport' ;;
+  esac
+}
+poll_emulator_adb_state() {
+  local attempt=$(( $(wc -l < "$state_calls") + 1 ))
+  printf '%s\n' "$attempt" >> "$state_calls"
+  case "$attempt" in
+    1) : ;;
+    2) printf '%s\n' 'offline' ;;
+    3) printf '%s\n' 'unauthorized' ;;
+    *) printf '%s\n' 'device' ;;
+  esac
+}
+command sleep 5 &
 ready_pid=$!
-wait_for_emulator_adb "$ready_pid" 'emulator-sensitive-serial' "$diagnostics" 2
+sleep() { :; }
+wait_for_emulator_adb "$ready_pid" '127.0.0.1:5559' 42085 "$diagnostics" 2
+[[ "$(wc -l < "$connect_calls")" == 4 ]]
+[[ "$(wc -l < "$state_calls")" == 4 ]]
 kill "$ready_pid"
 wait "$ready_pid" 2>/dev/null || true
 ready_pid=''
+unset -f sleep
 
 (exit 0) &
 dead_pid=$!
 wait "$dead_pid"
 exit_status=0
-wait_for_emulator_adb "$dead_pid" 'emulator-sensitive-serial' "$diagnostics" 2 || exit_status=$?
+wait_for_emulator_adb "$dead_pid" '127.0.0.1:5559' 42085 "$diagnostics" 2 || exit_status=$?
 [[ "$exit_status" == 69 ]]
 
+connect_emulator_adb_transport() { printf '%s\n' 'failed to connect: Connection refused'; }
 poll_emulator_adb_state() { printf '%s\n' 'offline'; }
-sleep 5 &
+command sleep 5 &
 timeout_pid=$!
-invalid_status=0
-wait_for_emulator_adb "$timeout_pid" 'emulator-sensitive-serial' "$diagnostics" 241 || invalid_status=$?
-[[ "$invalid_status" == 64 ]]
+for invalid_args in \
+  "$timeout_pid emulator-5558 42085 2" \
+  "$timeout_pid 127.0.0.1:5559 5037 2" \
+  "$timeout_pid 127.0.0.1:5559 42085 241"; do
+  invalid_status=0
+  read -r invalid_pid invalid_serial invalid_server invalid_seconds <<< "$invalid_args"
+  wait_for_emulator_adb "$invalid_pid" "$invalid_serial" "$invalid_server" "$diagnostics" "$invalid_seconds" || invalid_status=$?
+  [[ "$invalid_status" == 64 ]]
+done
 timeout_status=0
-wait_for_emulator_adb "$timeout_pid" 'emulator-sensitive-serial' "$diagnostics" 2 || timeout_status=$?
+wait_for_emulator_adb "$timeout_pid" '127.0.0.1:5559' 42085 "$diagnostics" 2 || timeout_status=$?
 kill "$timeout_pid"
 wait "$timeout_pid" 2>/dev/null || true
 timeout_pid=''
@@ -413,11 +448,13 @@ timeout_pid=''
 cat "$diagnostics"
 `, "adb-readiness-test", helperPath], { encoding: "utf8" });
 
-  assert.match(output, /status=ready attempts=1 deadline_seconds=2[^\n]*adb_state=device/);
-  assert.match(output, /status=emulator_exited attempts=0 deadline_seconds=2[^\n]*adb_state=unavailable/);
-  assert.match(output, /status=polling attempts=[12] deadline_seconds=2[^\n]*adb_state=offline/);
-  assert.match(output, /status=timed_out attempts=[12] deadline_seconds=2[^\n]*adb_state=offline/);
-  assert.doesNotMatch(output, /sensitive|serial|token/);
+  assert.match(output, /status=polling attempts=1 connect_attempts=1 deadline_seconds=2[^\n]*connect_state=refused adb_state=unavailable/);
+  assert.match(output, /status=polling attempts=2 connect_attempts=2 deadline_seconds=2[^\n]*connect_state=connected adb_state=offline/);
+  assert.match(output, /status=polling attempts=3 connect_attempts=3 deadline_seconds=2[^\n]*connect_state=already_connected adb_state=unauthorized/);
+  assert.match(output, /status=ready attempts=4 connect_attempts=4 deadline_seconds=2[^\n]*connect_state=already_connected adb_state=device/);
+  assert.match(output, /status=emulator_exited attempts=0 connect_attempts=0 deadline_seconds=2[^\n]*connect_state=unavailable adb_state=unavailable/);
+  assert.match(output, /status=timed_out attempts=[12] connect_attempts=[12] deadline_seconds=2[^\n]*connect_state=refused adb_state=offline/);
+  assert.doesNotMatch(output, /sensitive|serial|token|5037/);
 });
 
 test("disposable interactive proof uses private identity bounded cleanup and physical evidence", async () => {
@@ -460,9 +497,26 @@ test("disposable interactive proof uses private identity bounded cleanup and phy
     assert.match(harness, /"adbServerPortSelectionAttempts": \$adb_server_port_attempts/);
     assert.match(harness, /"adbServerIsolated": true/);
     assert.match(harness, /"adbKeyHomePrivate": true/);
+    assert.match(harness, /"adbTransportExplicitlyConnected": true/);
+    assert.match(harness, /"adbDeviceSerialTcp": true/);
     assert.ok(harness.indexOf("if ! select_emulator_port_pair") < harness.indexOf("emulator -avd pi-droid-live"));
     assert.match(harness, /source "\$repo_root\/android\/build-logic\/emulator-adb-readiness\.sh"/);
-    assert.match(harness, /wait_for_emulator_adb "\$emulator_pid" "\$emulator_serial" "\$emulator_diagnostics" 240/);
+    assert.match(harness, /isolated_adb_command=\(adb -H 127\.0\.0\.1 -P "\$adb_server_port"\)/);
+    assert.ok(harness.indexOf("start_isolated_adb_server") < harness.indexOf("isolated_adb_command=(adb"));
+    assert.ok(harness.indexOf("isolated_adb_command=(adb") < harness.indexOf("emulator -avd pi-droid-live"));
+    assert.match(harness, /emulator_device_serial="127\.0\.0\.1:\$emulator_adb_port"/);
+    assert.doesNotMatch(harness, /emulator_(?:device_)?serial="emulator-/);
+    assert.doesNotMatch(harness, /(?:^|\n)adb -s "\$emulator_device_serial"/);
+    const deviceOperations = harness.match(/-s "\$emulator_device_serial"/g) ?? [];
+    const isolatedDeviceOperations = harness.match(/"\$\{isolated_adb_command\[@\]\}" -s "\$emulator_device_serial"/g) ?? [];
+    assert.ok(deviceOperations.length >= 10);
+    assert.equal(isolatedDeviceOperations.length, deviceOperations.length);
+    assert.match(harness, /wait_for_emulator_adb\s+\\\n\s+"\$emulator_pid" "\$emulator_device_serial" "\$adb_server_port" "\$emulator_diagnostics" 240/);
+    assert.ok(harness.indexOf("emulator -avd pi-droid-live") < harness.indexOf("wait_for_emulator_adb"));
+    assert.doesNotMatch(harness, /-s "\$emulator_device_serial" emu kill/);
+    const cleanupBody = harness.slice(harness.indexOf("cleanup() {"), harness.indexOf("\n}", harness.indexOf("cleanup() {")));
+    assert.match(cleanupBody, /kill "\$emulator_pid"/);
+    assert.ok(cleanupBody.indexOf('kill "$emulator_pid"') < cleanupBody.indexOf("stop_isolated_adb_server"));
     const readinessGate = harness.slice(
       harness.indexOf("adb_readiness_status=0"),
       harness.indexOf("booted=''", harness.indexOf("adb_readiness_status=0")),
@@ -472,6 +526,7 @@ test("disposable interactive proof uses private identity bounded cleanup and phy
     assert.match(readinessGate, /adb_readiness_status == 70/);
     assert.match(harness, /for _ in \$\(seq 1 240\); do/);
     assert.doesNotMatch(harness, /adb\s+(?:kill-server|reconnect)\b/);
+    assert.doesNotMatch(harness, /(?:ANDROID_ADB_SERVER_PORT|\b-P\s+)["']?5037/);
   }
   assert.match(adbSelector, /ADB_SERVER_PORTS = tuple\(range\(42000, 42128\)\)/);
   assert.match(adbSelector, /random\.SystemRandom\(\)\.shuffle/);
@@ -493,10 +548,16 @@ test("disposable interactive proof uses private identity bounded cleanup and phy
   assert.doesNotMatch(isolatedAdb, /adb\s+(?:kill-server|reconnect)\b/);
   assert.doesNotMatch(isolatedAdb, /(?:ANDROID_ADB_SERVER_PORT|\b-P\s+)["']?5037/);
   assert.match(adbReadiness, /max_seconds > 240/);
-  assert.match(adbReadiness, /timeout --foreground --signal=KILL "\$\{poll_timeout_seconds\}s" adb -s "\$emulator_serial" get-state/);
+  assert.match(adbReadiness, /adb -H 127\.0\.0\.1 -P "\$adb_server_port" connect "\$device_serial"/);
+  assert.match(adbReadiness, /adb -H 127\.0\.0\.1 -P "\$adb_server_port" -s "\$device_serial" get-state/);
+  const waitStart = adbReadiness.indexOf("wait_for_emulator_adb() {");
+  const waitBody = adbReadiness.slice(waitStart);
+  assert.ok(waitBody.indexOf("connect_emulator_adb_transport") < waitBody.indexOf("poll_emulator_adb_state"));
+  assert.match(adbReadiness, /adb_server_port < 42000 \|\| adb_server_port > 42127 \|\| adb_server_port == 5037/);
+  assert.match(adbReadiness, /device_adb_port < 5555 \|\| device_adb_port > 5585 \|\| device_adb_port % 2 != 1/);
   assert.match(adbReadiness, /next_report_seconds=\$\(\(now_seconds \+ 30\)\)/);
-  assert.match(adbReadiness, /status=%s attempts=%s deadline_seconds=%s elapsed_seconds=%s remaining_seconds=%s adb_state=%s/);
-  assert.ok((adbReadiness.match(/kill -0 "\$emulator_pid"/g) ?? []).length >= 2);
+  assert.match(adbReadiness, /status=%s attempts=%s connect_attempts=%s deadline_seconds=%s elapsed_seconds=%s remaining_seconds=%s connect_state=%s adb_state=%s/);
+  assert.ok((adbReadiness.match(/kill -0 "\$emulator_pid"/g) ?? []).length >= 3);
   assert.doesNotMatch(adbReadiness, /adb\s+(?:kill-server|reconnect|wait-for-device)\b/);
   const recordStart = adbReadiness.indexOf("record_emulator_adb_readiness() {");
   const recordEnd = adbReadiness.indexOf("\n}\n\n", recordStart);

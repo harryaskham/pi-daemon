@@ -84,7 +84,9 @@ test("disposable-daemon emulator proof is bounded readonly and release advances 
   assert.match(proof, /uiautomator dump/);
   assert.match(proof, /emulator_abi='x86_64'/);
   assert.match(proof, /source "\$repo_root\/android\/build-logic\/emulator-adb-readiness\.sh"/);
-  assert.match(proof, /wait_for_emulator_adb "\$emulator_pid" "\$emulator_serial" "\$emulator_diagnostics" 240/);
+  assert.match(proof, /emulator_device_serial="127\.0\.0\.1:\$emulator_adb_port"/);
+  assert.match(proof, /wait_for_emulator_adb\s+\\\n\s+"\$emulator_pid" "\$emulator_device_serial" "\$adb_server_port" "\$emulator_diagnostics" 240/);
+  assert.match(adbReadiness, /adb -H 127\.0\.0\.1 -P "\$adb_server_port" connect "\$device_serial"/);
   assert.match(adbReadiness, /adb[^\n]*get-state/);
   assert.match(adbReadiness, /max_seconds > 240/);
   assert.match(adbReadiness, /return 69/);

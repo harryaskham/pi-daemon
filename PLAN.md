@@ -490,6 +490,8 @@ process appears per wake.
   a shared, sanitized, process-aware ADB readiness deadline capped at 240 seconds.
 - [x] `bd-bd6ca0` Constrain physical Pi Droid proof harnesses to a bounded,
   randomized scan of supported emulator console/ADB pairs with safe diagnostics.
+- [x] `bd-005d84` Explicitly connect each selected emulator ADB transport through
+  its isolated run server and use the loopback TCP serial for every device action.
 - [x] `bd-ed4382` Reopen retained imported Dash sessions from their exact managed
   JSONL/session directory without replaying or resolving the original fork source.
 - [x] `bd-486f8c` Accept ordinary owner-controlled, non-writable Pi session
