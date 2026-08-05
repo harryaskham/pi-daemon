@@ -4,6 +4,7 @@ umask 077
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "$repo_root/android/build-logic/emulator-adb-readiness.sh"
+source "$repo_root/android/build-logic/isolated-adb-server.sh"
 artifacts_dir=''
 
 while [[ $# -gt 0 ]]; do
@@ -25,6 +26,7 @@ fi
 artifacts_dir="$(mkdir -p "$artifacts_dir" && cd "$artifacts_dir" && pwd)"
 chmod 700 "$artifacts_dir"
 emulator_diagnostics="$artifacts_dir/emulator-diagnostics.log"
+: > "$emulator_diagnostics"
 
 private_dir="$(mktemp -d)"
 chmod 700 "$private_dir"
@@ -34,6 +36,11 @@ emulator_serial=''
 emulator_port=''
 emulator_adb_port=''
 emulator_port_attempts=''
+adb_server_port=''
+adb_server_port_attempts=''
+adb_server_pid=''
+adb_server_started='false'
+adb_key_home=''
 screenrecord_pid=''
 cleanup() {
   if [[ -n "$screenrecord_pid" ]] && kill -0 "$screenrecord_pid" 2>/dev/null; then
@@ -49,11 +56,17 @@ cleanup() {
     kill "$emulator_pid" 2>/dev/null || true
     wait "$emulator_pid" 2>/dev/null || true
   fi
+  stop_isolated_adb_server
   rm -rf "$private_dir"
 }
 trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
+
+start_isolated_adb_server \
+  "$private_dir" \
+  "$emulator_diagnostics" \
+  "$repo_root/android/build-logic/select-adb-server-port.py"
 
 reserve_port_pair() {
   local start="${1:-49152}"
@@ -102,7 +115,7 @@ token_file="$private_dir/service-bearer"
 ready_file="$private_dir/daemon-ready.json"
 state_dir="$private_dir/daemon-state"
 pairing_file="$private_dir/pairing-envelope"
-mkdir -p "$state_dir" "$private_dir/avd" "$artifacts_dir/screenshots"
+mkdir -p "$state_dir" "$artifacts_dir/screenshots"
 emulator_abi='x86_64'
 {
   printf 'host_arch=%s\n' "$(uname -m)"
@@ -112,7 +125,7 @@ emulator_abi='x86_64'
   emulator -accel-check 2>&1 || true
   printf 'adb_binary=%s\n' "$(command -v adb)"
   adb version 2>&1 | head -3
-} > "$emulator_diagnostics"
+} >> "$emulator_diagnostics"
 openssl rand -hex 32 > "$token_file"
 chmod 600 "$token_file"
 
@@ -177,8 +190,6 @@ PY
 apk="$repo_root/android/app/build/outputs/apk/debug/app-debug.apk"
 [[ -f "$apk" ]] || { printf '%s\n' 'debug APK missing' >&2; exit 70; }
 
-export ANDROID_USER_HOME="$private_dir/android-user"
-export ANDROID_AVD_HOME="$private_dir/avd"
 printf 'no\n' | avdmanager create avd --force --name pi-droid-live \
   --package "system-images;android-36;google_apis;$emulator_abi" >/dev/null
 if ! select_emulator_port_pair; then
@@ -388,6 +399,10 @@ cat > "$artifacts_dir/live-interactive-receipt.json" <<EOF
   "emulatorConsolePort": $emulator_port,
   "emulatorAdbPort": $emulator_adb_port,
   "emulatorPortSelectionAttempts": $emulator_port_attempts,
+  "adbServerPort": $adb_server_port,
+  "adbServerPortSelectionAttempts": $adb_server_port_attempts,
+  "adbServerIsolated": true,
+  "adbKeyHomePrivate": true,
   "sessionId": "session-fixture-01",
   "generation": 3,
   "hostInstanceBefore": "$host_instance_one",

@@ -181,6 +181,188 @@ print("ok")
   assert.equal(result.trim(), "ok");
 });
 
+test("ADB server port selector is private, bounded, collision aware, and exhaustible", () => {
+  const selectorPath = path.join(root, "android/build-logic/select-adb-server-port.py");
+  const result = execFileSync("python3", ["-c", String.raw`
+import importlib.util
+import sys
+
+spec = importlib.util.spec_from_file_location("adb_server_port_selector", sys.argv[1])
+selector = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(selector)
+
+assert selector.ADB_SERVER_PORTS == tuple(range(42000, 42128))
+assert 5037 not in selector.ADB_SERVER_PORTS
+assert all(port < 5554 or port > 5585 for port in selector.ADB_SERVER_PORTS)
+seen = []
+def reverse(candidates):
+    candidates.reverse()
+def available_only_at_42000(port):
+    seen.append(port)
+    return port == 42000
+selection = selector.select_adb_server_port(
+    port_is_available=available_only_at_42000,
+    shuffle=reverse,
+)
+assert selection == (42000, 128)
+assert seen == list(range(42127, 41999, -1))
+
+claimed = set()
+def unclaimed(port):
+    return port not in claimed
+first = selector.select_adb_server_port(
+    port_is_available=unclaimed,
+    shuffle=lambda _candidates: None,
+)
+claimed.add(first.port)
+second = selector.select_adb_server_port(
+    port_is_available=unclaimed,
+    shuffle=lambda _candidates: None,
+)
+assert first == (42000, 1)
+assert second == (42001, 2)
+assert first.port != second.port
+
+class FakeSocket:
+    def __init__(self, blocked=False):
+        self.blocked = blocked
+        self.closed = False
+    def bind(self, address):
+        binds.append(address)
+        if self.blocked:
+            raise OSError("occupied")
+    def close(self):
+        self.closed = True
+
+binds = []
+free = FakeSocket()
+assert selector.localhost_port_is_available(42000, socket_factory=lambda *_args: free)
+assert binds == [("127.0.0.1", 42000)]
+assert free.closed
+binds = []
+occupied = FakeSocket(blocked=True)
+assert not selector.localhost_port_is_available(42000, socket_factory=lambda *_args: occupied)
+assert binds == [("127.0.0.1", 42000)]
+assert occupied.closed
+
+try:
+    selector.select_adb_server_port(
+        port_is_available=lambda _port: False,
+        shuffle=lambda _candidates: None,
+    )
+except selector.AdbServerPortUnavailable as error:
+    assert str(error) == "adb_server_port_unavailable"
+    assert error.attempts == 128
+else:
+    raise AssertionError("exhausted ADB server selection must fail closed")
+
+print("ok")
+`, selectorPath], {
+    encoding: "utf8",
+    env: { ...process.env, PYTHONDONTWRITEBYTECODE: "1" },
+  });
+  assert.equal(result.trim(), "ok");
+});
+
+test("isolated ADB launcher exports private authority before launch and cleans up only its server", () => {
+  const helperPath = path.join(root, "android/build-logic/isolated-adb-server.sh");
+  const selectorPath = path.join(root, "android/build-logic/select-adb-server-port.py");
+  const output = execFileSync("bash", ["-c", String.raw`
+set -euo pipefail
+umask 077
+helper="$1"
+selector="$2"
+sandbox="$(mktemp -d)"
+private_root="$sandbox/private"
+bin_dir="$sandbox/bin"
+diagnostics="$sandbox/diagnostics.log"
+adb_log="$sandbox/adb.log"
+mkdir -p "$private_root" "$bin_dir"
+cat > "$bin_dir/adb" <<'ADB'
+#!/usr/bin/env bash
+set -euo pipefail
+{
+  printf 'port=%s user=%s emulator=%s avd=%s keys=%s args=' \
+    "$ANDROID_ADB_SERVER_PORT" \
+    "$ANDROID_USER_HOME" \
+    "$ANDROID_EMULATOR_HOME" \
+    "$ANDROID_AVD_HOME" \
+    "$ADB_VENDOR_KEYS"
+  printf '%q ' "$@"
+  printf '\n'
+} >> "$FAKE_ADB_LOG"
+if [[ "$1" == 'keygen' ]]; then
+  printf '%s\n' private > "$2"
+  printf '%s\n' public > "$2.pub"
+  exit 0
+fi
+port=''
+previous=''
+for argument in "$@"; do
+  if [[ "$previous" == '-P' ]]; then
+    port="$argument"
+  fi
+  previous="$argument"
+done
+if [[ " $* " == *' server nodaemon '* ]]; then
+  exec python3 - "$port" <<'PY'
+import socket, sys
+server = socket.socket()
+server.bind(("127.0.0.1", int(sys.argv[1])))
+server.listen()
+while True:
+    connection, _ = server.accept()
+    connection.close()
+PY
+fi
+if [[ " $* " == *' kill-server '* ]]; then
+  exit 0
+fi
+exit 64
+ADB
+chmod 700 "$bin_dir/adb"
+export PATH="$bin_dir:$PATH"
+export FAKE_ADB_LOG="$adb_log"
+source "$helper"
+adb_server_port=''
+adb_server_port_attempts=''
+adb_server_pid=''
+adb_server_started='false'
+adb_key_home=''
+cleanup() {
+  stop_isolated_adb_server || true
+  rm -rf "$sandbox"
+}
+trap cleanup EXIT
+start_isolated_adb_server "$private_root" "$diagnostics" "$selector"
+[[ "$adb_server_started" == 'true' ]]
+[[ "$ANDROID_ADB_SERVER_PORT" == "$adb_server_port" ]]
+[[ "$ANDROID_USER_HOME" == "$private_root/android-user" ]]
+[[ "$ANDROID_EMULATOR_HOME" == "$private_root/android-user" ]]
+[[ "$ANDROID_AVD_HOME" == "$private_root/avd" ]]
+[[ "$ADB_VENDOR_KEYS" == "$private_root/android-user" ]]
+[[ "$(stat -c '%a' "$private_root/android-user")" == '700' ]]
+[[ "$(stat -c '%a' "$private_root/avd")" == '700' ]]
+[[ "$(stat -c '%a' "$private_root/android-user/adbkey")" == '600' ]]
+[[ "$(stat -c '%a' "$private_root/android-user/adbkey.pub")" == '600' ]]
+grep -Fq "port=$adb_server_port user=$private_root/android-user emulator=$private_root/android-user avd=$private_root/avd keys=$private_root/android-user args=keygen" "$adb_log"
+grep -Fq "port=$adb_server_port user=$private_root/android-user emulator=$private_root/android-user avd=$private_root/avd keys=$private_root/android-user args=-P $adb_server_port server nodaemon" "$adb_log"
+owned_pid="$adb_server_pid"
+stop_isolated_adb_server
+! kill -0 "$owned_pid" 2>/dev/null
+grep -Fq "args=-H 127.0.0.1 -P $adb_server_port kill-server" "$adb_log"
+! grep -Eq '(^|[^0-9])5037([^0-9]|$)|reconnect' "$adb_log"
+rm -rf "$private_root"
+[[ ! -e "$private_root" ]]
+cat "$diagnostics"
+printf '%s\n' 'fake_adb_contract=ok private_key_cleanup=ok'
+`, "isolated-adb-test", helperPath, selectorPath], { encoding: "utf8" });
+
+  assert.match(output, /phase=adb_server status=started server_port=42[0-9]{3} selection_attempts=[0-9]+/);
+  assert.match(output, /key_home=run_scoped server_mode=owned_nodaemon/);
+  assert.match(output, /fake_adb_contract=ok private_key_cleanup=ok/);
+});
+
 test("shared emulator ADB readiness is deadline bounded, sanitized, and process aware", () => {
   const helperPath = path.join(root, "android/build-logic/emulator-adb-readiness.sh");
   const output = execFileSync("bash", ["-c", String.raw`
@@ -239,10 +421,12 @@ cat "$diagnostics"
 });
 
 test("disposable interactive proof uses private identity bounded cleanup and physical evidence", async () => {
-  const [proof, readonlyProof, adbReadiness, selector, selectorFixture, server] = await Promise.all([
+  const [proof, readonlyProof, adbReadiness, isolatedAdb, adbSelector, selector, selectorFixture, server] = await Promise.all([
     source("android/build-logic/live-interactive-proof.sh"),
     source("android/build-logic/live-readonly-proof.sh"),
     source("android/build-logic/emulator-adb-readiness.sh"),
+    source("android/build-logic/isolated-adb-server.sh"),
+    source("android/build-logic/select-adb-server-port.py"),
     source("android/build-logic/uiautomator-control-center.py"),
     source("fixtures/android/uiautomator.request-control.xml"),
     source("scripts/pi-droid-disposable-daemon.mjs"),
@@ -255,6 +439,13 @@ test("disposable interactive proof uses private identity bounded cleanup and phy
   assert.match(proof, /reserve_port_pair/);
   for (const harness of [proof, readonlyProof]) {
     assert.match(harness, /select-emulator-port-pair\.py/);
+    assert.match(harness, /source "\$repo_root\/android\/build-logic\/isolated-adb-server\.sh"/);
+    assert.match(harness, /select-adb-server-port\.py/);
+    assert.match(harness, /start_isolated_adb_server/);
+    assert.match(harness, /stop_isolated_adb_server/);
+    assert.ok(harness.indexOf("start_isolated_adb_server") < harness.indexOf("avdmanager create avd"));
+    assert.ok(harness.indexOf("start_isolated_adb_server") < harness.indexOf("emulator -avd pi-droid-live"));
+    assert.ok(harness.indexOf("stop_isolated_adb_server") < harness.indexOf('rm -rf "$private_dir"'));
     assert.doesNotMatch(harness, /reserve_port_pair 5600 5682/);
     assert.match(harness, /emulator_port < 5554 \|\| emulator_port > 5584/);
     assert.match(harness, /emulator_adb_port != emulator_port \+ 1/);
@@ -265,6 +456,10 @@ test("disposable interactive proof uses private identity bounded cleanup and phy
     assert.match(harness, /"emulatorConsolePort": \$emulator_port/);
     assert.match(harness, /"emulatorAdbPort": \$emulator_adb_port/);
     assert.match(harness, /"emulatorPortSelectionAttempts": \$emulator_port_attempts/);
+    assert.match(harness, /"adbServerPort": \$adb_server_port/);
+    assert.match(harness, /"adbServerPortSelectionAttempts": \$adb_server_port_attempts/);
+    assert.match(harness, /"adbServerIsolated": true/);
+    assert.match(harness, /"adbKeyHomePrivate": true/);
     assert.ok(harness.indexOf("if ! select_emulator_port_pair") < harness.indexOf("emulator -avd pi-droid-live"));
     assert.match(harness, /source "\$repo_root\/android\/build-logic\/emulator-adb-readiness\.sh"/);
     assert.match(harness, /wait_for_emulator_adb "\$emulator_pid" "\$emulator_serial" "\$emulator_diagnostics" 240/);
@@ -278,6 +473,25 @@ test("disposable interactive proof uses private identity bounded cleanup and phy
     assert.match(harness, /for _ in \$\(seq 1 240\); do/);
     assert.doesNotMatch(harness, /adb\s+(?:kill-server|reconnect)\b/);
   }
+  assert.match(adbSelector, /ADB_SERVER_PORTS = tuple\(range\(42000, 42128\)\)/);
+  assert.match(adbSelector, /random\.SystemRandom\(\)\.shuffle/);
+  assert.match(isolatedAdb, /export ANDROID_ADB_SERVER_PORT="\$adb_server_port"/);
+  assert.match(isolatedAdb, /export ANDROID_USER_HOME="\$adb_key_home"/);
+  assert.match(isolatedAdb, /export ANDROID_EMULATOR_HOME="\$adb_key_home"/);
+  assert.match(isolatedAdb, /export ANDROID_AVD_HOME="\$private_root\/avd"/);
+  assert.match(isolatedAdb, /export ADB_VENDOR_KEYS="\$adb_key_home"/);
+  const isolatedStart = isolatedAdb.slice(
+    isolatedAdb.indexOf("start_isolated_adb_server() {"),
+    isolatedAdb.indexOf("\n}\n\nstop_isolated_adb_server()"),
+  );
+  assert.ok(isolatedStart.indexOf("export ANDROID_ADB_SERVER_PORT") < isolatedStart.indexOf("adb keygen"));
+  assert.ok(isolatedStart.indexOf("export ADB_VENDOR_KEYS") < isolatedStart.indexOf("server nodaemon"));
+  assert.match(isolatedStart, /adb -P "\$adb_server_port" server nodaemon/);
+  assert.match(isolatedStart, /kill -0 "\$adb_server_pid"/);
+  assert.match(isolatedAdb, /adb -H 127\.0\.0\.1 -P "\$adb_server_port" kill-server/);
+  assert.match(isolatedAdb, /adb_server_port != 5037/);
+  assert.doesNotMatch(isolatedAdb, /adb\s+(?:kill-server|reconnect)\b/);
+  assert.doesNotMatch(isolatedAdb, /(?:ANDROID_ADB_SERVER_PORT|\b-P\s+)["']?5037/);
   assert.match(adbReadiness, /max_seconds > 240/);
   assert.match(adbReadiness, /timeout --foreground --signal=KILL "\$\{poll_timeout_seconds\}s" adb -s "\$emulator_serial" get-state/);
   assert.match(adbReadiness, /next_report_seconds=\$\(\(now_seconds \+ 30\)\)/);
