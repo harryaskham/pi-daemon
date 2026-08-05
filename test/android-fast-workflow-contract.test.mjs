@@ -23,6 +23,10 @@ test("Android fast exposes flake-pinned Java before setup-gradle", async () => {
   assert.ok(workflow.indexOf('mkdir -p "$gradle_user_home"') < gradle);
   assert.doesNotMatch(workflow, /actions\/setup-java/);
   assert.match(workflow, /runs-on: \[self-hosted, nix, x86_64-linux\]/);
+  assert.match(
+    workflow,
+    /nix develop \.#android --command \\\n\s+env -u DISPLAY \\\n\s+android\/build-logic\/run-with-xvfb\.sh/,
+  );
 });
 
 test("Android fast shell expressions execute in the pinned shell rather than single-quoted text", async () => {

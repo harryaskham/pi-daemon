@@ -61,5 +61,6 @@ jobs:
       - name: Run JVM contract and Compose semantics tests
         run: |
           nix develop .#android --command \
+            env -u DISPLAY \
             android/build-logic/run-with-xvfb.sh \
             ./android/gradlew -p android --no-daemon check
