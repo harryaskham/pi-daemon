@@ -842,6 +842,10 @@ implementation order. This list is a human-readable crosswalk.
 - [x] `bd-79902f` — load-proof recovery-deadline and first-launch socket waits:
   deterministic per-open and aggregate recovery cases plus a generous bootstrap
   hang bound that still fails a crashed daemon immediately.
+- [x] `bd-00a448` — make first-launch CLI readiness require an exact-socket
+  protocol handshake rather than socket-path existence, racing every bounded
+  attempt against child exit with redacted capped diagnostics and hermetic stale,
+  delayed, silent, wrong-listener, and dead-child regressions.
 - [x] `bd-f786ca` — redaction-safe shared CLI exit diagnostics so a failing
   `serve` acceptance reports allow-listed structured event/error codes instead
   of a bare exit-code mismatch or a raw log dump.
