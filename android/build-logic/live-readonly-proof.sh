@@ -4,6 +4,7 @@ umask 077
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "$repo_root/android/build-logic/emulator-adb-readiness.sh"
+source "$repo_root/android/build-logic/emulator-ui-health.sh"
 source "$repo_root/android/build-logic/isolated-adb-server.sh"
 artifacts_dir=''
 tail_only='false'
@@ -35,6 +36,7 @@ emulator_diagnostics="$artifacts_dir/emulator-diagnostics.log"
 
 private_dir="$(mktemp -d)"
 chmod 700 "$private_dir"
+initialize_emulator_ui_health "$private_dir" "$artifacts_dir"
 daemon_pid=''
 emulator_pid=''
 emulator_device_serial=''
@@ -230,19 +232,23 @@ for _ in $(seq 1 240); do
   sleep 1
 done
 [[ "$booted" == '1' ]] || { printf '%s\n' 'emulator boot timed out' >&2; exit 70; }
+probe_emulator_ui_health || exit 70
 "${isolated_adb_command[@]}" -s "$emulator_device_serial" install -r "$apk" >/dev/null
 
 wait_ui() {
   local pattern="$1"
   local attempts="${2:-60}"
+  local xml="$private_dir/window.xml"
   for _ in $(seq 1 "$attempts"); do
-    "${isolated_adb_command[@]}" -s "$emulator_device_serial" shell uiautomator dump /sdcard/pi-droid-window.xml >/dev/null 2>&1 || true
-    if "${isolated_adb_command[@]}" -s "$emulator_device_serial" exec-out cat /sdcard/pi-droid-window.xml 2>/dev/null | grep -Eq "$pattern"; then return; fi
+    : > "$xml"
+    dump_emulator_ui_window "$xml" || true
+    check_emulator_ui_health "$xml" || exit 70
+    if grep -Eq "$pattern" "$xml"; then return; fi
     sleep 1
   done
   "${isolated_adb_command[@]}" -s "$emulator_device_serial" exec-out screencap -p > "$artifacts_dir/screenshots/failure.png" 2>/dev/null || true
   "${isolated_adb_command[@]}" -s "$emulator_device_serial" logcat -d -v threadtime > "$artifacts_dir/failure-logcat.txt" 2>/dev/null || true
-  "${isolated_adb_command[@]}" -s "$emulator_device_serial" exec-out cat /sdcard/pi-droid-window.xml > "$artifacts_dir/failure-window.xml" 2>/dev/null || true
+  cp "$xml" "$artifacts_dir/failure-window.xml" 2>/dev/null || true
   printf 'UI did not expose expected readonly pattern: %s\n' "$pattern" >&2
   exit 70
 }
@@ -250,21 +256,23 @@ wait_ui() {
 tap_text() {
   local text="$1"
   local xml="$private_dir/window.xml"
-  "${isolated_adb_command[@]}" -s "$emulator_device_serial" shell uiautomator dump /sdcard/pi-droid-window.xml >/dev/null 2>&1
-  "${isolated_adb_command[@]}" -s "$emulator_device_serial" exec-out cat /sdcard/pi-droid-window.xml > "$xml"
-  read -r x y < <(python3 - "$xml" "$text" <<'PY'
-import re, sys, xml.etree.ElementTree as ET
-root = ET.parse(sys.argv[1]).getroot()
-for node in root.iter("node"):
-    if node.attrib.get("text") == sys.argv[2] or node.attrib.get("content-desc") == sys.argv[2]:
-        nums = [int(v) for v in re.findall(r"\d+", node.attrib["bounds"])]
-        print((nums[0] + nums[2]) // 2, (nums[1] + nums[3]) // 2)
-        break
-else:
-    raise SystemExit(f"control not found: {sys.argv[2]}")
-PY
-)
-  "${isolated_adb_command[@]}" -s "$emulator_device_serial" shell input tap "$x" "$y"
+  local center=''
+  local x=''
+  local y=''
+  for _ in $(seq 1 30); do
+    : > "$xml"
+    dump_emulator_ui_window "$xml" || true
+    check_emulator_ui_health "$xml" || exit 70
+    if center="$(python3 "$repo_root/android/build-logic/uiautomator-control-center.py" "$xml" "$text" 2>/dev/null)"; then
+      read -r x y <<< "$center"
+      "${isolated_adb_command[@]}" -s "$emulator_device_serial" shell input tap "$x" "$y"
+      return 0
+    fi
+    sleep 1
+  done
+  cp "$xml" "$artifacts_dir/failure-control.xml" 2>/dev/null || true
+  printf 'visible clickable control unavailable: %s\n' "$text" >&2
+  return 1
 }
 
 "${isolated_adb_command[@]}" -s "$emulator_device_serial" shell am start -W -a android.intent.action.VIEW \
@@ -289,6 +297,7 @@ host_instance_two="$(jq -er .hostInstanceId "$ready_file")"
 tap_text "Refresh readonly hosts"
 wait_ui 'Readonly session Contract fixture|READONLY RPC ATTACHED' 90
 "${isolated_adb_command[@]}" -s "$emulator_device_serial" exec-out screencap -p > "$artifacts_dir/screenshots/reconnected.png"
+probe_emulator_ui_health || exit 70
 "${isolated_adb_command[@]}" -s "$emulator_device_serial" logcat -d -v threadtime > "$artifacts_dir/app-logcat.txt"
 
 if grep -Fq "$(< "$token_file")" "$artifacts_dir"/*.log "$artifacts_dir"/*.txt 2>/dev/null; then
@@ -316,6 +325,9 @@ cat > "$artifacts_dir/live-readonly-receipt.json" <<EOF
   "generation": 3,
   "hostInstanceBefore": "$host_instance_one",
   "hostInstanceAfter": "$host_instance_two",
+  "systemUiRecoveryUsed": $emulator_system_ui_wait_used,
+  "systemUiWaitLimit": 1,
+  "piDroidLogcatGuard": true,
   "capabilities": true,
   "inventory": true,
   "information": true,
@@ -333,12 +345,18 @@ EOF
     "daemon-$second_sequence.stderr.log"
     app-logcat.txt
     emulator-diagnostics.log
+    system-ui-health.log
     screenshots/reconnected.png
     live-readonly-receipt.json
   )
   [[ -f screenshots/live-connected.png ]] && receipt_files+=(screenshots/live-connected.png)
   [[ -f screenshots/offline-cached.png ]] && receipt_files+=(screenshots/offline-cached.png)
   [[ -f screenshots/tail-live-connected.png ]] && receipt_files+=(screenshots/tail-live-connected.png)
+  if [[ -d system-ui-evidence ]]; then
+    while IFS= read -r evidence_file; do
+      receipt_files+=("$evidence_file")
+    done < <(find system-ui-evidence -type f -print | LC_ALL=C sort)
+  fi
   sha256sum "${receipt_files[@]}" > live-readonly-sha256sums.txt
 )
 find "$artifacts_dir" -type d -exec chmod 700 {} +
