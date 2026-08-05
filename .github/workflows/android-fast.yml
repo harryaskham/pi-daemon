@@ -39,16 +39,13 @@ jobs:
         with:
           github_access_token: ${{ secrets.GITHUB_TOKEN }}
       - name: Expose pinned Java to Gradle action
+        shell: nix develop .#android --command bash -euo pipefail {0}
         run: |
-          # shellcheck disable=SC2016
-          # The pinned inner shell expands these environment values.
-          nix develop .#android --command bash -euo pipefail -c '
-            gradle_user_home="$RUNNER_TEMP/gradle-user-home"
-            mkdir -p "$gradle_user_home"
-            printf "JAVA_HOME=%s\n" "$JAVA_HOME" >> "$GITHUB_ENV"
-            printf "GRADLE_USER_HOME=%s\n" "$gradle_user_home" >> "$GITHUB_ENV"
-            dirname "$(command -v java)" >> "$GITHUB_PATH"
-          '
+          gradle_user_home="$RUNNER_TEMP/gradle-user-home"
+          mkdir -p "$gradle_user_home"
+          printf "JAVA_HOME=%s\n" "$JAVA_HOME" >> "$GITHUB_ENV"
+          printf "GRADLE_USER_HOME=%s\n" "$gradle_user_home" >> "$GITHUB_ENV"
+          dirname "$(command -v java)" >> "$GITHUB_PATH"
       - uses: gradle/actions/setup-gradle@v5
         with:
           cache-read-only: ${{ github.ref != 'refs/heads/main' }}

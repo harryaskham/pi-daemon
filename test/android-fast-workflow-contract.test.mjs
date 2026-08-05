@@ -12,7 +12,8 @@ test("Android fast exposes flake-pinned Java before setup-gradle", async () => {
   const gradle = workflow.indexOf("gradle/actions/setup-gradle@v5");
 
   assert.ok(nix >= 0 && nix < java && java < gradle);
-  assert.match(workflow, /nix develop \.#android --command bash -euo pipefail/);
+  assert.match(workflow, /shell: nix develop \.#android --command bash -euo pipefail \{0\}/);
+  assert.doesNotMatch(workflow, /--command bash -euo pipefail -c\s*'/);
   assert.match(workflow, /gradle_user_home="\$RUNNER_TEMP\/gradle-user-home"/);
   assert.match(workflow, /mkdir -p "\$gradle_user_home"/);
   assert.match(workflow, /printf "JAVA_HOME=%s\\n" "\$JAVA_HOME" >> "\$GITHUB_ENV"/);
@@ -21,4 +22,18 @@ test("Android fast exposes flake-pinned Java before setup-gradle", async () => {
   assert.ok(workflow.indexOf('mkdir -p "$gradle_user_home"') < gradle);
   assert.doesNotMatch(workflow, /actions\/setup-java/);
   assert.match(workflow, /runs-on: \[self-hosted, nix, x86_64-linux\]/);
+});
+
+test("Android fast shell expressions execute in the pinned shell rather than single-quoted text", async () => {
+  const workflow = await readFile(`${root}/.github/workflows/android-fast.yml`, "utf8");
+  const java = workflow.indexOf("name: Expose pinned Java to Gradle action");
+  const gradle = workflow.indexOf("gradle/actions/setup-gradle@v5", java);
+  assert.ok(java >= 0 && gradle > java);
+
+  const exposeJava = workflow.slice(java, gradle);
+  assert.match(exposeJava, /shell: nix develop \.#android --command bash -euo pipefail \{0\}/);
+  assert.doesNotMatch(exposeJava, /(?:-c|<<)\s*'/);
+  for (const expression of ["$RUNNER_TEMP", "$JAVA_HOME", "$GITHUB_ENV", "$GITHUB_PATH"]) {
+    assert.match(exposeJava, new RegExp(`\\${expression}`));
+  }
 });

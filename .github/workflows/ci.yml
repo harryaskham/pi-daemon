@@ -38,6 +38,14 @@ jobs:
       # pinned flake npmDepsHash, so say so here in seconds instead of letting
       # every Nix job fail later with a bare fixed-output mismatch.
       - run: npm run nix:deps-hash:fast
+      # Android proof contracts execute reviewed Python selectors directly.
+      # Resolve Python from this repository's pinned nixpkgs input and expose it
+      # to both Node matrix entries instead of trusting the runner image's PATH.
+      - name: Provide the Android proof contracts' Python dependency
+        run: |
+          python_out="$(nix build --no-link --print-out-paths --inputs-from . 'nixpkgs#python3')"
+          printf '%s\n' "$python_out/bin" >> "$GITHUB_PATH"
+        timeout-minutes: 10
       # test/tls-fixture.mjs issues a real certificate pair, which node:crypto
       # cannot do — X509Certificate is parse-only — so openssl is a genuine
       # dependency of the suite. The Nix lanes get it from flake.nix; this lane

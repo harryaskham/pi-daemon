@@ -504,6 +504,10 @@ process appears per wake.
   using the active pinned Bash for its fake executables, replacing expiring sleep
   processes with owned blocking sentinels, and reporting only bounded redacted
   assertion labels when its shell fixture fails.
+- [x] `bd-988946` Make Android fast verification self-contained by exposing the
+  flake-pinned Python runtime to both plain Node CI versions and executing the
+  Java environment export directly in its pinned Nix shell without nested quote
+  semantics that fail workflow linting.
 - [x] `bd-ed4382` Reopen retained imported Dash sessions from their exact managed
   JSONL/session directory without replaying or resolving the original fork source.
 - [x] `bd-486f8c` Accept ordinary owner-controlled, non-writable Pi session
