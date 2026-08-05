@@ -508,6 +508,9 @@ process appears per wake.
   flake-pinned Python runtime to both plain Node CI versions and executing the
   Java environment export directly in its pinned Nix shell without nested quote
   semantics that fail workflow linting.
+- [x] `bd-e9e95f` Record every resolved and empty strict-lock configuration for
+  the Pi Droid Android-integration JVM module so configuration-cache validation
+  cannot fail before its credential-free contract tests execute.
 - [x] `bd-ed4382` Reopen retained imported Dash sessions from their exact managed
   JSONL/session directory without replaying or resolving the original fork source.
 - [x] `bd-486f8c` Accept ordinary owner-controlled, non-writable Pi session
