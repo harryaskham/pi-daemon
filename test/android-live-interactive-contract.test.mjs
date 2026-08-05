@@ -15,11 +15,12 @@ async function source(relative) {
 }
 
 test("interactive app delegates exact authority correlation tree and TUI state to canonical SDK models", async () => {
-  const [catalog, appLock, machine, repository, screen, activity, transport, transportTest, commands, rich] = await Promise.all([
+  const [catalog, appLock, machine, repository, repositoryTest, screen, activity, transport, transportTest, commands, rich] = await Promise.all([
     source("android/gradle/libs.versions.toml"),
     source("android/app/gradle.lockfile"),
     source("android/app/src/main/kotlin/com/harryaskham/pidroid/live/LiveInteractiveSession.kt"),
     source("android/app/src/main/kotlin/com/harryaskham/pidroid/live/LiveReadonlyRepository.kt"),
+    source("android/app/src/test/kotlin/com/harryaskham/pidroid/live/LiveReadonlyRepositoryTest.kt"),
     source("android/app/src/main/kotlin/com/harryaskham/pidroid/live/LiveReadonlyScreen.kt"),
     source("android/app/src/main/kotlin/com/harryaskham/pidroid/MainActivity.kt"),
     source("android/app/src/main/kotlin/com/harryaskham/pidroid/live/OkHttpPiDaemonTransport.kt"),
@@ -74,6 +75,9 @@ test("interactive app delegates exact authority correlation tree and TUI state t
   assert.match(transportTest, /MockWebServer graceful close race produces typed safe failure within bound/);
   assert.match(transportTest, /serverSocket\.close\(1_001, "server shutdown"\)/);
   assert.match(transportTest, /connection refusal closes incoming with typed safe failure/);
+  assert.match(transportTest, /fun `MockWebServer graceful close race produces typed safe failure within bound`\(\) =\n    runBlocking \{/);
+  assert.match(transportTest, /fun `connection refusal closes incoming with typed safe failure`\(\) =\n    runBlocking \{/);
+  assert.match(repositoryTest, /fun `interactive repository requests control sends one unique prompt and marks lost response indeterminate`\(\) =\n    runBlocking \{/);
   assert.ok((transportTest.match(/withTimeout\(15_000\)/g) ?? []).length >= 2);
   assert.match(transportTest, /assertEquals\("websocket_failed", \(failure as TransportFailure\)\.code\)/);
   assert.match(screen, /RichInteractiveSessionSurface/);

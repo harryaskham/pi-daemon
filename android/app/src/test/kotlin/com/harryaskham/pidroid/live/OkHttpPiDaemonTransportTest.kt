@@ -13,6 +13,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.toList
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
@@ -138,7 +139,7 @@ class OkHttpPiDaemonTransportTest {
 
   @Test
   fun `MockWebServer graceful close race produces typed safe failure within bound`() =
-    runTest {
+    runBlocking {
       val server = MockWebServer()
       server.start()
       try {
@@ -183,7 +184,7 @@ class OkHttpPiDaemonTransportTest {
 
   @Test
   fun `connection refusal closes incoming with typed safe failure`() =
-    runTest {
+    runBlocking {
       val server = MockWebServer()
       server.start()
       val serverAddress = server.url("/").toString()

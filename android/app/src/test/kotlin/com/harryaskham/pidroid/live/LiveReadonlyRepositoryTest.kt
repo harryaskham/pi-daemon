@@ -33,6 +33,7 @@ import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withTimeout
@@ -311,7 +312,7 @@ class LiveReadonlyRepositoryTest {
 
   @Test
   fun `interactive repository requests control sends one unique prompt and marks lost response indeterminate`() =
-    runTest {
+    runBlocking {
       val harness = harness()
       harness.repository.registerManual(
         URI("http://10.0.2.2:48123"),
