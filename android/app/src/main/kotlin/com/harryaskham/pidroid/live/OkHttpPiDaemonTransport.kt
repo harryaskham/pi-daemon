@@ -50,6 +50,28 @@ public interface LiveHostTransport :
   public fun replaceHosts(hosts: List<RegisteredHost>)
 }
 
+internal class IncomingChannelCloser(
+  private val closeAction: (Throwable?) -> Unit,
+) {
+  private val closed = AtomicBoolean(false)
+
+  fun close(cause: Throwable? = null) {
+    if (closed.compareAndSet(false, true)) closeAction(cause)
+  }
+}
+
+internal fun acknowledgePeerClosing(
+  webSocket: WebSocket,
+  code: Int,
+  reason: String,
+  closer: IncomingChannelCloser,
+) {
+  closer.close()
+  webSocket.close(code, reason.take(WEBSOCKET_CLOSE_REASON_CHARS))
+}
+
+private const val WEBSOCKET_CLOSE_REASON_CHARS: Int = 123
+
 public class OkHttpPiDaemonTransport(
   internal val webSocketPingInterval: Duration = DEFAULT_WEBSOCKET_PING_INTERVAL,
 ) : LiveHostTransport {
@@ -124,12 +146,10 @@ public class OkHttpPiDaemonTransport(
   ): PiDaemonSocket {
     val hostClient = requireHost(host, request.uri)
     val incoming = Channel<String>(capacity = MAX_INCOMING_FRAMES)
-    val incomingClosed = AtomicBoolean(false)
-
-    fun closeIncoming(cause: Throwable? = null) {
-      if (!incomingClosed.compareAndSet(false, true)) return
-      if (cause == null) incoming.close() else incoming.close(cause)
-    }
+    val incomingCloser =
+      IncomingChannelCloser { cause ->
+        if (cause == null) incoming.close() else incoming.close(cause)
+      }
     val listener =
       object : WebSocketListener() {
         override fun onMessage(
@@ -138,7 +158,7 @@ public class OkHttpPiDaemonTransport(
         ) {
           if (text.length > MAX_WEBSOCKET_CHARS || incoming.trySend(text).isFailure) {
             webSocket.close(1_009, "bounded overflow")
-            closeIncoming(IllegalStateException("bounded WebSocket overflow"))
+            incomingCloser.close(IllegalStateException("bounded WebSocket overflow"))
           }
         }
 
@@ -147,7 +167,7 @@ public class OkHttpPiDaemonTransport(
           bytes: ByteString,
         ) {
           webSocket.close(1_003, "text frames required")
-          closeIncoming(IllegalStateException("binary WebSocket frame rejected"))
+          incomingCloser.close(IllegalStateException("binary WebSocket frame rejected"))
         }
 
         override fun onClosing(
@@ -155,8 +175,7 @@ public class OkHttpPiDaemonTransport(
           code: Int,
           reason: String,
         ) {
-          closeIncoming()
-          webSocket.close(code, reason.take(MAX_CLOSE_REASON_CHARS))
+          acknowledgePeerClosing(webSocket, code, reason, incomingCloser)
         }
 
         override fun onClosed(
@@ -164,7 +183,7 @@ public class OkHttpPiDaemonTransport(
           code: Int,
           reason: String,
         ) {
-          closeIncoming()
+          incomingCloser.close()
         }
 
         override fun onFailure(
@@ -175,7 +194,7 @@ public class OkHttpPiDaemonTransport(
           val safeBody = response?.body?.charStream()?.use { it.readText().take(4_096) }
           val apiCode = safeBody?.let { Regex("\\\"code\\\"\\s*:\\s*\\\"([a-z0-9_]{1,128})\\\"").find(it)?.groupValues?.get(1) }
           val code = apiCode?.let { "websocket_$it" } ?: response?.code?.let { "websocket_http_$it" } ?: "websocket_failed"
-          closeIncoming(TransportFailure(code, t))
+          incomingCloser.close(TransportFailure(code, t))
         }
       }
     val builder = Request.Builder().url(request.uri.toString())
@@ -279,7 +298,6 @@ public class OkHttpPiDaemonTransport(
     const val MAX_RESPONSE_BYTES: Int = 4 * 1_024 * 1_024
     const val MAX_WEBSOCKET_CHARS: Int = 4 * 1_024 * 1_024
     const val MAX_INCOMING_FRAMES: Int = 128
-    const val MAX_CLOSE_REASON_CHARS: Int = 123
     val DEFAULT_WEBSOCKET_PING_INTERVAL: Duration = Duration.ofSeconds(5)
     val MAX_WEBSOCKET_PING_INTERVAL: Duration = Duration.ofSeconds(30)
     val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()

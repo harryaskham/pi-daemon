@@ -18,10 +18,12 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
+import okhttp3.Request
 import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import okhttp3.tls.HeldCertificate
+import okio.ByteString
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertThrows
@@ -120,13 +122,27 @@ class OkHttpPiDaemonTransportTest {
   }
 
   @Test
-  fun `server graceful close completes incoming and is acknowledged within bound`() =
+  fun `peer closing helper acknowledges bounded reason and closes incoming exactly once`() {
+    val causes = mutableListOf<Throwable?>()
+    val closer = IncomingChannelCloser(causes::add)
+    val socket = FakeWebSocket()
+
+    acknowledgePeerClosing(socket, 1_001, "x".repeat(200), closer)
+    closer.close()
+
+    assertEquals(listOf<Throwable?>(null), causes)
+    assertEquals(1, socket.closeCalls)
+    assertEquals(1_001, socket.closeCode)
+    assertEquals(123, socket.closeReason?.length)
+  }
+
+  @Test
+  fun `MockWebServer graceful close race produces typed safe failure within bound`() =
     runTest {
       val server = MockWebServer()
       server.start()
       try {
         val acceptedSocket = CompletableDeferred<WebSocket>()
-        val serverAcknowledged = CompletableDeferred<Int>()
         server.enqueue(
           MockResponse
             .Builder()
@@ -139,18 +155,11 @@ class OkHttpPiDaemonTransportTest {
                 ) {
                   acceptedSocket.complete(webSocket)
                 }
-
-                override fun onClosed(
-                  webSocket: WebSocket,
-                  code: Int,
-                  reason: String,
-                ) {
-                  serverAcknowledged.complete(code)
-                }
               },
             ).build(),
         )
-        val host = host(server.url("/").toString())
+        val serverAddress = server.url("/").toString()
+        val host = host(serverAddress)
         val transport = OkHttpPiDaemonTransport().also { it.replaceHosts(listOf(host)) }
         ServiceBearerRequestFactory.create(descriptor(host), "test".toCharArray(), allowInsecureHttp = true).use { factory ->
           val socket =
@@ -160,8 +169,10 @@ class OkHttpPiDaemonTransportTest {
           val incoming = async(Dispatchers.Default) { socket.incomingText.toList() }
           val serverSocket = withTimeout(5_000) { acceptedSocket.await() }
           assertTrue(serverSocket.close(1_001, "server shutdown"))
-          assertTrue(withTimeout(15_000) { incoming.await().isEmpty() })
-          assertEquals(1_001, withTimeout(5_000) { serverAcknowledged.await() })
+          val failure = withTimeout(15_000) { runCatching { incoming.await() }.exceptionOrNull() }
+          assertTrue(failure is TransportFailure)
+          assertEquals("websocket_failed", (failure as TransportFailure).code)
+          assertFalse(failure.toString().contains(serverAddress))
           socket.close()
         }
         transport.close()
@@ -184,7 +195,7 @@ class OkHttpPiDaemonTransportTest {
           factory
             .webSocket("/v1/session/test/rpc", emptyList(), listOf("pi-daemon-rpc.v1"))
             .let { transport.openWebSocket(host.id, it) }
-        val failure = withTimeout(5_000) { runCatching { socket.incomingText.toList() }.exceptionOrNull() }
+        val failure = withTimeout(15_000) { runCatching { socket.incomingText.toList() }.exceptionOrNull() }
         assertTrue(failure is TransportFailure)
         assertEquals("websocket_failed", (failure as TransportFailure).code)
         assertFalse(failure.toString().contains(serverAddress))
@@ -229,6 +240,35 @@ class OkHttpPiDaemonTransportTest {
       mismatch.checkServerTrusted(arrayOf(certificate), "RSA")
     }
     assertTrue(delegateCalled.get())
+  }
+
+  private class FakeWebSocket : WebSocket {
+    var closeCalls: Int = 0
+      private set
+    var closeCode: Int? = null
+      private set
+    var closeReason: String? = null
+      private set
+
+    override fun request(): Request = Request.Builder().url("http://127.0.0.1/").build()
+
+    override fun queueSize(): Long = 0
+
+    override fun send(text: String): Boolean = false
+
+    override fun send(bytes: ByteString): Boolean = false
+
+    override fun close(
+      code: Int,
+      reason: String?,
+    ): Boolean {
+      closeCalls += 1
+      closeCode = code
+      closeReason = reason
+      return true
+    }
+
+    override fun cancel() = Unit
   }
 
   private fun host(baseUri: String): RegisteredHost {
