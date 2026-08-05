@@ -32,7 +32,7 @@ jobs:
   nix:
     name: Nix (macOS)
     runs-on: [self-hosted, macos]
-    timeout-minutes: 150
+    timeout-minutes: 80
     steps:
       - uses: actions/checkout@v7
       - uses: cachix/install-nix-action@v31
@@ -42,8 +42,12 @@ jobs:
       - name: Initialize bounded evidence directory
         shell: bash
         run: |
-          printf 'PI_DAEMON_NIX_CI_LOG_DIR=%s/pi-daemon-nix-macos-%s-%s\n' \
-            "$RUNNER_TEMP" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" >> "$GITHUB_ENV"
+          {
+            printf 'PI_DAEMON_NIX_CI_LOG_DIR=%s/pi-daemon-nix-macos-%s-%s\n' \
+              "$RUNNER_TEMP" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT"
+            printf 'PI_DAEMON_NIX_CI_BUILD_NONCE=github-%s-%s\n' \
+              "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT"
+          } >> "$GITHUB_ENV"
         timeout-minutes: 1
 
       - name: Record cache and substitution state
@@ -66,25 +70,21 @@ jobs:
         timeout-minutes: 5
 
       # PR 26 measured 12m08s in install and 29m27s in fixup alone before the
-      # former monolithic 50-minute step expired. A missing output takes the real
-      # cold build path; an already-valid output uses --rebuild so every verdict
-      # still exercises npm tests and both install checks. (Nix refuses
-      # --rebuild when an output is missing rather than treating it as a build.)
-      # The 90-minute bound is therefore based on the cold package tail, not
-      # another warm-cache estimate.
-      - name: Build package, tests, fixup, and install checks
+      # former monolithic 50-minute step expired. The run-attempt nonce gives the
+      # package a new output path, so an ordinary build must execute the complete
+      # test/install/fixup/installCheck pipeline even when the shared store is
+      # warm. Its only GC root is the job-private result under RUNNER_TEMP; this
+      # workflow never deletes or invalidates a shared-store output.
+      - name: Build package, tests, fixup, and install checks from an absent output
         shell: bash
         run: |
-          package_mode=()
-          case "${{ steps.nix-state.outputs.package_store_state }}" in
-            present) package_mode+=(--rebuild) ;;
-            missing) ;;
-            *) echo '::error title=Unknown package store state::Cache telemetry must report present or missing.'; exit 1 ;;
-          esac
-          bash scripts/run-nix-ci-phase.sh package-build \
-            nix build "${package_mode[@]}" --no-link --print-build-logs \
-            ".#checks.${{ steps.nix-state.outputs.system }}.package"
-        timeout-minutes: 90
+          if [[ "${{ steps.nix-state.outputs.package_store_state }}" != missing ]]; then
+            echo '::error title=Job-unique package output is not cold::The run-attempt nonce must select an absent output before the normal build.'
+            exit 1
+          fi
+          bash scripts/run-nix-ci-package.sh \
+            "${{ steps.nix-state.outputs.system }}"
+        timeout-minutes: 75
 
       # The expensive package is now valid in the store. Keep the complete flake
       # assertion so Pages, Home Manager, generated contracts, workflow syntax,
@@ -93,14 +93,14 @@ jobs:
         shell: bash
         run: |
           bash scripts/run-nix-ci-phase.sh flake-check \
-            nix flake check --print-build-logs
+            nix flake check --impure --print-build-logs
         timeout-minutes: 30
 
       - name: Verify the installed app entry point
         shell: bash
         run: |
           bash scripts/run-nix-ci-phase.sh installed-version \
-            nix run .#pi-daemon -- version
+            nix run --impure .#pi-daemon -- version
         timeout-minutes: 5
 
       - name: Retain macOS Nix phase evidence

@@ -235,17 +235,18 @@ test("self-hosted workflows bound every job and long-running Nix step", async ()
   assert.doesNotMatch(ci, /\[self-hosted, macos\]/, "macOS must not share the fast lane's group");
   assert.match(macos, /group: ci-macos-\$\{\{ github\.ref \}\}/);
   assert.match(macos, /cancel-in-progress: false/);
-  assert.match(macos, /runs-on: \[self-hosted, macos\]\n\s+timeout-minutes: 150/);
-  assert.match(macos, /present\) package_mode\+=\(--rebuild\)/);
+  assert.match(macos, /runs-on: \[self-hosted, macos\]\n\s+timeout-minutes: 80/);
+  assert.match(macos, /PI_DAEMON_NIX_CI_BUILD_NONCE=github-%s-%s/);
   assert.match(
     macos,
-    /nix build "\$\{package_mode\[@\]\}" --no-link --print-build-logs[\s\\]+[\s\S]*?timeout-minutes: 90/,
+    /run-nix-ci-package\.sh[\s\\]+"\$\{\{ steps\.nix-state\.outputs\.system \}\}"[\s\S]*?timeout-minutes: 75/,
   );
+  assert.doesNotMatch(macos, /--rebuild/);
   assert.match(
     macos,
-    /nix flake check --print-build-logs[\s\S]*?timeout-minutes: 30/,
+    /nix flake check --impure --print-build-logs[\s\S]*?timeout-minutes: 30/,
   );
-  assert.match(macos, /nix run \.#pi-daemon -- version[\s\S]*?timeout-minutes: 5/);
+  assert.match(macos, /nix run --impure \.#pi-daemon -- version[\s\S]*?timeout-minutes: 5/);
   assert.match(
     ci,
     /dash-smoke:\n\s+name: Dash browser smoke\n\s+runs-on: \[self-hosted, nix, x86_64-linux\]\n\s+timeout-minutes: 20/,

@@ -55,7 +55,8 @@
           "$finished_epoch" "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" \
           "$((finished_epoch - started_epoch))"
       '';
-      package = pkgs.buildNpmPackage {
+      ciBuildNonce = builtins.getEnv "PI_DAEMON_NIX_CI_BUILD_NONCE";
+      packageAttrs = {
         pname = "pi-daemon";
         version = "0.3.0";
         src = ./.;
@@ -127,6 +128,13 @@
           platforms = systems;
         };
       };
+      package = pkgs.buildNpmPackage (packageAttrs
+        // pkgs.lib.optionalAttrs (ciBuildNonce != "") {
+          # A GitHub run-attempt nonce intentionally changes only the CI package
+          # derivation identity. Its output is therefore absent even on a warm
+          # shared store, while every dependency remains reusable.
+          PI_DAEMON_NIX_CI_BUILD_NONCE = ciBuildNonce;
+        });
       pages =
         pkgs.runCommand "pi-daemon-pages" {
           nativeBuildInputs = [pkgs.pandoc];

@@ -27,7 +27,10 @@ print_url_config() {
 system="$(nix eval --impure --raw --expr builtins.currentSystem)"
 package_installable=".#checks.${system}.package"
 npm_deps_installable=".#packages.${system}.npm-deps"
-package_path="$(nix eval --raw "${package_installable}.outPath")"
+# The macOS workflow sets a run-attempt nonce. Impure evaluation is deliberate:
+# telemetry must inspect the exact job-unique package output that the build will
+# realize, not the canonical warm-store output with the nonce hidden.
+package_path="$(nix eval --impure --raw "${package_installable}.outPath")"
 npm_deps_path="$(nix eval --raw "${npm_deps_installable}.outPath")"
 
 printf 'recorded_utc: %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
@@ -69,7 +72,7 @@ fi
 printf 'package_dry_run_begin:\n'
 # The command may consult substituters whose configured URLs carry private
 # query parameters. Exercise the plan but never persist its raw network output.
-if nix build --dry-run --no-link "$package_installable" >/dev/null 2>&1; then
+if nix build --impure --dry-run --no-link "$package_installable" >/dev/null 2>&1; then
   printf 'package_dry_run_end: success\n'
 else
   # Preserve the observation, then let the real package command report the
