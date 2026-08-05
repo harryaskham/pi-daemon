@@ -54,10 +54,11 @@ done
 
 printf 'package_path: %s\n' "$package_path"
 if nix path-info --offline "$package_path" >/dev/null 2>&1; then
-  printf 'package_store_state: present\n'
+  package_store_state="present"
 else
-  printf 'package_store_state: missing\n'
+  package_store_state="missing"
 fi
+printf 'package_store_state: %s\n' "$package_store_state"
 printf 'npm_deps_path: %s\n' "$npm_deps_path"
 if nix path-info --offline "$npm_deps_path" >/dev/null 2>&1; then
   printf 'npm_deps_store_state: present\n'
@@ -78,4 +79,5 @@ fi
 
 if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
   printf 'system=%s\n' "$system" >> "$GITHUB_OUTPUT"
+  printf 'package_store_state=%s\n' "$package_store_state" >> "$GITHUB_OUTPUT"
 fi
