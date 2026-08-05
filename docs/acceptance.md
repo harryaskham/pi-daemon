@@ -71,6 +71,22 @@ verifies the package/app/install surface. Package install checks execute only
 the deterministic installed `pi-daemon version` and `pi-daemon-rpc --version`
 commands.
 
+The dedicated macOS lane first records the current system, signature policy,
+credential-redacted substituter identities, trusted key names, and offline store
+presence for both the exact package and npm dependency cache. It then rebuilds
+the package with `--rebuild` under a 90-minute bound before running the complete
+flake under a separate 30-minute bound. This intentionally exercises the Node
+suite and both installed-version assertions even on a warm self-hosted store,
+while keeping Pages, Home Manager, generated contracts, and workflow syntax in
+the final verdict. Nix builder logs emit start/end timestamps and durations for
+build, check, install, fixup, and install-check; the workflow retains those logs
+for 14 days. The 90-minute package ceiling is based on the measured PR 26 cold
+tail (12m08s install and 29m27s fixup inside a run that exceeded 50 minutes),
+not the former warm-cache range. A manual `deliberate_test_failure` dispatch
+runs a known-failing Node test through the same phase wrapper and must make the
+workflow red; ordinary push and pull-request runs never enable that diagnostic.
+macOS runs are serialized by ref and are not cancelled by later commits.
+
 The service-launch/process-tree consumer proof is deliberately separate because
 it depends on scheduler timing and observing a live descendant tree. Run it
 explicitly with `npm run test:consumer-acceptance`; the scheduled and manually

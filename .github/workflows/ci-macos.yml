@@ -12,33 +12,94 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+    inputs:
+      deliberate_test_failure:
+        description: Prove that the phase runner reports a deliberately failing Node test as red
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
 
 concurrency:
-  # Its own group, and superseded pull-request runs still cancel. A push to
-  # main is allowed to queue, which is the property the fast lane could not
-  # provide: the slowest verification keeps its verdict instead of being killed
-  # by the next landing.
+  # Never cancel the only useful Darwin verdict. New commits remain serialized
+  # by ref, while this workflow's dedicated group cannot block the fast lane.
   group: ci-macos-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: false
 
 jobs:
   nix:
     name: Nix (macOS)
     runs-on: [self-hosted, macos]
-    timeout-minutes: 60
+    timeout-minutes: 150
     steps:
       - uses: actions/checkout@v7
       - uses: cachix/install-nix-action@v31
         with:
           github_access_token: ${{ secrets.GITHUB_TOKEN }}
-      # Successful macOS runs measured 1.2 to 13.3 minutes, so the ceiling is
-      # sized for the cold tail rather than the warm case: the failures this
-      # replaced were never test failures, they were a budget sized for Linux
-      # (bd-8dab81).
-      - run: nix flake check --print-build-logs
-        timeout-minutes: 50
-      - run: nix run .#pi-daemon -- version
+
+      - name: Initialize bounded evidence directory
+        shell: bash
+        run: |
+          printf 'PI_DAEMON_NIX_CI_LOG_DIR=%s/pi-daemon-nix-macos-%s-%s\n' \
+            "$RUNNER_TEMP" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" >> "$GITHUB_ENV"
+        timeout-minutes: 1
+
+      - name: Record cache and substitution state
+        id: nix-state
+        shell: bash
+        run: bash scripts/report-nix-ci-cache-state.sh
         timeout-minutes: 5
+
+      # This opt-in diagnostic is intentionally red. It exercises the same
+      # status-preserving phase runner as the real package/check commands, so a
+      # manual failure proof cannot accidentally become an allowed failure.
+      - name: Deliberately failing test proof
+        if: inputs.deliberate_test_failure
+        shell: bash
+        run: |
+          printf 'import test from "node:test"; import assert from "node:assert/strict"; test("deliberate CI failure", () => assert.fail("expected red verdict"));\n' \
+            > "$RUNNER_TEMP/pi-daemon-deliberate-failure.test.mjs"
+          bash scripts/run-nix-ci-phase.sh deliberately-failing-test \
+            node --test "$RUNNER_TEMP/pi-daemon-deliberate-failure.test.mjs"
+        timeout-minutes: 5
+
+      # PR 26 measured 12m08s in install and 29m27s in fixup alone before the
+      # former monolithic 50-minute step expired. Rebuild makes every verdict
+      # exercise npm tests and both install checks even when this self-hosted
+      # store already contains the exact output; 90 minutes is an evidence-based
+      # cold-package ceiling rather than another warm-cache estimate.
+      - name: Rebuild package, tests, fixup, and install checks
+        shell: bash
+        run: |
+          bash scripts/run-nix-ci-phase.sh package-rebuild \
+            nix build --rebuild --no-link --print-build-logs \
+            ".#checks.${{ steps.nix-state.outputs.system }}.package"
+        timeout-minutes: 90
+
+      # The expensive package is now valid in the store. Keep the complete flake
+      # assertion so Pages, Home Manager, generated contracts, workflow syntax,
+      # and every other check still contribute to the final verdict.
+      - name: Check the complete flake
+        shell: bash
+        run: |
+          bash scripts/run-nix-ci-phase.sh flake-check \
+            nix flake check --print-build-logs
+        timeout-minutes: 30
+
+      - name: Verify the installed app entry point
+        shell: bash
+        run: |
+          bash scripts/run-nix-ci-phase.sh installed-version \
+            nix run .#pi-daemon -- version
+        timeout-minutes: 5
+
+      - name: Retain macOS Nix phase evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nix-macos-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/pi-daemon-nix-macos-${{ github.run_id }}-${{ github.run_attempt }}
+          retention-days: 14
+          if-no-files-found: warn

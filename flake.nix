@@ -42,6 +42,19 @@
         inherit pkgs;
         hash = npmDepsHash;
       };
+      phaseStart = phase: ''
+        started_epoch="$(date +%s)"
+        printf '%s\n' "$started_epoch" > "$NIX_BUILD_TOP/pi-daemon-${phase}-started"
+        printf 'pi-daemon-nix-phase phase=${phase} event=start epoch=%s utc=%s\n' \
+          "$started_epoch" "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+      '';
+      phaseFinish = phase: ''
+        started_epoch="$(cat "$NIX_BUILD_TOP/pi-daemon-${phase}-started")"
+        finished_epoch="$(date +%s)"
+        printf 'pi-daemon-nix-phase phase=${phase} event=finish epoch=%s utc=%s duration_seconds=%s\n' \
+          "$finished_epoch" "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" \
+          "$((finished_epoch - started_epoch))"
+      '';
       package = pkgs.buildNpmPackage {
         pname = "pi-daemon";
         version = "0.3.0";
@@ -56,6 +69,16 @@
         nativeBuildInputs = [pkgs.makeWrapper pkgs.openssl pkgs.bash pkgs.python3];
 
         npmBuildScript = "build";
+        preBuild = phaseStart "build";
+        postBuild = phaseFinish "build";
+        preCheck = phaseStart "check";
+        postCheck = phaseFinish "check";
+        preInstall = phaseStart "install";
+        postInstall = phaseFinish "install";
+        preFixup = phaseStart "fixup";
+        postFixup = phaseFinish "fixup";
+        preInstallCheck = phaseStart "install-check";
+        postInstallCheck = phaseFinish "install-check";
         # Nix-on-Droid cannot safely run npm, so aarch64-linux artifacts are
         # prebuilt on x86_64 NixOS through binfmt and served from Attic. The full
         # Node suite is not QEMU-stable (RSS reports zero and bounded subprocess
@@ -90,8 +113,10 @@
         '';
         doInstallCheck = true;
         installCheckPhase = ''
+          runHook preInstallCheck
           "$out/bin/pi-daemon" version | grep -Fx 0.3.0
           "$out/bin/pi-daemon-rpc" --version | grep -Fx 0.3.0
+          runHook postInstallCheck
         '';
 
         meta = {
