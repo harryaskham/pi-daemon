@@ -592,6 +592,13 @@ process appears per wake.
 - [x] `bd-94a9d2` Export the exact npm fixed-output cache for release
   pre-materialization and bound only transient registry transport retries while
   preserving immediate integrity failure and the canonical recursive hash.
+- [x] `bd-5e466a` Make the macOS verdict survive cold package tails: force and
+  time the package/test/install build separately from the complete flake,
+  retain credential-redacted cache/phase evidence, preserve failure status, and
+  never cancel an in-flight Darwin verdict.
+- [x] `bd-670ce8` Make the forced macOS package output job-unique and absent,
+  build it normally under a private result root, and prohibit `--rebuild` or
+  deletion of shared/live store roots while retaining every package phase.
 
 ## 18. Completed scaffold board (historical PD identifiers)
 
