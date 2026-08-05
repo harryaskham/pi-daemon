@@ -498,6 +498,8 @@ process appears per wake.
 - [x] `bd-096781` Bind each isolated ADB server to its exact generated private-key
   file after keygen and retain only a bounded SHA-256 public-payload fingerprint
   in safe diagnostics and receipts.
+- [x] `bd-bd2ed9` Latch accepted isolated ADB transports so offline, unauthorized,
+  and other bounded state polls cannot trigger blind reconnects during readiness.
 - [x] `bd-ed4382` Reopen retained imported Dash sessions from their exact managed
   JSONL/session directory without replaying or resolving the original fork source.
 - [x] `bd-486f8c` Accept ordinary owner-controlled, non-writable Pi session

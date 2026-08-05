@@ -85,9 +85,13 @@ record_emulator_adb_readiness() {
   local remaining_seconds="$7"
   local connect_state="$8"
   local adb_state="$9"
-  printf 'phase=adb_readiness status=%s attempts=%s connect_attempts=%s deadline_seconds=%s elapsed_seconds=%s remaining_seconds=%s connect_state=%s adb_state=%s\n' \
+  local transport_connected='false'
+  case "$connect_state" in
+    connected|already_connected) transport_connected='true' ;;
+  esac
+  printf 'phase=adb_readiness status=%s attempts=%s connect_attempts=%s deadline_seconds=%s elapsed_seconds=%s remaining_seconds=%s connect_state=%s adb_state=%s transport_connected=%s\n' \
     "$status" "$attempts" "$connect_attempts" "$deadline_seconds" "$elapsed_seconds" \
-    "$remaining_seconds" "$connect_state" "$adb_state" >> "$diagnostics_file"
+    "$remaining_seconds" "$connect_state" "$adb_state" "$transport_connected" >> "$diagnostics_file"
 }
 
 wait_for_emulator_adb() {
@@ -113,6 +117,7 @@ wait_for_emulator_adb() {
   local next_report_seconds="$started_seconds"
   local attempts=0
   local connect_attempts=0
+  local transport_connected='false'
   local raw_connect_state=''
   local connect_state='unavailable'
   local raw_state=''
@@ -135,14 +140,19 @@ wait_for_emulator_adb() {
     fi
 
     attempts=$((attempts + 1))
-    connect_attempts=$((connect_attempts + 1))
-    command_timeout_seconds=5
-    if (( remaining_seconds < command_timeout_seconds )); then
-      command_timeout_seconds="$remaining_seconds"
+    if [[ "$transport_connected" == 'false' ]]; then
+      connect_attempts=$((connect_attempts + 1))
+      command_timeout_seconds=5
+      if (( remaining_seconds < command_timeout_seconds )); then
+        command_timeout_seconds="$remaining_seconds"
+      fi
+      raw_connect_state="$(connect_emulator_adb_transport \
+        "$device_serial" "$adb_server_port" "$command_timeout_seconds" || true)"
+      connect_state="$(sanitize_emulator_adb_connect_state "$raw_connect_state")"
+      case "$connect_state" in
+        connected|already_connected) transport_connected='true' ;;
+      esac
     fi
-    raw_connect_state="$(connect_emulator_adb_transport \
-      "$device_serial" "$adb_server_port" "$command_timeout_seconds" || true)"
-    connect_state="$(sanitize_emulator_adb_connect_state "$raw_connect_state")"
 
     now_seconds="$SECONDS"
     elapsed_seconds=$((now_seconds - started_seconds))
