@@ -53,7 +53,7 @@
         # bd-833b3e: npm retry tests execute a Bash fixture. NixOS/sandbox has
         # no /bin/bash and does not export BASH, so put the pinned Nix Bash on
         # the package check PATH rather than making JavaScript guess a host path.
-        nativeBuildInputs = [pkgs.makeWrapper pkgs.openssl pkgs.bash];
+        nativeBuildInputs = [pkgs.makeWrapper pkgs.openssl pkgs.bash pkgs.python3];
 
         npmBuildScript = "build";
         # Nix-on-Droid cannot safely run npm, so aarch64-linux artifacts are
@@ -285,6 +285,10 @@
         pkgs.jq
         pkgs.just
         pkgs.tmux
+        # Android proof source contracts execute pinned Python selector/helper
+        # scripts. Keep package checks and dev-shell npm tests hermetic instead
+        # of relying on an ambient host interpreter.
+        pkgs.python3
         # test/tls-fixture.mjs issues a certificate pair with it; node:crypto
         # cannot, so `npm test` needs it on PATH.
         pkgs.openssl
