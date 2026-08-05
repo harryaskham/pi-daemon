@@ -41,7 +41,10 @@ jobs:
       - name: Expose pinned Java to Gradle action
         run: |
           nix develop .#android --command bash -euo pipefail -c '
+            gradle_user_home="$RUNNER_TEMP/gradle-user-home"
+            mkdir -p "$gradle_user_home"
             printf "JAVA_HOME=%s\n" "$JAVA_HOME" >> "$GITHUB_ENV"
+            printf "GRADLE_USER_HOME=%s\n" "$gradle_user_home" >> "$GITHUB_ENV"
             dirname "$(command -v java)" >> "$GITHUB_PATH"
           '
       - uses: gradle/actions/setup-gradle@v5
