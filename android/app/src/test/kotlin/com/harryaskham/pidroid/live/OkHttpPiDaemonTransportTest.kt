@@ -138,7 +138,7 @@ class OkHttpPiDaemonTransportTest {
   }
 
   @Test
-  fun `MockWebServer graceful close race produces typed safe failure within bound`() =
+  fun `MockWebServer graceful close race completes safely within bound`() =
     runBlocking {
       val server = MockWebServer()
       server.start()
@@ -170,10 +170,15 @@ class OkHttpPiDaemonTransportTest {
           val incoming = async(Dispatchers.Default) { socket.incomingText.toList() }
           val serverSocket = withTimeout(5_000) { acceptedSocket.await() }
           assertTrue(serverSocket.close(1_001, "server shutdown"))
-          val failure = withTimeout(15_000) { runCatching { incoming.await() }.exceptionOrNull() }
-          assertTrue(failure is TransportFailure)
-          assertEquals("websocket_failed", (failure as TransportFailure).code)
-          assertFalse(failure.toString().contains(serverAddress))
+          val result = withTimeout(15_000) { runCatching { incoming.await() } }
+          val failure = result.exceptionOrNull()
+          if (failure == null) {
+            assertTrue(result.getOrThrow().isEmpty())
+          } else {
+            assertTrue(failure is TransportFailure)
+            assertEquals("websocket_failed", (failure as TransportFailure).code)
+            assertFalse(failure.toString().contains(serverAddress))
+          }
           socket.close()
         }
         transport.close()

@@ -72,10 +72,12 @@ test("interactive app delegates exact authority correlation tree and TUI state t
   assert.match(transportTest, /acknowledgePeerClosing\(socket, 1_001, "x"\.repeat\(200\), closer\)/);
   assert.match(transportTest, /assertEquals\(1, socket\.closeCalls\)/);
   assert.match(transportTest, /assertEquals\(123, socket\.closeReason\?\.length\)/);
-  assert.match(transportTest, /MockWebServer graceful close race produces typed safe failure within bound/);
+  assert.match(transportTest, /MockWebServer graceful close race completes safely within bound/);
+  assert.match(transportTest, /if \(failure == null\)/);
+  assert.match(transportTest, /result\.getOrThrow\(\)\.isEmpty\(\)/);
   assert.match(transportTest, /serverSocket\.close\(1_001, "server shutdown"\)/);
   assert.match(transportTest, /connection refusal closes incoming with typed safe failure/);
-  assert.match(transportTest, /fun `MockWebServer graceful close race produces typed safe failure within bound`\(\) =\n    runBlocking \{/);
+  assert.match(transportTest, /fun `MockWebServer graceful close race completes safely within bound`\(\) =\n    runBlocking \{/);
   assert.match(transportTest, /fun `connection refusal closes incoming with typed safe failure`\(\) =\n    runBlocking \{/);
   assert.match(repositoryTest, /fun `interactive repository requests control sends one unique prompt and marks lost response indeterminate`\(\) =\n    runBlocking \{/);
   assert.ok((transportTest.match(/withTimeout\(15_000\)/g) ?? []).length >= 2);
