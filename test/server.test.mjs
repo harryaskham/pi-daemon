@@ -5,7 +5,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import { PiDaemonClient, ProtocolResponseError } from "../dist/client.js";
+import {
+  PiDaemonClient,
+  PiDaemonClientTimeoutError,
+  ProtocolResponseError,
+} from "../dist/client.js";
 import { runCli } from "../dist/cli.js";
 import { FileDurabilityStore } from "../dist/durability.js";
 import { Multiplexer } from "../dist/multiplexer.js";
@@ -589,7 +593,13 @@ test("client request timeout rejects a hung command without an unbounded waiter"
   });
   t.after(() => client.close());
   await client.request(openCommand("hung-client"));
-  await assert.rejects(client.request(wakeCommand("hung-client")), /timed out waiting/);
+  await assert.rejects(client.request(wakeCommand("hung-client")), (error) => {
+    assert.ok(error instanceof PiDaemonClientTimeoutError);
+    assert.equal(error.code, "pi_daemon_client_timeout");
+    assert.equal(error.phase, "request");
+    assert.match(error.message, /timed out waiting/);
+    return true;
+  });
 });
 
 test("serve shutdown honors one whole deadline when adapter disposal hangs", async (t) => {

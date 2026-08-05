@@ -22,6 +22,17 @@ export interface PiDaemonClientOptions {
   maxLineBytes?: number;
 }
 
+export class PiDaemonClientTimeoutError extends Error {
+  readonly code = "pi_daemon_client_timeout";
+  readonly phase: "connect" | "request";
+
+  constructor(message: string, phase: "connect" | "request") {
+    super(message);
+    this.name = "PiDaemonClientTimeoutError";
+    this.phase = phase;
+  }
+}
+
 export class ProtocolResponseError extends Error {
   readonly code: string;
   readonly retryable: boolean;
@@ -88,7 +99,10 @@ export class PiDaemonClient {
     await new Promise<void>((resolve, reject) => {
       const timer = setTimeout(() => {
         socket.destroy();
-        reject(new Error(`timed out connecting to pi-daemon at ${options.socketPath}`));
+        reject(new PiDaemonClientTimeoutError(
+          `timed out connecting to pi-daemon at ${options.socketPath}`,
+          "connect",
+        ));
       }, timeoutMs);
       const cleanup = (): void => {
         clearTimeout(timer);
@@ -139,7 +153,10 @@ export class PiDaemonClient {
     const promise = new Promise<ResponseEnvelope>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.#pending.delete(command.requestId);
-        reject(new Error(`timed out waiting for pi-daemon response: ${command.requestId}`));
+        reject(new PiDaemonClientTimeoutError(
+          `timed out waiting for pi-daemon response: ${command.requestId}`,
+          "request",
+        ));
       }, this.#requestTimeoutMs);
       this.#pending.set(command.requestId, { resolve, reject, timer });
     });
