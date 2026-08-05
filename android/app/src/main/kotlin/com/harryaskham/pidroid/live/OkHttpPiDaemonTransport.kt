@@ -150,6 +150,15 @@ public class OkHttpPiDaemonTransport(
           closeIncoming(IllegalStateException("binary WebSocket frame rejected"))
         }
 
+        override fun onClosing(
+          webSocket: WebSocket,
+          code: Int,
+          reason: String,
+        ) {
+          closeIncoming()
+          webSocket.close(code, reason.take(MAX_CLOSE_REASON_CHARS))
+        }
+
         override fun onClosed(
           webSocket: WebSocket,
           code: Int,
@@ -270,6 +279,7 @@ public class OkHttpPiDaemonTransport(
     const val MAX_RESPONSE_BYTES: Int = 4 * 1_024 * 1_024
     const val MAX_WEBSOCKET_CHARS: Int = 4 * 1_024 * 1_024
     const val MAX_INCOMING_FRAMES: Int = 128
+    const val MAX_CLOSE_REASON_CHARS: Int = 123
     val DEFAULT_WEBSOCKET_PING_INTERVAL: Duration = Duration.ofSeconds(5)
     val MAX_WEBSOCKET_PING_INTERVAL: Duration = Duration.ofSeconds(30)
     val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()

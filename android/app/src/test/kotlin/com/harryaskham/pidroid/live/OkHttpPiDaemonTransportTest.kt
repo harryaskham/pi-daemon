@@ -120,12 +120,13 @@ class OkHttpPiDaemonTransportTest {
   }
 
   @Test
-  fun `server loss closes incoming WebSocket within bounded ping interval`() =
+  fun `server graceful close completes incoming and is acknowledged within bound`() =
     runTest {
       val server = MockWebServer()
       server.start()
       try {
         val acceptedSocket = CompletableDeferred<WebSocket>()
+        val serverAcknowledged = CompletableDeferred<Int>()
         server.enqueue(
           MockResponse
             .Builder()
@@ -138,11 +139,18 @@ class OkHttpPiDaemonTransportTest {
                 ) {
                   acceptedSocket.complete(webSocket)
                 }
+
+                override fun onClosed(
+                  webSocket: WebSocket,
+                  code: Int,
+                  reason: String,
+                ) {
+                  serverAcknowledged.complete(code)
+                }
               },
             ).build(),
         )
-        val serverAddress = server.url("/").toString()
-        val host = host(serverAddress)
+        val host = host(server.url("/").toString())
         val transport = OkHttpPiDaemonTransport().also { it.replaceHosts(listOf(host)) }
         ServiceBearerRequestFactory.create(descriptor(host), "test".toCharArray(), allowInsecureHttp = true).use { factory ->
           val socket =
@@ -151,17 +159,38 @@ class OkHttpPiDaemonTransportTest {
               .let { transport.openWebSocket(host.id, it) }
           val incoming = async(Dispatchers.Default) { socket.incomingText.toList() }
           val serverSocket = withTimeout(5_000) { acceptedSocket.await() }
-          serverSocket.cancel()
-          val failure = withTimeout(15_000) { runCatching { incoming.await() }.exceptionOrNull() }
-          assertTrue(failure is TransportFailure)
-          assertEquals("websocket_failed", (failure as TransportFailure).code)
-          assertFalse(failure.toString().contains(serverAddress))
+          assertTrue(serverSocket.close(1_001, "server shutdown"))
+          assertTrue(withTimeout(15_000) { incoming.await().isEmpty() })
+          assertEquals(1_001, withTimeout(5_000) { serverAcknowledged.await() })
           socket.close()
         }
         transport.close()
       } finally {
         server.close()
       }
+    }
+
+  @Test
+  fun `connection refusal closes incoming with typed safe failure`() =
+    runTest {
+      val server = MockWebServer()
+      server.start()
+      val serverAddress = server.url("/").toString()
+      server.close()
+      val host = host(serverAddress)
+      val transport = OkHttpPiDaemonTransport().also { it.replaceHosts(listOf(host)) }
+      ServiceBearerRequestFactory.create(descriptor(host), "test".toCharArray(), allowInsecureHttp = true).use { factory ->
+        val socket =
+          factory
+            .webSocket("/v1/session/test/rpc", emptyList(), listOf("pi-daemon-rpc.v1"))
+            .let { transport.openWebSocket(host.id, it) }
+        val failure = withTimeout(5_000) { runCatching { socket.incomingText.toList() }.exceptionOrNull() }
+        assertTrue(failure is TransportFailure)
+        assertEquals("websocket_failed", (failure as TransportFailure).code)
+        assertFalse(failure.toString().contains(serverAddress))
+        socket.close()
+      }
+      transport.close()
     }
 
   @Test

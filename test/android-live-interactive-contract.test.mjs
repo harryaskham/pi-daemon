@@ -63,10 +63,14 @@ test("interactive app delegates exact authority correlation tree and TUI state t
   assert.match(transport, /DEFAULT_WEBSOCKET_PING_INTERVAL: Duration = Duration\.ofSeconds\(5\)/);
   assert.match(transport, /\.pingInterval\(webSocketPingInterval\)/);
   assert.match(transport, /incomingClosed\.compareAndSet\(false, true\)/);
+  assert.match(transport, /override fun onClosing\(/);
+  assert.match(transport, /webSocket\.close\(code, reason\.take\(MAX_CLOSE_REASON_CHARS\)\)/);
   assert.match(transport, /retryOnConnectionFailure\(false\)/);
-  assert.match(transportTest, /acceptedSocket = CompletableDeferred<WebSocket>\(\)/);
-  assert.match(transportTest, /serverSocket\.cancel\(\)/);
-  assert.ok(transportTest.indexOf("serverSocket.cancel()") < transportTest.indexOf("withTimeout(15_000)"));
+  assert.match(transportTest, /serverAcknowledged = CompletableDeferred<Int>\(\)/);
+  assert.match(transportTest, /serverSocket\.close\(1_001, "server shutdown"\)/);
+  assert.match(transportTest, /incoming\.await\(\)\.isEmpty\(\)/);
+  assert.match(transportTest, /serverAcknowledged\.await\(\)/);
+  assert.match(transportTest, /connection refusal closes incoming with typed safe failure/);
   assert.match(transportTest, /assertEquals\("websocket_failed", \(failure as TransportFailure\)\.code\)/);
   assert.match(screen, /RichInteractiveSessionSurface/);
   assert.match(screen, /SessionTreeSurface/);
