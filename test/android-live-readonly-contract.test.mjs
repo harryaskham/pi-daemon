@@ -69,8 +69,9 @@ test("live app preserves bounded transport protected credentials and readonly hy
 });
 
 test("disposable-daemon emulator proof is bounded readonly and release advances to version two", async () => {
-  const [proof, server, release] = await Promise.all([
+  const [proof, adbReadiness, server, release] = await Promise.all([
     source("android/build-logic/live-readonly-proof.sh"),
+    source("android/build-logic/emulator-adb-readiness.sh"),
     source("scripts/pi-droid-disposable-daemon.mjs"),
     source("android/release.properties"),
   ]);
@@ -82,7 +83,12 @@ test("disposable-daemon emulator proof is bounded readonly and release advances 
   assert.match(proof, /am start/);
   assert.match(proof, /uiautomator dump/);
   assert.match(proof, /emulator_abi='x86_64'/);
-  assert.match(proof, /adb[^\n]*get-state/);
+  assert.match(proof, /source "\$repo_root\/android\/build-logic\/emulator-adb-readiness\.sh"/);
+  assert.match(proof, /wait_for_emulator_adb "\$emulator_pid" "\$emulator_serial" "\$emulator_diagnostics" 240/);
+  assert.match(adbReadiness, /adb[^\n]*get-state/);
+  assert.match(adbReadiness, /max_seconds > 240/);
+  assert.match(adbReadiness, /return 69/);
+  assert.match(adbReadiness, /return 70/);
   assert.doesNotMatch(proof, /adb[^\n]*wait-for-device/);
   assert.match(proof, /Live readonly session/);
   assert.match(proof, /OFFLINE CACHED|Offline cached/);

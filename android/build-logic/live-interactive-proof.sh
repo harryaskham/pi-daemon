@@ -3,6 +3,7 @@ set -euo pipefail
 umask 077
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+source "$repo_root/android/build-logic/emulator-adb-readiness.sh"
 artifacts_dir=''
 
 while [[ $# -gt 0 ]]; do
@@ -190,33 +191,18 @@ emulator -avd pi-droid-live -port "$emulator_port" -no-window -noaudio -no-boot-
   -no-metrics -no-snapshot -wipe-data -gpu swiftshader_indirect \
   > "$artifacts_dir/emulator.log" 2>&1 &
 emulator_pid="$!"
-device_ready=''
-for _ in $(seq 1 120); do
-  if adb -s "$emulator_serial" get-state 2>/dev/null | grep -qx device; then
-    device_ready='true'
-    break
-  fi
-  if ! kill -0 "$emulator_pid" 2>/dev/null; then
+adb_readiness_status=0
+wait_for_emulator_adb "$emulator_pid" "$emulator_serial" "$emulator_diagnostics" 240 || adb_readiness_status="$?"
+if (( adb_readiness_status != 0 )); then
+  if (( adb_readiness_status == 69 )); then
     wait "$emulator_pid" 2>/dev/null || true
-    {
-      printf 'adb_state=%s\n' "$(adb -s "$emulator_serial" get-state 2>&1 || true)"
-      printf 'boot_completed=%s\n' "$(adb -s "$emulator_serial" shell getprop sys.boot_completed 2>&1 | tr -d '\r' || true)"
-      printf 'boot_animation=%s\n' "$(adb -s "$emulator_serial" shell getprop init.svc.bootanim 2>&1 | tr -d '\r' || true)"
-      printf 'emulator_exit=before_adb_ready\n'
-    } >> "$artifacts_dir/emulator-diagnostics.log"
     printf 'Android emulator exited before ADB readiness for ABI %s\n' "$emulator_abi" >&2
     tail -40 "$artifacts_dir/emulator.log" >&2 || true
-    exit 70
+  elif (( adb_readiness_status == 70 )); then
+    printf '%s\n' 'Android emulator ADB readiness timed out after 240 seconds' >&2
+  else
+    printf '%s\n' 'Android emulator ADB readiness gate rejected its bounded configuration' >&2
   fi
-  sleep 1
-done
-if [[ "$device_ready" != 'true' ]]; then
-  {
-    printf 'adb_state=%s\n' "$(adb -s "$emulator_serial" get-state 2>&1 || true)"
-    printf 'boot_completed=%s\n' "$(adb -s "$emulator_serial" shell getprop sys.boot_completed 2>&1 | tr -d '\r' || true)"
-    printf 'boot_animation=%s\n' "$(adb -s "$emulator_serial" shell getprop init.svc.bootanim 2>&1 | tr -d '\r' || true)"
-  } >> "$artifacts_dir/emulator-diagnostics.log"
-  printf '%s\n' 'Android emulator ADB readiness timed out' >&2
   exit 70
 fi
 {

@@ -484,6 +484,8 @@ process appears per wake.
 
 ## Provisional Beads work board
 
+- [x] `bd-5a9f4e` Make both physical Pi Droid proof harnesses cold-boot safe with
+  a shared, sanitized, process-aware ADB readiness deadline capped at 240 seconds.
 - [x] `bd-bd6ca0` Constrain physical Pi Droid proof harnesses to a bounded,
   randomized scan of supported emulator console/ADB pairs with safe diagnostics.
 - [x] `bd-ed4382` Reopen retained imported Dash sessions from their exact managed
