@@ -35,6 +35,14 @@ dependencyLocking {
 
 tasks.test {
   useJUnitPlatform()
+  systemProperty(
+    "skiko.data.path",
+    layout.buildDirectory
+      .dir("skiko")
+      .get()
+      .asFile
+      .absolutePath,
+  )
 }
 
 compose.desktop {

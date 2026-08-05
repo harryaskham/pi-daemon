@@ -36,4 +36,12 @@ dependencyLocking {
 tasks.test {
   useJUnitPlatform()
   systemProperty("piDaemon.repositoryRoot", rootProject.rootDir.parentFile.absolutePath)
+  systemProperty(
+    "skiko.data.path",
+    layout.buildDirectory
+      .dir("skiko")
+      .get()
+      .asFile
+      .absolutePath,
+  )
 }

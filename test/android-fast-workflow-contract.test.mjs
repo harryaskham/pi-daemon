@@ -29,6 +29,20 @@ test("Android fast exposes flake-pinned Java before setup-gradle", async () => {
   );
 });
 
+test("Compose semantics modules isolate Skiko native extraction", async () => {
+  const buildFiles = await Promise.all([
+    readFile(`${root}/android/sdk-session-ui/build.gradle.kts`, "utf8"),
+    readFile(`${root}/android/sdk-workspace-ui/build.gradle.kts`, "utf8"),
+  ]);
+
+  for (const buildFile of buildFiles) {
+    assert.match(
+      buildFile,
+      /tasks\.test \{[\s\S]*systemProperty\(\s*"skiko\.data\.path",\s*layout\.buildDirectory\s*\.dir\("skiko"\)\s*\.get\(\)\s*\.asFile\s*\.absolutePath,/,
+    );
+  }
+});
+
 test("Android fast shell expressions execute in the pinned shell rather than single-quoted text", async () => {
   const workflow = await readFile(`${root}/.github/workflows/android-fast.yml`, "utf8");
   const java = workflow.indexOf("name: Expose pinned Java to Gradle action");
