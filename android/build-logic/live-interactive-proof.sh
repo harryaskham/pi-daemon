@@ -4,6 +4,7 @@ umask 077
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "$repo_root/android/build-logic/emulator-adb-readiness.sh"
+source "$repo_root/android/build-logic/emulator-ui-health.sh"
 source "$repo_root/android/build-logic/isolated-adb-server.sh"
 artifacts_dir=''
 
@@ -30,6 +31,7 @@ emulator_diagnostics="$artifacts_dir/emulator-diagnostics.log"
 
 private_dir="$(mktemp -d)"
 chmod 700 "$private_dir"
+initialize_emulator_ui_health "$private_dir" "$artifacts_dir"
 daemon_pid=''
 emulator_pid=''
 emulator_device_serial=''
@@ -244,6 +246,7 @@ if [[ "$booted" != '1' ]]; then
   exit 70
 fi
 printf 'boot_completed=1\n' >> "$artifacts_dir/emulator-diagnostics.log"
+probe_emulator_ui_health || exit 70
 "${isolated_adb_command[@]}" -s "$emulator_device_serial" install -r "$apk" >/dev/null
 "${isolated_adb_command[@]}" -s "$emulator_device_serial" shell wm size 1080x2400 >/dev/null
 "${isolated_adb_command[@]}" -s "$emulator_device_serial" shell wm density 420 >/dev/null
@@ -254,14 +257,17 @@ screenrecord_pid="$!"
 wait_ui() {
   local pattern="$1"
   local attempts="${2:-60}"
+  local xml="$private_dir/window.xml"
   for _ in $(seq 1 "$attempts"); do
-    "${isolated_adb_command[@]}" -s "$emulator_device_serial" shell uiautomator dump /sdcard/pi-droid-window.xml >/dev/null 2>&1 || true
-    if "${isolated_adb_command[@]}" -s "$emulator_device_serial" exec-out cat /sdcard/pi-droid-window.xml 2>/dev/null | grep -Eq "$pattern"; then return; fi
+    : > "$xml"
+    dump_emulator_ui_window "$xml" || true
+    check_emulator_ui_health "$xml" || exit 70
+    if grep -Eq "$pattern" "$xml"; then return; fi
     sleep 1
   done
   "${isolated_adb_command[@]}" -s "$emulator_device_serial" exec-out screencap -p > "$artifacts_dir/screenshots/failure.png" 2>/dev/null || true
   "${isolated_adb_command[@]}" -s "$emulator_device_serial" logcat -d -v threadtime > "$artifacts_dir/failure-logcat.txt" 2>/dev/null || true
-  "${isolated_adb_command[@]}" -s "$emulator_device_serial" exec-out cat /sdcard/pi-droid-window.xml > "$artifacts_dir/failure-window.xml" 2>/dev/null || true
+  cp "$xml" "$artifacts_dir/failure-window.xml" 2>/dev/null || true
   printf 'UI did not expose expected interactive pattern: %s\n' "$pattern" >&2
   exit 70
 }
@@ -272,8 +278,9 @@ wait_control() {
   local xml="$private_dir/window.xml"
   local center=''
   for _ in $(seq 1 "$attempts"); do
-    "${isolated_adb_command[@]}" -s "$emulator_device_serial" shell uiautomator dump /sdcard/pi-droid-window.xml >/dev/null 2>&1 || true
-    "${isolated_adb_command[@]}" -s "$emulator_device_serial" exec-out cat /sdcard/pi-droid-window.xml > "$xml" 2>/dev/null || true
+    : > "$xml"
+    dump_emulator_ui_window "$xml" || true
+    check_emulator_ui_health "$xml" || exit 70
     if center="$(python3 "$repo_root/android/build-logic/uiautomator-control-center.py" "$xml" "$text" 2>/dev/null)"; then
       printf '%s\n' "$center"
       return 0
@@ -385,6 +392,7 @@ wait_ui 'PROMPT SUCCEEDED|Command prompt succeeded' 45
 sleep 2
 wait_ui 'CONTROLLER|Controller authority active' 30
 "${isolated_adb_command[@]}" -s "$emulator_device_serial" exec-out screencap -p > "$artifacts_dir/screenshots/reconnected-controller-tablet.png"
+probe_emulator_ui_health || exit 70
 "${isolated_adb_command[@]}" -s "$emulator_device_serial" logcat -d -v threadtime > "$artifacts_dir/app-logcat.txt"
 
 if [[ -n "$screenrecord_pid" ]] && kill -0 "$screenrecord_pid" 2>/dev/null; then
@@ -420,6 +428,9 @@ cat > "$artifacts_dir/live-interactive-receipt.json" <<EOF
   "hostInstanceBefore": "$host_instance_one",
   "hostInstanceAfter": "$host_instance_two",
   "hostPortGate": true,
+  "systemUiRecoveryUsed": $emulator_system_ui_wait_used,
+  "systemUiWaitLimit": 1,
+  "piDroidLogcatGuard": true,
   "observerReadyBeforeControl": true,
   "observerDeniedUntilGrant": true,
   "controllerGranted": true,
@@ -434,24 +445,31 @@ cat > "$artifacts_dir/live-interactive-receipt.json" <<EOF
 EOF
 (
   cd "$artifacts_dir"
-  sha256sum \
-    "daemon-$first_sequence.stderr.log" \
-    "daemon-$second_sequence.stderr.log" \
-    app-logcat.txt \
-    emulator-diagnostics.log \
-    emulator-host-port-gate.log \
-    pi-droid-interactive.mp4 \
-    screenshots/readonly-hydrated.png \
-    screenshots/observer-ready.png \
-    screenshots/controller-granted.png \
-    screenshots/prompt-succeeded.png \
-    screenshots/tree-live.png \
-    screenshots/tui-live.png \
-    screenshots/indeterminate-no-replay.png \
-    screenshots/reconnected-controller-phone.png \
-    screenshots/reconnected-controller-tablet.png \
-    live-interactive-receipt.json \
-    > live-interactive-sha256sums.txt
+  receipt_files=(
+    "daemon-$first_sequence.stderr.log"
+    "daemon-$second_sequence.stderr.log"
+    app-logcat.txt
+    emulator-diagnostics.log
+    emulator-host-port-gate.log
+    system-ui-health.log
+    pi-droid-interactive.mp4
+    screenshots/readonly-hydrated.png
+    screenshots/observer-ready.png
+    screenshots/controller-granted.png
+    screenshots/prompt-succeeded.png
+    screenshots/tree-live.png
+    screenshots/tui-live.png
+    screenshots/indeterminate-no-replay.png
+    screenshots/reconnected-controller-phone.png
+    screenshots/reconnected-controller-tablet.png
+    live-interactive-receipt.json
+  )
+  if [[ -d system-ui-evidence ]]; then
+    while IFS= read -r evidence_file; do
+      receipt_files+=("$evidence_file")
+    done < <(find system-ui-evidence -type f -print | LC_ALL=C sort)
+  fi
+  sha256sum "${receipt_files[@]}" > live-interactive-sha256sums.txt
 )
 find "$artifacts_dir" -type d -exec chmod 700 {} +
 find "$artifacts_dir" -type f -exec chmod 600 {} +

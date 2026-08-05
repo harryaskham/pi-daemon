@@ -1,0 +1,4 @@
+08-05 12:14:18.003  1124  1367 E ActivityManager: ANR in com.android.systemui
+08-05 12:14:18.003  1124  1367 E ActivityManager: PID: 1542
+08-05 12:14:18.003  1124  1367 E ActivityManager: Reason: executing service com.android.systemui/.SystemUIService
+08-05 12:14:18.003  1124  1367 E ActivityManager: Frozen: false
