@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { chmod, mkdir, mkdtemp, readFile, readlink, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, readlink, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { promisify } from "node:util";
@@ -119,14 +119,24 @@ test("the macOS package runner takes the absent-output path without rebuild or s
   const noncePath = join(root, "nix-nonce");
   const outputPath = join(root, "store", "cold-package-output");
   const logDir = join(runnerTemp, "pi-daemon-nix-macos-12345-2");
-  const resultLink = join(logDir, "package-build", "result");
 
   try {
     await mkdir(fakeBin, { recursive: true });
     await mkdir(runnerTemp, { recursive: true });
+    const canonicalRoot = await realpath(root);
+    const resultLink = join(
+      canonicalRoot,
+      "runner-temp",
+      "pi-daemon-nix-macos-12345-2",
+      "package-build",
+      "result",
+    );
+    const { stdout: bashOutput } = await run("bash", ["-c", "command -v bash"]);
+    const bashPath = bashOutput.trim();
+    assert.match(bashPath, /^\//, "the test lane must provide an absolute Bash interpreter");
     await writeFile(
       fakeNix,
-      `#!/usr/bin/env bash
+      `#!${bashPath}
 set -euo pipefail
 printf '%s\\n' "$@" > "$FAKE_NIX_ARGS"
 printf '%s\\n' "$PI_DAEMON_NIX_CI_BUILD_NONCE" > "$FAKE_NIX_NONCE"
