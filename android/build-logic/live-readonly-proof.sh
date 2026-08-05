@@ -46,6 +46,7 @@ adb_server_port_attempts=''
 adb_server_pid=''
 adb_server_started='false'
 adb_key_home=''
+adb_public_key_payload_sha256=''
 cleanup() {
   if [[ -n "$daemon_pid" ]] && kill -0 "$daemon_pid" 2>/dev/null; then
     kill "$daemon_pid" 2>/dev/null || true
@@ -307,6 +308,8 @@ cat > "$artifacts_dir/live-readonly-receipt.json" <<EOF
   "adbServerPortSelectionAttempts": $adb_server_port_attempts,
   "adbServerIsolated": true,
   "adbKeyHomePrivate": true,
+  "adbVendorKeysExactFile": true,
+  "adbPublicKeyPayloadSha256": "$adb_public_key_payload_sha256",
   "adbTransportExplicitlyConnected": true,
   "adbDeviceSerialTcp": true,
   "sessionId": "session-fixture-01",

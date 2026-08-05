@@ -14,8 +14,31 @@ record_isolated_adb_server() {
   local status="$2"
   local server_port="$3"
   local attempts="$4"
-  printf 'phase=adb_server status=%s server_port=%s selection_attempts=%s key_home=run_scoped server_mode=owned_nodaemon\n' \
+  local public_key_payload_sha256="${5:-}"
+  printf 'phase=adb_server status=%s server_port=%s selection_attempts=%s key_home=run_scoped server_mode=owned_nodaemon' \
     "$status" "$server_port" "$attempts" >> "$diagnostics_file"
+  if [[ "$public_key_payload_sha256" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+    printf ' public_key_payload_sha256=%s' "$public_key_payload_sha256" >> "$diagnostics_file"
+  fi
+  printf '\n' >> "$diagnostics_file"
+}
+
+fingerprint_adb_public_key_payload() {
+  local public_key_file="$1"
+  python3 - "$public_key_file" <<'PY'
+import hashlib
+import re
+import sys
+
+with open(sys.argv[1], "rb") as public_key:
+    contents = public_key.read(16_385)
+if len(contents) > 16_384:
+    raise SystemExit(1)
+parts = contents.split(None, 1)
+if not parts or not re.fullmatch(rb"[A-Za-z0-9+/=]{1,8192}", parts[0]):
+    raise SystemExit(1)
+print(f"sha256:{hashlib.sha256(parts[0]).hexdigest()}")
+PY
 }
 
 probe_localhost_port() {
@@ -58,14 +81,15 @@ start_isolated_adb_server() {
     return 70
   fi
 
-  # Export every Android/ADB authority input before the first adb or emulator
-  # process. ANDROID_EMULATOR_HOME is where the emulator injects adbkey.pub;
-  # ADB_VENDOR_KEYS makes the owned server load that exact private key.
+  # Export the run-scoped Android homes before the first adb or emulator
+  # process, but clear any ambient vendor-key authority while generating this
+  # run's key pair. ANDROID_EMULATOR_HOME is where the emulator injects the
+  # matching adbkey.pub payload.
   export ANDROID_ADB_SERVER_PORT="$adb_server_port"
   export ANDROID_USER_HOME="$adb_key_home"
   export ANDROID_EMULATOR_HOME="$adb_key_home"
   export ANDROID_AVD_HOME="$private_root/avd"
-  export ADB_VENDOR_KEYS="$adb_key_home"
+  unset ADB_VENDOR_KEYS
 
   if ! adb keygen "$adb_key_home/adbkey" >/dev/null 2>&1; then
     record_isolated_adb_server "$diagnostics_file" keygen_failed "$adb_server_port" "$adb_server_port_attempts"
@@ -73,6 +97,18 @@ start_isolated_adb_server() {
     return 70
   fi
   chmod 600 "$adb_key_home/adbkey" "$adb_key_home/adbkey.pub"
+  adb_public_key_payload_sha256=''
+  if ! adb_public_key_payload_sha256="$(fingerprint_adb_public_key_payload "$adb_key_home/adbkey.pub")"; then
+    record_isolated_adb_server "$diagnostics_file" key_fingerprint_failed "$adb_server_port" "$adb_server_port_attempts"
+    printf '%s\n' 'run-scoped ADB public key fingerprint failed' >&2
+    return 70
+  fi
+
+  # ADB directory scans accept only *.adb_key entries. Bind the owned server
+  # to the exact generated private-key file so it cannot ignore adbkey and
+  # generate or select another identity. This happens after keygen and before
+  # either the server or emulator starts.
+  export ADB_VENDOR_KEYS="$adb_key_home/adbkey"
 
   # Keep the server in an owned foreground process. A selector race therefore
   # fails with our PID exiting instead of silently attaching to another job's
@@ -91,7 +127,7 @@ start_isolated_adb_server() {
     sleep 0.1
   done
   if [[ "$ready" != 'true' ]]; then
-    record_isolated_adb_server "$diagnostics_file" start_failed "$adb_server_port" "$adb_server_port_attempts"
+    record_isolated_adb_server "$diagnostics_file" start_failed "$adb_server_port" "$adb_server_port_attempts" "$adb_public_key_payload_sha256"
     if kill -0 "$adb_server_pid" 2>/dev/null; then
       kill "$adb_server_pid" 2>/dev/null || true
     fi
@@ -102,7 +138,7 @@ start_isolated_adb_server() {
   fi
 
   adb_server_started='true'
-  record_isolated_adb_server "$diagnostics_file" started "$adb_server_port" "$adb_server_port_attempts"
+  record_isolated_adb_server "$diagnostics_file" started "$adb_server_port" "$adb_server_port_attempts" "$adb_public_key_payload_sha256"
 }
 
 stop_isolated_adb_server() {

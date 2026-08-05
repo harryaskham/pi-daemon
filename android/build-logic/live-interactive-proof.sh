@@ -41,6 +41,7 @@ adb_server_port_attempts=''
 adb_server_pid=''
 adb_server_started='false'
 adb_key_home=''
+adb_public_key_payload_sha256=''
 screenrecord_pid=''
 cleanup() {
   if [[ -n "$screenrecord_pid" ]] && kill -0 "$screenrecord_pid" 2>/dev/null; then
@@ -410,6 +411,8 @@ cat > "$artifacts_dir/live-interactive-receipt.json" <<EOF
   "adbServerPortSelectionAttempts": $adb_server_port_attempts,
   "adbServerIsolated": true,
   "adbKeyHomePrivate": true,
+  "adbVendorKeysExactFile": true,
+  "adbPublicKeyPayloadSha256": "$adb_public_key_payload_sha256",
   "adbTransportExplicitlyConnected": true,
   "adbDeviceSerialTcp": true,
   "sessionId": "session-fixture-01",

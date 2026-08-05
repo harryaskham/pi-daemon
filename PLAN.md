@@ -495,6 +495,9 @@ process appears per wake.
 - [x] `bd-17f134` Bound and classify isolated ADB `get-state` stdout/stderr into
   a safe diagnostic enum shared by both physical proof harnesses without leaking
   device, key, path, server, or arbitrary error text.
+- [x] `bd-096781` Bind each isolated ADB server to its exact generated private-key
+  file after keygen and retain only a bounded SHA-256 public-payload fingerprint
+  in safe diagnostics and receipts.
 - [x] `bd-ed4382` Reopen retained imported Dash sessions from their exact managed
   JSONL/session directory without replaying or resolving the original fork source.
 - [x] `bd-486f8c` Accept ordinary owner-controlled, non-writable Pi session

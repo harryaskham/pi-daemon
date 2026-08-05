@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
@@ -287,13 +288,13 @@ set -euo pipefail
     "$ANDROID_USER_HOME" \
     "$ANDROID_EMULATOR_HOME" \
     "$ANDROID_AVD_HOME" \
-    "$ADB_VENDOR_KEYS"
+    "$(printenv ADB_VENDOR_KEYS 2>/dev/null || printf unset)"
   printf '%q ' "$@"
   printf '\n'
 } >> "$FAKE_ADB_LOG"
 if [[ "$1" == 'keygen' ]]; then
-  printf '%s\n' private > "$2"
-  printf '%s\n' public > "$2.pub"
+  printf '%s\n' 'SENSITIVE_PRIVATE_KEY_MATERIAL' > "$2"
+  printf '%s\n' 'cHVibGlj SENSITIVE_PUBLIC_KEY_COMMENT' > "$2.pub"
   exit 0
 fi
 port=''
@@ -329,6 +330,7 @@ adb_server_port_attempts=''
 adb_server_pid=''
 adb_server_started='false'
 adb_key_home=''
+adb_public_key_payload_sha256=''
 cleanup() {
   stop_isolated_adb_server || true
   rm -rf "$sandbox"
@@ -340,13 +342,15 @@ start_isolated_adb_server "$private_root" "$diagnostics" "$selector"
 [[ "$ANDROID_USER_HOME" == "$private_root/android-user" ]]
 [[ "$ANDROID_EMULATOR_HOME" == "$private_root/android-user" ]]
 [[ "$ANDROID_AVD_HOME" == "$private_root/avd" ]]
-[[ "$ADB_VENDOR_KEYS" == "$private_root/android-user" ]]
+[[ "$ADB_VENDOR_KEYS" == "$private_root/android-user/adbkey" ]]
+[[ "$adb_public_key_payload_sha256" =~ ^sha256:[0-9a-f]{64}$ ]]
 [[ "$(stat -c '%a' "$private_root/android-user")" == '700' ]]
 [[ "$(stat -c '%a' "$private_root/avd")" == '700' ]]
 [[ "$(stat -c '%a' "$private_root/android-user/adbkey")" == '600' ]]
 [[ "$(stat -c '%a' "$private_root/android-user/adbkey.pub")" == '600' ]]
-grep -Fq "port=$adb_server_port user=$private_root/android-user emulator=$private_root/android-user avd=$private_root/avd keys=$private_root/android-user args=keygen" "$adb_log"
-grep -Fq "port=$adb_server_port user=$private_root/android-user emulator=$private_root/android-user avd=$private_root/avd keys=$private_root/android-user args=-P $adb_server_port server nodaemon" "$adb_log"
+grep -Fq "port=$adb_server_port user=$private_root/android-user emulator=$private_root/android-user avd=$private_root/avd keys=unset args=keygen" "$adb_log"
+grep -Fq "port=$adb_server_port user=$private_root/android-user emulator=$private_root/android-user avd=$private_root/avd keys=$private_root/android-user/adbkey args=-P $adb_server_port server nodaemon" "$adb_log"
+! grep -Fq "keys=$private_root/android-user args=-P $adb_server_port server nodaemon" "$adb_log"
 owned_pid="$adb_server_pid"
 stop_isolated_adb_server
 ! kill -0 "$owned_pid" 2>/dev/null
@@ -358,9 +362,12 @@ cat "$diagnostics"
 printf '%s\n' 'fake_adb_contract=ok private_key_cleanup=ok'
 `, "isolated-adb-test", helperPath, selectorPath], { encoding: "utf8" });
 
+  const expectedPayloadSha256 = createHash("sha256").update("cHVibGlj").digest("hex");
   assert.match(output, /phase=adb_server status=started server_port=42[0-9]{3} selection_attempts=[0-9]+/);
   assert.match(output, /key_home=run_scoped server_mode=owned_nodaemon/);
+  assert.match(output, new RegExp(`public_key_payload_sha256=sha256:${expectedPayloadSha256}(?:\\n|$)`));
   assert.match(output, /fake_adb_contract=ok private_key_cleanup=ok/);
+  assert.doesNotMatch(output, /SENSITIVE|cHVibGlj|android-user|adbkey|private_root|sandbox/);
 });
 
 test("shared emulator ADB readiness explicitly connects with bounded safe state transitions", () => {
@@ -528,6 +535,8 @@ test("disposable interactive proof uses private identity bounded cleanup and phy
     assert.match(harness, /"adbServerPortSelectionAttempts": \$adb_server_port_attempts/);
     assert.match(harness, /"adbServerIsolated": true/);
     assert.match(harness, /"adbKeyHomePrivate": true/);
+    assert.match(harness, /"adbVendorKeysExactFile": true/);
+    assert.match(harness, /"adbPublicKeyPayloadSha256": "\$adb_public_key_payload_sha256"/);
     assert.match(harness, /"adbTransportExplicitlyConnected": true/);
     assert.match(harness, /"adbDeviceSerialTcp": true/);
     assert.ok(harness.indexOf("if ! select_emulator_port_pair") < harness.indexOf("emulator -avd pi-droid-live"));
@@ -565,12 +574,23 @@ test("disposable interactive proof uses private identity bounded cleanup and phy
   assert.match(isolatedAdb, /export ANDROID_USER_HOME="\$adb_key_home"/);
   assert.match(isolatedAdb, /export ANDROID_EMULATOR_HOME="\$adb_key_home"/);
   assert.match(isolatedAdb, /export ANDROID_AVD_HOME="\$private_root\/avd"/);
-  assert.match(isolatedAdb, /export ADB_VENDOR_KEYS="\$adb_key_home"/);
+  assert.match(isolatedAdb, /unset ADB_VENDOR_KEYS/);
+  assert.match(isolatedAdb, /export ADB_VENDOR_KEYS="\$adb_key_home\/adbkey"/);
+  assert.doesNotMatch(isolatedAdb, /export ADB_VENDOR_KEYS="\$adb_key_home"/);
+  assert.match(isolatedAdb, /public_key\.read\(16_385\)/);
+  assert.match(isolatedAdb, /\^sha256:\[0-9a-f\]\{64\}\$/);
+  const isolatedRecorder = isolatedAdb.slice(
+    isolatedAdb.indexOf("record_isolated_adb_server() {"),
+    isolatedAdb.indexOf("\n}\n\nfingerprint_adb_public_key_payload()"),
+  );
+  assert.doesNotMatch(isolatedRecorder, /adb_key_home|ADB_VENDOR_KEYS|private_root|public_key_file/);
   const isolatedStart = isolatedAdb.slice(
     isolatedAdb.indexOf("start_isolated_adb_server() {"),
     isolatedAdb.indexOf("\n}\n\nstop_isolated_adb_server()"),
   );
   assert.ok(isolatedStart.indexOf("export ANDROID_ADB_SERVER_PORT") < isolatedStart.indexOf("adb keygen"));
+  assert.ok(isolatedStart.indexOf("unset ADB_VENDOR_KEYS") < isolatedStart.indexOf("adb keygen"));
+  assert.ok(isolatedStart.indexOf("adb keygen") < isolatedStart.indexOf("export ADB_VENDOR_KEYS"));
   assert.ok(isolatedStart.indexOf("export ADB_VENDOR_KEYS") < isolatedStart.indexOf("server nodaemon"));
   assert.match(isolatedStart, /adb -P "\$adb_server_port" server nodaemon/);
   assert.match(isolatedStart, /kill -0 "\$adb_server_pid"/);
