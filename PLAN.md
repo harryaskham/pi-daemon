@@ -484,6 +484,8 @@ process appears per wake.
 
 ## Provisional Beads work board
 
+- [x] `bd-bd6ca0` Constrain physical Pi Droid proof harnesses to a bounded,
+  randomized scan of supported emulator console/ADB pairs with safe diagnostics.
 - [x] `bd-ed4382` Reopen retained imported Dash sessions from their exact managed
   JSONL/session directory without replaying or resolving the original fork source.
 - [x] `bd-486f8c` Accept ordinary owner-controlled, non-writable Pi session

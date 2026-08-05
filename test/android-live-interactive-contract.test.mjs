@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
@@ -103,9 +104,87 @@ test("interactive app delegates exact authority correlation tree and TUI state t
   assert.match(rich, /fun lost\(/);
 });
 
+test("emulator port selector randomizes a bounded supported scan and checks both localhost ports", () => {
+  const selectorPath = path.join(root, "android/build-logic/select-emulator-port-pair.py");
+  const result = execFileSync("python3", ["-c", String.raw`
+import importlib.util
+import sys
+
+spec = importlib.util.spec_from_file_location("emulator_port_selector", sys.argv[1])
+selector = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(selector)
+
+assert selector.EMULATOR_CONSOLE_PORTS == tuple(range(5554, 5585, 2))
+shuffle_calls = []
+seen = []
+def reverse(candidates):
+    shuffle_calls.append(tuple(candidates))
+    candidates.reverse()
+def available_only_at_5554(console_port):
+    seen.append(console_port)
+    return console_port == 5554
+selection = selector.select_emulator_port_pair(
+    pair_is_available=available_only_at_5554,
+    shuffle=reverse,
+)
+assert selection == (5554, 5555, 16)
+assert shuffle_calls == [tuple(range(5554, 5585, 2))]
+assert seen == list(range(5584, 5553, -2))
+
+class FakeSocket:
+    def __init__(self, blocked_port=None):
+        self.blocked_port = blocked_port
+        self.closed = False
+    def bind(self, address):
+        binds.append(address)
+        if address[1] == self.blocked_port:
+            raise OSError("occupied")
+    def close(self):
+        self.closed = True
+
+binds = []
+sockets = []
+def free_factory(*_args):
+    candidate = FakeSocket()
+    sockets.append(candidate)
+    return candidate
+assert selector.localhost_port_pair_is_available(5554, socket_factory=free_factory)
+assert binds == [("127.0.0.1", 5554), ("127.0.0.1", 5555)]
+assert all(candidate.closed for candidate in sockets)
+
+binds = []
+sockets = []
+def occupied_adb_factory(*_args):
+    candidate = FakeSocket(blocked_port=5555)
+    sockets.append(candidate)
+    return candidate
+assert not selector.localhost_port_pair_is_available(5554, socket_factory=occupied_adb_factory)
+assert binds == [("127.0.0.1", 5554), ("127.0.0.1", 5555)]
+assert all(candidate.closed for candidate in sockets)
+
+try:
+    selector.select_emulator_port_pair(
+        pair_is_available=lambda _port: False,
+        shuffle=lambda _candidates: None,
+    )
+except selector.EmulatorPortUnavailable as error:
+    assert str(error) == "emulator_port_unavailable"
+    assert error.attempts == 16
+else:
+    raise AssertionError("exhausted selection must fail closed")
+
+print("ok")
+`, selectorPath], {
+    encoding: "utf8",
+    env: { ...process.env, PYTHONDONTWRITEBYTECODE: "1" },
+  });
+  assert.equal(result.trim(), "ok");
+});
+
 test("disposable interactive proof uses private identity bounded cleanup and physical evidence", async () => {
-  const [proof, selector, selectorFixture, server] = await Promise.all([
+  const [proof, readonlyProof, selector, selectorFixture, server] = await Promise.all([
     source("android/build-logic/live-interactive-proof.sh"),
+    source("android/build-logic/live-readonly-proof.sh"),
     source("android/build-logic/uiautomator-control-center.py"),
     source("fixtures/android/uiautomator.request-control.xml"),
     source("scripts/pi-droid-disposable-daemon.mjs"),
@@ -116,6 +195,21 @@ test("disposable interactive proof uses private identity bounded cleanup and phy
   assert.match(proof, /mktemp -d/);
   assert.match(proof, /trap cleanup EXIT/);
   assert.match(proof, /reserve_port_pair/);
+  for (const harness of [proof, readonlyProof]) {
+    assert.match(harness, /select-emulator-port-pair\.py/);
+    assert.doesNotMatch(harness, /reserve_port_pair 5600 5682/);
+    assert.match(harness, /emulator_port < 5554 \|\| emulator_port > 5584/);
+    assert.match(harness, /emulator_adb_port != emulator_port \+ 1/);
+    assert.match(harness, /emulator_port_attempts > 16/);
+    assert.match(harness, /verification=both_localhost_ports_free/);
+    assert.match(harness, /status=emulator_port_unavailable/);
+    assert.match(harness, /emulator_console_port=none emulator_adb_port=none emulator_port_attempts=16/);
+    assert.match(harness, /"emulatorConsolePort": \$emulator_port/);
+    assert.match(harness, /"emulatorAdbPort": \$emulator_adb_port/);
+    assert.match(harness, /"emulatorPortSelectionAttempts": \$emulator_port_attempts/);
+    assert.ok(harness.indexOf("if ! select_emulator_port_pair") < harness.indexOf("emulator -avd pi-droid-live"));
+    assert.doesNotMatch(harness, /adb\s+(?:kill-server|reconnect)\b/);
+  }
   assert.match(proof, /emulator_abi='x86_64'/);
   assert.match(proof, /adb[^\n]*get-state/);
   assert.doesNotMatch(proof, /adb[^\n]*wait-for-device/);

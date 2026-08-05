@@ -28,12 +28,17 @@ if [[ -z "$artifacts_dir" ]]; then
 fi
 artifacts_dir="$(mkdir -p "$artifacts_dir" && cd "$artifacts_dir" && pwd)"
 chmod 700 "$artifacts_dir"
+emulator_diagnostics="$artifacts_dir/emulator-diagnostics.log"
+: > "$emulator_diagnostics"
 
 private_dir="$(mktemp -d)"
 chmod 700 "$private_dir"
 daemon_pid=''
 emulator_pid=''
 emulator_serial=''
+emulator_port=''
+emulator_adb_port=''
+emulator_port_attempts=''
 cleanup() {
   if [[ -n "$daemon_pid" ]] && kill -0 "$daemon_pid" 2>/dev/null; then
     kill "$daemon_pid" 2>/dev/null || true
@@ -75,8 +80,24 @@ else:
 PY
 }
 
+select_emulator_port_pair() {
+  local selection=''
+  local extra=''
+  if ! selection="$(python3 "$repo_root/android/build-logic/select-emulator-port-pair.py" 2>/dev/null)"; then
+    return 1
+  fi
+  read -r emulator_port emulator_adb_port emulator_port_attempts extra <<< "$selection"
+  if [[ -n "$extra" || ! "$emulator_port" =~ ^[0-9]+$ || ! "$emulator_adb_port" =~ ^[0-9]+$ || ! "$emulator_port_attempts" =~ ^[0-9]+$ ]]; then
+    return 1
+  fi
+  if (( emulator_port < 5554 || emulator_port > 5584 || emulator_port % 2 != 0 || emulator_adb_port != emulator_port + 1 || emulator_port_attempts < 1 || emulator_port_attempts > 16 )); then
+    return 1
+  fi
+  printf 'status=selected emulator_console_port=%s emulator_adb_port=%s emulator_port_attempts=%s verification=both_localhost_ports_free\n' \
+    "$emulator_port" "$emulator_adb_port" "$emulator_port_attempts" >> "$emulator_diagnostics"
+}
+
 api_port="$(reserve_port_pair 49152 61000)"
-emulator_port="$(reserve_port_pair 5600 5682)"
 token_file="$private_dir/service-bearer"
 ready_file="$private_dir/daemon-ready.json"
 state_dir="$private_dir/daemon-state"
@@ -158,6 +179,11 @@ export ANDROID_USER_HOME="$private_dir/android-user"
 export ANDROID_AVD_HOME="$private_dir/avd"
 printf 'no\n' | avdmanager create avd --force --name pi-droid-live \
   --package "system-images;android-36;google_apis;$emulator_abi" >/dev/null
+if ! select_emulator_port_pair; then
+  printf '%s\n' 'status=emulator_port_unavailable emulator_console_port=none emulator_adb_port=none emulator_port_attempts=16' >> "$emulator_diagnostics"
+  printf '%s\n' 'emulator_port_unavailable: no supported localhost console/ADB pair is free after 16 attempts' >&2
+  exit 70
+fi
 emulator_serial="emulator-$emulator_port"
 emulator -avd pi-droid-live -port "$emulator_port" -no-window -noaudio -no-boot-anim \
   -no-metrics -no-snapshot -wipe-data -gpu swiftshader_indirect \
@@ -257,6 +283,9 @@ cat > "$artifacts_dir/live-readonly-receipt.json" <<EOF
   "schemaVersion": 1,
   "status": "verified",
   "apiEndpoint": "http://10.0.2.2:$api_port",
+  "emulatorConsolePort": $emulator_port,
+  "emulatorAdbPort": $emulator_adb_port,
+  "emulatorPortSelectionAttempts": $emulator_port_attempts,
   "sessionId": "session-fixture-01",
   "generation": 3,
   "hostInstanceBefore": "$host_instance_one",
@@ -277,6 +306,7 @@ EOF
     "daemon-$first_sequence.stderr.log"
     "daemon-$second_sequence.stderr.log"
     app-logcat.txt
+    emulator-diagnostics.log
     screenshots/reconnected.png
     live-readonly-receipt.json
   )
