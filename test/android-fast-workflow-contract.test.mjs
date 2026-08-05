@@ -18,6 +18,7 @@ test("Android fast exposes flake-pinned Java before setup-gradle", async () => {
   assert.match(workflow, /mkdir -p "\$gradle_user_home"/);
   assert.match(workflow, /printf "JAVA_HOME=%s\\n" "\$JAVA_HOME" >> "\$GITHUB_ENV"/);
   assert.match(workflow, /printf "GRADLE_USER_HOME=%s\\n" "\$gradle_user_home" >> "\$GITHUB_ENV"/);
+  assert.match(workflow, /printf "TMPDIR=%s\\n" "\$RUNNER_TEMP" >> "\$GITHUB_ENV"/);
   assert.match(workflow, /dirname "\$\(command -v java\)" >> "\$GITHUB_PATH"/);
   assert.ok(workflow.indexOf('mkdir -p "$gradle_user_home"') < gradle);
   assert.doesNotMatch(workflow, /actions\/setup-java/);

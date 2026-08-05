@@ -511,6 +511,9 @@ process appears per wake.
 - [x] `bd-e9e95f` Record every resolved and empty strict-lock configuration for
   the Pi Droid Android-integration JVM module so configuration-cache validation
   cannot fail before its credential-free contract tests execute.
+- [x] `bd-31f515` Keep Compose/Skiko JVM native extraction in the Pi Droid fast
+  job's private runner temp directory so concurrent self-hosted checks cannot
+  collide through a shared host filesystem during semantics initialization.
 - [x] `bd-ed4382` Reopen retained imported Dash sessions from their exact managed
   JSONL/session directory without replaying or resolving the original fork source.
 - [x] `bd-486f8c` Accept ordinary owner-controlled, non-writable Pi session

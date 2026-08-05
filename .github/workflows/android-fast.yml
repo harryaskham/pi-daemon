@@ -45,6 +45,9 @@ jobs:
           mkdir -p "$gradle_user_home"
           printf "JAVA_HOME=%s\n" "$JAVA_HOME" >> "$GITHUB_ENV"
           printf "GRADLE_USER_HOME=%s\n" "$gradle_user_home" >> "$GITHUB_ENV"
+          # Compose/Skiko extracts JVM natives during the parallel semantics tests.
+          # Keep those files inside this job instead of a shared host temp tree.
+          printf "TMPDIR=%s\n" "$RUNNER_TEMP" >> "$GITHUB_ENV"
           dirname "$(command -v java)" >> "$GITHUB_PATH"
       - uses: gradle/actions/setup-gradle@v5
         with:
