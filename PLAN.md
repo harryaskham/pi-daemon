@@ -492,6 +492,9 @@ process appears per wake.
   randomized scan of supported emulator console/ADB pairs with safe diagnostics.
 - [x] `bd-005d84` Explicitly connect each selected emulator ADB transport through
   its isolated run server and use the loopback TCP serial for every device action.
+- [x] `bd-17f134` Bound and classify isolated ADB `get-state` stdout/stderr into
+  a safe diagnostic enum shared by both physical proof harnesses without leaking
+  device, key, path, server, or arbitrary error text.
 - [x] `bd-ed4382` Reopen retained imported Dash sessions from their exact managed
   JSONL/session directory without replaying or resolving the original fork source.
 - [x] `bd-486f8c` Accept ordinary owner-controlled, non-writable Pi session

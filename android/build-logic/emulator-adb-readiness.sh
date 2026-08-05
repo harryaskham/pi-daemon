@@ -15,8 +15,11 @@ poll_emulator_adb_state() {
   local device_serial="$1"
   local adb_server_port="$2"
   local command_timeout_seconds="$3"
+  # ADB reports transport state on either stream. Bound the untrusted text here;
+  # callers reduce it to a fixed enum before writing any diagnostics.
   timeout --foreground --signal=KILL "${command_timeout_seconds}s" \
-    adb -H 127.0.0.1 -P "$adb_server_port" -s "$device_serial" get-state 2>/dev/null
+    adb -H 127.0.0.1 -P "$adb_server_port" -s "$device_serial" get-state 2>&1 |
+    LC_ALL=C head -c 4096
 }
 
 sanitize_emulator_adb_connect_state() {
@@ -43,15 +46,31 @@ sanitize_emulator_adb_connect_state() {
 }
 
 sanitize_emulator_adb_state() {
-  case "$1" in
-    device|offline|bootloader|recovery|sideload|unauthorized|unknown)
-      printf '%s\n' "$1"
+  local raw_state="$1"
+  local loopback_not_found_pattern="^(error:|adb:)[[:space:]]device[[:space:]]'127\\.0\\.0\\.1:[0-9]+'[[:space:]]not[[:space:]]found\\.?$"
+  case "$raw_state" in
+    device|offline|bootloader|recovery|sideload|unauthorized|unknown|not_found)
+      printf '%s\n' "$raw_state"
       ;;
-    '')
+    'error: device offline'|'error: device offline.'|'adb: device offline'|'adb: device offline.')
+      printf '%s\n' 'offline'
+      ;;
+    'error: device unauthorized'|'error: device unauthorized.'|'adb: device unauthorized'|'adb: device unauthorized.')
+      printf '%s\n' 'unauthorized'
+      ;;
+    'error: device not found'|'error: device not found.'|'adb: device not found'|'adb: device not found.'|\
+      'error: no devices/emulators found'|'adb: no devices/emulators found')
+      printf '%s\n' 'not_found'
+      ;;
+    ''|unavailable)
       printf '%s\n' 'unavailable'
       ;;
     *)
-      printf '%s\n' 'other'
+      if [[ "$raw_state" =~ $loopback_not_found_pattern ]]; then
+        printf '%s\n' 'not_found'
+      else
+        printf '%s\n' 'other'
+      fi
       ;;
   esac
 }

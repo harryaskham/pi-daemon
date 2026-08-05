@@ -376,6 +376,31 @@ state_calls="$sandbox/state.calls"
 : > "$diagnostics"
 : > "$connect_calls"
 : > "$state_calls"
+mkdir -p "$sandbox/bin"
+cat > "$sandbox/bin/adb" <<'FAKE_ADB'
+#!/usr/bin/env bash
+case "$FAKE_ADB_STATE" in
+  secret) { printf '%s' 'arbitrary failure sensitive-token=S3CR3T key=/private/path serial=tcp-secret server=private-server '; printf '%05000d' 0; } >&2 ;;
+  offline) printf '%s\n' 'error: device offline' >&2 ;;
+  unauthorized) printf '%s\n' 'adb: device unauthorized.' >&2 ;;
+  not_found) printf '%s\n' "error: device '127.0.0.1:5559' not found" >&2 ;;
+  *) printf '%s\n' 'device' ;;
+esac
+FAKE_ADB
+chmod 700 "$sandbox/bin/adb"
+original_path="$PATH"
+PATH="$sandbox/bin:$PATH"
+for fixture in secret offline unauthorized not_found; do
+  export FAKE_ADB_STATE="$fixture"
+  raw_fixture="$(poll_emulator_adb_state '127.0.0.1:5559' 42085 1 || true)"
+  if [[ "$fixture" == secret ]]; then
+    [[ "$(printf '%s' "$raw_fixture" | wc -c)" == 4096 ]]
+  fi
+  printf 'stderr_fixture=%s adb_state=%s\n' \
+    "$fixture" "$(sanitize_emulator_adb_state "$raw_fixture")"
+done
+unset FAKE_ADB_STATE
+PATH="$original_path"
 ready_pid=''
 timeout_pid=''
 cleanup() {
@@ -402,9 +427,10 @@ poll_emulator_adb_state() {
   local attempt=$(( $(wc -l < "$state_calls") + 1 ))
   printf '%s\n' "$attempt" >> "$state_calls"
   case "$attempt" in
-    1) : ;;
-    2) printf '%s\n' 'offline' ;;
-    3) printf '%s\n' 'unauthorized' ;;
+    1) printf '%s\n' 'arbitrary failure sensitive-token=S3CR3T key=/private/path serial=tcp-secret server=private-server' ;;
+    2) printf '%s\n' "error: device '127.0.0.1:5559' not found" ;;
+    3) printf '%s\n' 'error: device offline' ;;
+    4) printf '%s\n' 'adb: device unauthorized.' ;;
     *) printf '%s\n' 'device' ;;
   esac
 }
@@ -412,8 +438,8 @@ command sleep 5 &
 ready_pid=$!
 sleep() { :; }
 wait_for_emulator_adb "$ready_pid" '127.0.0.1:5559' 42085 "$diagnostics" 2
-[[ "$(wc -l < "$connect_calls")" == 4 ]]
-[[ "$(wc -l < "$state_calls")" == 4 ]]
+[[ "$(wc -l < "$connect_calls")" == 5 ]]
+[[ "$(wc -l < "$state_calls")" == 5 ]]
 kill "$ready_pid"
 wait "$ready_pid" 2>/dev/null || true
 ready_pid=''
@@ -448,13 +474,18 @@ timeout_pid=''
 cat "$diagnostics"
 `, "adb-readiness-test", helperPath], { encoding: "utf8" });
 
-  assert.match(output, /status=polling attempts=1 connect_attempts=1 deadline_seconds=2[^\n]*connect_state=refused adb_state=unavailable/);
-  assert.match(output, /status=polling attempts=2 connect_attempts=2 deadline_seconds=2[^\n]*connect_state=connected adb_state=offline/);
-  assert.match(output, /status=polling attempts=3 connect_attempts=3 deadline_seconds=2[^\n]*connect_state=already_connected adb_state=unauthorized/);
-  assert.match(output, /status=ready attempts=4 connect_attempts=4 deadline_seconds=2[^\n]*connect_state=already_connected adb_state=device/);
+  assert.match(output, /stderr_fixture=secret adb_state=other/);
+  assert.match(output, /stderr_fixture=offline adb_state=offline/);
+  assert.match(output, /stderr_fixture=unauthorized adb_state=unauthorized/);
+  assert.match(output, /stderr_fixture=not_found adb_state=not_found/);
+  assert.match(output, /status=polling attempts=1 connect_attempts=1 deadline_seconds=2[^\n]*connect_state=refused adb_state=other/);
+  assert.match(output, /status=polling attempts=2 connect_attempts=2 deadline_seconds=2[^\n]*connect_state=connected adb_state=not_found/);
+  assert.match(output, /status=polling attempts=3 connect_attempts=3 deadline_seconds=2[^\n]*connect_state=already_connected adb_state=offline/);
+  assert.match(output, /status=polling attempts=4 connect_attempts=4 deadline_seconds=2[^\n]*connect_state=already_connected adb_state=unauthorized/);
+  assert.match(output, /status=ready attempts=5 connect_attempts=5 deadline_seconds=2[^\n]*connect_state=already_connected adb_state=device/);
   assert.match(output, /status=emulator_exited attempts=0 connect_attempts=0 deadline_seconds=2[^\n]*connect_state=unavailable adb_state=unavailable/);
   assert.match(output, /status=timed_out attempts=[12] connect_attempts=[12] deadline_seconds=2[^\n]*connect_state=refused adb_state=offline/);
-  assert.doesNotMatch(output, /sensitive|serial|token|5037/);
+  assert.doesNotMatch(output, /sensitive|S3CR3T|private\/path|private-server|tcp-secret|serial|token|5037/);
 });
 
 test("disposable interactive proof uses private identity bounded cleanup and physical evidence", async () => {
@@ -550,6 +581,7 @@ test("disposable interactive proof uses private identity bounded cleanup and phy
   assert.match(adbReadiness, /max_seconds > 240/);
   assert.match(adbReadiness, /adb -H 127\.0\.0\.1 -P "\$adb_server_port" connect "\$device_serial"/);
   assert.match(adbReadiness, /adb -H 127\.0\.0\.1 -P "\$adb_server_port" -s "\$device_serial" get-state/);
+  assert.match(adbReadiness, /get-state 2>&1 \|\s+LC_ALL=C head -c 4096/);
   const waitStart = adbReadiness.indexOf("wait_for_emulator_adb() {");
   const waitBody = adbReadiness.slice(waitStart);
   assert.ok(waitBody.indexOf("connect_emulator_adb_transport") < waitBody.indexOf("poll_emulator_adb_state"));
