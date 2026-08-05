@@ -236,9 +236,10 @@ test("self-hosted workflows bound every job and long-running Nix step", async ()
   assert.match(macos, /group: ci-macos-\$\{\{ github\.ref \}\}/);
   assert.match(macos, /cancel-in-progress: false/);
   assert.match(macos, /runs-on: \[self-hosted, macos\]\n\s+timeout-minutes: 150/);
+  assert.match(macos, /present\) package_mode\+=\(--rebuild\)/);
   assert.match(
     macos,
-    /nix build --rebuild --no-link --print-build-logs[\s\\]+[\s\S]*?timeout-minutes: 90/,
+    /nix build "\$\{package_mode\[@\]\}" --no-link --print-build-logs[\s\\]+[\s\S]*?timeout-minutes: 90/,
   );
   assert.match(
     macos,
