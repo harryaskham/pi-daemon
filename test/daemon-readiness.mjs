@@ -12,6 +12,7 @@ const RETRYABLE_SOCKET_ERRORS = new Set([
   "ECONNRESET",
   "ENOENT",
   "EPIPE",
+  "pi_daemon_client_timeout",
 ]);
 const SAFE_CODE = /^[A-Za-z0-9_.:-]{1,64}$/;
 

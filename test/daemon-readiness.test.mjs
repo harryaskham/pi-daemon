@@ -200,19 +200,26 @@ test("semantic readiness times out when an exact listener never answers", async 
   await listen(server, socketPath);
   t.after(() => closeServer(server, connections));
 
+  let attempts = 0;
   await assert.rejects(
     waitForDaemonReady({
       socketPath,
       child,
       timeoutMs: 150,
       diagnostics: output.diagnostics,
+      connect: (options) => {
+        attempts += 1;
+        return PiDaemonClient.connect({ ...options, requestTimeoutMs: 20 });
+      },
     }),
     (error) => {
       assert.match(error.message, /reason=deadline/);
       assert.match(error.message, /expectedSocketState=socket/);
+      assert.match(error.message, /lastSocketError=pi_daemon_client_timeout/);
       return true;
     },
   );
+  assert.ok(attempts >= 2, "typed client timeouts remain retryable until the outer deadline");
 });
 
 test("semantic readiness rejects a listener that is not Pi Daemon", async (t) => {
@@ -229,12 +236,17 @@ test("semantic readiness rejects a listener that is not Pi Daemon", async (t) =>
   await listen(server, socketPath);
   t.after(() => closeServer(server, connections));
 
+  let attempts = 0;
   await assert.rejects(
     waitForDaemonReady({
       socketPath,
       child,
       timeoutMs: 5_000,
       diagnostics: output.diagnostics,
+      connect: (options) => {
+        attempts += 1;
+        return PiDaemonClient.connect(options);
+      },
     }),
     (error) => {
       assert.match(error.message, /reason=semantic_probe_rejected/);
@@ -242,4 +254,5 @@ test("semantic readiness rejects a listener that is not Pi Daemon", async (t) =>
       return true;
     },
   );
+  assert.equal(attempts, 1, "non-timeout protocol failures must fail closed without retry");
 });
