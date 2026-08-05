@@ -38,6 +38,12 @@ jobs:
       - uses: cachix/install-nix-action@v31
         with:
           github_access_token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Expose pinned Java to Gradle action
+        run: |
+          nix develop .#android --command bash -euo pipefail -c '
+            printf "JAVA_HOME=%s\n" "$JAVA_HOME" >> "$GITHUB_ENV"
+            dirname "$(command -v java)" >> "$GITHUB_PATH"
+          '
       - uses: gradle/actions/setup-gradle@v5
         with:
           cache-read-only: ${{ github.ref != 'refs/heads/main' }}
