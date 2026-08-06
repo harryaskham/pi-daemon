@@ -193,24 +193,33 @@ open support for an isolated per-session `agentDir` and a deterministic
 See the [protocol design](PLAN.md#6-protocol)
 and, as implementation lands, the published [documentation site](https://a.skh.am/pi-daemon/).
 
-## Safety defaults
+## Tool authority and safety defaults
 
-The first release deliberately starts narrow:
+Legacy Unix protocol-v1 opens remain deliberately no-tools. Authenticated
+configured Session API/Dashboard opens are richer: callers may select Pi's
+default built-ins, an allowlist, extension-only tools, or no tools, and may load
+explicitly approved packages/extensions/resources. Default or allowlisted tools
+can include filesystem operations and `bash`; Pi RPC and ACP control the same
+resident runtime. Bash starts a bounded child per invocation with the session
+cwd and memory-only environment overlay—it is not a persistent shell service.
 
-- no built-in tools;
-- no arbitrary project extensions;
-- explicit canonical working roots;
-- owner-only local socket;
-- bounded requests, queues, sessions, turns, buffers, and drain;
+All modes retain:
+
+- explicit canonical working roots and owner-only control/API credentials;
+- bounded requests, queues, sessions, turns, tool records, buffers, and drain;
 - content/auth redaction in logs and status;
 - no blind replay after an indeterminate accepted request;
-- durable wakes replay only after the exact resolved Pi conversation reopens;
-- memory sessions are resident-only and never journaled for crash replay;
-- one isolated `AgentSessionRuntime`, `SessionManager`, and settings domain per logical session.
+- durable wakes only after the exact Pi conversation reopens;
+- resident-only memory sessions; and
+- separate `AgentSessionRuntime`, `SessionManager`, settings, resource loader,
+  event subscriptions, and queue state per logical session.
 
-A shared process is a shared trust boundary, not a sandbox. Workloads requiring
-arbitrary extensions or process/filesystem tools need a separate trust domain.
-See [`SECURITY.md`](SECURITY.md).
+A shared process is a shared trust boundary, not a sandbox. Approved extensions
+and built-in process/filesystem tools can exercise real authority beneath the
+configured roots and share process memory with other sessions. Use separate
+daemon processes/security domains for mutually untrusted workloads. See
+[`docs/session-configuration.md`](docs/session-configuration.md) and
+[`SECURITY.md`](SECURITY.md).
 
 ## Development
 

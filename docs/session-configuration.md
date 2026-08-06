@@ -50,6 +50,28 @@ Tool modes map as follows:
 - `allowlist` — only named tools;
 - `exclude` — applied after the selected mode/allowlist.
 
+## What configured sessions can run today
+
+A configured session can execute normal model turns with the selected Pi tools,
+including built-in read/write/edit/bash when admitted by the tool mode and
+configured roots. Pi RPC and ACP attach to that same resident runtime rather
+than a reduced transport-only model. Multiple logical sessions have independent
+turn queues and can progress concurrently inside the daemon; each runtime keeps
+its own cwd-bound managers and tool selection.
+
+The cwd persists as session configuration. A bash invocation is a bounded child
+process launched for that command with the session cwd and allowed environment
+overlay; shell-local state such as `cd`, functions, or unexported variables does
+not become a persistent interactive shell between invocations. Filesystem changes
+beneath allowed roots do persist normally. Pi's ordinary tool-call scheduling
+applies within each turn; the daemon does not promise arbitrary parallel shell
+processes beyond the admitted tool/runtime limits.
+
+This configured-session authority is distinct from legacy protocol-v1 opens
+(which remain no-tools) and from protocol-v2's optional host adapter (six fixed
+filesystem operations, no shell). Those are compatibility/adapter contracts,
+not the ceiling for Session API or Dashboard-created sessions.
+
 ## Environment behavior
 
 The overlay is not a virtual shell environment for arbitrary JavaScript. The

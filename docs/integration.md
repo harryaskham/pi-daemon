@@ -140,6 +140,12 @@ PKI, environment, arbitrary extension, or shell authority. See the
 [host tool-adapter protocol](tool-adapter-protocol) and its checked v2/adapter
 fixtures before implementing a consumer.
 
+This intentionally narrow adapter is not the only tool-capable Pi Daemon mode.
+Authenticated configured sessions created through the Session API or Dashboard
+can select normal Pi built-ins/allowlists and approved extensions/resources,
+including bash where policy permits it; Pi RPC and ACP control that resident
+runtime. See [Session configuration and isolation](session-configuration).
+
 A descriptor is minted for the current Pi Daemon `hostInstanceId`, exact logical
 session ID, and generation. Clients must reprovision after restart or replacement
 rather than replaying a retained capability. Responses echo the accepted daemon

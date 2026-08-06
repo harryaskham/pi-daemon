@@ -44,11 +44,15 @@ listener throwing cannot disrupt the runtime or other readers.
 ## Policy-gated commands
 
 The controller reports typed capabilities. `bash`, `abort_bash`, and
-`export_html` are present in the Pi protocol but require explicit host-policy
-callbacks. The initial no-tools/no-ambient-filesystem profile returns a normal
-Pi RPC failure response for them; it never silently grants process or arbitrary
-write authority. A later trusted configuration may enable them through scoped
-policy.
+`export_html` are present in the Pi protocol and require explicit host-policy
+callbacks. No-tools sessions return a normal Pi RPC failure response; process or
+write authority is never inferred from attachment alone. Trusted configured
+sessions enable the bash callback today when their tool policy is `default` or
+explicitly allowlists `bash` (unless excluded). The command runs through the
+session cwd/environment-aware bash operations and the same bounded resident
+runtime as ordinary turns. This is per-command child-process execution, not a
+persistent shell process. `abort_bash` and export remain capability-reported and
+policy-gated.
 
 ## Extension UI
 

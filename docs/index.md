@@ -10,13 +10,23 @@ long-lived Node process. It shares authentication and model metadata while each
 logical session keeps its own session manager, settings, event sequence, queue,
 and durable idempotency state.
 
-Protocol v1 remains intentionally no-tools: it does not load extensions,
-skills, prompt templates, themes, context files, or built-in filesystem/process
-tools. The additive protocol-v2 contract can bind one host/session/generation to
-six fixed filesystem operations over an owner-private Unix adapter; it still
-provides no shell or arbitrary extension authority. Durable CRUD, authenticated
-JSON control, Pi RPC attachment, the remote stdio bridge, and ACP translation
-remain neutral service surfaces—not Cacophony components.
+Pi Daemon supports full resident Pi agent turns through authenticated configured
+sessions. A configured session has a stable cwd, bounded memory-only environment
+overlay, normal Pi tool selection (`default`, `allowlist`, `no-builtin`, or
+`none`), and explicitly approved packages, extensions, skills, prompts, themes,
+and context resources. Default or allowlisted tools can include Pi's built-in
+filesystem tools and `bash`; Pi RPC and ACP drive the same resident runtime, and
+many logical sessions can run concurrently. Bash is spawned per invocation with
+the session cwd/environment—it is not a promised persistent shell process.
+
+Two narrower compatibility surfaces intentionally remain restricted: legacy
+protocol-v1 `open` is no-tools, and the optional protocol-v2 host adapter grants
+only six fixed filesystem operations with no shell. Those transport-specific
+limits do not describe configured Session API or Dashboard sessions. Configured
+tools/extensions run in the daemon's shared `unisolated` trust domain and require
+explicit root/resource policy; this is authority, not sandboxing. Durable CRUD,
+authenticated JSON control, Pi RPC, the remote stdio bridge, and ACP remain
+neutral service surfaces—not Cacophony components.
 
 ## Documentation
 
