@@ -6,8 +6,11 @@ title: Operator quickstart
 # Operator quickstart
 
 This quickstart runs Pi Daemon as a Home Manager user service, creates one
-durable no-tools session through the authenticated API, waits for its mutation
-ticket, attaches stock Pi RPC, and shows the ACP connection contract. The
+durable session that deliberately selects `tools.mode: "none"`, waits for its
+mutation ticket, attaches stock Pi RPC, and shows the ACP connection contract.
+That restrictive example is a safe starting point, not the full product limit:
+the same authenticated API can create configured trusted sessions with Pi
+built-ins such as cwd-bound bash and explicit reviewed extension resources. The
 service bearer is read from an owner-only file; it is never placed in Nix source
 or a process argument.
 
@@ -223,6 +226,13 @@ wait_ticket "$create_ticket"
 curl_api "$API/v1/session?limit=50" \
   | jq '.data.sessions[] | {sessionId, name, generation, revision, residency, state}'
 ```
+
+For a mutually trusted workload, replace the example's `none` mode with
+`default`, `no-builtin`, or a named `allowlist`, and supply explicit approved
+resources through the typed `SessionSpec`. Read [Session configuration and
+isolation](session-configuration) first: built-in bash is a child invocation in
+the configured cwd, not a persistent shell/PTY, and trusted extensions share the
+unisolated daemon process.
 
 For repeatable one-shot commands built on the same API, see the [session
 management CLI](session-cli). The raw `curl` flow above remains useful for

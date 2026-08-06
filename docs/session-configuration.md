@@ -50,6 +50,24 @@ Tool modes map as follows:
 - `allowlist` — only named tools;
 - `exclude` — applied after the selected mode/allowlist.
 
+## Execution lifetime and concurrency
+
+A configured logical session keeps its `AgentSessionRuntime`, conversation,
+settings, resource loader, and cwd-bound policy across requests, RPC attachments,
+and idle residency until it is replaced, closed, or evicted and durably reopened.
+It admits one active model turn per logical session. The host-wide
+`maxConcurrentTurns` semaphore (default 4) allows separate sessions to run turns
+in parallel without sharing their session managers or command queues.
+
+The built-in `bash` tool and Pi RPC `bash` command execute child invocations in
+the configured cwd when tool policy and controller authority permit them. The
+filesystem and conversation persist, but Pi Daemon does not provide a persistent
+shell or PTY: shell-local state such as `cd`, functions, and unexported variables
+does not implicitly carry into a later invocation. The public contract likewise
+does not promise that multiple commands or model-selected tool calls run in
+parallel inside one session; clients should use independent logical sessions
+when they need explicit concurrent turns.
+
 ## Environment behavior
 
 The overlay is not a virtual shell environment for arbitrary JavaScript. The
