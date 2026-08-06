@@ -209,6 +209,41 @@ test("Pages publishes a prominent secret-safe operator quickstart", async () => 
   assert.match(flake, /test -s "\$out\/quickstart\/index\.html"/);
 });
 
+test("Pages leads with configured tool-capable sessions without weakening legacy defaults", async () => {
+  const [index, readme, quickstart, configuration, sessionConfig, adapter, multiplexer] =
+    await Promise.all([
+      readFile(join(repositoryRoot, "docs/index.md"), "utf8"),
+      readFile(join(repositoryRoot, "README.md"), "utf8"),
+      readFile(join(repositoryRoot, "docs/quickstart.md"), "utf8"),
+      readFile(join(repositoryRoot, "docs/session-configuration.md"), "utf8"),
+      readFile(join(repositoryRoot, "src/session-config.ts"), "utf8"),
+      readFile(join(repositoryRoot, "src/pi-adapter.ts"), "utf8"),
+      readFile(join(repositoryRoot, "src/multiplexer.ts"), "utf8"),
+    ]);
+
+  const configured = index.indexOf("authenticated Session API is the full configured-session surface");
+  const legacy = index.indexOf("Legacy owner-only Unix NDJSON v1");
+  assert.notEqual(configured, -1, "Pages must name the current configured-session surface");
+  assert.notEqual(legacy, -1, "Pages must preserve the legacy v1 compatibility fact");
+  assert.equal(configured < legacy, true, "current product capability must lead legacy caveats");
+  assert.match(index, /`default`, `none`, `no-builtin`, and `allowlist`/);
+  assert.match(index, /not a persistent shell or PTY/);
+  assert.match(index, /`maxConcurrentTurns`/);
+
+  assert.match(readme, /Legacy Unix NDJSON v1 and unconfigured browser activations/);
+  assert.match(readme, /Configured trusted sessions may deliberately enable Pi built-ins/);
+  assert.match(quickstart, /deliberately selects `tools\.mode: "none"`/);
+  assert.match(quickstart, /\[Session configuration and isolation\]\(session-configuration\)/);
+  assert.match(configuration, /one active model turn per logical session/);
+  assert.match(configuration, /does not provide a persistent shell or PTY/);
+
+  for (const mode of ["default", "none", "no-builtin", "allowlist"]) {
+    assert.match(sessionConfig, new RegExp(`case "${mode}"`));
+  }
+  assert.match(adapter, /createBashTool\(cwd/);
+  assert.match(multiplexer, /maxConcurrentTurns/);
+});
+
 test("self-hosted workflows bound every job and long-running Nix step", async () => {
   const [ci, macos, pages, release] = await Promise.all([
     readFile(join(repositoryRoot, ".github/workflows/ci.yml"), "utf8"),
