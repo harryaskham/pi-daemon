@@ -226,16 +226,19 @@ test("Pages leads with configured tool-capable sessions without weakening legacy
   assert.notEqual(configured, -1, "Pages must name the current configured-session surface");
   assert.notEqual(legacy, -1, "Pages must preserve the legacy v1 compatibility fact");
   assert.equal(configured < legacy, true, "current product capability must lead legacy caveats");
-  assert.match(index, /`default`, `none`, `no-builtin`, and `allowlist`/);
-  assert.match(index, /not a persistent shell or PTY/);
+  assert.match(index, /`default`, `none`, `no-builtin`, and\s+`allowlist`/);
+  assert.match(index, /not a persistent shell or\s+PTY/);
   assert.match(index, /`maxConcurrentTurns`/);
 
   assert.match(readme, /Legacy Unix NDJSON v1 and unconfigured browser activations/);
   assert.match(readme, /Configured trusted sessions may deliberately enable Pi built-ins/);
   assert.match(quickstart, /deliberately selects `tools\.mode: "none"`/);
-  assert.match(quickstart, /\[Session configuration and isolation\]\(session-configuration\)/);
+  assert.match(
+    quickstart,
+    /\[Session configuration and\s+isolation\]\(session-configuration\)/,
+  );
   assert.match(configuration, /one active model turn per logical session/);
-  assert.match(configuration, /does not provide a persistent shell or PTY/);
+  assert.match(configuration, /does not provide a persistent\s+shell or PTY/);
 
   for (const mode of ["default", "none", "no-builtin", "allowlist"]) {
     assert.match(sessionConfig, new RegExp(`case "${mode}"`));

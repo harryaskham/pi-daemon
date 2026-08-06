@@ -170,10 +170,16 @@ bounded authority and otherwise remain no-tools/no-extensions. An explicit
 `resources.inheritInstalledPackages: true` loads only global Pi packages already
 installed under the configured agent directory, honoring package manifests and
 filters without installing, updating, spawning a package manager, or using the
-network. Direct and fork
-activation restore the source active branch's provider, model, and thinking
-level before the first turn; model selection never falls through to arbitrary
-registry order when the source records an authenticated model.
+network. Direct and fork activation restore the source active branch's provider,
+model, and thinking level before the first turn; model selection never falls through
+to arbitrary registry order when the source records an authenticated model.
+Configured trusted sessions may deliberately enable Pi built-ins, including the
+cwd-bound `bash` tool, and explicit reviewed extension tools. The logical
+`AgentSessionRuntime` and conversation persist across requests; each session has
+one active model turn, while the host's bounded global semaphore runs independent
+sessions concurrently. A bash call is a scoped child invocation, not a guaranteed
+persistent shell or PTY, and intra-session parallel command execution is not part
+of the public contract.
 
 The protocol is versioned UTF-8 NDJSON over an owner-only Unix socket. Host
 status and handshake responses include bounded counters, recovery/degraded
@@ -195,10 +201,14 @@ and, as implementation lands, the published [documentation site](https://a.skh.a
 
 ## Safety defaults
 
-The first release deliberately starts narrow:
+Legacy Unix NDJSON v1 and unconfigured browser activations deliberately start
+narrow. These defaults are not a product-wide capability limit; the authenticated
+Session API may explicitly opt a mutually trusted session into the configured
+runtime described above.
 
-- no built-in tools;
-- no arbitrary project extensions;
+- no built-in tools until configured session policy enables them;
+- no arbitrary project extensions until explicit trusted resource policy enables
+  them;
 - explicit canonical working roots;
 - owner-only local socket;
 - bounded requests, queues, sessions, turns, buffers, and drain;
@@ -208,8 +218,9 @@ The first release deliberately starts narrow:
 - memory sessions are resident-only and never journaled for crash replay;
 - one isolated `AgentSessionRuntime`, `SessionManager`, and settings domain per logical session.
 
-A shared process is a shared trust boundary, not a sandbox. Workloads requiring
-arbitrary extensions or process/filesystem tools need a separate trust domain.
+A shared process is a shared trust boundary, not a sandbox. Explicit trusted
+sessions may load extensions and process/filesystem tools in that domain;
+mutually untrusted workloads need separate daemon processes, containers, or VMs.
 See [`SECURITY.md`](SECURITY.md).
 
 ## Development

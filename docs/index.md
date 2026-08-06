@@ -10,13 +10,31 @@ long-lived Node process. It shares authentication and model metadata while each
 logical session keeps its own session manager, settings, event sequence, queue,
 and durable idempotency state.
 
-Protocol v1 remains intentionally no-tools: it does not load extensions,
-skills, prompt templates, themes, context files, or built-in filesystem/process
-tools. The additive protocol-v2 contract can bind one host/session/generation to
-six fixed filesystem operations over an owner-private Unix adapter; it still
-provides no shell or arbitrary extension authority. Durable CRUD, authenticated
-JSON control, Pi RPC attachment, the remote stdio bridge, and ACP translation
-remain neutral service surfaces—not Cacophony components.
+The authenticated Session API is the full configured-session surface. Its typed
+`SessionSpec` selects an absolute cwd; `default`, `none`, `no-builtin`, and
+`allowlist` tool modes (plus exclusions); Pi built-ins including cwd-bound
+`bash`; and explicit trusted extensions, skills, prompt templates, themes,
+settings, and approved project resources. A durable logical session keeps one
+in-process `AgentSessionRuntime` and conversation across turns and attachments.
+Each logical session admits one active model turn at a time, while the global
+`maxConcurrentTurns` bound permits multiple independent sessions to run in
+parallel.
+
+That capability is intentionally honest rather than shell-shaped: each built-in
+`bash` use is a child invocation from the session cwd, not a persistent shell or
+PTY, and Pi Daemon does not promise parallel command execution inside one
+logical session. Trusted extension JavaScript and `isolation: "unisolated"`
+share the daemon process trust domain; mutually untrusted workloads still need
+separate daemon processes, containers, or VMs.
+
+Legacy owner-only Unix NDJSON v1 remains intentionally no-tools for compatibility:
+it does not load extensions, skills, prompt templates, themes, context files, or
+built-in filesystem/process tools. The additive protocol-v2 host-adapter profile
+is a narrower alternative that binds one host/session/generation to six fixed
+filesystem operations over an owner-private Unix adapter, with no shell or
+arbitrary extension authority. Durable CRUD, authenticated JSON control, Pi RPC
+attachment, the remote stdio bridge, and ACP translation remain neutral service
+surfaces—not Cacophony components.
 
 ## Documentation
 
