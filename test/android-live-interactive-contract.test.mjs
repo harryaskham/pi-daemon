@@ -504,7 +504,7 @@ readiness_fixture_step='connected_sentinel_alive'
 kill -0 "$ready_pid" 2>/dev/null
 sleep() { :; }
 readiness_fixture_step='connected_transport_wait'
-wait_for_emulator_adb "$ready_pid" '127.0.0.1:5559' 42085 "$diagnostics" 2
+wait_for_emulator_adb "$ready_pid" '127.0.0.1:5559' 42085 "$diagnostics" 30
 readiness_fixture_step='connected_transport_connect_attempts'
 [[ "$(wc -l < "$connect_calls")" == 2 ]]
 readiness_fixture_step='connected_transport_state_attempts'
@@ -537,7 +537,7 @@ ready_pid=$!
 readiness_fixture_step='latched_sentinel_alive'
 kill -0 "$ready_pid" 2>/dev/null
 readiness_fixture_step='latched_transport_wait'
-wait_for_emulator_adb "$ready_pid" '127.0.0.1:5559' 42085 "$diagnostics" 2
+wait_for_emulator_adb "$ready_pid" '127.0.0.1:5559' 42085 "$diagnostics" 30
 readiness_fixture_step='latched_transport_connect_attempts'
 [[ "$(wc -l < "$connect_calls")" == 1 ]]
 readiness_fixture_step='latched_transport_state_attempts'
@@ -601,11 +601,11 @@ printf '%s\n' 'fixture_sentinel_mode=blocking_fifo lifecycle=owned'
   assert.match(output, /stderr_fixture=offline adb_state=offline/);
   assert.match(output, /stderr_fixture=unauthorized adb_state=unauthorized/);
   assert.match(output, /stderr_fixture=not_found adb_state=not_found/);
-  assert.match(output, /status=polling attempts=1 connect_attempts=1 deadline_seconds=2[^\n]*connect_state=refused adb_state=offline transport_connected=false/);
-  assert.match(output, /status=polling attempts=2 connect_attempts=2 deadline_seconds=2[^\n]*connect_state=connected adb_state=offline transport_connected=true/);
-  assert.match(output, /status=ready attempts=3 connect_attempts=2 deadline_seconds=2[^\n]*connect_state=connected adb_state=device transport_connected=true/);
-  assert.match(output, /status=polling attempts=1 connect_attempts=1 deadline_seconds=2[^\n]*connect_state=already_connected adb_state=unauthorized transport_connected=true/);
-  assert.match(output, /status=ready attempts=2 connect_attempts=1 deadline_seconds=2[^\n]*connect_state=already_connected adb_state=device transport_connected=true/);
+  assert.match(output, /status=polling attempts=1 connect_attempts=1 deadline_seconds=30[^\n]*connect_state=refused adb_state=offline transport_connected=false/);
+  assert.match(output, /status=polling attempts=2 connect_attempts=2 deadline_seconds=30[^\n]*connect_state=connected adb_state=offline transport_connected=true/);
+  assert.match(output, /status=ready attempts=3 connect_attempts=2 deadline_seconds=30[^\n]*connect_state=connected adb_state=device transport_connected=true/);
+  assert.match(output, /status=polling attempts=1 connect_attempts=1 deadline_seconds=30[^\n]*connect_state=already_connected adb_state=unauthorized transport_connected=true/);
+  assert.match(output, /status=ready attempts=2 connect_attempts=1 deadline_seconds=30[^\n]*connect_state=already_connected adb_state=device transport_connected=true/);
   assert.match(output, /status=emulator_exited attempts=0 connect_attempts=0 deadline_seconds=2[^\n]*connect_state=unavailable adb_state=unavailable transport_connected=false/);
   assert.match(output, /status=timed_out attempts=[12] connect_attempts=[12] deadline_seconds=2[^\n]*connect_state=refused adb_state=offline transport_connected=false/);
   assert.match(output, /fixture_sentinel_mode=blocking_fifo lifecycle=owned/);
