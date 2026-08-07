@@ -79,10 +79,11 @@ test("disposable-daemon emulator proof is bounded readonly and release advances 
 
   assert.match(proof, /set -euo pipefail/);
   assert.match(proof, /mktemp -d/);
-  assert.match(proof, /trap (?:['"])?cleanup(?:['"])? EXIT/);
+  assert.match(proof, /trap 'cleanup "\$\?"' EXIT/);
   assert.match(proof, /10\.0\.2\.2/);
   assert.match(proof, /am start/);
   assert.match(proof, /source "\$repo_root\/android\/build-logic\/emulator-ui-health\.sh"/);
+  assert.match(proof, /source "\$repo_root\/android\/build-logic\/physical-proof-lifecycle\.sh"/);
   assert.match(uiHealth, /uiautomator dump/);
   assert.match(proof, /emulator_abi='x86_64'/);
   assert.match(proof, /source "\$repo_root\/android\/build-logic\/emulator-adb-readiness\.sh"/);
@@ -97,6 +98,9 @@ test("disposable-daemon emulator proof is bounded readonly and release advances 
   assert.match(proof, /Live readonly session/);
   assert.match(proof, /OFFLINE CACHED|Offline cached/);
   assert.match(proof, /hostInstanceId/);
+  assert.match(proof, /"disposableBearerRetainedTextScan": true/);
+  assert.match(proof, /"disposableBearerLeak": false/);
+  assert.match(proof, /run_physical_proof_bearer_scan/);
   assert.doesNotMatch(proof, /prompt|wake|controller/i);
   assert.match(server, /new ApiServer/);
   assert.match(server, /DashboardNeutralApiController/);

@@ -10,14 +10,16 @@ initialize_emulator_ui_health() {
   fi
   emulator_ui_health_private_dir="$private_root/emulator-ui-health"
   emulator_ui_health_artifacts_dir="$artifacts_root/system-ui-evidence"
+  emulator_app_failure_artifacts_dir="$artifacts_root/app-failure-evidence"
   emulator_ui_health_diagnostics="$artifacts_root/system-ui-health.log"
   emulator_system_ui_wait_used='false'
   emulator_system_ui_occurrences=0
+  emulator_app_failure_occurrences=0
   mkdir -p "$emulator_ui_health_private_dir"
   chmod 700 "$emulator_ui_health_private_dir"
   : > "$emulator_ui_health_diagnostics"
   chmod 600 "$emulator_ui_health_diagnostics"
-  printf '%s\n' 'status=initialized system_ui_wait_limit=1 recovery_attempt_limit=15 logcat_byte_limit=1048576' \
+  printf '%s\n' 'status=initialized system_ui_wait_limit=1 recovery_attempt_limit=15 logcat_byte_limit=1048576 app_failure_screenshot_byte_limit=16777216' \
     >> "$emulator_ui_health_diagnostics"
 }
 
@@ -70,9 +72,9 @@ emulator_system_ui_ready() {
 record_emulator_ui_health_failure() {
   local status="$1"
   local phase="$2"
-  printf 'status=%s phase=%s wait_used=%s occurrences=%s\n' \
+  printf 'status=%s phase=%s wait_used=%s occurrences=%s app_failure_occurrences=%s\n' \
     "$status" "$phase" "$emulator_system_ui_wait_used" "$emulator_system_ui_occurrences" \
-    >> "$emulator_ui_health_diagnostics"
+    "$emulator_app_failure_occurrences" >> "$emulator_ui_health_diagnostics"
   printf '%s\n' "$status" >&2
 }
 
@@ -111,6 +113,72 @@ capture_system_ui_anr_evidence() {
     >> "$emulator_ui_health_diagnostics"
 }
 
+capture_app_failure_modal_evidence() {
+  local xml="$1"
+  local logcat="$2"
+  local occurrence="$3"
+  local identity_source_field="$4"
+  local identity_class_field="$5"
+  local identity_sha256_field="$6"
+  local evidence_dir="$emulator_app_failure_artifacts_dir/occurrence-$occurrence"
+  local screenshot="$evidence_dir/screenshot.png"
+  local safe_xml="$evidence_dir/window.xml"
+  local safe_logcat="$evidence_dir/safe-logcat.txt"
+  local evidence="$evidence_dir/evidence.txt"
+  local safe_classification=''
+  local xml_bytes=''
+  local screenshot_bytes=''
+  local logcat_bytes=''
+  local xml_sha256=''
+  local screenshot_sha256=''
+  local safe_logcat_sha256=''
+  [[ "$identity_source_field" =~ ^identity_source=(logcat_package|dialog_title)$ ]] || return 1
+  [[ "$identity_class_field" =~ ^identity_class=(android_system|google_system|third_party|unknown)$ ]] || return 1
+  [[ "$identity_sha256_field" =~ ^identity_sha256=sha256:[0-9a-f]{64}$ ]] || return 1
+  mkdir -p "$evidence_dir"
+  chmod 700 "$emulator_app_failure_artifacts_dir" "$evidence_dir"
+  if ! safe_classification="$(python3 "$repo_root/android/build-logic/emulator-ui-health.py" \
+    "$xml" "$logcat" --write-app-failure-evidence "$safe_xml" "$safe_logcat" 2>/dev/null)"; then
+    rm -rf "$evidence_dir"
+    return 1
+  fi
+  if [[ "$safe_classification" != "other_app_failure_modal $identity_source_field $identity_class_field $identity_sha256_field" ]] ||
+    ! capture_emulator_ui_screenshot "$screenshot" ||
+    [[ ! -s "$safe_xml" || ! -s "$screenshot" || ! -s "$safe_logcat" ]]; then
+    rm -rf "$evidence_dir"
+    return 1
+  fi
+  xml_bytes="$(wc -c < "$safe_xml" | tr -d ' ')"
+  screenshot_bytes="$(wc -c < "$screenshot" | tr -d ' ')"
+  logcat_bytes="$(wc -c < "$safe_logcat" | tr -d ' ')"
+  if [[ ! "$xml_bytes" =~ ^[0-9]+$ || ! "$screenshot_bytes" =~ ^[0-9]+$ || ! "$logcat_bytes" =~ ^[0-9]+$ ]] ||
+    (( xml_bytes > 16384 || screenshot_bytes > 16777216 || logcat_bytes > 4096 )); then
+    rm -rf "$evidence_dir"
+    return 1
+  fi
+  xml_sha256="$(sha256sum "$safe_xml" | cut -d ' ' -f 1)"
+  screenshot_sha256="$(sha256sum "$screenshot" | cut -d ' ' -f 1)"
+  safe_logcat_sha256="$(sha256sum "$safe_logcat" | cut -d ' ' -f 1)"
+  if [[ ! "$xml_sha256" =~ ^[0-9a-f]{64}$ ||
+        ! "$screenshot_sha256" =~ ^[0-9a-f]{64}$ ||
+        ! "$safe_logcat_sha256" =~ ^[0-9a-f]{64}$ ]]; then
+    rm -rf "$evidence_dir"
+    return 1
+  fi
+  {
+    printf '%s\n' 'status=app_failure_modal'
+    printf 'occurrence=%s\n' "$occurrence"
+    printf '%s\n' "$identity_source_field" "$identity_class_field" "$identity_sha256_field"
+    printf 'xml_sha256=sha256:%s\n' "$xml_sha256"
+    printf 'screenshot_sha256=sha256:%s\n' "$screenshot_sha256"
+    printf 'safe_logcat_sha256=sha256:%s\n' "$safe_logcat_sha256"
+  } > "$evidence"
+  chmod 600 "$safe_xml" "$screenshot" "$safe_logcat" "$evidence"
+  printf 'status=app_failure_evidence_captured occurrence=%s %s %s %s xml_sha256=sha256:%s screenshot_sha256=sha256:%s safe_logcat_sha256=sha256:%s\n' \
+    "$occurrence" "$identity_source_field" "$identity_class_field" "$identity_sha256_field" \
+    "$xml_sha256" "$screenshot_sha256" "$safe_logcat_sha256" >> "$emulator_ui_health_diagnostics"
+}
+
 scan_emulator_ui_health() {
   local xml="$1"
   local logcat="$emulator_ui_health_private_dir/logcat.txt"
@@ -122,8 +190,23 @@ scan_emulator_ui_health() {
   fi
   classification="$(classify_emulator_ui_health "$xml" "$logcat" 2>/dev/null || printf '%s\n' 'ui_unavailable')"
   case "$classification" in
-    healthy|ui_unavailable|pidroid_app_failure|other_app_failure_modal)
+    healthy|ui_unavailable|pidroid_app_failure)
       printf '%s\n' "$classification"
+      ;;
+    other_app_failure_modal\ identity_source=*\ identity_class=*\ identity_sha256=sha256:*)
+      local state=''
+      local identity_source_field=''
+      local identity_class_field=''
+      local identity_sha256_field=''
+      local extra=''
+      read -r state identity_source_field identity_class_field identity_sha256_field extra <<< "$classification"
+      if [[ -z "$extra" && "$identity_source_field" =~ ^identity_source=(logcat_package|dialog_title)$ &&
+            "$identity_class_field" =~ ^identity_class=(android_system|google_system|third_party|unknown)$ &&
+            "$identity_sha256_field" =~ ^identity_sha256=sha256:[0-9a-f]{64}$ ]]; then
+        printf '%s\n' "$classification"
+      else
+        printf '%s\n' 'system_ui_unhealthy'
+      fi
       ;;
     system_ui_anr\ [0-9]*\ [0-9]*)
       printf '%s\n' "$classification"
@@ -143,6 +226,8 @@ recover_system_ui_anr() {
   local state=''
   local x=''
   local y=''
+  local identity_sha256_field=''
+  local extra=''
   local saw_clear='false'
   local attempt=0
 
@@ -164,13 +249,20 @@ recover_system_ui_anr() {
     : > "$recovery_xml"
     dump_emulator_ui_window "$recovery_xml" || true
     classification="$(scan_emulator_ui_health "$recovery_xml")"
-    read -r state x y <<< "$classification"
+    read -r state x y identity_sha256_field extra <<< "$classification"
     case "$state" in
       pidroid_app_failure)
         record_emulator_ui_health_failure pidroid_app_failure recovery
         return 1
         ;;
       other_app_failure_modal)
+        emulator_app_failure_occurrences=$((emulator_app_failure_occurrences + 1))
+        if ! capture_app_failure_modal_evidence \
+          "$recovery_xml" "$emulator_ui_health_private_dir/logcat.txt" "$emulator_app_failure_occurrences" \
+          "$x" "$y" "$identity_sha256_field"; then
+          record_emulator_ui_health_failure system_ui_unhealthy app_failure_evidence
+          return 1
+        fi
         record_emulator_ui_health_failure app_failure_modal recovery
         return 1
         ;;
@@ -213,8 +305,10 @@ check_emulator_ui_health() {
   local state=''
   local wait_x=''
   local wait_y=''
+  local identity_sha256_field=''
+  local extra=''
   classification="$(scan_emulator_ui_health "$xml")"
-  read -r state wait_x wait_y <<< "$classification"
+  read -r state wait_x wait_y identity_sha256_field extra <<< "$classification"
   case "$state" in
     healthy|ui_unavailable)
       return 0
@@ -224,6 +318,13 @@ check_emulator_ui_health() {
       return 1
       ;;
     other_app_failure_modal)
+      emulator_app_failure_occurrences=$((emulator_app_failure_occurrences + 1))
+      if ! capture_app_failure_modal_evidence \
+        "$xml" "$emulator_ui_health_private_dir/logcat.txt" "$emulator_app_failure_occurrences" \
+        "$wait_x" "$wait_y" "$identity_sha256_field"; then
+        record_emulator_ui_health_failure system_ui_unhealthy app_failure_evidence
+        return 1
+      fi
       record_emulator_ui_health_failure app_failure_modal ui_wait
       return 1
       ;;
