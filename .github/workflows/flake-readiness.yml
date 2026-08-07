@@ -4,7 +4,17 @@ on:
   push:
     branches: [main]
   pull_request:
+    types: [opened, reopened, synchronize, ready_for_review]
+  # PRs 34/35 received no GitHub Actions event during a provider outage. Manual
+  # recovery remains available, but it must name and prove the exact selected
+  # branch head so a green run on a duplicate or stale ref cannot be mistaken
+  # for the protected PR context again.
   workflow_dispatch:
+    inputs:
+      expected_sha:
+        description: Exact 40-character commit SHA selected by the dispatch ref
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -16,6 +26,8 @@ concurrency:
 jobs:
   readiness:
     name: Flake readiness
+    # Never execute a fork's code on the persistent self-hosted runner.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.id == github.event.repository.id
     runs-on: [self-hosted, nix, x86_64-linux]
     timeout-minutes: 30
     environment: pi-daemon-aarch64-cache
@@ -24,6 +36,22 @@ jobs:
       ATTIC_CACHE: ${{ vars.PI_DAEMON_ATTIC_CACHE }}
     steps:
       - uses: actions/checkout@v7
+      - name: Verify manual recovery targets the exact selected head
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        env:
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo '::error title=Invalid recovery SHA::expected_sha must be one exact lowercase commit SHA.'
+            exit 1
+          fi
+          actual_sha="$(git rev-parse HEAD)"
+          if [[ "$actual_sha" != "$EXPECTED_SHA" ]]; then
+            echo "::error title=Recovery ref mismatch::Selected ref resolved to $actual_sha, expected $EXPECTED_SHA."
+            exit 1
+          fi
       - uses: cachix/install-nix-action@v31
         with:
           github_access_token: ${{ secrets.GITHUB_TOKEN }}
