@@ -105,7 +105,7 @@ jobs:
 
       - name: Retain macOS Nix phase evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: nix-macos-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/pi-daemon-nix-macos-${{ github.run_id }}-${{ github.run_attempt }}
