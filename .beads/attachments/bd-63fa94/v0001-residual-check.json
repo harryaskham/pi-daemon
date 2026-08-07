@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "checkedAt": "2026-08-07T23:20:17.590849Z",
+  "proofProcessMatches": 0,
+  "proofProcessDetailsRetained": false,
+  "runOwnedPorts": {
+    "42096": "closed",
+    "5562": "closed",
+    "5563": "closed",
+    "49152": "closed"
+  },
+  "allRunOwnedPortsClosed": true,
+  "sourceCheckoutClean": true,
+  "result": "clean"
+}

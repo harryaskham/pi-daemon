@@ -1,0 +1,17 @@
+1d15f692906364537de8d94378f88b052964604c03f9a836e57b3c40aed1ce45  ./live-canary-preflight.json
+7b05c42e604a95fd0d9f0465a6e34f92ebc849e73bdddf2411086b52f8d657aa  ./npm-ci.log
+3ff9d8e37d7fe03722b83ec684fe6b8351eea5203887e6882bae56a9332a8c11  ./preflight-receipt.json
+77c3f9301da6bfa6c0df790c1280f25bc2593c2938d3e14b02c152d13b8e9b61  ./preflight-sha256sums.txt
+6442bc26a7c562f5afe6467dab36365c709909f6a81afcecfc0c25cff0f1bab0  ./proof-exit-status
+c708c66beb9f3d2efc882c71b557493abc799b5aec144d3157610139d2768884  ./proof-terminal.log
+34d6fdadec2f545e290d2bf7436974d59b05704ed41a400e048d12dcb3a99acb  ./proof/android-build.log
+adb8f0fda51f45a5ade779d1453bf04fd538e735c8d41695d1b905c263afb176  ./proof/daemon-interactive-base.stderr.log
+e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  ./proof/daemon-interactive-base.stdout.log
+7197f2dbeeeb48beb75d508859eab3d5d45382cc5dd0b8dcb22ce6037fbc1dfe  ./proof/emulator-diagnostics.log
+da0f322b50fcee075c8829ed696e95dd18b7c71250072cd9bac17268ab3df982  ./proof/emulator-host-port-gate.log
+52925dd512319caa03c3e56b8248cf084bdb8c48ed2446db3e149dd1ee21f682  ./proof/emulator.log
+baee9715bcdabde2e94ba3fe53e4406265d1eebb338825597eba8eb2dd4df7b9  ./proof/node-build.log
+724445028f7f0bdc5a44b35fd186721b2798559de6f9d0cdec284d19971b43b7  ./proof/screenrecord.log
+af0d0d90e2ce32f4b1b096ae700946cda00db462b47f44b5d68a94906d9ce036  ./proof/system-ui-health.log
+19600d560d5c9febffb83aad62755af615b2c500c9ecc8ba23ca740caaf448ba  ./residual-check.json
+91fd9b36aaf7edef4b51fcb8addecdde45f942b2e7f62dbf4185d4dbfbabe538  ./secrecy-scan.json

@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "node": "ms-dev-4",
+  "cacoVersion": "1.2.1607",
+  "cacoCommit": "eb1f4d52b",
+  "cacoConfigHash": "0afd085ea5837e93b898c279ab255ced0b81d548f36f44471b84a2482ce22d1a",
+  "cacoLauncherFingerprint": "ce7dfac9359cca7a5cd6e77845898734f627cb39b787efa50d165ccd537ee5b1",
+  "cacoLauncherDrift": false,
+  "piDaemonService": "Running",
+  "piDaemonOwnerPid": 3305330,
+  "piDaemonPackageStore": "/nix/store/n1hp1qcvp8mxwkdj9w7lgq3vm7jx9fcs-pi-daemon-0.3.0",
+  "piDaemonPackageNarHash": "sha256-lzPvgFZVwtf0uhmCC57VHLSgutf7QdFQX08vztEyua8=",
+  "piDaemonVersionOutput": "0.3.0",
+  "piDaemonSourceRevisionCertifiedByCoordinator": "78171cbe",
+  "piDaemonApiAuthority": "100.92.92.73:7466",
+  "piDaemonApiUnauthenticatedStatus": "401",
+  "piDaemonWebAuthority": "127.0.0.1:7467",
+  "piDaemonWebHealthStatus": "404",
+  "bearerRead": false,
+  "bearerEmitted": false
+}

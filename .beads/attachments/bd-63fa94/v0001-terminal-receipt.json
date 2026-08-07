@@ -1,0 +1,93 @@
+{
+  "schemaVersion": 1,
+  "bead": "bd-63fa94",
+  "agent": "94b85204f22c0a73",
+  "node": "ms-dev-4",
+  "status": "environment_failed",
+  "terminal": true,
+  "rerunAuthorized": false,
+  "proofInvocationCount": 1,
+  "proofExitStatus": 70,
+  "proofStartedAt": "2026-08-07T23:12:53Z",
+  "proofCompletedAt": "2026-08-07T23:18:29Z",
+  "sourceRevision": "78171cbe6ac77c97b551871181c07dc47a1b8678",
+  "trueMainExactAtStart": true,
+  "sourceEdited": false,
+  "lockedNpmMaterialization": true,
+  "liveCanary": {
+    "cacoVersion": "1.2.1607",
+    "piDaemonPackage": "/nix/store/n1hp1qcvp8mxwkdj9w7lgq3vm7jx9fcs-pi-daemon-0.3.0",
+    "piDaemonPackageNarHash": "sha256-lzPvgFZVwtf0uhmCC57VHLSgutf7QdFQX08vztEyua8=",
+    "sourceRevisionCertifiedByCoordinator": "78171cbe",
+    "serviceRunning": true,
+    "apiAuthority": "100.92.92.73:7466",
+    "apiUnauthenticatedReachabilityStatus": 401,
+    "bearerRead": false
+  },
+  "physicalPreflight": {
+    "hostArchitecture": "x86_64",
+    "kvmReadable": true,
+    "kvmWritable": true,
+    "kvmUsable": true,
+    "emulatorVersion": "36.6.11.0",
+    "adbVersion": "37.0.0-14910828",
+    "emulatorAbi": "x86_64",
+    "adbServerIsolated": true,
+    "adbServerPort": 42096,
+    "adbPublicKeyPayloadSha256": "sha256:cd3a9aa6fc5628d4604cfb8774d6a7ab7170d6d3a2174524872d7d89d17b396f",
+    "emulatorConsolePort": 5562,
+    "emulatorAdbPort": 5563,
+    "adbTransportExplicitlyConnected": true,
+    "adbReadyAfterSeconds": 135,
+    "deviceAbiExact": true,
+    "bootCompleted": true
+  },
+  "failure": {
+    "phase": "initial_emulator_ui_health_probe_before_apk_install",
+    "safeClassification": "app_failure_modal",
+    "systemUiWaitUsed": false,
+    "systemUiOccurrences": 0,
+    "piDroidInstalled": false,
+    "reason": "the stock fail-closed UI health gate detected a non-SystemUI application failure modal immediately after cold boot"
+  },
+  "acceptance": {
+    "readonlyHydration": "not_run",
+    "observerReady": "not_run",
+    "controllerGrant": "not_run",
+    "uniquePrompt": "not_run",
+    "tree": "not_run",
+    "tui": "not_run",
+    "daemonLossIndeterminateNoReplay": "not_run",
+    "reconnectNewIdentity": "not_run",
+    "notifications": "not_run"
+  },
+  "evidence": {
+    "nodeBuildLog": true,
+    "androidBuildLog": true,
+    "daemonLog": true,
+    "emulatorLog": true,
+    "adbDiagnostics": true,
+    "systemUiHealthLog": true,
+    "screenshots": 0,
+    "video": false,
+    "appLogcat": false,
+    "missingEvidenceReason": "the gate failed before APK install and before screenshot, video pull, or app-logcat capture",
+    "artifactManifest": "artifact-sha256sums.txt",
+    "artifactManifestSha256": "sha256:6086a8569937f619c6e7603487688229b329a36111c2ae669964789da7c0ee36"
+  },
+  "secrecy": {
+    "bearerChannelPatternMatches": 0,
+    "hex64WithoutHashContext": 0,
+    "exactDisposableBearerEqualityScan": false,
+    "exactScanReason": "stock harness early-exit ordering destroys the private token before its end-of-run exact equality scan",
+    "privateBearerRetained": false
+  },
+  "cleanup": {
+    "proofProcessMatches": 0,
+    "allRunOwnedPortsClosed": true,
+    "sourceCheckoutClean": true
+  },
+  "playMutation": false,
+  "signedArtifactBuildOrUpload": false,
+  "disposition": "stop_without_rerun_and_return_exact_environment_failure_receipt"
+}

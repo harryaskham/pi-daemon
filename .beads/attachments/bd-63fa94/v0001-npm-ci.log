@@ -1,0 +1,20 @@
+started_at=2026-08-07T23:10:21Z
+command=nix develop .#androidRelease --command npm ci --ignore-scripts
+pi-droid release shell: Android API 36, build-tools 36.0.0, Java openjdk version "21.0.12" 2026-07-21
+npm warn deprecated node-domexception@1.0.0: Use your platform's native DOMException instead
+
+added 243 packages, and audited 245 packages in 28s
+
+41 packages are looking for funding
+  run `npm fund` for details
+
+6 vulnerabilities (2 moderate, 4 high)
+
+To address issues that do not require attention, run:
+  npm audit fix
+
+To address all issues (including breaking changes), run:
+  npm audit fix --force
+
+Run `npm audit` for details.
+completed_at=2026-08-07T23:10:52Z

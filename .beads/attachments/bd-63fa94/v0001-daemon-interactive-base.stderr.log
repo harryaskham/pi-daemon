@@ -1,0 +1,2 @@
+{"event":"pi_droid_disposable_ready","port":49152,"hostInstanceId":"pidroid-ca4e230a-f486-48c0-8efb-6211799c9701"}
+{"event":"pi_droid_disposable_stopping","signal":"SIGTERM"}

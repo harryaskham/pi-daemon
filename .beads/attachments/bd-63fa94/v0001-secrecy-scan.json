@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "scanScope": "all retained proof and preflight files, excluding generated terminal/manifests",
+  "scannedFiles": 16,
+  "scannedBytes": 18493,
+  "bearerChannelPatternMatches": {
+    "authorizationBearer": 0,
+    "jsonOrAssignmentBearer": 0,
+    "pairingEnvelope": 0,
+    "bearerEnvironment": 0
+  },
+  "bearerChannelPatternMatchTotal": 0,
+  "hex64Occurrences": 10,
+  "sha256ManifestOccurrences": 3,
+  "hex64WithoutHashContext": 0,
+  "result": "zero_bearer_channel_patterns",
+  "exactDisposableBearerEqualityScan": false,
+  "exactScanReason": "the stock harness exits before its final equality scan on an early UI-health failure and destroys the private token in its EXIT trap",
+  "privateBearerMaterialRetained": false
+}

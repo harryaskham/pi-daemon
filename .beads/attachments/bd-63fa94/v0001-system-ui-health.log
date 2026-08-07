@@ -1,0 +1,2 @@
+status=initialized system_ui_wait_limit=1 recovery_attempt_limit=15 logcat_byte_limit=1048576
+status=app_failure_modal phase=ui_wait wait_used=false occurrences=0
