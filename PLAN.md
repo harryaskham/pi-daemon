@@ -508,6 +508,10 @@ process appears per wake.
   proof waits, retain XML/screenshot/safe-logcat hashes, choose Wait at most once,
   require SystemUI process/readiness recovery, and give Pi Droid fatal/ANR evidence
   fail-closed precedence without dismissing arbitrary application failures.
+- [x] `bd-792a59` Make every physical-proof exit stop its owned processes and scan
+  retained text for the exact disposable bearer before token destruction; retain
+  bounded owner-private normalized XML, screenshot, redacted logcat and safe
+  identity hashes for unrelated app-failure modals without dismissing them.
 - [x] `bd-988946` Make Android fast verification self-contained by exposing the
   flake-pinned Python runtime to both plain Node CI versions and executing the
   Java environment export directly in its pinned Nix shell without nested quote

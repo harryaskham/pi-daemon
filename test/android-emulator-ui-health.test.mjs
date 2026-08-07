@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -28,26 +29,54 @@ test("captured System UI ANR is exact and Pi Droid failures take precedence", as
     const arbitraryLogcat = path.join(sandbox, "arbitrary.log");
     const arbitraryXml = path.join(sandbox, "arbitrary.xml");
     const crashXml = path.join(sandbox, "crash.xml");
+    const googleLogcat = path.join(sandbox, "google.log");
     const nativeFatalLogcat = path.join(sandbox, "native-fatal.log");
     const oversizedLogcat = path.join(sandbox, "oversized.log");
     const spoofedXml = path.join(sandbox, "spoofed.xml");
     const capturedXml = await readFile(systemUiXml, "utf8");
     await writeFile(emptyLogcat, "");
-    await writeFile(arbitraryLogcat, "08-05 12:14:18.003 1124 1367 E ActivityManager: ANR in com.example.maps\n");
+    await writeFile(arbitraryLogcat, "08-05 12:14:18.003 1124 1367 E ActivityManager: ANR in com.example.maps\n08-05 12:14:18.004 raw sensitive-token=S3CR3T path=/private/modal\n");
     await writeFile(arbitraryXml, capturedXml.replace("System UI isn't responding", "Maps isn't responding"));
     await writeFile(crashXml, '<hierarchy><node package="android" text="Maps keeps stopping" bounds="[0,0][1080,2400]" /></hierarchy>');
+    await writeFile(googleLogcat, "08-05 12:14:18.003 1124 1367 E ActivityManager: ANR in com.google.android.gms\n");
     await writeFile(nativeFatalLogcat, "08-05 12:14:18.101 2488 2488 F libc: Fatal signal 6 (SIGABRT), code -1 in tid 2488, pid 2488 (com.harryaskham.pidroid)\n");
     await writeFile(oversizedLogcat, "x".repeat(1_048_577));
     await writeFile(spoofedXml, capturedXml.replaceAll('package="android"', 'package="com.example.spoof"'));
 
+    const mapsIdentity = createHash("sha256").update("com.example.maps").digest("hex");
+    const googleIdentity = createHash("sha256").update("com.google.android.gms").digest("hex");
+    const mapsTitleIdentity = createHash("sha256").update("Maps keeps stopping").digest("hex");
+    const systemTitleIdentity = createHash("sha256").update("System UI isn't responding").digest("hex");
+    const appFailureClassification = `other_app_failure_modal identity_source=logcat_package identity_class=third_party identity_sha256=sha256:${mapsIdentity}`;
     assert.equal(classify(systemUiXml, systemUiLogcat), "system_ui_anr 768 1406");
     assert.equal(classify(systemUiXml, pidroidFatalLogcat), "pidroid_app_failure");
     assert.equal(classify(systemUiXml, nativeFatalLogcat), "pidroid_app_failure");
-    assert.equal(classify(arbitraryXml, arbitraryLogcat), "other_app_failure_modal");
-    assert.equal(classify(crashXml, emptyLogcat), "other_app_failure_modal");
+    assert.equal(classify(arbitraryXml, arbitraryLogcat), appFailureClassification);
+    assert.equal(classify(arbitraryXml, googleLogcat), `other_app_failure_modal identity_source=logcat_package identity_class=google_system identity_sha256=sha256:${googleIdentity}`);
+    assert.equal(classify(crashXml, emptyLogcat), `other_app_failure_modal identity_source=dialog_title identity_class=unknown identity_sha256=sha256:${mapsTitleIdentity}`);
     assert.equal(classify(spoofedXml, systemUiLogcat), "healthy");
-    assert.equal(classify(systemUiXml, emptyLogcat), "other_app_failure_modal");
+    assert.equal(classify(systemUiXml, emptyLogcat), `other_app_failure_modal identity_source=dialog_title identity_class=unknown identity_sha256=sha256:${systemTitleIdentity}`);
     assert.equal(classify(systemUiXml, oversizedLogcat), "ui_unavailable");
+
+    const safeXml = path.join(sandbox, "safe-window.xml");
+    const safeLogcat = path.join(sandbox, "safe-logcat.txt");
+    const evidenceOutput = execFileSync(
+      "python3",
+      [classifier, arbitraryXml, arbitraryLogcat, "--write-app-failure-evidence", safeXml, safeLogcat],
+      { encoding: "utf8" },
+    ).trim();
+    assert.equal(evidenceOutput, appFailureClassification);
+    const [normalizedXml, normalizedLogcat] = await Promise.all([
+      readFile(safeXml, "utf8"),
+      readFile(safeLogcat, "utf8"),
+    ]);
+    assert.match(normalizedXml, new RegExp(`status="app_failure_modal"[^>]*modal-kind="not_responding"[^>]*identity-source="logcat_package"[^>]*identity-class="third_party"[^>]*identity-sha256="sha256:${mapsIdentity}"`));
+    assert.match(normalizedXml, /raw-content-retained="false"/);
+    assert.match(normalizedLogcat, /status=app_failure_modal\nevent_kind=anr\nidentity_source=logcat_package\nidentity_class=third_party/);
+    assert.match(normalizedLogcat, new RegExp(`identity_sha256=sha256:${mapsIdentity}`));
+    for (const safeEvidence of [normalizedXml, normalizedLogcat]) {
+      assert.doesNotMatch(safeEvidence, /Maps|com\.example\.maps|S3CR3T|private\/modal|sensitive-token/);
+    }
   } finally {
     await rm(sandbox, { recursive: true, force: true });
   }
@@ -75,13 +104,17 @@ from pathlib import Path
 import sys
 Path(sys.argv[2]).write_text(Path(sys.argv[1]).read_text().replace("System UI isn't responding", "Maps isn't responding"))
 PY
-printf '%s\n' '08-05 12:14:18.003 1124 1367 E ActivityManager: ANR in com.example.maps' > "$arbitrary_log"
+{
+  printf '%s\n' '08-05 12:14:18.003 1124 1367 E ActivityManager: ANR in com.example.maps'
+  printf '%s\n' '08-05 12:14:18.004 raw sensitive-token=S3CR3T path=/private/modal'
+} > "$arbitrary_log"
 case_number=0
 current_log="$system_log"
 next_xml="$healthy_xml"
 ready='true'
 tap_calls=0
 dump_calls=0
+oversized_screenshot='false'
 events=''
 new_case() {
   case_number=$((case_number + 1))
@@ -93,6 +126,7 @@ new_case() {
   tap_calls=0
   dump_calls=0
   ready='true'
+  oversized_screenshot='false'
   initialize_emulator_ui_health "$private" "$artifacts"
 }
 capture_emulator_ui_logcat() {
@@ -105,7 +139,11 @@ classify_emulator_ui_health() {
 }
 capture_emulator_ui_screenshot() {
   printf '%s\n' screenshot >> "$events"
-  printf '%s\n' 'bounded-fixture-screenshot' > "$1"
+  if [[ "$oversized_screenshot" == 'true' ]]; then
+    truncate -s 16777217 "$1"
+  else
+    printf '%s\n' 'bounded-fixture-screenshot' > "$1"
+  fi
 }
 dump_emulator_ui_window() {
   dump_calls=$((dump_calls + 1))
@@ -164,7 +202,33 @@ check_emulator_ui_health "$arbitrary_xml" || arbitrary_status=$?
 [[ "$arbitrary_status" == 1 ]]
 [[ "$tap_calls" == 0 ]]
 [[ "$emulator_system_ui_occurrences" == 0 ]]
-grep -Fq 'status=app_failure_modal phase=ui_wait wait_used=false occurrences=0' "$artifacts/system-ui-health.log"
+[[ "$emulator_app_failure_occurrences" == 1 ]]
+grep -Fq 'status=app_failure_modal phase=ui_wait wait_used=false occurrences=0 app_failure_occurrences=1' "$artifacts/system-ui-health.log"
+grep -Fxq 'status=app_failure_modal' "$artifacts/app-failure-evidence/occurrence-1/evidence.txt"
+grep -Fxq 'identity_source=logcat_package' "$artifacts/app-failure-evidence/occurrence-1/evidence.txt"
+grep -Fxq 'identity_class=third_party' "$artifacts/app-failure-evidence/occurrence-1/evidence.txt"
+grep -Eq '^identity_sha256=sha256:[0-9a-f]{64}$' "$artifacts/app-failure-evidence/occurrence-1/evidence.txt"
+grep -Eq '^xml_sha256=sha256:[0-9a-f]{64}$' "$artifacts/app-failure-evidence/occurrence-1/evidence.txt"
+grep -Eq '^screenshot_sha256=sha256:[0-9a-f]{64}$' "$artifacts/app-failure-evidence/occurrence-1/evidence.txt"
+grep -Eq '^safe_logcat_sha256=sha256:[0-9a-f]{64}$' "$artifacts/app-failure-evidence/occurrence-1/evidence.txt"
+grep -Fq 'raw-content-retained="false"' "$artifacts/app-failure-evidence/occurrence-1/window.xml"
+grep -Fxq 'raw_logcat_retained=false' "$artifacts/app-failure-evidence/occurrence-1/safe-logcat.txt"
+! grep -ERq 'Maps|com\.example\.maps|S3CR3T|private/modal|sensitive-token' "$artifacts/app-failure-evidence"
+[[ "$(stat -c '%a' "$artifacts/app-failure-evidence/occurrence-1")" == 700 ]]
+[[ "$(stat -c '%a' "$artifacts/app-failure-evidence/occurrence-1/window.xml")" == 600 ]]
+[[ "$(stat -c '%a' "$artifacts/app-failure-evidence/occurrence-1/screenshot.png")" == 600 ]]
+[[ "$(stat -c '%a' "$artifacts/app-failure-evidence/occurrence-1/safe-logcat.txt")" == 600 ]]
+
+new_case
+current_log="$arbitrary_log"
+next_xml="$healthy_xml"
+oversized_screenshot='true'
+oversized_status=0
+check_emulator_ui_health "$arbitrary_xml" || oversized_status=$?
+[[ "$oversized_status" == 1 ]]
+[[ "$tap_calls" == 0 ]]
+[[ ! -e "$artifacts/app-failure-evidence/occurrence-1" ]]
+grep -Fq 'status=system_ui_unhealthy phase=app_failure_evidence wait_used=false occurrences=0 app_failure_occurrences=1' "$artifacts/system-ui-health.log"
 
 new_case
 current_log="$system_log"
@@ -211,7 +275,13 @@ test("interactive and readonly harnesses run the shared guard before selectors a
   assert.match(parser, /FATAL EXCEPTION:/);
   assert.match(parser, /SYSTEM_UI_PACKAGE = "com\.android\.systemui"/);
   assert.match(parser, /SYSTEM_DIALOG_PACKAGE = "android"/);
+  assert.match(parser, /identity_source=\{metadata\['identity_source'\]\}/);
+  assert.match(parser, /raw-content-retained/);
+  assert.match(parser, /raw_logcat_retained=false/);
   assert.match(guard, /system_ui_wait_limit=1 recovery_attempt_limit=15 logcat_byte_limit=1048576/);
+  assert.match(guard, /app_failure_screenshot_byte_limit=16777216/);
+  assert.match(guard, /capture_app_failure_modal_evidence/);
+  assert.match(guard, /app-failure-evidence/);
   assert.match(guard, /timeout 10 "\$\{isolated_adb_command\[@\]\}" -s "\$emulator_device_serial"/);
   assert.match(guard, /logcat -d -v threadtime -t 4096/);
   assert.match(guard, /head -c 1048576/);
@@ -224,6 +294,7 @@ test("interactive and readonly harnesses run the shared guard before selectors a
 
   for (const harness of [interactive, readonly]) {
     assert.match(harness, /source "\$repo_root\/android\/build-logic\/emulator-ui-health\.sh"/);
+    assert.match(harness, /source "\$repo_root\/android\/build-logic\/physical-proof-lifecycle\.sh"/);
     assert.ok(harness.indexOf("initialize_emulator_ui_health") < harness.indexOf("emulator -avd pi-droid-live"));
     assert.ok(harness.indexOf("probe_emulator_ui_health || exit 70") < harness.indexOf('install -r "$apk"'));
     const waitBody = harness.slice(harness.indexOf("wait_ui() {"), harness.indexOf("\n}\n", harness.indexOf("wait_ui() {")));

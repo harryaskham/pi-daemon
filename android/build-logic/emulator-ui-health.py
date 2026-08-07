@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import re
 import sys
 import xml.etree.ElementTree as ET
@@ -18,6 +19,9 @@ SYSTEM_UI_TITLES = (
     "System UI isn't responding",
     "System UI isn’t responding",
 )
+PACKAGE_PATTERN = r"[A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)+"
+SAFE_IDENTITY_SOURCES = frozenset({"logcat_package", "dialog_title"})
+SAFE_IDENTITY_CLASSES = frozenset({"android_system", "google_system", "third_party", "unknown"})
 
 
 def logcat_has_anr(logcat: str, package: str) -> bool:
@@ -97,20 +101,138 @@ def clickable_center(root: ET.Element, label: str, package: str) -> tuple[int, i
     return ((left + right) // 2, (top + bottom) // 2)
 
 
-def failure_modal_present(root: ET.Element) -> bool:
+def failure_modal_titles(root: ET.Element) -> list[str]:
     titles = [
         node.attrib.get("text", "")
         for node in root.iter("node")
         if node.attrib.get("package") == SYSTEM_DIALOG_PACKAGE
     ]
-    return any(
-        title.endswith(" isn't responding")
+    return [
+        title
+        for title in titles
+        if title.endswith(" isn't responding")
         or title.endswith(" isn’t responding")
         or title.endswith(" keeps stopping")
         or title.endswith(" has stopped")
         or title.endswith(" has stopped.")
-        for title in titles
+    ]
+
+
+def failure_modal_present(root: ET.Element) -> bool:
+    return bool(failure_modal_titles(root))
+
+
+def logcat_failure_packages(logcat: str) -> list[str]:
+    patterns = (
+        re.compile(rf"\bANR in ({PACKAGE_PATTERN})(?=$|[\s/:()])", re.MULTILINE),
+        re.compile(rf"\bProcess: ({PACKAGE_PATTERN}),\s*PID:\s*\d+\b"),
+        re.compile(rf"\bFatal signal\s+\d+\b[^\n]*\(({PACKAGE_PATTERN})\)(?:\s|$)", re.IGNORECASE),
     )
+    packages: list[str] = []
+    for pattern in patterns:
+        packages.extend(match.group(1) for match in pattern.finditer(logcat))
+    return packages
+
+
+def safe_package_class(package: str | None) -> str:
+    if package is None:
+        return "unknown"
+    if package.startswith("com.google.android."):
+        return "google_system"
+    if package == "android" or package.startswith("com.android."):
+        return "android_system"
+    return "third_party"
+
+
+def modal_kind(title: str) -> str:
+    if title.endswith(" isn't responding") or title.endswith(" isn’t responding"):
+        return "not_responding"
+    if title.endswith(" keeps stopping"):
+        return "keeps_stopping"
+    if title.endswith(" has stopped") or title.endswith(" has stopped."):
+        return "has_stopped"
+    return "unknown"
+
+
+def app_failure_metadata(root: ET.Element, logcat: str) -> dict[str, str]:
+    packages = [package for package in logcat_failure_packages(logcat) if package not in PIDROID_PACKAGES]
+    titles = failure_modal_titles(root)
+    if packages:
+        identity_source = "logcat_package"
+        identity = packages[-1]
+        identity_class = safe_package_class(identity)
+    else:
+        identity_source = "dialog_title"
+        identity = titles[0] if titles else "unknown"
+        identity_class = "unknown"
+    return {
+        "identity_source": identity_source,
+        "identity_class": identity_class,
+        "identity_sha256": f"sha256:{hashlib.sha256(identity.encode('utf-8')).hexdigest()}",
+        "modal_kind": modal_kind(titles[0]) if titles else "unknown",
+    }
+
+
+def format_app_failure_classification(metadata: dict[str, str]) -> str:
+    return (
+        "other_app_failure_modal "
+        f"identity_source={metadata['identity_source']} "
+        f"identity_class={metadata['identity_class']} "
+        f"identity_sha256={metadata['identity_sha256']}"
+    )
+
+
+def write_app_failure_evidence(xml_text: str, logcat: str, safe_xml: Path, safe_logcat: Path) -> str:
+    root = ET.fromstring(xml_text)
+    state, _ = classify(xml_text, logcat)
+    if state != "other_app_failure_modal":
+        raise ValueError("not_app_failure_modal")
+    metadata = app_failure_metadata(root, logcat)
+    if (
+        metadata["identity_source"] not in SAFE_IDENTITY_SOURCES
+        or metadata["identity_class"] not in SAFE_IDENTITY_CLASSES
+    ):
+        raise ValueError("unsafe_identity")
+    raw_xml = xml_text.encode("utf-8")
+    raw_logcat = logcat.encode("utf-8")
+    normalized = ET.Element(
+        "app-failure-modal",
+        {
+            "schema-version": "1",
+            "status": "app_failure_modal",
+            "modal-kind": metadata["modal_kind"],
+            "identity-source": metadata["identity_source"],
+            "identity-class": metadata["identity_class"],
+            "identity-sha256": metadata["identity_sha256"],
+            "raw-xml-bytes": str(len(raw_xml)),
+            "raw-xml-sha256": f"sha256:{hashlib.sha256(raw_xml).hexdigest()}",
+            "raw-content-retained": "false",
+        },
+    )
+    safe_xml.write_text(ET.tostring(normalized, encoding="unicode") + "\n")
+    if re.search(r"\bANR in ", logcat):
+        event_kind = "anr"
+    elif "FATAL EXCEPTION:" in logcat or "Fatal signal" in logcat:
+        event_kind = "fatal"
+    else:
+        event_kind = "dialog_only"
+    safe_logcat.write_text(
+        "\n".join(
+            (
+                "schema_version=1",
+                "status=app_failure_modal",
+                f"event_kind={event_kind}",
+                f"identity_source={metadata['identity_source']}",
+                f"identity_class={metadata['identity_class']}",
+                f"identity_sha256={metadata['identity_sha256']}",
+                f"raw_logcat_bytes={len(raw_logcat)}",
+                f"raw_logcat_sha256=sha256:{hashlib.sha256(raw_logcat).hexdigest()}",
+                "raw_logcat_retained=false",
+            )
+        )
+        + "\n"
+    )
+    return format_app_failure_classification(metadata)
 
 
 def classify(xml_text: str, logcat: str) -> tuple[str, tuple[int, int] | None]:
@@ -151,17 +273,32 @@ def read_bounded(path: Path) -> str:
 
 
 def main(argv: list[str]) -> int:
-    if len(argv) != 3:
-        print("usage: emulator-ui-health.py XML LOGCAT", file=sys.stderr)
+    evidence_mode = len(argv) == 6 and argv[3] == "--write-app-failure-evidence"
+    if len(argv) != 3 and not evidence_mode:
+        print(
+            "usage: emulator-ui-health.py XML LOGCAT "
+            "[--write-app-failure-evidence SAFE_XML SAFE_LOGCAT]",
+            file=sys.stderr,
+        )
         return 64
     try:
         xml_text = read_bounded(Path(argv[1]))
         logcat = read_bounded(Path(argv[2]))
     except (OSError, ValueError):
-        print("ui_unavailable")
+        print("evidence_unavailable" if evidence_mode else "ui_unavailable")
+        return 70 if evidence_mode else 0
+    if evidence_mode:
+        try:
+            print(write_app_failure_evidence(xml_text, logcat, Path(argv[4]), Path(argv[5])))
+        except (OSError, ValueError, ET.ParseError):
+            print("evidence_unavailable")
+            return 70
         return 0
     state, center = classify(xml_text, logcat)
-    if center is None:
+    if state == "other_app_failure_modal":
+        root = ET.fromstring(xml_text)
+        print(format_app_failure_classification(app_failure_metadata(root, logcat)))
+    elif center is None:
         print(state)
     else:
         print(state, center[0], center[1])

@@ -6,6 +6,7 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "$repo_root/android/build-logic/emulator-adb-readiness.sh"
 source "$repo_root/android/build-logic/emulator-ui-health.sh"
 source "$repo_root/android/build-logic/isolated-adb-server.sh"
+source "$repo_root/android/build-logic/physical-proof-lifecycle.sh"
 artifacts_dir=''
 
 while [[ $# -gt 0 ]]; do
@@ -45,25 +46,26 @@ adb_server_started='false'
 adb_key_home=''
 adb_public_key_payload_sha256=''
 screenrecord_pid=''
+token_file=''
+disposable_bearer_created='false'
+physical_proof_bearer_scan_complete='false'
+physical_proof_bearer_scan_status=70
 cleanup() {
-  if [[ -n "$screenrecord_pid" ]] && kill -0 "$screenrecord_pid" 2>/dev/null; then
-    kill -INT "$screenrecord_pid" 2>/dev/null || true
-    wait "$screenrecord_pid" 2>/dev/null || true
+  local original_status="${1:-$?}"
+  local scan_status=0
+  local final_status="$original_status"
+  trap - EXIT
+  set +e
+  stop_physical_proof_owned_processes
+  run_physical_proof_bearer_scan
+  scan_status=$?
+  if (( scan_status != 0 )); then
+    final_status="$scan_status"
   fi
-  if [[ -n "$daemon_pid" ]] && kill -0 "$daemon_pid" 2>/dev/null; then
-    kill "$daemon_pid" 2>/dev/null || true
-    wait "$daemon_pid" 2>/dev/null || true
-  fi
-  # The emulator process is owned by PID and console port; never route process
-  # cleanup through the TCP device transport or a shared ADB server.
-  if [[ -n "$emulator_pid" ]] && kill -0 "$emulator_pid" 2>/dev/null; then
-    kill "$emulator_pid" 2>/dev/null || true
-    wait "$emulator_pid" 2>/dev/null || true
-  fi
-  stop_isolated_adb_server
-  rm -rf "$private_dir"
+  rm -rf "$private_dir" || final_status=70
+  exit "$final_status"
 }
-trap cleanup EXIT
+trap 'cleanup "$?"' EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
@@ -133,6 +135,7 @@ emulator_abi='x86_64'
 } >> "$emulator_diagnostics"
 openssl rand -hex 32 > "$token_file"
 chmod 600 "$token_file"
+disposable_bearer_created='true'
 
 cd "$repo_root"
 npm run build:src > "$artifacts_dir/node-build.log" 2>&1
@@ -402,11 +405,8 @@ fi
 screenrecord_pid=''
 "${isolated_adb_command[@]}" -s "$emulator_device_serial" pull /sdcard/pi-droid-interactive.mp4 "$artifacts_dir/pi-droid-interactive.mp4" >/dev/null
 
-if grep -Fq "$(< "$token_file")" "$artifacts_dir"/*.log "$artifacts_dir"/*.txt 2>/dev/null; then
-  printf '%s\n' 'disposable bearer leaked into retained logs' >&2
-  exit 65
-fi
-
+# Finalize every run-owned writer before hashing and scanning retained evidence.
+stop_physical_proof_owned_processes
 cat > "$artifacts_dir/live-interactive-receipt.json" <<EOF
 {
   "schemaVersion": 1,
@@ -431,6 +431,8 @@ cat > "$artifacts_dir/live-interactive-receipt.json" <<EOF
   "systemUiRecoveryUsed": $emulator_system_ui_wait_used,
   "systemUiWaitLimit": 1,
   "piDroidLogcatGuard": true,
+  "disposableBearerRetainedTextScan": true,
+  "disposableBearerLeak": false,
   "observerReadyBeforeControl": true,
   "observerDeniedUntilGrant": true,
   "controllerGranted": true,
@@ -471,6 +473,13 @@ EOF
   fi
   sha256sum "${receipt_files[@]}" > live-interactive-sha256sums.txt
 )
+bearer_scan_status=0
+run_physical_proof_bearer_scan || bearer_scan_status=$?
+if (( bearer_scan_status != 0 )); then
+  rm -f "$artifacts_dir/live-interactive-receipt.json" "$artifacts_dir/live-interactive-sha256sums.txt"
+  printf '%s\n' 'disposable bearer retained-evidence scan failed' >&2
+  exit "$bearer_scan_status"
+fi
 find "$artifacts_dir" -type d -exec chmod 700 {} +
 find "$artifacts_dir" -type f -exec chmod 600 {} +
 printf 'Live interactive session verified: session=%s hostBefore=%s hostAfter=%s artifacts=%s\n' \

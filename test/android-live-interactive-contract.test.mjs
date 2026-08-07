@@ -388,6 +388,108 @@ printf '%s\n' 'fake_adb_contract=ok private_key_cleanup=ok'
   assert.doesNotMatch(output, /SENSITIVE|cHVibGlj|android-user|adbkey|private_root|sandbox/);
 });
 
+test("physical proof lifecycle scans exact bearer and leaves no owned process or port", () => {
+  const lifecyclePath = path.join(root, "android/build-logic/physical-proof-lifecycle.sh");
+  const output = execFileSync("bash", ["-c", String.raw`
+set -euo pipefail
+umask 077
+source "$1"
+repo_root="$2"
+sandbox="$(mktemp -d)"
+daemon_owned_pid=''
+emulator_owned_pid=''
+adb_owned_pid=''
+cleanup_fixture() {
+  for owned_pid in "$daemon_owned_pid" "$emulator_owned_pid" "$adb_owned_pid"; do
+    if [[ "$owned_pid" =~ ^[1-9][0-9]*$ ]] && kill -0 "$owned_pid" 2>/dev/null; then
+      kill -KILL "$owned_pid" 2>/dev/null || true
+      wait "$owned_pid" 2>/dev/null || true
+    fi
+  done
+  rm -rf "$sandbox"
+}
+trap cleanup_fixture EXIT
+private_dir="$sandbox/private"
+artifacts_dir="$sandbox/artifacts"
+mkdir -p "$private_dir" "$artifacts_dir"
+token_file="$private_dir/service-bearer"
+printf '%s\n' '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef' > "$token_file"
+disposable_bearer_created='true'
+physical_proof_bearer_scan_complete='false'
+physical_proof_bearer_scan_status=70
+printf '%s\n' 'bounded clean evidence' > "$artifacts_dir/proof.log"
+run_physical_proof_bearer_scan
+grep -Eq '^status=clean scanned_files=1 scanned_bytes=[0-9]+ skipped_binary_files=0$' "$artifacts_dir/bearer-scan.log"
+
+rm "$artifacts_dir/bearer-scan.log"
+physical_proof_bearer_scan_complete='false'
+cat "$token_file" > "$artifacts_dir/leak.log"
+leak_status=0
+run_physical_proof_bearer_scan || leak_status=$?
+[[ "$leak_status" == 65 ]]
+grep -Eq '^status=leak scanned_files=[0-9]+ scanned_bytes=[0-9]+ skipped_binary_files=0$' "$artifacts_dir/bearer-scan.log"
+! grep -Eq '[0-9a-f]{64}' "$artifacts_dir/bearer-scan.log"
+rm "$artifacts_dir/leak.log"
+
+start_listener() {
+  local label="$1"
+  local port_file="$sandbox/$label.port"
+  python3 - "$port_file" <<'PY' &
+import pathlib, socket, sys
+server = socket.socket()
+server.bind(("127.0.0.1", 0))
+server.listen()
+pathlib.Path(sys.argv[1]).write_text(str(server.getsockname()[1]))
+while True:
+    connection, _ = server.accept()
+    connection.close()
+PY
+  last_listener_pid=$!
+  for _ in $(seq 1 100); do
+    [[ -s "$port_file" ]] && return 0
+    kill -0 "$last_listener_pid" 2>/dev/null || return 1
+    sleep 0.01
+  done
+  return 1
+}
+start_listener daemon
+daemon_pid="$last_listener_pid"
+daemon_owned_pid="$daemon_pid"
+start_listener emulator
+emulator_pid="$last_listener_pid"
+emulator_owned_pid="$emulator_pid"
+start_listener adb
+adb_server_pid="$last_listener_pid"
+adb_owned_pid="$adb_server_pid"
+adb_server_started='true'
+screenrecord_pid=''
+stop_isolated_adb_server() {
+  physical_proof_stop_pid "$adb_server_pid" TERM 50
+  adb_server_pid=''
+  adb_server_started='false'
+}
+stop_physical_proof_owned_processes
+for owned_pid in "$daemon_owned_pid" "$emulator_owned_pid" "$adb_owned_pid"; do
+  ! kill -0 "$owned_pid" 2>/dev/null
+done
+python3 - "$sandbox/daemon.port" "$sandbox/emulator.port" "$sandbox/adb.port" <<'PY'
+import pathlib, socket, sys
+for path in sys.argv[1:]:
+    port = int(pathlib.Path(path).read_text())
+    with socket.socket() as probe:
+        probe.settimeout(0.2)
+        assert probe.connect_ex(("127.0.0.1", port)) != 0
+PY
+printf '%s\n' 'physical_proof_lifecycle=clean bearer_leak_exit=65 residual_processes=0 residual_ports=0'
+`, "physical-proof-lifecycle-test", lifecyclePath, root], {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+
+  assert.match(output, /physical_proof_lifecycle=clean bearer_leak_exit=65 residual_processes=0 residual_ports=0/);
+  assert.doesNotMatch(output, /0123456789abcdef|service-bearer|private|sandbox/);
+});
+
 test("readiness fixture failure context is bounded and secret-free", () => {
   const sensitiveContext = "sensitive-token=S3CR3T key=/private/path server=private-server ".repeat(100);
   const formatted = formatReadinessFixtureFailure({
@@ -613,11 +715,12 @@ printf '%s\n' 'fixture_sentinel_mode=blocking_fifo lifecycle=owned'
 });
 
 test("disposable interactive proof uses private identity bounded cleanup and physical evidence", async () => {
-  const [proof, readonlyProof, adbReadiness, isolatedAdb, adbSelector, selector, selectorFixture, server] = await Promise.all([
+  const [proof, readonlyProof, adbReadiness, isolatedAdb, lifecycle, adbSelector, selector, selectorFixture, server] = await Promise.all([
     source("android/build-logic/live-interactive-proof.sh"),
     source("android/build-logic/live-readonly-proof.sh"),
     source("android/build-logic/emulator-adb-readiness.sh"),
     source("android/build-logic/isolated-adb-server.sh"),
+    source("android/build-logic/physical-proof-lifecycle.sh"),
     source("android/build-logic/select-adb-server-port.py"),
     source("android/build-logic/uiautomator-control-center.py"),
     source("fixtures/android/uiautomator.request-control.xml"),
@@ -627,17 +730,16 @@ test("disposable interactive proof uses private identity bounded cleanup and phy
   assert.match(proof, /set -euo pipefail/);
   assert.match(proof, /umask 077/);
   assert.match(proof, /mktemp -d/);
-  assert.match(proof, /trap cleanup EXIT/);
+  assert.match(proof, /trap 'cleanup "\$\?"' EXIT/);
   assert.match(proof, /reserve_port_pair/);
   for (const harness of [proof, readonlyProof]) {
     assert.match(harness, /select-emulator-port-pair\.py/);
     assert.match(harness, /source "\$repo_root\/android\/build-logic\/isolated-adb-server\.sh"/);
+    assert.match(harness, /source "\$repo_root\/android\/build-logic\/physical-proof-lifecycle\.sh"/);
     assert.match(harness, /select-adb-server-port\.py/);
     assert.match(harness, /start_isolated_adb_server/);
-    assert.match(harness, /stop_isolated_adb_server/);
     assert.ok(harness.indexOf("start_isolated_adb_server") < harness.indexOf("avdmanager create avd"));
     assert.ok(harness.indexOf("start_isolated_adb_server") < harness.indexOf("emulator -avd pi-droid-live"));
-    assert.ok(harness.indexOf("stop_isolated_adb_server") < harness.indexOf('rm -rf "$private_dir"'));
     assert.doesNotMatch(harness, /reserve_port_pair 5600 5682/);
     assert.match(harness, /emulator_port < 5554 \|\| emulator_port > 5584/);
     assert.match(harness, /emulator_adb_port != emulator_port \+ 1/);
@@ -672,8 +774,16 @@ test("disposable interactive proof uses private identity bounded cleanup and phy
     assert.ok(harness.indexOf("emulator -avd pi-droid-live") < harness.indexOf("wait_for_emulator_adb"));
     assert.doesNotMatch(harness, /-s "\$emulator_device_serial" emu kill/);
     const cleanupBody = harness.slice(harness.indexOf("cleanup() {"), harness.indexOf("\n}", harness.indexOf("cleanup() {")));
-    assert.match(cleanupBody, /kill "\$emulator_pid"/);
-    assert.ok(cleanupBody.indexOf('kill "$emulator_pid"') < cleanupBody.indexOf("stop_isolated_adb_server"));
+    assert.match(cleanupBody, /stop_physical_proof_owned_processes/);
+    assert.match(cleanupBody, /run_physical_proof_bearer_scan/);
+    assert.ok(cleanupBody.indexOf("stop_physical_proof_owned_processes") < cleanupBody.indexOf("run_physical_proof_bearer_scan"));
+    assert.ok(cleanupBody.indexOf("run_physical_proof_bearer_scan") < cleanupBody.indexOf('rm -rf "$private_dir"'));
+    const receiptIndex = harness.indexOf('cat > "$artifacts_dir/live-');
+    const successStopIndex = harness.lastIndexOf("stop_physical_proof_owned_processes", receiptIndex);
+    const successScanIndex = harness.indexOf("run_physical_proof_bearer_scan", receiptIndex);
+    assert.ok(successStopIndex > cleanupBody.length && successStopIndex < receiptIndex);
+    assert.ok(successScanIndex > receiptIndex);
+    assert.match(harness, /rm -f "\$artifacts_dir\/live-[^"]+-receipt\.json" "\$artifacts_dir\/live-[^"]+-sha256sums\.txt"/);
     const readinessGate = harness.slice(
       harness.indexOf("adb_readiness_status=0"),
       harness.indexOf("booted=''", harness.indexOf("adb_readiness_status=0")),
@@ -685,6 +795,8 @@ test("disposable interactive proof uses private identity bounded cleanup and phy
     assert.doesNotMatch(harness, /adb\s+(?:kill-server|reconnect)\b/);
     assert.doesNotMatch(harness, /(?:ANDROID_ADB_SERVER_PORT|\b-P\s+)["']?5037/);
   }
+  assert.match(lifecycle, /stop_isolated_adb_server/);
+  assert.ok(lifecycle.indexOf("stop_physical_proof_owned_processes") < lifecycle.indexOf("run_physical_proof_bearer_scan"));
   assert.match(adbSelector, /ADB_SERVER_PORTS = tuple\(range\(42000, 42128\)\)/);
   assert.match(adbSelector, /random\.SystemRandom\(\)\.shuffle/);
   assert.match(isolatedAdb, /export ANDROID_ADB_SERVER_PORT="\$adb_server_port"/);
@@ -783,6 +895,9 @@ test("disposable interactive proof uses private identity bounded cleanup and phy
   assert.match(proof, /reconnected-controller-phone\.png/);
   assert.match(proof, /reconnected-controller-tablet\.png/);
   assert.match(proof, /live-interactive-sha256sums\.txt/);
+  assert.match(proof, /"disposableBearerRetainedTextScan": true/);
+  assert.match(proof, /"disposableBearerLeak": false/);
+  assert.match(lifecycle, /bearer-scan\.log/);
   assert.match(proof, /emulator-host-port-gate\.log/);
   assert.match(proof, /"hostPortGate": true/);
   assert.match(proof, /blindReplay\": false/);

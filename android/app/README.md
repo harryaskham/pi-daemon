@@ -62,7 +62,13 @@ proves observer denial, controller grant, one uniquely correlated prompt,
 redacted tree, TUI snapshot, in-flight disconnect to indeterminate, restart and
 a new unique prompt. It retains phone/tablet screenshots, bounded video and
 hashed daemon/app diagnostics; an architecture mismatch fails before an
-unbounded ADB wait. Upload uses Gradle Play Publisher's `IGNORE`
+unbounded ADB wait. Every success or early exit stops only its owned processes,
+scans all retained text for the exact disposable bearer before destroying the
+token, and leaves only a safe scan receipt. An unrelated app-failure modal is
+never dismissed: the fail-closed path retains owner-private normalized UI XML,
+a screenshot, a redacted logcat summary, safe identity class/hash metadata and
+content hashes without retaining the raw package, title or logcat text. Upload
+uses Gradle Play Publisher's `IGNORE`
 resolution for idempotent version-code retries, targets only `internal`, commits
 no wider rollout, and opens a separate read edit to verify the highest remote
 version and track.
