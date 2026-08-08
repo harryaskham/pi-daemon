@@ -1,0 +1,6 @@
+1ed1413e686c160c05f98cfc45a0b9358476312ec13f28634ef23b6d361dd5b7  ./canary-readiness-blocker.json
+380f2005a4ec4b6914a8deaa1845db99979f6034d1c0e7d215e071988161e402  ./external-canary-app-data-scan.log
+51c7f1ded243706c3e442e814f8ce53daf0fe0425600de69dd6f0045f1de443c  ./external-canary-cleanup.log
+fc690b52927adcdff79562de64aede83b26042426d5512ad6b316916c296c4bf  ./external-canary-preflight-failure.log
+eb844ef4d1f09e6e89ba2195be4abd9b46b8d7a2026b58c0925c2fec4d4ba7a1  ./terminal-receipt.json
+cbe6d1702c6b947de4c3f8e48559a5eb6df15b3ded88a90398154dbf50248b09  ./terminal-receipt.sha256

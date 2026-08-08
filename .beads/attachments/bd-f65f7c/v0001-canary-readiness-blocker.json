@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "status": "blocked_before_emulator",
+  "failurePhase": "managed_canary_readiness",
+  "failureCode": "tool_adapter_reprovision_required",
+  "hostInstanceIdSha256": "sha256:fd28d7c9317d4a8abd02a15467d27806a7a91651cd0e371d36dbb41df7aff9ae",
+  "ready": false,
+  "draining": false,
+  "activeTurns": 0,
+  "queuedTurns": 0,
+  "recovery": {
+    "phase": "degraded",
+    "failureCount": 1,
+    "failureCodes": {
+      "tool_adapter_reprovision_required": 1
+    },
+    "pendingReplays": 0,
+    "pendingMutationTickets": 0,
+    "indeterminateMutationTickets": 0,
+    "mutationRecoveryFailures": 0
+  },
+  "adapterReadiness": {
+    "ready": true,
+    "availableModels": 66,
+    "authenticatedModels": 66,
+    "authErrorCount": 0,
+    "authErrorCodes": []
+  },
+  "source": "owner_socket_read_only_probe",
+  "probeExit": 75
+}

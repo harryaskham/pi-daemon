@@ -1,0 +1,107 @@
+{
+  "schemaVersion": 1,
+  "beadId": "bd-f65f7c",
+  "status": "terminal_blocker",
+  "failurePhase": "authenticated_get_preflight_transcript",
+  "failureCode": "transcript_http_status",
+  "readinessFailureCode": "tool_adapter_reprovision_required",
+  "exitCode": 70,
+  "attempts": 1,
+  "rerun": false,
+  "sourceRevision": "9de7e210c046249ccb632fb5f03f5a84a97b3fcf",
+  "sourceTree": "0f2bc0d14dad36e745d86e79aa2735f46fa709ad",
+  "reviewedPreflight": "android/build-logic/external-canary-preflight.py",
+  "reviewedHarness": "android/build-logic/external-canary-proof.sh",
+  "fullHarnessInvoked": false,
+  "apiOrigin": "http://100.92.92.73:7466",
+  "insecureHttpExplicitlyAcknowledged": true,
+  "tokenFileMetadata": {
+    "regular": true,
+    "ownerUidMatched": true,
+    "mode": "0600",
+    "fileBytes": 44
+  },
+  "preflight": {
+    "requestsAttempted": 4,
+    "successfulResponses": 3,
+    "methodsAttempted": [
+      "GET"
+    ],
+    "capabilities": "verified",
+    "inventory": "verified",
+    "information": "verified",
+    "transcript": "http_status_failure",
+    "hostInstanceIdSha256": "sha256:fd28d7c9317d4a8abd02a15467d27806a7a91651cd0e371d36dbb41df7aff9ae",
+    "identityFence": {
+      "capabilitiesHostInstanceAccepted": true,
+      "inventoryHostInstanceMatched": true,
+      "informationHostInstanceMatched": true,
+      "selectedInventoryInformationMatched": true,
+      "transcriptHostInstanceMatched": false,
+      "transcriptInventoryIdentityMatched": false,
+      "stagingWritten": false,
+      "complete": false
+    },
+    "observerAttachEligibilityEvaluated": false
+  },
+  "readiness": {
+    "ready": false,
+    "recoveryPhase": "degraded",
+    "failureCount": 1,
+    "failureCodes": {
+      "tool_adapter_reprovision_required": 1
+    },
+    "activeTurns": 0,
+    "queuedTurns": 0,
+    "pendingReplays": 0,
+    "pendingMutationTickets": 0,
+    "indeterminateMutationTickets": 0,
+    "adapterReady": true,
+    "authenticatedModels": 66,
+    "authenticationErrors": 0
+  },
+  "execution": {
+    "stagingFileCreated": false,
+    "nodeBuildStarted": false,
+    "androidBuildStarted": false,
+    "emulatorStarted": false,
+    "adbServerStarted": false,
+    "appInstalled": false,
+    "appLaunched": false,
+    "observerAttached": false,
+    "managedMutationRequests": 0,
+    "daemonRestarted": false,
+    "serviceReprovisioned": false,
+    "playMutation": false,
+    "sourceEdited": false
+  },
+  "secrecy": {
+    "bearerInArgv": false,
+    "bearerInEnvironment": false,
+    "bearerPrinted": false,
+    "rawResponsesRetained": false,
+    "appPrivateScan": "not_installed",
+    "retainedExactAndPatternScan": "clean"
+  },
+  "cleanup": {
+    "status": "clean",
+    "runOwnedProcessesStarted": 0,
+    "runOwnedPortsSelected": 0,
+    "residualProcesses": 0,
+    "residualPorts": 0,
+    "adbServer": "not_started",
+    "emulator": "not_started",
+    "staging": "not_created"
+  },
+  "canonicalBlocker": {
+    "beadId": "bd-060163",
+    "accidentalDuplicateReconciled": "bd-f30aee"
+  },
+  "priorFailedBundle": {
+    "preserved": true,
+    "artifactDirectory": "/home/harryaskham/.cacophony/agents/pi-daemon/122b2afc1753bf33/artifacts/bd-247820-20260808T175639Z-122b2afc1753bf33",
+    "terminalReceiptSha256": "610624b724f8b03cf8b9bcbc18aa966468460ab85fb724a2687352e997c1e3d6",
+    "artifactManifestSha256": "86cd60c0df0e80b1d3712f5f29e1e483c24e1997e214e1b211e12b0e4675c757"
+  },
+  "artifactDirectory": "/home/harryaskham/.cacophony/agents/pi-daemon/a62aa0ca1f28cf9d/artifacts/bd-f65f7c-20260808T191214Z-a62aa0ca1f28cf9d"
+}
