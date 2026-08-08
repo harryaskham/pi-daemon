@@ -11,7 +11,11 @@ import {
   type JournalEntry,
   type RecoverySnapshot,
 } from "./durability.js";
-import type { SessionEnvironmentSummary, TicketResource } from "./session-api.js";
+import type {
+  SessionEnvironmentSummary,
+  SessionRecoveryCondition,
+  TicketResource,
+} from "./session-api.js";
 import { wakeTicketResource } from "./tickets.js";
 import type {
   OpenPayload,
@@ -139,6 +143,11 @@ export interface SessionSnapshot {
   idleForMs: number;
 }
 
+export interface RecoverySessionCondition extends SessionRecoveryCondition {
+  sessionId: string;
+  generation: number;
+}
+
 export interface RecoveryHealthSnapshot {
   phase: "not_started" | "recovering" | "ready" | "degraded";
   pendingReplays: number;
@@ -150,6 +159,7 @@ export interface RecoveryHealthSnapshot {
   indeterminateRequests: number;
   failureCount: number;
   failureCodes: Record<string, number>;
+  quarantinedSessions: RecoverySessionCondition[];
   startedAt?: string;
   completedAt?: string;
 }
@@ -179,6 +189,7 @@ export interface RecoveryReport {
   opened: string[];
   replayed: string[];
   pendingReplays: number;
+  quarantined: RecoverySessionCondition[];
   failures: Array<{ sessionId: string; code: string; message: string }>;
 }
 
@@ -364,6 +375,7 @@ export class Multiplexer {
   >();
   readonly #lifecycleTails = new Map<string, Promise<void>>();
   readonly #recoveryBlockedSessions = new Set<string>();
+  readonly #recoverySessionConditions = new Map<string, RecoverySessionCondition>();
   readonly #listeners = new Set<EventListener>();
   readonly #residencyLeases = new Map<string, Map<string, { generation: number; expiresAt: number }>>();
   readonly #logger: StructuredLogger;
@@ -384,6 +396,7 @@ export class Multiplexer {
     indeterminateRequests: 0,
     failureCount: 0,
     failureCodes: {},
+    quarantinedSessions: [],
   };
 
   constructor(options: {
@@ -523,6 +536,7 @@ export class Multiplexer {
     );
     const recoveryStartedAt = this.#now();
     const openDeadline = recoveryStartedAt + totalOpenTimeoutMs;
+    this.#recoverySessionConditions.clear();
     this.#recoveryHealth = {
       phase: "recovering",
       pendingReplays: 0,
@@ -534,6 +548,7 @@ export class Multiplexer {
       indeterminateRequests: 0,
       failureCount: 0,
       failureCodes: {},
+      quarantinedSessions: [],
       startedAt: new Date(recoveryStartedAt).toISOString(),
     };
 
@@ -553,6 +568,7 @@ export class Multiplexer {
       opened: [],
       replayed: [],
       pendingReplays: recovered.queued.length,
+      quarantined: [],
       failures: [],
     };
 
@@ -637,11 +653,9 @@ export class Multiplexer {
       }
       if (manifest.toolAdapter !== undefined) {
         restoredIds.add(record.sessionId);
-        report.failures.push({
-          sessionId: record.sessionId,
-          code: "tool_adapter_reprovision_required",
-          message: "host tool adapter capability must be re-provisioned after restart",
-        });
+        report.quarantined.push(
+          await this.#quarantineToolAdapterSession(record.sessionId, record.generation, record),
+        );
         continue;
       }
       let payload: SupportedOpenPayload;
@@ -742,11 +756,9 @@ export class Multiplexer {
         continue;
       }
       if (manifest.toolAdapter !== undefined) {
-        report.failures.push({
-          sessionId: manifest.sessionId,
-          code: "tool_adapter_reprovision_required",
-          message: "host tool adapter capability must be re-provisioned after restart",
-        });
+        report.quarantined.push(
+          await this.#quarantineToolAdapterSession(manifest.sessionId, manifest.generation),
+        );
         continue;
       }
       if (manifest.payload.session.mode === "memory") continue;
@@ -801,6 +813,7 @@ export class Multiplexer {
         indeterminateRequests: recovered.indeterminate.length,
         failureCount: report.failures.length,
         failureCodes,
+        quarantinedSessions: this.#recoveryConditions(),
         ...(completed ? { completedAt: new Date(this.#now()).toISOString() } : {}),
       };
     };
@@ -870,6 +883,52 @@ export class Multiplexer {
     }
     await replayQueued();
     return report;
+  }
+
+  async #quarantineToolAdapterSession(
+    sessionId: string,
+    generation: number,
+    record?: SessionCatalogRecord,
+  ): Promise<RecoverySessionCondition> {
+    const condition: RecoverySessionCondition = {
+      sessionId,
+      generation,
+      state: "reprovision_required",
+      code: "tool_adapter_reprovision_required",
+      retryable: true,
+    };
+    this.#recoverySessionConditions.set(sessionId, condition);
+    const current = record ?? this.#catalogRecords.get(sessionId);
+    if (
+      this.#catalog !== undefined &&
+      current?.generation === generation &&
+      (current.residency !== "dormant" ||
+        current.recovery?.state !== condition.state ||
+        current.recovery.code !== condition.code ||
+        current.recovery.retryable !== true)
+    ) {
+      const quarantined = await this.#catalog.markRecovery(sessionId, generation, {
+        state: condition.state,
+        code: condition.code,
+        retryable: true,
+      });
+      this.#catalogRecords.set(quarantined.sessionId, quarantined);
+    }
+    this.#recoveryHealth.quarantinedSessions = this.#recoveryConditions();
+    return structuredClone(condition);
+  }
+
+  #clearRecoverySessionCondition(sessionId: string, generation: number): void {
+    const condition = this.#recoverySessionConditions.get(sessionId);
+    if (condition?.generation !== generation) return;
+    this.#recoverySessionConditions.delete(sessionId);
+    this.#recoveryHealth.quarantinedSessions = this.#recoveryConditions();
+  }
+
+  #recoveryConditions(): RecoverySessionCondition[] {
+    return [...this.#recoverySessionConditions.values()]
+      .sort((left, right) => left.sessionId.localeCompare(right.sessionId))
+      .map((condition) => structuredClone(condition));
   }
 
   async waitForBackgroundRecovery(timeoutMs = 30_000): Promise<boolean> {
@@ -1182,6 +1241,7 @@ export class Multiplexer {
         controls: new Map(),
       };
       this.#sessions.set(command.sessionId, slot);
+      this.#clearRecoverySessionCondition(command.sessionId, command.generation);
       if (
         toolAdapterSummary === undefined &&
         retainedToolAdapter !== undefined &&
@@ -1476,6 +1536,7 @@ export class Multiplexer {
           await this.#catalog?.delete(retained.sessionId);
           this.#catalogRecords.delete(retained.sessionId);
           this.#toolAdapterPolicies.delete(retained.sessionId);
+          this.#clearRecoverySessionCondition(retained.sessionId, retained.generation);
           this.#emitProvisional(
             retained.sessionId,
             retained.generation,
@@ -1511,7 +1572,10 @@ export class Multiplexer {
       this.#emit(slot, "sessionClosed", command.requestId, { retainSession: retainArtifacts });
       this.#sessions.delete(command.sessionId);
       this.#residencyLeases.delete(command.sessionId);
-      if (!retainArtifacts) this.#toolAdapterPolicies.delete(command.sessionId);
+      if (!retainArtifacts) {
+        this.#toolAdapterPolicies.delete(command.sessionId);
+        this.#clearRecoverySessionCondition(command.sessionId, command.generation);
+      }
       this.metrics.increment("sessions_closed");
       this.#logger.write("info", "session_closed", {
         sessionId: command.sessionId,
@@ -1600,6 +1664,7 @@ export class Multiplexer {
     }
     try {
       const next = await this.#catalog.replace(current.sessionId, input);
+      this.#clearRecoverySessionCondition(current.sessionId, current.generation);
       this.#catalogRecords.set(next.sessionId, next);
       this.#emitProvisional(
         next.sessionId,
@@ -1662,6 +1727,7 @@ export class Multiplexer {
       await catalog.delete(latest.sessionId);
       this.#catalogRecords.delete(latest.sessionId);
       this.#toolAdapterPolicies.delete(latest.sessionId);
+      this.#clearRecoverySessionCondition(latest.sessionId, latest.generation);
       this.#emitProvisional(
         latest.sessionId,
         latest.generation,

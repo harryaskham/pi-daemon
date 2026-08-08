@@ -527,6 +527,26 @@
       },
       "additionalProperties": false
     },
+    "sessionRecoveryCondition": {
+      "type": "object",
+      "required": [
+        "state",
+        "code",
+        "retryable"
+      ],
+      "properties": {
+        "state": {
+          "const": "reprovision_required"
+        },
+        "code": {
+          "const": "tool_adapter_reprovision_required"
+        },
+        "retryable": {
+          "const": true
+        }
+      },
+      "additionalProperties": false
+    },
     "sessionLinks": {
       "type": "object",
       "required": [
@@ -614,6 +634,9 @@
         },
         "environment": {
           "$ref": "#/$defs/environmentSummary"
+        },
+        "recovery": {
+          "$ref": "#/$defs/sessionRecoveryCondition"
         },
         "lastTerminal": {
           "type": "object",
@@ -1127,6 +1150,7 @@
         "acp",
         "isolationModes",
         "authentication",
+        "host",
         "schedules",
         "blobTransfers"
       ],
@@ -1170,6 +1194,22 @@
         },
         "authentication": {
           "const": "service-bearer"
+        },
+        "host": {
+          "type": "object",
+          "required": [
+            "ready",
+            "draining"
+          ],
+          "properties": {
+            "ready": {
+              "type": "boolean"
+            },
+            "draining": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false
         },
         "schedules": {
           "oneOf": [

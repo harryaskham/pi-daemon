@@ -236,6 +236,42 @@ const openCommand = (sessionId = "catalog-session", generation = 1) => ({
   },
 });
 
+const hostToolOpenCommand = (hostInstanceId, sessionId = "adapter-session") => ({
+  ...openCommand(sessionId),
+  protocolVersion: "2.0",
+  payload: {
+    ...openCommand(sessionId).payload,
+    resources: {
+      ...openCommand(sessionId).payload.resources,
+      tools: {
+        mode: "host-adapter",
+        descriptor: {
+          protocolVersion: "1.0",
+          adapterId: "fixture-adapter",
+          adapterVersion: "1.2.3",
+          endpoint: { transport: "unix", path: "/run/user/1000/pi-tool-adapter.sock" },
+          binding: {
+            hostInstanceId,
+            sessionId,
+            generation: 1,
+            capabilityHandle: "fixture_capability_handle_0123456789",
+          },
+          operations: ["fs.list", "fs.read"],
+          limits: {
+            maxRequestBytes: 16_384,
+            maxResponseBytes: 65_536,
+            maxConcurrentRequests: 2,
+            maxQueuedRequests: 4,
+            requestTimeoutMs: 5_000,
+            maxIdempotencyKeys: 128,
+            idempotencyTtlMs: 60_000,
+          },
+        },
+      },
+    },
+  },
+});
+
 test("multiplexer catalogs open, terminal state, eviction, dormant reopen, update, and delete", async () => {
   const stateDir = await temporaryState();
   let now = 0;
@@ -520,6 +556,45 @@ test("multiplexer restart recovers catalog records and reopens durable manifests
     mode: "open",
     path: "/state/sessions/restart-session-1.jsonl",
   });
+});
+
+test("restart exposes lost host-adapter authority as a dormant typed recovery condition", async () => {
+  const stateDir = await temporaryState();
+  const first = new Multiplexer({
+    factory: new CatalogFactory(),
+    durability: new FileDurabilityStore({ stateDir }),
+    catalog: new FileSessionCatalog({ stateDir }),
+    hostInstanceId: "host-before-restart",
+  });
+  await first.recover();
+  await first.open(hostToolOpenCommand("host-before-restart"));
+
+  const factory = new CatalogFactory();
+  const restarted = new Multiplexer({
+    factory,
+    durability: new FileDurabilityStore({ stateDir }),
+    catalog: new FileSessionCatalog({ stateDir }),
+    hostInstanceId: "host-after-restart",
+  });
+  const report = await restarted.recover();
+  assert.deepEqual(report.opened, []);
+  assert.deepEqual(report.failures, []);
+  assert.equal(restarted.status().ready, true);
+  assert.equal(factory.requests.length, 0, "restart must not recreate adapter authority");
+
+  const retained = await restarted.retainedSession("adapter-session");
+  assert.equal(retained.residency, "dormant");
+  assert.deepEqual(retained.recovery, {
+    state: "reprovision_required",
+    code: "tool_adapter_reprovision_required",
+    retryable: true,
+  });
+  assert.deepEqual(catalogRecordToSessionResource(retained).recovery, retained.recovery);
+  assert.deepEqual(restarted.status().recovery.quarantinedSessions, [{
+    sessionId: "adapter-session",
+    generation: 1,
+    ...retained.recovery,
+  }]);
 });
 
 test("catalog rejects name collisions, unsafe path segments, capacity overflow, and insecure state", async () => {

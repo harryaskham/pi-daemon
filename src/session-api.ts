@@ -185,6 +185,13 @@ export interface SessionEnvironmentSummary {
   provisioned: boolean;
 }
 
+/** Safe, nonsecret reason why a retained generation cannot currently become resident. */
+export interface SessionRecoveryCondition {
+  state: "reprovision_required";
+  code: "tool_adapter_reprovision_required";
+  retryable: true;
+}
+
 export interface SessionResource {
   sessionId: string;
   name?: string;
@@ -197,6 +204,7 @@ export interface SessionResource {
   lastUsedAt: string;
   spec: Omit<SessionSpec, "env">;
   environment: SessionEnvironmentSummary;
+  recovery?: SessionRecoveryCondition;
   lastTerminal?: SessionTerminalSummary;
   links: {
     self: string;

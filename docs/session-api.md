@@ -85,7 +85,9 @@ A session resource has:
 - `revision` — optimistic version of the REST resource;
 - `residency` — `resident` while an SDK runtime is loaded or `dormant` while
   only durable catalog/session artifacts remain; and
-- `state` — `opening`, `idle`, `running`, `failed`, or `closing`; and
+- `state` — `opening`, `idle`, `running`, `failed`, or `closing`;
+- optional `recovery` — a typed nonsecret reason the retained generation needs
+  explicit recovery, currently `tool_adapter_reprovision_required`; and
 - optional `lastTerminal` — safe succeeded/failed/indeterminate outcome,
   timestamp, request ID, and error code without prompt/result content.
 
@@ -169,7 +171,7 @@ for the exact supported mapping and limitations.
 
 | Method and path | Meaning | Success |
 | --- | --- | --- |
-| `GET /v1/capabilities` | negotiate API, transport, RPC, auth, and isolation support | `200` capabilities envelope |
+| `GET /v1/capabilities` | negotiate API, transport, RPC, auth, isolation, and current host ready/draining state | `200` capabilities envelope |
 | `GET /v1/session` | bounded session page | `200` list envelope |
 | `POST /v1/session` | create session | `202` ticket envelope |
 | `GET /v1/session/{sessionRef}` | inspect by ID or exact name | `200` session envelope |

@@ -16,6 +16,7 @@ import {
 import type {
   SessionApiState,
   SessionEnvironmentSummary,
+  SessionRecoveryCondition,
   SessionResource,
   SessionSpec,
   SessionTerminalSummary,
@@ -55,6 +56,7 @@ export interface SessionCatalogRecord {
   policyDigest: string;
   configuration?: "legacy" | "prepared";
   conversation?: SessionConversationIdentity;
+  recovery?: SessionRecoveryCondition;
   lastTerminal?: SessionTerminalRecord;
 }
 
@@ -78,10 +80,11 @@ export interface SessionCatalogCreateInput {
 
 type SessionCatalogPatch = Omit<
   Partial<SessionCatalogRecord>,
-  "name" | "conversation"
+  "name" | "conversation" | "recovery"
 > & {
   name?: string | undefined;
   conversation?: SessionConversationIdentity | undefined;
+  recovery?: SessionRecoveryCondition | undefined;
 };
 
 export interface SessionCatalogReplaceInput {
@@ -110,6 +113,11 @@ export interface SessionCatalogStore {
     conversation?: SessionConversationIdentity,
   ): Promise<SessionCatalogRecord>;
   markDormant(sessionId: string, generation: number): Promise<SessionCatalogRecord>;
+  markRecovery(
+    sessionId: string,
+    generation: number,
+    recovery: SessionRecoveryCondition,
+  ): Promise<SessionCatalogRecord>;
   markState(
     sessionId: string,
     generation: number,
@@ -264,6 +272,7 @@ export class FileSessionCatalog implements SessionCatalogStore {
         ...(input.configuration === undefined
           ? {}
           : { configuration: input.configuration }),
+        recovery: undefined,
         ...(nextName === undefined ? { name: undefined } : { name: nextName }),
         ...(input.conversation === null
           ? { conversation: undefined }
@@ -308,6 +317,7 @@ export class FileSessionCatalog implements SessionCatalogStore {
     return this.#transition(sessionId, generation, {
       residency: "resident",
       state: "idle",
+      recovery: undefined,
       ...(conversation === undefined ? {} : { conversation: structuredClone(conversation) }),
     });
   }
@@ -316,6 +326,18 @@ export class FileSessionCatalog implements SessionCatalogStore {
     return this.#transition(sessionId, generation, {
       residency: "dormant",
       state: "idle",
+    });
+  }
+
+  async markRecovery(
+    sessionId: string,
+    generation: number,
+    recovery: SessionRecoveryCondition,
+  ): Promise<SessionCatalogRecord> {
+    validateRecoveryCondition(recovery, this.#path(sessionId));
+    return this.#transition(sessionId, generation, {
+      residency: "dormant",
+      recovery: structuredClone(recovery),
     });
   }
 
@@ -380,6 +402,7 @@ export class FileSessionCatalog implements SessionCatalogStore {
     } as SessionCatalogRecord;
     if (patch.name === undefined && "name" in patch) delete next.name;
     if (patch.conversation === undefined && "conversation" in patch) delete next.conversation;
+    if (patch.recovery === undefined && "recovery" in patch) delete next.recovery;
     validateCatalogRecord(next, this.#path(next.sessionId));
     return next;
   }
@@ -601,6 +624,9 @@ export function catalogRecordToSessionResource(
     lastUsedAt: record.lastUsedAt,
     spec: structuredClone(record.spec),
     environment: structuredClone(record.environment),
+    ...(record.recovery === undefined
+      ? {}
+      : { recovery: structuredClone(record.recovery) }),
     ...(record.lastTerminal === undefined
       ? {}
       : { lastTerminal: structuredClone(record.lastTerminal) }),
@@ -659,6 +685,7 @@ function validateCatalogRecord(
   validatePersistedSpecField(value.spec, path);
   validateEnvironment(value.environment, path);
   if (value.conversation !== undefined) validateConversation(value.conversation, path);
+  if (value.recovery !== undefined) validateRecoveryCondition(value.recovery, path);
   if (value.lastTerminal !== undefined) validateTerminal(value.lastTerminal, path);
 }
 
@@ -725,6 +752,21 @@ function validateConversation(value: unknown, path: string): asserts value is Se
       resolve(value.sessionFile) !== value.sessionFile)
   ) {
     throw corrupt("catalog Pi session file is invalid", path);
+  }
+}
+
+function validateRecoveryCondition(
+  value: unknown,
+  path: string,
+): asserts value is SessionRecoveryCondition {
+  if (
+    !isRecord(value) ||
+    value.state !== "reprovision_required" ||
+    value.code !== "tool_adapter_reprovision_required" ||
+    value.retryable !== true ||
+    Object.keys(value).some((key) => !["state", "code", "retryable"].includes(key))
+  ) {
+    throw corrupt("catalog recovery condition is invalid", path);
   }
 }
 

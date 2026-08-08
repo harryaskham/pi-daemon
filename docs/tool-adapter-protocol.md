@@ -134,6 +134,31 @@ serializes the normalized mandatory `bind` and `bound` frames and rejects limits
 that cannot contain them. Thus a legal descriptor can always complete its own
 handshake even when identity and capability fields approach their maxima.
 
+## Restart quarantine and reprovisioning
+
+A process restart deliberately loses every adapter endpoint binding and
+capability handle. Recovery therefore leaves the exact retained generation
+`dormant` and records the nonsecret typed condition
+`recovery: {state: "reprovision_required", code:
+"tool_adapter_reprovision_required", retryable: true}` on its Session API
+resource. Owner-socket host status reports the same generation under
+`recovery.quarantinedSessions`. This is quarantine, not a corrupt-session
+failure: an otherwise settled host may be ready while that generation remains
+explicitly dormant.
+
+Recovery never reopens the session with `tools: "none"`, invents a handle, or
+replays a tool-capable request. A durable `queued` wake for that generation is
+failed terminally with `tool_adapter_reprovision_required`; an already
+`accepted` wake remains `indeterminate` and keeps global readiness degraded
+until explicit reconciliation. The manifest, conversation identity, catalog
+record, and journal evidence remain intact.
+
+Reprovisioning requires a new authenticated v2 `open` for the same session and
+generation with a descriptor bound to the current host incarnation. Its
+nonsecret adapter ID/version, operations, and limits must exactly match the
+retained policy. Only a successful runtime open clears the recovery condition;
+a no-tools open or mismatched descriptor fails closed.
+
 ## Fixed operations
 
 All paths are UTF-8, root-relative POSIX paths. Empty, absolute, backslash,

@@ -97,8 +97,11 @@ nix develop .#androidRelease --command \
 ```
 
 The harness performs four authenticated, bounded `GET` requests only:
-capabilities, inventory, information, and transcript. It records the exact host
-incarnation and first inventory identity, then fences the app to both identities.
+capabilities, inventory, information, and transcript. The capabilities GET is a
+hard readiness gate: unless it reports `host.ready: true` and
+`host.draining: false`, no inventory/transcript selection or later device work
+occurs. It records the exact host incarnation and first inventory identity, then
+fences the app to both identities.
 An observer socket is permitted only when the same managed session remains
 `idle` and `resident-idle` in both inventory and information; otherwise readonly
 REST hydration proceeds with no observer attach. The canary UI contains only

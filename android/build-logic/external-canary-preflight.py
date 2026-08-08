@@ -246,6 +246,15 @@ def run(arguments: argparse.Namespace) -> None:
         subprotocols = capabilities.get("rpcSubprotocols")
         if not isinstance(subprotocols, list) or "pi-daemon-rpc.v1" not in subprotocols:
             raise PreflightError("rpc_contract_invalid")
+        host = capabilities.get("host")
+        if (
+            not isinstance(host, dict)
+            or not isinstance(host.get("ready"), bool)
+            or not isinstance(host.get("draining"), bool)
+        ):
+            raise PreflightError("host_readiness_invalid")
+        if host["ready"] is not True or host["draining"] is not False:
+            raise PreflightError("host_not_ready")
 
         inventory_envelope = read_json_response(
             opener,
@@ -312,6 +321,7 @@ def run(arguments: argparse.Namespace) -> None:
             "hostInstanceIdSha256": digest_id(host_instance_id),
             "selectedInventoryIdSha256": digest_id(inventory_id),
             "inventoryCount": len(sessions),
+            "hostReady": True,
             "capabilities": True,
             "inventory": True,
             "information": True,

@@ -807,6 +807,9 @@ implementation order. This list is a human-readable crosswalk.
   - [x] `bd-ff2f8f` — bounded runtime registry/client and fixed filesystem-tool
     injection; final server persistence/wiring and cross-session acceptance stay
     with the parent.
+- [x] `bd-060163` — restart-safe quarantine for lost process-bound tool-adapter
+  authority, typed per-session reprovision state, truthful unrelated host
+  readiness, and readiness-first external-canary preflight.
 - [x] `bd-b2975c` — neutral bounded streaming blob/session file transfer with
   immutable SHA-256 backing objects, exact-generation authority, quarantine,
   durable idempotent tickets, daemon-owned inbox references, cleanup, public

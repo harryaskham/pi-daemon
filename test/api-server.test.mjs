@@ -108,6 +108,7 @@ test("all JSON routes authenticate before revealing capabilities or route state"
   assert.equal(allowed.value.requestId, "capabilities-1");
   assert.equal(allowed.value.hostInstanceId, "host-api-test");
   assert.equal(allowed.value.data.authentication, "service-bearer");
+  assert.deepEqual(allowed.value.data.host, { ready: true, draining: false });
   assert.deepEqual(allowed.value.data.transports, ["unix-ndjson", "http", "websocket"]);
   assert.deepEqual(allowed.value.data.rpcSubprotocols, ["pi-rpc.v1", "pi-daemon-rpc.v1"]);
   assert.equal(allowed.value.data.rpc.host.processTransportOwned, false);
@@ -138,6 +139,11 @@ test("authenticated session reads expose bounded resident/dormant catalog resour
       },
     });
   }
+  await seed.markRecovery("a", 1, {
+    state: "reprovision_required",
+    code: "tool_adapter_reprovision_required",
+    retryable: true,
+  });
   const multiplexer = new Multiplexer({
     factory: new EmptyFactory(),
     catalog: new FileSessionCatalog({ stateDir }),
@@ -155,6 +161,7 @@ test("authenticated session reads expose bounded resident/dormant catalog resour
   assert.equal(first.status, 200);
   assert.equal(first.value.data.sessions[0].sessionId, "a");
   assert.equal(first.value.data.sessions[0].residency, "dormant");
+  assert.equal(first.value.data.sessions[0].recovery.code, "tool_adapter_reprovision_required");
   assert.ok(first.value.data.nextCursor);
 
   const second = await requestJson(harness.address, {
@@ -168,7 +175,7 @@ test("authenticated session reads expose bounded resident/dormant catalog resour
     headers,
   });
   assert.equal(byName.status, 200);
-  assert.equal(byName.headers.etag, '"YQ:1"');
+  assert.equal(byName.headers.etag, '"YQ:2"');
   assert.equal(byName.value.data.sessionId, "a");
   assert.equal(byName.value.data.links.self, "/v1/session/a");
 

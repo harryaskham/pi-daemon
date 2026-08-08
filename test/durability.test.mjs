@@ -571,11 +571,15 @@ test("protocol v2 no-tools recovery preserves the session event version", async 
   });
 });
 
-test("restart requires adapter reprovisioning and never silently reopens no-tools", async () => {
+test("restart quarantines a lost tool adapter, keeps healthy sessions ready, and never replays it", async () => {
   const stateDir = await temporaryState();
   const first = new FileDurabilityStore({ stateDir });
   await first.recover();
   await first.saveManifest(hostToolPersistentOpenCommand(), conversationIdentity());
+  await first.saveManifest(
+    persistentOpenCommand("healthy"),
+    conversationIdentity("healthy"),
+  );
   const queued = wakeCommand("adapter-queued");
   queued.protocolVersion = "2.0";
   await first.beginRequest(queued);
@@ -587,13 +591,20 @@ test("restart requires adapter reprovisioning and never silently reopens no-tool
     hostInstanceId: "host-after-restart",
   });
   const report = await mux.recover();
-  assert.deepEqual(report.opened, []);
-  assert.ok(
-    report.failures.some((failure) => failure.code === "tool_adapter_reprovision_required"),
-    JSON.stringify(report.failures),
-  );
-  assert.equal(factory.requests.length, 0);
+  assert.deepEqual(report.opened, ["healthy"]);
+  assert.deepEqual(report.failures, []);
+  assert.deepEqual(report.quarantined, [{
+    sessionId: "agent/a",
+    generation: 1,
+    state: "reprovision_required",
+    code: "tool_adapter_reprovision_required",
+    retryable: true,
+  }]);
+  assert.equal(factory.requests.length, 1);
+  assert.equal(factory.requests[0].sessionId, "healthy");
   assert.equal(report.pendingReplays, 0);
+  assert.equal(mux.status().ready, true);
+  assert.deepEqual(mux.status().recovery.quarantinedSessions, report.quarantined);
   const afterRecovery = new FileDurabilityStore({ stateDir });
   await afterRecovery.recover();
   const failedQueued = await afterRecovery.getRequest("agent/a", "adapter-queued");
@@ -617,12 +628,37 @@ test("restart requires adapter reprovisioning and never silently reopens no-tool
     "replacement_capability_handle_0123456789",
   );
   await mux.open(reprovisioned);
-  assert.equal(factory.requests.length, 1);
-  assert.equal(factory.requests[0].hostInstanceId, "host-after-restart");
+  assert.equal(factory.requests.length, 2);
+  assert.equal(factory.requests[1].hostInstanceId, "host-after-restart");
   assert.equal(
-    factory.requests[0].hostToolAdapter.binding.capabilityHandle,
+    factory.requests[1].hostToolAdapter.binding.capabilityHandle,
     "replacement_capability_handle_0123456789",
   );
+  assert.deepEqual(mux.status().recovery.quarantinedSessions, []);
+});
+
+test("lost tool adapter quarantine keeps accepted wakes indeterminate and host-degraded", async () => {
+  const stateDir = await temporaryState();
+  const first = new FileDurabilityStore({ stateDir });
+  await first.recover();
+  await first.saveManifest(hostToolPersistentOpenCommand(), conversationIdentity());
+  const accepted = wakeCommand("adapter-accepted");
+  accepted.protocolVersion = "2.0";
+  await first.beginRequest(accepted);
+  await first.markAccepted("agent/a", "adapter-accepted");
+
+  const mux = new Multiplexer({
+    factory: new ImmediateFactory(),
+    durability: new FileDurabilityStore({ stateDir }),
+    hostInstanceId: "host-after-restart",
+  });
+  const report = await mux.recover();
+  assert.deepEqual(report.replayed, []);
+  assert.equal(report.recovered.indeterminate.length, 1);
+  assert.equal(mux.status().ready, false);
+  assert.equal(mux.status().recovery.phase, "degraded");
+  assert.equal(mux.status().recovery.indeterminateRequests, 1);
+  assert.equal(mux.status().recovery.quarantinedSessions[0].sessionId, "agent/a");
 });
 
 test("session recovery open is per-open deadline bounded and records degraded health", async () => {

@@ -325,6 +325,7 @@ export class ApiServer {
       const url = requestUrl(request);
       requestPath = url.pathname;
       if (request.method === "GET" && url.pathname === "/v1/capabilities") {
+        const host = this.#multiplexer.status();
         sendJson(response, 200, {
           apiVersion: SESSION_API_VERSION,
           requestId,
@@ -338,6 +339,10 @@ export class ApiServer {
             acp: this.#acpAdapters.capabilities,
             isolationModes: ["unisolated"],
             authentication: "service-bearer",
+            host: {
+              ready: host.ready,
+              draining: host.draining,
+            },
             schedules: this.#schedules === undefined
               ? { available: false }
               : scheduleCapabilities(this.#schedules.limits, this.#scheduler !== undefined),

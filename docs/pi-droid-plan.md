@@ -733,9 +733,9 @@ SHA-256 is `72adf5bacefac22c1569d2b7579b547d4f48c28881808e4f7036fde6560331aa`.
 - overlay permission denied/granted/revoked;
 - Play internal install/update and encrypted credential persistence;
 - reviewed external-canary debug install using a canonical API origin and an
-  owner-only token file, with GET-only preflight, exact host/session fencing,
-  idle-only observer attach, no target-daemon lifecycle or mutation, and zero
-  run-owned emulator/ADB/process/port residue.
+  owner-only token file, with a readiness-first GET-only preflight, exact
+  host/session fencing, idle-only observer attach, no target-daemon lifecycle or
+  mutation, and zero run-owned emulator/ADB/process/port residue.
 
 ### Visual proof contract
 
