@@ -1,0 +1,27 @@
+phase=adb_server status=started server_port=42114 selection_attempts=1 key_home=run_scoped server_mode=owned_nodaemon public_key_payload_sha256=sha256:71959e0088c37f6996dc4e9efba88e3eb177df9d1c264e90e64092c730fb3894
+host_arch=x86_64
+expected_emulator_abi=x86_64
+emulator_binary=/nix/store/fmc2chpm35djwbm6g20gih4dlniiiky9-androidsdk/bin/emulator
+Android emulator version 36.6.11.0 (build_id 15507667) (CL:N/A)
+Copyright (C) 2006-2024 The Android Open Source Project and many others.
+This program is a derivative of the QEMU CPU emulator (www.qemu.org).
+accel:
+0
+KVM (version 12) is installed and usable.
+accel
+adb_binary=/nix/store/fmc2chpm35djwbm6g20gih4dlniiiky9-androidsdk/bin/adb
+Android Debug Bridge version 1.0.41
+Version 37.0.0-14910828
+Installed as /nix/store/ndycmz15543v55jz6116n97nr34ma9g1-android-sdk-platform-tools-37.0.0/libexec/android-sdk/platform-tools/adb
+phase=avd_boot_profile status=verified system_image=android_36_default_x86_64 device_profile=medium_phone ram_class=at_least_2048_mib vm_heap_class=at_least_192_mib cpu_class=multi_core
+status=selected emulator_console_port=5562 emulator_adb_port=5563 emulator_port_attempts=1 verification=both_localhost_ports_free
+phase=adb_readiness status=polling attempts=1 connect_attempts=1 deadline_seconds=240 elapsed_seconds=0 remaining_seconds=240 connect_state=refused adb_state=not_found transport_connected=false
+phase=adb_readiness status=polling attempts=2 connect_attempts=2 deadline_seconds=240 elapsed_seconds=6 remaining_seconds=234 connect_state=unavailable adb_state=offline transport_connected=false
+phase=adb_readiness status=polling attempts=3 connect_attempts=3 deadline_seconds=240 elapsed_seconds=7 remaining_seconds=233 connect_state=already_connected adb_state=offline transport_connected=true
+phase=adb_readiness status=polling attempts=32 connect_attempts=3 deadline_seconds=240 elapsed_seconds=37 remaining_seconds=203 connect_state=already_connected adb_state=offline transport_connected=true
+phase=adb_readiness status=polling attempts=62 connect_attempts=3 deadline_seconds=240 elapsed_seconds=67 remaining_seconds=173 connect_state=already_connected adb_state=offline transport_connected=true
+phase=adb_readiness status=polling attempts=91 connect_attempts=3 deadline_seconds=240 elapsed_seconds=97 remaining_seconds=143 connect_state=already_connected adb_state=offline transport_connected=true
+phase=adb_readiness status=ready attempts=108 connect_attempts=3 deadline_seconds=240 elapsed_seconds=114 remaining_seconds=126 connect_state=already_connected adb_state=device transport_connected=true
+adb_state=device
+device_abi=x86_64
+boot_completed=1

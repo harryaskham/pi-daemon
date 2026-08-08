@@ -1,0 +1,9 @@
+schema_version=1
+status=app_failure_modal
+event_kind=dialog_only
+identity_source=dialog_title
+identity_class=unknown
+identity_sha256=sha256:f16e70a7b7364af79c705f17f7011351d95afa228dcfee10738426b3a4fa80d7
+raw_logcat_bytes=675874
+raw_logcat_sha256=sha256:785499e0024706c1faacd1909b9dc8f89e13aa3c9ec70dc0965952de0e2bdf78
+raw_logcat_retained=false

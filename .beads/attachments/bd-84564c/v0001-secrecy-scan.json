@@ -1,0 +1,15 @@
+{
+  "exactBearerEqualityScan": "clean",
+  "exactBearerEqualityScanEvidence": "bearer-scan.log",
+  "matches": {
+    "authorizationBearer": 0,
+    "jsonBearerValue": 0,
+    "pairingEnvelope": 0,
+    "privateKeyMarker": 0
+  },
+  "scannedBytes": 10134,
+  "scannedFiles": 21,
+  "schemaVersion": 1,
+  "skippedBinaryFiles": 1,
+  "status": "clean"
+}

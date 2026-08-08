@@ -1,0 +1,9 @@
+apk_sha256=f7e26bcaf754dfe2ef5ab62f1b97e7f99544926352844d451fbab5aa33974b11
+application_id=com.harryaskham.pidroid.debug
+version_name=0.3.0-internal.2-debug
+version_code=2
+debuggable=true
+permissions_begin
+android.permission.INTERNET
+com.harryaskham.pidroid.debug.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION
+permissions_end

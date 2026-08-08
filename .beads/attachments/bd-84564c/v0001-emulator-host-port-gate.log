@@ -1,0 +1,2 @@
+port=49152 max_attempts=60 deadline_seconds=30 safe_code=host_port_unreachable
+status=reachable attempts=13 port=49152

@@ -1,0 +1,8 @@
+bead_id=bd-84564c
+source_commit=c1d01d60890ca05a9ad6b0cf955826ef40524caa
+harness=android/build-logic/live-interactive-proof.sh
+invocation_ordinal=1
+authorized_invocation_budget=1
+started_at_utc=2026-08-08T13:44:08Z
+finished_at_utc=2026-08-08T13:48:16Z
+exit_status=70

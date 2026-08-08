@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "beadId": "bd-84564c",
+  "sourceCommit": "c1d01d60890ca05a9ad6b0cf955826ef40524caa",
+  "sourceTree": "197b5d2c87cbba0809574aa06fdaca2d0d1c29d7",
+  "requiredCommit": "c1d01d60890ca05a9ad6b0cf955826ef40524caa",
+  "sourceCleanBeforeInvocation": true,
+  "hostArchitecture": "x86_64",
+  "kvmReadableWritable": true,
+  "androidReleaseShellReady": true,
+  "nodeMaterialization": "npm-ci-ignore-scripts",
+  "packageLockSha256": "c3bc68ee9f7b76cc50651faed7cb5e940a7dae7d6d747c4bcf91d7a1071d6e50",
+  "harnessSha256": "b6d41e3a7be90a8f6dba661ff7aca14bbb70c2945564d712104280e537fd6b98",
+  "diagnosticReceiptSha256": "179620f2b3e4c8acb8eba57400c096d06ea4d6d5c5eee31eeef234179279851f",
+  "diagnosticManifestSha256": "7caf2675526c9043191b25509ea2c3e6d86216e25ef5a69d035c3e7104bf8d53",
+  "authorizedInvocationBudget": 1,
+  "invocationsBefore": 0
+}
