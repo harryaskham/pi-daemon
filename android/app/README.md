@@ -11,8 +11,13 @@ adds the next opt-in interactive milestone: every live connection attaches as an
 observer, explicit control grant is required before mutation, command identity is
 unique and bounded, and a missing response becomes indeterminate rather than
 being replayed. Rich, bounded tree and canonical server-TUI presentations share
-the exact host/session/generation authority. This source is not version 3 and
-must not be signed or uploaded until the disposable physical proof passes.
+the exact host/session/generation authority. An explicit readonly refresh retires
+only idle pooled HTTP connections before hydration, so a replacement daemon at
+the same authority can publish its new host identity on the first reviewed
+refresh. Automatic request retry remains disabled, active WebSockets are not
+retired, and an indeterminate mutation is never replayed during refresh or the
+separate interactive reconnect. This source is not version 3 and must not be
+signed or uploaded until the disposable physical proof passes.
 
 The module is excluded from ordinary Gradle settings and the Android fast lane.
 Enable it only with `-PpiDroidAndroidApp=true` inside the pinned

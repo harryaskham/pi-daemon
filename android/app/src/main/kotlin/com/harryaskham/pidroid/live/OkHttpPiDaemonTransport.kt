@@ -48,6 +48,9 @@ public interface LiveHostTransport :
   PiDaemonTransport,
   AutoCloseable {
   public fun replaceHosts(hosts: List<RegisteredHost>)
+
+  /** Retires only idle HTTP connections before an explicit readonly hydration pass. */
+  public fun prepareReadonlyRefresh()
 }
 
 internal class IncomingChannelCloser(
@@ -115,6 +118,10 @@ public class OkHttpPiDaemonTransport(
       }
     }
     descriptors.value = hosts.map { PiDaemonHostDescriptor(it.id, it.displayName, it.baseUri) }
+  }
+
+  override fun prepareReadonlyRefresh() {
+    clients.values.forEach { it.client.connectionPool.evictAll() }
   }
 
   override suspend fun execute(

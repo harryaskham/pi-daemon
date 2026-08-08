@@ -115,6 +115,56 @@ class OkHttpPiDaemonTransportTest {
     }
 
   @Test
+  fun `readonly refresh retires idle HTTP connections without interrupting active WebSocket`() =
+    runBlocking {
+      val server = MockWebServer()
+      server.start()
+      try {
+        val acceptedSocket = CompletableDeferred<WebSocket>()
+        server.enqueue(
+          MockResponse
+            .Builder()
+            .addHeader("Sec-WebSocket-Protocol", "pi-daemon-rpc.v1")
+            .webSocketUpgrade(
+              object : WebSocketListener() {
+                override fun onOpen(
+                  webSocket: WebSocket,
+                  response: Response,
+                ) {
+                  acceptedSocket.complete(webSocket)
+                }
+              },
+            ).build(),
+        )
+        val host = host(server.url("/").toString())
+        val transport = OkHttpPiDaemonTransport().also { it.replaceHosts(listOf(host)) }
+        ServiceBearerRequestFactory.create(descriptor(host), "test".toCharArray(), allowInsecureHttp = true).use { factory ->
+          val socket =
+            factory
+              .webSocket("/v1/session/test/rpc", emptyList(), listOf("pi-daemon-rpc.v1"))
+              .let { transport.openWebSocket(host.id, it) }
+          val serverSocket = withTimeout(5_000) { acceptedSocket.await() }
+
+          transport.prepareReadonlyRefresh()
+
+          assertTrue(serverSocket.send("still-open-after-readonly-refresh"))
+          assertEquals(
+            "still-open-after-readonly-refresh",
+            withContext(Dispatchers.Default.limitedParallelism(1)) {
+              withTimeout(5_000) { socket.incomingText.first() }
+            },
+          )
+          assertTrue(serverSocket.close(1_000, "fixture complete"))
+          withTimeout(5_000) { socket.incomingText.toList() }
+          socket.close()
+        }
+        transport.close()
+      } finally {
+        server.close()
+      }
+    }
+
+  @Test
   fun `WebSocket ping liveness interval is bounded and defaults to five seconds`() {
     assertEquals(Duration.ofSeconds(5), OkHttpPiDaemonTransport().webSocketPingInterval)
     assertEquals(Duration.ofSeconds(1), OkHttpPiDaemonTransport(Duration.ofSeconds(1)).webSocketPingInterval)

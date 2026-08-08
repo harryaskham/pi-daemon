@@ -170,6 +170,7 @@ public class LiveReadonlyRepository(
       return
     }
     transport.replaceHosts(hosts)
+    transport.prepareReadonlyRefresh()
     val previous = (mutableState.value as? LiveReadonlyState.Ready)?.hosts.orEmpty()
     if (previous.isNotEmpty()) {
       mutableState.value =
