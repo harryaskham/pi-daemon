@@ -587,12 +587,18 @@ test("client request timeout rejects a hung command without an unbounded waiter"
   };
   const harness = await startServer(undefined, factory);
   t.after(async () => harness.server.stop());
+  const setupClient = await PiDaemonClient.connect({
+    socketPath: harness.socketPath,
+    requestTimeoutMs: 500,
+  });
+  t.after(() => setupClient.close());
+  await setupClient.request(openCommand("hung-client"));
+
   const client = await PiDaemonClient.connect({
     socketPath: harness.socketPath,
     requestTimeoutMs: 20,
   });
   t.after(() => client.close());
-  await client.request(openCommand("hung-client"));
   await assert.rejects(client.request(wakeCommand("hung-client")), (error) => {
     assert.ok(error instanceof PiDaemonClientTimeoutError);
     assert.equal(error.code, "pi_daemon_client_timeout");
