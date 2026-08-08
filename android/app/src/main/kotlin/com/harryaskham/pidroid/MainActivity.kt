@@ -33,6 +33,7 @@ class MainActivity : ComponentActivity() {
         registry = hosts.registry,
         credentials = hosts.credentialVault,
         transport = OkHttpPiDaemonTransport(),
+        defaultHostStore = hosts.defaultHostStore,
       )
 
     externalCanaryMode = isExternalCanaryIntent(intent)
@@ -48,9 +49,11 @@ class MainActivity : ComponentActivity() {
     setContent {
       val state by repository.state.collectAsState()
       val interaction by repository.interactiveState.collectAsState()
+      val hostManagement by repository.hostManagementState.collectAsState()
       LiveReadonlyScreen(
         state = state,
         interaction = interaction,
+        hostManagement = hostManagement,
         externalCanaryMode = externalCanaryMode,
         onRegisterManual = { endpoint, displayName, bearer, fingerprint, confirmInsecure ->
           lifecycleScope.launch {
@@ -77,7 +80,52 @@ class MainActivity : ComponentActivity() {
               .onFailure { repository.reportFailure(safeCode(it)) }
           }
         },
-        onSelectHost = repository::selectHost,
+        onUpdateHost = { hostId, endpoint, displayName, fingerprint, confirmInsecure ->
+          lifecycleScope.launch {
+            runCatching {
+              repository.updateHost(
+                hostId = hostId,
+                apiUri = URI(endpoint),
+                displayName = displayName,
+                tlsFingerprint = fingerprint,
+                confirmInsecureHttp = confirmInsecure,
+              )
+            }.onFailure { repository.reportHostManagementFailure(safeCode(it)) }
+          }
+        },
+        onReplaceHost = { hostId, endpoint, displayName, bearer, fingerprint, confirmInsecure ->
+          lifecycleScope.launch {
+            runCatching {
+              repository.replaceHost(
+                hostId = hostId,
+                apiUri = URI(endpoint),
+                displayName = displayName,
+                bearer = bearer,
+                tlsFingerprint = fingerprint,
+                confirmInsecureHttp = confirmInsecure,
+              )
+            }.onFailure { repository.reportHostManagementFailure(safeCode(it)) }
+          }
+        },
+        onReplaceHostEnvelope = { hostId, envelope, confirmInsecure ->
+          lifecycleScope.launch {
+            runCatching { repository.replaceHostEnvelope(hostId, envelope, confirmInsecure) }
+              .onFailure { repository.reportHostManagementFailure(safeCode(it)) }
+          }
+        },
+        onForgetHost = { hostId ->
+          lifecycleScope.launch {
+            runCatching { repository.removeHost(hostId) }
+              .onFailure { repository.reportHostManagementFailure(safeCode(it)) }
+          }
+        },
+        onClearHostManagementNotice = repository::clearHostManagementNotice,
+        onSelectHost = { hostId ->
+          lifecycleScope.launch {
+            runCatching { repository.selectDefaultHost(hostId) }
+              .onFailure { repository.reportHostManagementFailure(safeCode(it)) }
+          }
+        },
         onConnectInteractive = {
           lifecycleScope.launch {
             runCatching { repository.connectInteractiveObserver() }

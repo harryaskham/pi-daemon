@@ -80,6 +80,218 @@ class LiveReadonlyRepositoryTest {
     }
 
   @Test
+  fun `duplicate registration offers explicit repair without credential or network mutation`() =
+    runTest {
+      val harness = harness()
+      harness.repository.registerManual(
+        apiUri = URI("http://10.0.2.2:48123"),
+        displayName = "Disposable daemon",
+        bearer = "original-bearer".toCharArray(),
+        tlsFingerprint = null,
+        confirmInsecureHttp = true,
+      )
+      val original =
+        harness.repository.hostManagementState.value.hosts
+          .single()
+      val requestsBefore = harness.transport.paths.size
+      val replacement = "replacement-bearer".toCharArray()
+
+      harness.repository.registerManual(
+        apiUri = URI("http://10.0.2.2:48123"),
+        displayName = "Ignored duplicate",
+        bearer = replacement,
+        tlsFingerprint = null,
+        confirmInsecureHttp = true,
+      )
+
+      assertTrue(replacement.all { it == '\u0000' })
+      assertEquals(requestsBefore, harness.transport.paths.size)
+      assertEquals(0, harness.transport.invalidatedHosts.size)
+      assertEquals(
+        original,
+        harness.repository.hostManagementState.value.hosts
+          .single(),
+      )
+      assertEquals(
+        HostManagementNotice.DuplicateEndpoint(original.id),
+        harness.repository.hostManagementState.value.notice,
+      )
+      assertEquals("original-bearer", harness.vault.withBearer(original.credential) { it.concatToString() })
+    }
+
+  @Test
+  fun `edit and re-pair commit before invalidating the affected host`() =
+    runTest {
+      val harness = harness()
+      harness.repository.registerManual(
+        apiUri = URI("http://10.0.2.2:48123"),
+        displayName = "Original",
+        bearer = "original-bearer".toCharArray(),
+        tlsFingerprint = null,
+        confirmInsecureHttp = true,
+      )
+      val original =
+        harness.repository.hostManagementState.value.hosts
+          .single()
+      harness.transport.events.clear()
+
+      harness.repository.updateHost(
+        hostId = original.id,
+        apiUri = URI("http://10.0.2.2:48124"),
+        displayName = "Edited",
+        tlsFingerprint = null,
+        confirmInsecureHttp = true,
+      )
+
+      var edited =
+        harness.repository.hostManagementState.value.hosts
+          .single()
+      assertEquals("Edited", edited.displayName)
+      assertEquals(original.credential, edited.credential)
+      assertEquals("invalidate:${original.id.value}", harness.transport.events.first())
+      assertTrue(
+        harness.transport.events
+          .drop(1)
+          .any { it.startsWith("execute:") },
+      )
+
+      harness.transport.events.clear()
+      val replacement = "replacement-bearer".toCharArray()
+      harness.repository.replaceHost(
+        hostId = original.id,
+        apiUri = edited.baseUri,
+        displayName = edited.displayName,
+        bearer = replacement,
+        tlsFingerprint = null,
+        confirmInsecureHttp = true,
+      )
+
+      assertTrue(replacement.all { it == '\u0000' })
+      edited =
+        harness.repository.hostManagementState.value.hosts
+          .single()
+      assertEquals(1, edited.bearerGeneration)
+      assertEquals("replacement-bearer", harness.vault.withBearer(edited.credential) { it.concatToString() })
+      assertEquals(null, harness.credentialStore.read(original.credential))
+      assertEquals("invalidate:${original.id.value}", harness.transport.events.first())
+      assertTrue(
+        harness.transport.events
+          .drop(1)
+          .any { it.startsWith("execute:") },
+      )
+    }
+
+  @Test
+  fun `failed re-pair rolls back without invalidating cache or using network`() =
+    runTest {
+      val harness = harness()
+      harness.repository.registerManual(
+        apiUri = URI("http://10.0.2.2:48123"),
+        displayName = "Original",
+        bearer = "original-bearer".toCharArray(),
+        tlsFingerprint = null,
+        confirmInsecureHttp = true,
+      )
+      val original =
+        harness.repository.hostManagementState.value.hosts
+          .single()
+      val requestsBefore = harness.transport.paths.size
+      val invalidationsBefore = harness.transport.invalidatedHosts.size
+      harness.registryStore.failNextUpsert = true
+
+      val failure =
+        runCatching {
+          harness.repository.replaceHost(
+            hostId = original.id,
+            apiUri = URI("http://10.0.2.2:48124"),
+            displayName = "Must roll back",
+            bearer = "replacement-bearer".toCharArray(),
+            tlsFingerprint = null,
+            confirmInsecureHttp = true,
+          )
+        }.exceptionOrNull()
+
+      assertTrue(failure is IllegalStateException)
+      assertEquals(requestsBefore, harness.transport.paths.size)
+      assertEquals(invalidationsBefore, harness.transport.invalidatedHosts.size)
+      assertEquals(original, harness.registryStore.list().single())
+      assertEquals("original-bearer", harness.vault.withBearer(original.credential) { it.concatToString() })
+      assertEquals(null, harness.credentialStore.read(CredentialHandle(original.id, 1)))
+    }
+
+  @Test
+  fun `default and multiple hosts survive process recreation and forgetting one preserves the other`() =
+    runTest {
+      val harness = harness()
+      harness.repository.registerManual(
+        URI("http://10.0.2.2:48123"),
+        "First",
+        "first-bearer".toCharArray(),
+        null,
+        true,
+      )
+      harness.repository.registerManual(
+        URI("http://10.0.2.2:48124"),
+        "Second",
+        "second-bearer".toCharArray(),
+        null,
+        true,
+      )
+      val hosts = harness.repository.hostManagementState.value.hosts
+      val second = hosts.single { it.displayName == "Second" }
+      harness.repository.selectDefaultHost(second.id)
+
+      val recreatedTransport = FakeLiveTransport()
+      val recreated =
+        LiveReadonlyRepository(
+          registry = HostRegistry(harness.registryStore, harness.vault, SequenceHostIds()),
+          credentials = harness.vault,
+          transport = recreatedTransport,
+          defaultHostStore = harness.defaultHostStore,
+        )
+      recreated.initialize()
+
+      assertEquals(2, recreated.hostManagementState.value.hosts.size)
+      assertEquals(second.id, recreated.hostManagementState.value.defaultHostId)
+      assertEquals(second.id, (recreated.state.value as LiveReadonlyState.Ready).selectedHostId)
+      recreated.removeHost(second.id)
+      val remaining =
+        recreated.hostManagementState.value.hosts
+          .single()
+      assertEquals("First", remaining.displayName)
+      assertEquals(remaining.id, recreated.hostManagementState.value.defaultHostId)
+      assertEquals("first-bearer", harness.vault.withBearer(remaining.credential) { it.concatToString() })
+      assertEquals(listOf(second.id), recreatedTransport.invalidatedHosts)
+    }
+
+  @Test
+  fun `host management remains actionable after a crashing connection state`() =
+    runTest {
+      val harness = harness()
+      harness.repository.registerManual(
+        URI("http://10.0.2.2:48123"),
+        "Recoverable",
+        "super-secret-should-not-render".toCharArray(),
+        null,
+        true,
+      )
+      val host =
+        harness.repository.hostManagementState.value.hosts
+          .single()
+      assertEquals("READY", hostReadinessLabel(host.id, harness.repository.state.value))
+      assertEquals("HTTP · explicitly trusted tailnet", hostSecurityLabel(host))
+
+      harness.repository.reportFailure("host_unavailable")
+      assertEquals("UNAVAILABLE", hostReadinessLabel(host.id, harness.repository.state.value))
+      assertEquals(1, harness.repository.hostManagementState.value.hosts.size)
+      assertFalse(
+        harness.repository.hostManagementState.value
+          .toString()
+          .contains("super-secret-should-not-render"),
+      )
+    }
+
+  @Test
   fun `readonly hydration never opens an observer for a running session`() =
     runTest {
       val harness = harness()
@@ -610,24 +822,50 @@ class LiveReadonlyRepositoryTest {
     val credentialStore = FakeCredentialStore()
     val vault = HostCredentialVault(protector, credentialStore)
     val registryStore = FakeHostStore()
-    val registry = HostRegistry(registryStore, vault) { HostId("workstation") }
+    val registry = HostRegistry(registryStore, vault, SequenceHostIds())
     val transport = FakeLiveTransport()
-    val repository = LiveReadonlyRepository(registry, vault, transport)
-    return Harness(repository, transport, protector)
+    val defaultHostStore = FakeDefaultHostStore()
+    val repository = LiveReadonlyRepository(registry, vault, transport, defaultHostStore)
+    return Harness(repository, transport, protector, credentialStore, vault, registryStore, defaultHostStore)
   }
 
   private data class Harness(
     val repository: LiveReadonlyRepository,
     val transport: FakeLiveTransport,
     val protector: FakeProtector,
+    val credentialStore: FakeCredentialStore,
+    val vault: HostCredentialVault,
+    val registryStore: FakeHostStore,
+    val defaultHostStore: FakeDefaultHostStore,
   )
+
+  private class SequenceHostIds : com.harryaskham.pidroid.sdk.core.HostIdGenerator {
+    private var next: Int = 1
+
+    override fun next(): HostId = HostId("workstation-${next++}")
+  }
+
+  private class FakeDefaultHostStore : DefaultHostStore {
+    private var value: HostId? = null
+
+    override suspend fun read(): HostId? = value
+
+    override suspend fun write(hostId: HostId?) {
+      value = hostId
+    }
+  }
 
   private class FakeHostStore : HostRegistryStore {
     private val hosts = linkedMapOf<HostId, RegisteredHost>()
+    var failNextUpsert: Boolean = false
 
     override suspend fun list(): List<RegisteredHost> = hosts.values.toList()
 
     override suspend fun upsert(host: RegisteredHost) {
+      if (failNextUpsert) {
+        failNextUpsert = false
+        throw IllegalStateException("metadata commit failed")
+      }
       hosts[host.id] = host
     }
 
@@ -694,6 +932,8 @@ class LiveReadonlyRepositoryTest {
     var failTuiOpen: Boolean = false
     val paths = mutableListOf<String>()
     val rpcSockets = mutableListOf<FakeSocket>()
+    val invalidatedHosts = mutableListOf<HostId>()
+    val events = mutableListOf<String>()
 
     fun replaceDaemonIdentity(replacement: String) {
       hostInstanceId = replacement
@@ -701,6 +941,13 @@ class LiveReadonlyRepositoryTest {
     }
 
     override fun replaceHosts(hosts: List<RegisteredHost>) = Unit
+
+    override fun invalidateHost(hostId: HostId) {
+      invalidatedHosts += hostId
+      events += "invalidate:${hostId.value}"
+      interactiveRpcSocket?.disconnect()
+      interactiveRpcSocket = null
+    }
 
     override fun prepareReadonlyRefresh() {
       if (staleReadonlyConnection) {
@@ -718,6 +965,7 @@ class LiveReadonlyRepositoryTest {
       if (fail) throw TransportFailure("disposable_offline")
       authorizationObserved = request.headers["Authorization"]?.startsWith("Bearer ") == true
       paths += request.uri.path
+      events += "execute:${host.value}:${request.uri.path}"
       val fixture =
         when (request.uri.path) {
           "/v1/capabilities" -> {

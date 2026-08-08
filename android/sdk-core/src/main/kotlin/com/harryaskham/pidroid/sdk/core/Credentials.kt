@@ -87,7 +87,14 @@ public class HostCredentialVault(
     val temporary = bearer.copyOf()
     try {
       val protected = protector.protect(handle, temporary)
-      store.write(handle, protected)
+      try {
+        store.write(handle, protected)
+      } catch (error: Exception) {
+        // A protector may already have created a handle-bound Keystore key. Failed ciphertext
+        // persistence must not leave that staged authority orphaned.
+        runCatching { protector.destroy(handle) }
+        throw error
+      }
     } finally {
       temporary.fill('\u0000')
     }

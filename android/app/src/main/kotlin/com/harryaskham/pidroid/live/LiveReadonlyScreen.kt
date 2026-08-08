@@ -21,6 +21,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -62,32 +63,60 @@ private val LiveWarning = Color(0xFFE7C987)
 public fun LiveReadonlyScreen(
   state: LiveReadonlyState,
   interaction: LiveInteractiveAppState,
+  hostManagement: HostManagementState,
   externalCanaryMode: Boolean,
   onRegisterManual: (String, String, CharArray, String?, Boolean) -> Unit,
   onRegisterEnvelope: (String, Boolean) -> Unit,
   onRefresh: () -> Unit,
+  onUpdateHost: (HostId, String, String, String?, Boolean) -> Unit,
+  onReplaceHost: (HostId, String, String, CharArray, String?, Boolean) -> Unit,
+  onReplaceHostEnvelope: (HostId, String, Boolean) -> Unit,
+  onForgetHost: (HostId) -> Unit,
+  onClearHostManagementNotice: () -> Unit,
   onSelectHost: (HostId) -> Unit,
   onConnectInteractive: () -> Unit,
   onInteractiveAction: (RichInteractionAction) -> Unit,
   onReconnectInteractive: () -> Unit,
 ) {
+  var showHostManagement by remember { mutableStateOf(state == LiveReadonlyState.Unconfigured) }
+  LaunchedEffect(hostManagement.notice) {
+    if (hostManagement.notice is HostManagementNotice.DuplicateEndpoint) showHostManagement = true
+  }
   MaterialTheme {
     Surface(modifier = Modifier.fillMaxSize(), color = LiveCanvas) {
       if (externalCanaryMode) {
         ExternalCanaryScreen(state)
         return@Surface
       }
+      if (showHostManagement || hostManagement.hosts.isEmpty()) {
+        HostManagementScreen(
+          state = hostManagement,
+          liveState = state,
+          onClose = { showHostManagement = false },
+          onRegisterManual = onRegisterManual,
+          onRegisterEnvelope = onRegisterEnvelope,
+          onUpdateHost = onUpdateHost,
+          onReplaceHost = onReplaceHost,
+          onReplaceHostEnvelope = onReplaceHostEnvelope,
+          onForgetHost = onForgetHost,
+          onSelectDefault = onSelectHost,
+          onClearNotice = onClearHostManagementNotice,
+        )
+        return@Surface
+      }
       when (state) {
         LiveReadonlyState.Unconfigured -> {
-          HostRegistrationScreen(onRegisterManual, onRegisterEnvelope)
+          StatusScreen("Choose a host", "No active host is configured", LiveWarning, onRefresh) {
+            showHostManagement = true
+          }
         }
 
         is LiveReadonlyState.Loading -> {
-          StatusScreen("Connecting", state.message, LiveAccent, onRefresh)
+          StatusScreen("Connecting", state.message, LiveAccent, onRefresh) { showHostManagement = true }
         }
 
         is LiveReadonlyState.Failure -> {
-          StatusScreen("Host unavailable", state.code, LiveWarning, onRefresh)
+          StatusScreen("Host unavailable", state.code, LiveWarning, onRefresh) { showHostManagement = true }
         }
 
         is LiveReadonlyState.Ready -> {
@@ -95,6 +124,7 @@ public fun LiveReadonlyScreen(
             state,
             interaction,
             onRefresh,
+            { showHostManagement = true },
             onSelectHost,
             onConnectInteractive,
             onInteractiveAction,
@@ -179,7 +209,7 @@ public fun HostRegistrationScreen(
     Text("PI DROID", color = LiveAccent, fontWeight = FontWeight.Black)
     Text("Connect a trusted-tailnet Pi Daemon", color = LivePrimary, style = MaterialTheme.typography.headlineMedium)
     Text(
-      "Version 2 is readonly: capabilities, inventory, information and transcript. No prompt, wake or controller authority.",
+      "Add a trusted host without exposing its bearer. You can edit, re-pair, or forget it later from Hosts.",
       color = LiveMuted,
     )
     OutlinedTextField(
@@ -224,7 +254,7 @@ public fun HostRegistrationScreen(
       },
       enabled = endpoint.isNotBlank() && displayName.isNotBlank() && bearer.isNotBlank(),
     ) {
-      Text("Register and verify readonly host")
+      Text("Register host")
     }
     Spacer(Modifier.height(8.dp))
     Text("ASCII / QR pairing envelope", color = LivePrimary, fontWeight = FontWeight.Bold)
@@ -314,6 +344,7 @@ private fun LiveSessionScreen(
   ready: LiveReadonlyState.Ready,
   interaction: LiveInteractiveAppState,
   onRefresh: () -> Unit,
+  onManageHosts: () -> Unit,
   onSelectHost: (HostId) -> Unit,
   onConnectInteractive: () -> Unit,
   onInteractiveAction: (RichInteractionAction) -> Unit,
@@ -340,6 +371,12 @@ private fun LiveSessionScreen(
         modifier = Modifier.semantics { contentDescription = "Refresh readonly hosts" },
       ) {
         Text("Refresh")
+      }
+      OutlinedButton(
+        onClick = onManageHosts,
+        modifier = Modifier.semantics { contentDescription = "Manage registered hosts" },
+      ) {
+        Text("Hosts")
       }
       ready.hosts.forEach { snapshot ->
         val selected = snapshot.host.id == ready.selectedHostId
@@ -501,13 +538,17 @@ private fun StatusScreen(
   detail: String,
   accent: Color,
   onRefresh: () -> Unit,
+  onManageHosts: () -> Unit,
 ) {
   Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
     Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
       Text(title, color = LivePrimary, style = MaterialTheme.typography.headlineMedium)
       Text(detail, color = accent)
       Text("Live readonly session", color = LiveMuted, fontWeight = FontWeight.Bold)
-      Button(onClick = onRefresh) { Text("Retry") }
+      Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Button(onClick = onRefresh) { Text("Retry") }
+        OutlinedButton(onClick = onManageHosts) { Text("Hosts") }
+      }
     }
   }
 }
