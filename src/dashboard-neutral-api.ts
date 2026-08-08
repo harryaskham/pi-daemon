@@ -174,12 +174,34 @@ export class DashboardNeutralApiController implements DashboardNeutralApi {
     expectedFingerprint?: DashboardFingerprint,
   ): Promise<TranscriptPage> {
     const info = await this.getSessionInfo(inventoryId);
+    const observedAt = new Date().toISOString();
+    const quarantine = info.managed?.recovery;
     if (info.source.canonicalPath === undefined || info.source.fingerprint === undefined) {
-      throw new DashboardNeutralApiError(
-        409,
-        "transcript_source_unavailable",
-        "inventory item has no previewable source",
-      );
+      return {
+        inventoryId,
+        ...(info.piSessionId === undefined ? {} : { piSessionId: info.piSessionId }),
+        ...(info.managed === undefined
+          ? {}
+          : { managedSession: { sessionId: info.managed.sessionId, generation: info.managed.generation } }),
+        ...(info.currentLeafId === undefined ? {} : { currentLeafId: info.currentLeafId }),
+        records: [],
+        order: "chronological",
+        projection: {
+          formatVersion: 1,
+          cached: false,
+          truncated: false,
+          builtAt: observedAt,
+        },
+        availability: {
+          state: "unavailable",
+          reasonCode: quarantine === undefined ? "source_unavailable" : "session_quarantined",
+          retryable: quarantine?.retryable ?? false,
+          observerAttachAllowed: false,
+        },
+        freshness: { state: "unavailable", observedAt },
+        ...(quarantine === undefined ? {} : { quarantine: structuredClone(quarantine) }),
+        hydration: "not-requested",
+      };
     }
     if (
       expectedFingerprint !== undefined &&
@@ -192,12 +214,20 @@ export class DashboardNeutralApiController implements DashboardNeutralApi {
         true,
       );
     }
-    return this.#projector.project({
+    const page = await this.#projector.project({
       inventoryId,
       path: info.source.canonicalPath,
       query,
       expectedFingerprint: expectedFingerprint ?? info.source.fingerprint.value,
     });
+    return {
+      ...page,
+      availability: {
+        ...page.availability,
+        observerAttachAllowed: quarantine === undefined,
+      },
+      ...(quarantine === undefined ? {} : { quarantine: structuredClone(quarantine) }),
+    };
   }
 
   activateSession(

@@ -20,6 +20,7 @@ import type {
   JsonObject,
   JsonValue,
   PiRpcEvent,
+  SessionRecoveryCondition,
   SessionResource,
 } from "./session-api.js";
 import type {
@@ -430,6 +431,8 @@ export interface ManagedSessionSummary {
   revision: number;
   residency: "resident" | "dormant";
   state: "opening" | "idle" | "running" | "failed" | "closing";
+  /** Safe retained-generation quarantine truth; absence means no known quarantine. */
+  recovery?: SessionRecoveryCondition;
 }
 
 export interface SessionInventoryActivation {
@@ -636,6 +639,22 @@ export interface TranscriptPage {
     truncated: boolean;
     builtAt: string;
   };
+  /** Whether a truthful persisted projection exists for this exact inventory row. */
+  availability: {
+    state: "available" | "unavailable";
+    reasonCode?: "source_unavailable" | "session_quarantined";
+    retryable: boolean;
+    /** False prevents a read-only client from turning unavailable preview into runtime attach. */
+    observerAttachAllowed: boolean;
+  };
+  /** Bounded source observation truth; unavailable rows never imply invented freshness. */
+  freshness: {
+    state: "current" | "unavailable";
+    observedAt: string;
+    sourceModifiedAt?: string;
+  };
+  /** Safe quarantine condition only; no path, adapter descriptor, or session content. */
+  quarantine?: SessionRecoveryCondition;
   /** Preview is deliberately independent of SDK/runtime hydration. */
   hydration: "not-requested";
 }

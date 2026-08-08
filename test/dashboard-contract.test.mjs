@@ -81,6 +81,7 @@ test("published Dash fixtures validate against strict additive definitions", asy
     ["inventory.response.json", "inventoryEnvelope"],
     ["session-info.resource.json", "sessionInfo"],
     ["transcript.response.json", "transcriptEnvelope"],
+    ["transcript.unavailable.response.json", "transcriptEnvelope"],
     ["activation.request.json", "activationRequest"],
     ["activation.ticket.json", "activationTicket"],
     ["activation.states.json", "activationTicketFixtureSet"],
@@ -121,11 +122,32 @@ test("preview, ownership, hydration, and normalized identity stay separate", asy
   assert.equal(inventoryJson.includes("/srv/state/"), false);
   assert.equal(typeof info.source.canonicalPath, "string");
   assert.equal(transcript.data.hydration, "not-requested");
+  assert.equal(transcript.data.availability.state, "available");
+  assert.equal(transcript.data.freshness.state, "current");
   assert.equal(transcript.data.records.every((record) => Object.keys(record.key).length > 0), true);
   assert.equal(
     transcript.data.records.find((record) => record.kind === "tool").key.toolCallId,
     "tool-call-01",
   );
+});
+
+test("unavailable transcript fixture preserves identity and quarantine without history", async () => {
+  const transcript = await fixture("transcript.unavailable.response.json");
+  assert.equal(transcript.data.inventoryId, "inventory-fixture-01");
+  assert.deepEqual(transcript.data.records, []);
+  assert.equal(transcript.data.availability.state, "unavailable");
+  assert.equal(transcript.data.availability.observerAttachAllowed, false);
+  assert.equal(transcript.data.freshness.state, "unavailable");
+  assert.equal(transcript.data.quarantine.code, "tool_adapter_reprovision_required");
+  assert.equal(JSON.stringify(transcript).includes("canonicalPath"), false);
+
+  const { schema, ajv } = await contractValidator();
+  const validate = ajv.getSchema(`${schema.$id}#/$defs/transcriptEnvelope`);
+  assert.ok(validate);
+  const fabricated = structuredClone(transcript);
+  fabricated.data.records.push({ recordId: "entry:invented" });
+  fabricated.data.availability.observerAttachAllowed = true;
+  assert.equal(validate(fabricated), false);
 });
 
 test("activation/export states and liveness facts are independent and explicit", async () => {

@@ -71,11 +71,13 @@ async function withFixtureServer(expectedToken, block) {
     inventory: await source("fixtures/session-api/dashboard.inventory.response.json"),
     information: await source("fixtures/session-api/dashboard.info.response.json"),
     transcript: await source("fixtures/session-api/dashboard.transcript.response.json"),
+    unavailableTranscript: await source("fixtures/session-api/dashboard.transcript.unavailable.response.json"),
     runningInventory: await source("fixtures/android/external-canary-inventory-running.json"),
     runningInformation: await source("fixtures/android/external-canary-info-running.json"),
   };
   const requests = [];
   let running = false;
+  let transcriptUnavailable = false;
   let hostReady = true;
   const server = createServer((request, response) => {
     requests.push({ method: request.method, url: request.url, authorization: request.headers.authorization });
@@ -91,7 +93,9 @@ async function withFixtureServer(expectedToken, block) {
       capabilities.data.host.ready = hostReady;
       body = JSON.stringify(capabilities);
     } else if (pathname === "/v1/dashboard/inventory") body = running ? fixtures.runningInventory : fixtures.inventory;
-    else if (pathname.endsWith("/transcript")) body = fixtures.transcript;
+    else if (pathname.endsWith("/transcript")) {
+      body = transcriptUnavailable ? fixtures.unavailableTranscript : fixtures.transcript;
+    }
     else if (pathname === "/v1/dashboard/inventory/inventory-fixture-01") {
       body = running ? fixtures.runningInformation : fixtures.information;
     }
@@ -117,6 +121,7 @@ async function withFixtureServer(expectedToken, block) {
       origin: `http://127.0.0.1:${address.port}`,
       requests,
       setRunning(value) { running = value; },
+      setTranscriptUnavailable(value) { transcriptUnavailable = value; },
       setHostReady(value) { hostReady = value; },
     });
   } finally {
@@ -191,7 +196,13 @@ test("preflight uses only bounded authenticated GETs and emits a content-free fe
   await writePrivateToken(tokenFile, `${fixtureToken}\n`);
   const helper = path.join(root, "android/build-logic/external-canary-preflight.py");
 
-  await withFixtureServer(fixtureToken, async ({ origin, requests, setRunning, setHostReady }) => {
+  await withFixtureServer(fixtureToken, async ({
+    origin,
+    requests,
+    setRunning,
+    setTranscriptUnavailable,
+    setHostReady,
+  }) => {
     const safe = await invokePreflight(sandbox, "safe", origin, tokenFile);
     assert.equal(safe.result.stdout, "");
     assert.equal(safe.result.stderr, "");
@@ -227,6 +238,14 @@ test("preflight uses only bounded authenticated GETs and emits a content-free fe
     assert.equal((await stat(safe.stagingFile)).mode & 0o777, 0o600);
     assert.equal((await stat(safe.receiptFile)).mode & 0o777, 0o600);
 
+    setTranscriptUnavailable(true);
+    const beforeUnavailable = requests.length;
+    const unavailable = await invokePreflight(sandbox, "unavailable", origin, tokenFile);
+    assert.equal(JSON.parse(await readFile(unavailable.receiptFile, "utf8")).observerAttachAllowed, false);
+    assert.equal(JSON.parse(await readFile(unavailable.stagingFile, "utf8")).observerAttachAllowed, false);
+    assert.equal(requests.length - beforeUnavailable, 4);
+
+    setTranscriptUnavailable(false);
     setRunning(true);
     const beforeRunning = requests.length;
     const running = await invokePreflight(sandbox, "running", origin, tokenFile);

@@ -962,6 +962,26 @@
       },
       "additionalProperties": true
     },
+    "sessionRecoveryCondition": {
+      "type": "object",
+      "required": [
+        "state",
+        "code",
+        "retryable"
+      ],
+      "properties": {
+        "state": {
+          "const": "reprovision_required"
+        },
+        "code": {
+          "const": "tool_adapter_reprovision_required"
+        },
+        "retryable": {
+          "const": true
+        }
+      },
+      "additionalProperties": false
+    },
     "managedSessionSummary": {
       "type": "object",
       "required": [
@@ -1002,6 +1022,9 @@
             "failed",
             "closing"
           ]
+        },
+        "recovery": {
+          "$ref": "#/$defs/sessionRecoveryCondition"
         }
       },
       "additionalProperties": true
@@ -1729,6 +1752,8 @@
         "records",
         "order",
         "projection",
+        "availability",
+        "freshness",
         "hydration"
       ],
       "properties": {
@@ -1801,10 +1826,139 @@
           },
           "additionalProperties": true
         },
+        "availability": {
+          "type": "object",
+          "required": [
+            "state",
+            "retryable",
+            "observerAttachAllowed"
+          ],
+          "properties": {
+            "state": {
+              "enum": [
+                "available",
+                "unavailable"
+              ]
+            },
+            "reasonCode": {
+              "enum": [
+                "source_unavailable",
+                "session_quarantined"
+              ]
+            },
+            "retryable": {
+              "type": "boolean"
+            },
+            "observerAttachAllowed": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": true
+        },
+        "freshness": {
+          "type": "object",
+          "required": [
+            "state",
+            "observedAt"
+          ],
+          "properties": {
+            "state": {
+              "enum": [
+                "current",
+                "unavailable"
+              ]
+            },
+            "observedAt": {
+              "$ref": "#/$defs/timestamp"
+            },
+            "sourceModifiedAt": {
+              "$ref": "#/$defs/timestamp"
+            }
+          },
+          "additionalProperties": true
+        },
+        "quarantine": {
+          "$ref": "#/$defs/sessionRecoveryCondition"
+        },
         "hydration": {
           "const": "not-requested"
         }
       },
+      "allOf": [
+        {
+          "if": {
+            "type": "object",
+            "properties": {
+              "availability": {
+                "type": "object",
+                "properties": {
+                  "state": {
+                    "const": "unavailable"
+                  }
+                },
+                "required": [
+                  "state"
+                ]
+              }
+            },
+            "required": [
+              "availability"
+            ]
+          },
+          "then": {
+            "type": "object",
+            "properties": {
+              "records": {
+                "type": "array",
+                "maxItems": 0
+              },
+              "availability": {
+                "type": "object",
+                "required": [
+                  "reasonCode"
+                ],
+                "properties": {
+                  "reasonCode": {
+                    "enum": [
+                      "source_unavailable",
+                      "session_quarantined"
+                    ]
+                  },
+                  "observerAttachAllowed": {
+                    "const": false
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "type": "object",
+            "properties": {
+              "quarantine": {
+                "$ref": "#/$defs/sessionRecoveryCondition"
+              }
+            },
+            "required": [
+              "quarantine"
+            ]
+          },
+          "then": {
+            "type": "object",
+            "properties": {
+              "availability": {
+                "type": "object",
+                "properties": {
+                  "observerAttachAllowed": {
+                    "const": false
+                  }
+                }
+              }
+            }
+          }
+        }
+      ],
       "additionalProperties": true
     },
     "ticketState": {

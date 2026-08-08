@@ -230,10 +230,10 @@
       ],
       "get": {
         "operationId": "getDashboardTranscript",
-        "summary": "Read a cached or bounded cold projection without provider auth, extension loading, runtime hydration, or a model turn",
+        "summary": "Read a bounded transcript resource or truthful source-unavailable empty state without runtime hydration",
         "responses": {
           "200": {
-            "description": "Normalized active-branch transcript page keyed by Pi entry/message/tool identities",
+            "description": "Identity-matched normalized page with explicit availability, freshness, quarantine, and observer-attach metadata; unprojectable rows return records=[]",
             "content": {
               "application/json": {
                 "schema": {

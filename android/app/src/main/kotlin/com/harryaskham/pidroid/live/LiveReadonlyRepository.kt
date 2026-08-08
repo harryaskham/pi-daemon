@@ -49,6 +49,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
 import java.net.URI
@@ -602,7 +603,9 @@ public class LiveReadonlyRepository(
             URLEncoder.encode(inventorySelection.inventoryId, StandardCharsets.UTF_8.name()).replace("+", "%20")
           val infoEnvelope = get(factory, "/v1/dashboard/inventory/$encodedId")
           val transcriptEnvelope = get(factory, "/v1/dashboard/inventory/$encodedId/transcript?limit=50")
-          val observerSafe = observerAttachIsSafe(inventorySelection, infoEnvelope)
+          val observerSafe =
+            observerAttachIsSafe(inventorySelection, infoEnvelope) &&
+              transcriptAllowsObserver(inventorySelection.inventoryId, transcriptEnvelope)
           if (expectation?.observerAttachAllowed == true && !observerSafe) {
             throw LiveReadonlyFailure("external_canary_session_unsafe")
           }
@@ -706,8 +709,24 @@ public class LiveReadonlyRepository(
     return selection.idleManagedIdentity != null && selection.idleManagedIdentity == idleManagedIdentity(information)
   }
 
+  private fun transcriptAllowsObserver(
+    inventoryId: String,
+    transcriptEnvelope: String,
+  ): Boolean {
+    val root = json.parseToJsonElement(transcriptEnvelope) as? JsonObject ?: return false
+    val transcript = root["data"] as? JsonObject ?: return false
+    if ((transcript["inventoryId"] as? JsonPrimitive)?.contentOrNull != inventoryId) return false
+    if (transcript["quarantine"] != null) return false
+    val availability = transcript["availability"] as? JsonObject ?: return false
+    val freshness = transcript["freshness"] as? JsonObject ?: return false
+    return (availability["state"] as? JsonPrimitive)?.contentOrNull == "available" &&
+      (availability["observerAttachAllowed"] as? JsonPrimitive)?.booleanOrNull == true &&
+      (freshness["state"] as? JsonPrimitive)?.contentOrNull == "current"
+  }
+
   private fun idleManagedIdentity(record: JsonObject): ManagedIdentity? {
     val managed = record["managed"] as? JsonObject ?: return null
+    if (managed["recovery"] != null) return null
     val presence = record["presence"] as? JsonObject ?: return null
     if (
       (managed["state"] as? JsonPrimitive)?.contentOrNull != "idle" ||

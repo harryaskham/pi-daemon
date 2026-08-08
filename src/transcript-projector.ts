@@ -134,7 +134,14 @@ export class TranscriptProjector {
     const projection = cacheMatches
       ? cached
       : await this.#buildOnce(request.inventoryId, path, expected, cachePath);
-    return pageFromProjection(request.inventoryId, projection, request.query, this.limits, cacheMatches);
+    return pageFromProjection(
+      request.inventoryId,
+      projection,
+      request.query,
+      this.limits,
+      cacheMatches,
+      this.#now().toISOString(),
+    );
   }
 
   async clear(inventoryId?: string): Promise<void> {
@@ -926,6 +933,7 @@ function pageFromProjection(
   query: TranscriptQuery | undefined,
   limits: TranscriptProjectionLimits,
   cached: boolean,
+  observedAt: string,
 ): TranscriptPage {
   const limit = pageLimit(query?.limit ?? limits.maxPageRecords, limits.maxPageRecords);
   const direction = query?.direction ?? "older";
@@ -956,6 +964,16 @@ function pageFromProjection(
       cached,
       truncated: projection.truncated,
       builtAt: projection.builtAt,
+    },
+    availability: {
+      state: "available",
+      retryable: false,
+      observerAttachAllowed: true,
+    },
+    freshness: {
+      state: "current",
+      observedAt,
+      sourceModifiedAt: new Date(projection.sourceModifiedMs).toISOString(),
     },
     hydration: "not-requested",
     ...(projection.piSessionId === undefined ? {} : { piSessionId: projection.piSessionId }),

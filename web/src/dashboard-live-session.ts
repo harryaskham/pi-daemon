@@ -72,6 +72,8 @@ export interface DashboardLiveSessionState {
   phase: LiveSessionPhase;
   info?: SessionInfoResource;
   transcript?: TranscriptStoreState;
+  transcriptAvailability?: TranscriptPage["availability"];
+  transcriptFreshness?: TranscriptPage["freshness"];
   managedSession?: SessionResource;
   identity?: DashboardSessionIdentity;
   role: DashboardControllerRole;
@@ -234,6 +236,15 @@ export class DashboardLiveSessionController {
         ...(selectedActivationMode === undefined ? {} : { selectedActivationMode }),
         unread: info.presence.unread,
       });
+      if (
+        preview.availability.state !== "available" ||
+        preview.availability.observerAttachAllowed !== true ||
+        preview.freshness.state !== "current" ||
+        preview.quarantine !== undefined
+      ) {
+        this.#patch({ phase: "preview-only" });
+        return;
+      }
       if (info.managed?.residency === "resident") {
         await this.#connect(info.managed.sessionId, info.managed.generation, generation);
         return;
@@ -720,6 +731,8 @@ export class DashboardLiveSessionController {
     this.#patch({
       phase: "preview",
       ...(preview.sourceFingerprint === undefined ? {} : { previewFingerprint: preview.sourceFingerprint }),
+      transcriptAvailability: { ...preview.availability },
+      transcriptFreshness: { ...preview.freshness },
       transcript: createTranscriptStore(identity, preview.records, undefined, preview.newerCursor ?? preview.olderCursor),
     });
   }

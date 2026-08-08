@@ -110,6 +110,16 @@ export class LocalFixtureBackend implements DashboardFrontendBackend {
         truncated: false,
         builtAt: "2026-07-18T12:00:00.000Z",
       },
+      availability: {
+        state: "available",
+        retryable: false,
+        observerAttachAllowed: true,
+      },
+      freshness: {
+        state: "current",
+        observedAt: "2026-07-18T12:00:00.000Z",
+        sourceModifiedAt: "2026-07-18T12:00:00.000Z",
+      },
       hydration: "not-requested",
     };
   }

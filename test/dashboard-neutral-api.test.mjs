@@ -163,6 +163,39 @@ test("projects only the authenticated inventory source and exact fingerprint", a
   );
 });
 
+test("returns truthful empty transcript state for a retained quarantined memory session", async () => {
+  const { calls, controller, info } = harness();
+  info.source = { aliases: [] };
+  info.managed = {
+    sessionId: "retained-memory",
+    generation: 4,
+    revision: 9,
+    residency: "dormant",
+    state: "idle",
+    recovery: {
+      state: "reprovision_required",
+      code: "tool_adapter_reprovision_required",
+      retryable: true,
+    },
+  };
+
+  const page = await controller.getTranscript("inventory-one", { limit: 50 });
+  assert.equal(page.inventoryId, "inventory-one");
+  assert.deepEqual(page.managedSession, { sessionId: "retained-memory", generation: 4 });
+  assert.deepEqual(page.records, []);
+  assert.deepEqual(page.availability, {
+    state: "unavailable",
+    reasonCode: "session_quarantined",
+    retryable: true,
+    observerAttachAllowed: false,
+  });
+  assert.equal(page.freshness.state, "unavailable");
+  assert.equal(page.hydration, "not-requested");
+  assert.equal(page.quarantine.code, "tool_adapter_reprovision_required");
+  assert.equal(calls.some(([kind]) => kind === "project"), false);
+  assert.equal(JSON.stringify(page).includes("/sessions/"), false);
+});
+
 test("delegates ownership tickets and returns a safe lease resource", async () => {
   const { calls, controller } = harness();
   const activation = { requestId: "a", idempotencyKey: "ak", mode: "fork" };

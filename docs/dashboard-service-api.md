@@ -40,7 +40,7 @@ above is structural rather than conventional.
 | `GET /v1/dashboard/diagnostics` | bounded browser-safe policy status and normalized recent request failures; no raw logs or sensitive content |
 | `GET /v1/dashboard/inventory` | bounded search/filter/page over public inventory rows |
 | `GET /v1/dashboard/inventory/{inventoryId}` | authenticated full info, including source path/ownership diagnostics |
-| `GET /v1/dashboard/inventory/{inventoryId}/transcript` | preview-only normalized projection with optional exact fingerprint precondition |
+| `GET /v1/dashboard/inventory/{inventoryId}/transcript` | preview-only normalized projection, or an identity-matched unavailable resource with `records: []`, with optional exact fingerprint precondition |
 | `POST /v1/dashboard/inventory/{inventoryId}/activate` | durable preview/reuse/direct/fork activation ticket |
 | `GET /v1/dashboard/activation/{ticketId}` | activation ticket |
 | `POST /v1/dashboard/session/{sessionRef}/export` | durable export-as-new or guarded append-back ticket |
@@ -90,7 +90,15 @@ Inventory query parameters are `limit`, opaque `cursor`, bounded `search`, CSV
 `limit`, opaque `cursor`, `direction`, `leafId`, and `fingerprint`. The
 controller resolves the authenticated inventory information resource and passes
 only its canonical path plus exact current fingerprint to `TranscriptProjector`.
-It never accepts an arbitrary client path.
+It never accepts an arbitrary client path. A retained inventory row without a
+projectable source is still a valid readonly resource: the route returns `200`
+with the exact inventory and managed generation identity, `records: []`,
+`availability.state: "unavailable"`, unavailable freshness, and
+`observerAttachAllowed: false`. A quarantined generation also carries only its
+bounded safe recovery code. It never copies a source path, adapter descriptor,
+or invented history into that response. Projectable pages report current source
+freshness and may allow observer attach only when the managed generation is not
+quarantined.
 
 When owner defaults are configured, neutral capabilities include only the
 effective browser-safe lazy-draft spec and content-free cwd/model/authority
@@ -110,8 +118,13 @@ response limit.
 
 ## Rich attach and prompt-free hydration
 
-Dedicated Rich panes use the existing `pi-daemon-rpc.v1` attachment. The remote
-backend sets `hydrate=true` explicitly: the daemon reopens a retained durable
+Dedicated Rich panes use the existing `pi-daemon-rpc.v1` attachment. Browser,
+SDK, Pi Droid, and external-canary clients must require matching identities,
+`availability.state: "available"`, current freshness, no quarantine, and
+`observerAttachAllowed: true` before opening even a readonly observer. An
+unavailable transcript remains a successful host/session listing and empty
+readonly view; it is not an attach request. The remote backend sets
+`hydrate=true` explicitly: the daemon reopens a retained durable
 session through its persisted catalog/configuration policy, without submitting a
 prompt, and holds a renewable residency lease for the lifetime of the shared
 attachment. Ordinary RPC clients that omit `hydrate` remain resident-only.

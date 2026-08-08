@@ -77,6 +77,7 @@ test("session API fixtures validate against their published definitions", async 
     ["dashboard.inventory.response.json", "dashboardInventoryEnvelope"],
     ["dashboard.info.response.json", "dashboardSessionInfoEnvelope"],
     ["dashboard.transcript.response.json", "dashboardTranscriptEnvelope"],
+    ["dashboard.transcript.unavailable.response.json", "dashboardTranscriptEnvelope"],
     ["dashboard.activation.response.json", "dashboardActivationEnvelope"],
     ["dashboard.export.response.json", "dashboardExportEnvelope"],
     ["dashboard.lease.response.json", "dashboardLeaseEnvelope"],

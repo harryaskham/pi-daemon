@@ -171,7 +171,11 @@ def managed_identity(record: dict[str, Any]) -> tuple[str, int] | None:
     return session_id, generation
 
 
-def observer_attach_is_safe(inventory: dict[str, Any], info: dict[str, Any]) -> bool:
+def observer_attach_is_safe(
+    inventory: dict[str, Any],
+    info: dict[str, Any],
+    transcript: dict[str, Any],
+) -> bool:
     inventory_identity = managed_identity(inventory)
     info_identity = managed_identity(info)
     if inventory_identity is None or inventory_identity != info_identity:
@@ -180,13 +184,23 @@ def observer_attach_is_safe(inventory: dict[str, Any], info: dict[str, Any]) -> 
     info_managed = info["managed"]
     inventory_presence = inventory.get("presence")
     info_presence = info.get("presence")
+    availability = transcript.get("availability")
+    freshness = transcript.get("freshness")
     return (
         inventory_managed.get("state") == "idle"
         and info_managed.get("state") == "idle"
+        and "recovery" not in inventory_managed
+        and "recovery" not in info_managed
         and isinstance(inventory_presence, dict)
         and isinstance(info_presence, dict)
         and inventory_presence.get("runtime") == "resident-idle"
         and info_presence.get("runtime") == "resident-idle"
+        and transcript.get("quarantine") is None
+        and isinstance(availability, dict)
+        and availability.get("state") == "available"
+        and availability.get("observerAttachAllowed") is True
+        and isinstance(freshness, dict)
+        and freshness.get("state") == "current"
     )
 
 
@@ -296,7 +310,7 @@ def run(arguments: argparse.Namespace) -> None:
         if transcript.get("inventoryId") != inventory_id or not isinstance(transcript.get("records"), list):
             raise PreflightError("transcript_identity_mismatch")
 
-        observer_attach_allowed = observer_attach_is_safe(selected, information)
+        observer_attach_allowed = observer_attach_is_safe(selected, information, transcript)
         pairing_payload = {
             "version": 1,
             "apiUrl": origin,
