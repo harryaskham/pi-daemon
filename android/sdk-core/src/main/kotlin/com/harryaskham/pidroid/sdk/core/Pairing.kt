@@ -17,6 +17,51 @@ public enum class TransportSecurity {
   EXPLICIT_REMOTE_PLAINTEXT,
 }
 
+internal data class ValidatedHostMetadata(
+  val apiUri: URI,
+  val displayName: String,
+  val tlsFingerprint: String?,
+  val transportSecurity: TransportSecurity,
+)
+
+private val DISPLAY_NAME = Regex("^[^\\p{Cc}\\p{Cf}]{1,128}$")
+private val TLS_FINGERPRINT = Regex("^(?:[0-9A-F]{2}:){31}[0-9A-F]{2}$")
+
+internal fun validateHostMetadata(
+  apiUri: URI,
+  displayName: String,
+  tlsFingerprint: String?,
+): ValidatedHostMetadata {
+  require(apiUri.isAbsolute && apiUri.host != null) { "pairing API URI must be absolute" }
+  require(apiUri.userInfo == null && apiUri.query == null && apiUri.fragment == null) {
+    "pairing API URI must not contain user info, query, or fragment"
+  }
+  require(apiUri.path.isNullOrEmpty() || apiUri.path == "/") {
+    "pairing API URI must not contain an application path"
+  }
+  require(apiUri.scheme.equals("https", true) || apiUri.scheme.equals("http", true)) {
+    "pairing API URI must use HTTP or HTTPS"
+  }
+  require(DISPLAY_NAME.matches(displayName)) { "pairing display name is invalid or too long" }
+  val normalizedFingerprint = tlsFingerprint?.uppercase(Locale.ROOT)
+  require(normalizedFingerprint == null || TLS_FINGERPRINT.matches(normalizedFingerprint)) {
+    "pairing TLS fingerprint must be a SHA-256 fingerprint"
+  }
+  val normalizedUri = apiUri.normalize()
+  val security =
+    when {
+      normalizedUri.scheme.equals("https", true) -> TransportSecurity.HTTPS
+      isLoopback(normalizedUri.host) -> TransportSecurity.LOOPBACK_PLAINTEXT
+      else -> TransportSecurity.EXPLICIT_REMOTE_PLAINTEXT
+    }
+  return ValidatedHostMetadata(normalizedUri, displayName, normalizedFingerprint, security)
+}
+
+private fun isLoopback(host: String): Boolean {
+  val normalized = host.lowercase(Locale.ROOT).removePrefix("[").removeSuffix("]")
+  return normalized == "localhost" || normalized == "::1" || normalized.startsWith("127.")
+}
+
 /**
  * Version-1 stable-bearer pairing payload. The bearer is copied into owner-only mutable storage,
  * omitted from equality/hash/rendering, exposed only to a bounded callback, and overwritten by
@@ -65,52 +110,24 @@ public class PairingPayload private constructor(
     "PairingPayload(version=1, apiUri=$apiUri, displayName=$displayName, tlsFingerprint=${tlsFingerprint != null}, transportSecurity=$transportSecurity, bearer=[REDACTED])"
 
   public companion object {
-    private val DISPLAY_NAME = Regex("^[^\\p{Cc}\\p{Cf}]{1,128}$")
-    private val TLS_FINGERPRINT = Regex("^(?:[0-9A-F]{2}:){31}[0-9A-F]{2}$")
-
     public fun create(
       apiUri: URI,
       displayName: String,
       bearer: CharArray,
       tlsFingerprint: String? = null,
     ): PairingPayload {
-      require(apiUri.isAbsolute && apiUri.host != null) { "pairing API URI must be absolute" }
-      require(apiUri.userInfo == null && apiUri.query == null && apiUri.fragment == null) {
-        "pairing API URI must not contain user info, query, or fragment"
-      }
-      require(apiUri.path.isNullOrEmpty() || apiUri.path == "/") {
-        "pairing API URI must not contain an application path"
-      }
-      require(apiUri.scheme.equals("https", true) || apiUri.scheme.equals("http", true)) {
-        "pairing API URI must use HTTP or HTTPS"
-      }
-      require(DISPLAY_NAME.matches(displayName)) { "pairing display name is invalid or too long" }
+      val metadata = validateHostMetadata(apiUri, displayName, tlsFingerprint)
       require(bearer.isNotEmpty() && bearer.size <= 4_096) { "pairing bearer is missing or too long" }
       require(bearer.none { it == '\r' || it == '\n' || it == '\u0000' }) {
         "pairing bearer contains an invalid character"
       }
-      val normalizedFingerprint = tlsFingerprint?.uppercase(Locale.ROOT)
-      require(normalizedFingerprint == null || TLS_FINGERPRINT.matches(normalizedFingerprint)) {
-        "pairing TLS fingerprint must be a SHA-256 fingerprint"
-      }
-      val security =
-        when {
-          apiUri.scheme.equals("https", true) -> TransportSecurity.HTTPS
-          isLoopback(apiUri.host) -> TransportSecurity.LOOPBACK_PLAINTEXT
-          else -> TransportSecurity.EXPLICIT_REMOTE_PLAINTEXT
-        }
       return PairingPayload(
-        apiUri = apiUri.normalize(),
-        displayName = displayName,
+        apiUri = metadata.apiUri,
+        displayName = metadata.displayName,
         bearer = bearer.copyOf(),
-        tlsFingerprint = normalizedFingerprint,
-        transportSecurity = security,
+        tlsFingerprint = metadata.tlsFingerprint,
+        transportSecurity = metadata.transportSecurity,
       )
-    }
-
-    private fun isLoopback(host: String): Boolean {
-      val normalized = host.lowercase(Locale.ROOT).removePrefix("[").removeSuffix("]")
-      return normalized == "localhost" || normalized == "::1" || normalized.startsWith("127.")
     }
   }
 }

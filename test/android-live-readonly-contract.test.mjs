@@ -68,6 +68,44 @@ test("live app preserves bounded transport protected credentials and readonly hy
   assert.match(repository, /SessionRole\.OBSERVER/);
 });
 
+test("host management is multi-host, explicit, transactional, recoverable, and secret-safe", async () => {
+  const [hostRegistry, repository, transport, manager, manifest, extractionRules] = await Promise.all([
+    source("android/sdk-core/src/main/kotlin/com/harryaskham/pidroid/sdk/core/HostRegistry.kt"),
+    source("android/app/src/main/kotlin/com/harryaskham/pidroid/live/LiveReadonlyRepository.kt"),
+    source("android/app/src/main/kotlin/com/harryaskham/pidroid/live/OkHttpPiDaemonTransport.kt"),
+    source("android/app/src/main/kotlin/com/harryaskham/pidroid/live/HostManagementScreen.kt"),
+    source("android/app/src/main/AndroidManifest.xml"),
+    source("android/app/src/main/res/xml/data_extraction_rules.xml"),
+  ]);
+
+  for (const control of ["Add another host", "Make default", "Edit", "Re-pair", "Forget", "Replace credentials"]) {
+    assert.match(manager, new RegExp(control));
+  }
+  assert.match(manager, /AlertDialog/);
+  assert.match(manager, /PasswordVisualTransformation/);
+  assert.match(manager, /Host no longer registered/);
+  assert.match(manager, /READY/);
+  assert.match(manager, /pinned certificate/);
+  assert.match(manager, /explicitly trusted tailnet/);
+  assert.match(repository, /DuplicateEndpoint/);
+  assert.match(repository, /selectDefaultHost/);
+  assert.match(repository, /replaceHostEnvelope/);
+  assert.match(transport, /invalidateHost/);
+  assert.match(hostRegistry, /updateMetadata/);
+  assert.match(hostRegistry, /credentials\.remove\(nextHandle\)/);
+
+  const replacement = repository.slice(repository.indexOf("private suspend fun replaceHostPayload"), repository.indexOf("private suspend fun afterHostMutation"));
+  assert.ok(replacement.indexOf("registry.replace") < replacement.indexOf("afterHostMutation"));
+  const committedMutation = repository.slice(repository.indexOf("private suspend fun afterHostMutation"), repository.indexOf("private fun publishRegisteredHosts"));
+  assert.ok(committedMutation.indexOf("transport.invalidateHost") < committedMutation.indexOf("refresh()"));
+
+  const hostManagementModel = repository.slice(repository.indexOf("public sealed interface HostManagementNotice"), repository.indexOf("public data class ExternalCanaryExpectation"));
+  assert.doesNotMatch(hostManagementModel, /CharArray|bearer|PairingPayload/i);
+  assert.doesNotMatch(manager, /println|Log\.|rememberSaveable/);
+  assert.match(manifest, /android:allowBackup="false"/);
+  assert.match(extractionRules, /exclude domain="sharedpref" path="\."/);
+});
+
 test("disposable-daemon emulator proof is bounded readonly and release advances to version two", async () => {
   const [proof, adbReadiness, uiHealth, server, release] = await Promise.all([
     source("android/build-logic/live-readonly-proof.sh"),

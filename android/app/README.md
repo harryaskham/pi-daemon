@@ -25,6 +25,35 @@ Enable it only with `-PpiDroidAndroidApp=true` inside the pinned
 records the current monotonic Play identity as version code 2 and release name
 `0.3.0-internal.2`; every later AAB must increment the code.
 
+## Daily-driver host management
+
+The app's **Hosts** surface works with zero, one, or many registered Pi Daemons.
+It lists each host's display name, API origin, transport/certificate policy,
+readiness, and durable default selection. Users can add another host, edit only
+non-secret name/origin/pin metadata, explicitly re-pair to atomically replace the
+metadata plus Keystore-backed bearer generation, or forget one host after a
+confirmation that names the local state being removed. A failed connection never
+hides this surface, and a missing-host view offers another host or registration
+instead of crashing an orphaned view.
+
+Duplicate manual or pairing-envelope origins are never silently accepted: the
+existing host is shown and the user must choose **Re-pair** to replace its
+credentials. Replacement stages a new no-backup ciphertext generation, commits
+metadata, then invalidates only that host's sockets/cache and refreshes. A failed
+commit removes the staged generation and performs no network operation. Forget
+commits metadata removal before destroying local credential authority. Other
+hosts, credentials, defaults, and workspaces are preserved. The bearer is masked
+while entered, cleared from form/caller buffers on submission, and never enters
+host models, SharedPreferences, Room, logs, screenshots, backup, or device
+transfer. Clearing application data is not an accepted recovery path.
+
+This registry is intentionally Android-specific: Pi Droid moves among trusted
+machines and owns mobile Keystore state, while the browser dashboard uses its
+serving daemon's authenticated same-origin authority and the terminal client
+uses its explicitly selected local/remote process. The neutral host descriptor
+and transport contracts remain shared; Android credential storage and host
+navigation are not duplicated into web or TUI presentation code.
+
 ## Secret-safe internal release
 
 `android/build-logic/release-internal.sh` accepts only a SOPS age identity file

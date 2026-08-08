@@ -84,12 +84,33 @@ public class PreferencesHostRegistryStore(
   }
 }
 
+public class PreferencesDefaultHostStore(
+  context: Context,
+) : DefaultHostStore {
+  private val preferences = context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
+
+  override suspend fun read(): HostId? =
+    preferences.getString(DEFAULT_HOST_KEY, null)?.let { value -> runCatching { HostId(value) }.getOrNull() }
+
+  override suspend fun write(hostId: HostId?) {
+    val editor = preferences.edit()
+    if (hostId == null) editor.remove(DEFAULT_HOST_KEY) else editor.putString(DEFAULT_HOST_KEY, hostId.value)
+    check(editor.commit()) { "default host persistence failed" }
+  }
+
+  private companion object {
+    const val PREFERENCES: String = "pi-droid-host-registry"
+    const val DEFAULT_HOST_KEY: String = "default-host-v1"
+  }
+}
+
 public class AndroidHostRegistry(
   context: Context,
 ) {
   public val credentialVault: HostCredentialVault =
     HostCredentialVault(AndroidKeystoreCredentialProtector(), FileNoBackupCredentialStore(context))
   private val store = PreferencesHostRegistryStore(context)
+  public val defaultHostStore: DefaultHostStore = PreferencesDefaultHostStore(context)
   public val registry: HostRegistry =
     HostRegistry(
       store = store,

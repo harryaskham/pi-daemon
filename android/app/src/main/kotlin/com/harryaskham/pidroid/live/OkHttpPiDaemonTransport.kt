@@ -49,6 +49,9 @@ public interface LiveHostTransport :
   AutoCloseable {
   public fun replaceHosts(hosts: List<RegisteredHost>)
 
+  /** Cancels and removes every pooled or active connection for one committed host mutation. */
+  public fun invalidateHost(hostId: HostId)
+
   /** Retires only idle HTTP connections before an explicit readonly hydration pass. */
   public fun prepareReadonlyRefresh()
 }
@@ -92,23 +95,12 @@ public class OkHttpPiDaemonTransport(
   override fun replaceHosts(hosts: List<RegisteredHost>) {
     require(hosts.map { it.id }.distinct().size == hosts.size) { "host IDs must be unique" }
     val wanted = hosts.mapTo(linkedSetOf()) { it.id }
-    clients.keys.filterNot(wanted::contains).forEach { id ->
-      clients
-        .remove(id)
-        ?.client
-        ?.dispatcher
-        ?.executorService
-        ?.shutdown()
-    }
+    clients.keys.filterNot(wanted::contains).forEach(::invalidateHost)
     hosts.forEach { host ->
       val current = clients[host.id]
       val fingerprint = host.tlsFingerprint
       if (current == null || current.descriptor.baseUri != host.baseUri || current.tlsFingerprint != fingerprint) {
-        current
-          ?.client
-          ?.dispatcher
-          ?.executorService
-          ?.shutdown()
+        if (current != null) invalidateHost(host.id)
         clients[host.id] =
           HostClient(
             descriptor = PiDaemonHostDescriptor(host.id, host.displayName, host.baseUri),
@@ -118,6 +110,14 @@ public class OkHttpPiDaemonTransport(
       }
     }
     descriptors.value = hosts.map { PiDaemonHostDescriptor(it.id, it.displayName, it.baseUri) }
+  }
+
+  override fun invalidateHost(hostId: HostId) {
+    clients.remove(hostId)?.client?.let { client ->
+      client.dispatcher.cancelAll()
+      client.connectionPool.evictAll()
+      client.dispatcher.executorService.shutdown()
+    }
   }
 
   override fun prepareReadonlyRefresh() {
@@ -212,11 +212,7 @@ public class OkHttpPiDaemonTransport(
   }
 
   override fun close() {
-    clients.values.forEach {
-      it.client.dispatcher.executorService
-        .shutdown()
-    }
-    clients.clear()
+    clients.keys.toList().forEach(::invalidateHost)
     descriptors.value = emptyList()
   }
 

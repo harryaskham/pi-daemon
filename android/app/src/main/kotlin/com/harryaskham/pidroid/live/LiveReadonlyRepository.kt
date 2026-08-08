@@ -85,6 +85,54 @@ public data class LiveHostSession(
   public val interactiveCommands: Set<PiRpcCommandType>,
 )
 
+public sealed interface HostManagementNotice {
+  public data class Added(
+    public val hostId: HostId,
+  ) : HostManagementNotice
+
+  public data class Updated(
+    public val hostId: HostId,
+  ) : HostManagementNotice
+
+  public data class Repaired(
+    public val hostId: HostId,
+  ) : HostManagementNotice
+
+  public data class Forgotten(
+    public val displayName: String,
+  ) : HostManagementNotice
+
+  public data class DuplicateEndpoint(
+    public val hostId: HostId,
+  ) : HostManagementNotice
+
+  public data class Failure(
+    public val code: String,
+  ) : HostManagementNotice
+}
+
+public data class HostManagementState(
+  public val hosts: List<RegisteredHost> = emptyList(),
+  public val defaultHostId: HostId? = null,
+  public val notice: HostManagementNotice? = null,
+)
+
+public interface DefaultHostStore {
+  public suspend fun read(): HostId?
+
+  public suspend fun write(hostId: HostId?)
+}
+
+private class EphemeralDefaultHostStore : DefaultHostStore {
+  private var hostId: HostId? = null
+
+  override suspend fun read(): HostId? = hostId
+
+  override suspend fun write(hostId: HostId?) {
+    this.hostId = hostId
+  }
+}
+
 public data class ExternalCanaryExpectation(
   public val hostInstanceId: String,
   public val inventoryId: String,
@@ -128,20 +176,28 @@ public class LiveReadonlyRepository(
   private val registry: HostRegistry,
   private val credentials: HostCredentialVault,
   private val transport: LiveHostTransport,
+  private val defaultHostStore: DefaultHostStore = EphemeralDefaultHostStore(),
 ) : AutoCloseable {
   private val mutableState = MutableStateFlow<LiveReadonlyState>(LiveReadonlyState.Unconfigured)
   private val mutableInteractiveState = MutableStateFlow<LiveInteractiveAppState>(LiveInteractiveAppState.Inactive)
+  private val mutableHostManagementState = MutableStateFlow(HostManagementState())
   private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
   private val interactiveConnectMutex = Mutex()
   private val json = Json
   private var activeInteractive: ActiveInteractive? = null
   private var externalCanaryExpectation: ExternalCanaryExpectation? = null
+  private var defaultHostId: HostId? = null
 
   public val state: StateFlow<LiveReadonlyState> = mutableState.asStateFlow()
   public val interactiveState: StateFlow<LiveInteractiveAppState> = mutableInteractiveState.asStateFlow()
+  public val hostManagementState: StateFlow<HostManagementState> = mutableHostManagementState.asStateFlow()
 
   public suspend fun initialize() {
     val hosts = registry.list()
+    val persistedDefault = defaultHostStore.read()
+    defaultHostId = persistedDefault?.takeIf { candidate -> hosts.any { it.id == candidate } } ?: hosts.firstOrNull()?.id
+    if (defaultHostId != persistedDefault) defaultHostStore.write(defaultHostId)
+    publishRegisteredHosts(hosts)
     if (hosts.isEmpty()) {
       transport.replaceHosts(emptyList())
       mutableState.value = LiveReadonlyState.Unconfigured
@@ -154,14 +210,11 @@ public class LiveReadonlyRepository(
     envelope: String,
     confirmInsecureHttp: Boolean,
   ) {
-    val payload = PairingPayloadCodec.decode(envelope)
-    val existing = registry.list().firstOrNull { it.baseUri == payload.apiUri }
-    if (existing != null) {
-      payload.close()
-    } else {
-      registry.register(payload, confirmInsecureHttp)
-    }
-    refresh()
+    registerNewPayload(
+      PairingPayloadCodec.decode(envelope),
+      confirmInsecureHttp,
+      refreshDuplicate = false,
+    )
   }
 
   public suspend fun registerExternalCanary(
@@ -170,7 +223,11 @@ public class LiveReadonlyRepository(
     confirmInsecureHttp: Boolean,
   ) {
     externalCanaryExpectation = expectation
-    registerEnvelope(envelope, confirmInsecureHttp)
+    registerNewPayload(
+      PairingPayloadCodec.decode(envelope),
+      confirmInsecureHttp,
+      refreshDuplicate = true,
+    )
   }
 
   public suspend fun registerManual(
@@ -181,25 +238,78 @@ public class LiveReadonlyRepository(
     confirmInsecureHttp: Boolean,
   ) {
     try {
-      registry.register(
+      registerNewPayload(
+        PairingPayload.create(apiUri, displayName, bearer, tlsFingerprint),
+        confirmInsecureHttp,
+        refreshDuplicate = false,
+      )
+    } finally {
+      bearer.fill('\u0000')
+    }
+  }
+
+  public suspend fun updateHost(
+    hostId: HostId,
+    apiUri: URI,
+    displayName: String,
+    tlsFingerprint: String?,
+    confirmInsecureHttp: Boolean,
+  ) {
+    registry.updateMetadata(hostId, apiUri, displayName, tlsFingerprint, confirmInsecureHttp)
+    afterHostMutation(hostId, HostManagementNotice.Updated(hostId))
+  }
+
+  public suspend fun replaceHost(
+    hostId: HostId,
+    apiUri: URI,
+    displayName: String,
+    bearer: CharArray,
+    tlsFingerprint: String?,
+    confirmInsecureHttp: Boolean,
+  ) {
+    try {
+      replaceHostPayload(
+        hostId,
         PairingPayload.create(apiUri, displayName, bearer, tlsFingerprint),
         confirmInsecureHttp,
       )
     } finally {
       bearer.fill('\u0000')
     }
-    refresh()
+  }
+
+  public suspend fun replaceHostEnvelope(
+    hostId: HostId,
+    envelope: String,
+    confirmInsecureHttp: Boolean,
+  ) {
+    replaceHostPayload(hostId, PairingPayloadCodec.decode(envelope), confirmInsecureHttp)
+  }
+
+  public fun clearHostManagementNotice() {
+    mutableHostManagementState.value = mutableHostManagementState.value.copy(notice = null)
+  }
+
+  public fun reportHostManagementFailure(code: String) {
+    mutableHostManagementState.value =
+      mutableHostManagementState.value.copy(
+        notice = HostManagementNotice.Failure(code.takeIf(INTERACTIVE_SAFE_CODE::matches) ?: "host_update_failed"),
+      )
   }
 
   public suspend fun refresh() {
     val hosts = registry.list()
+    publishRegisteredHosts(hosts)
     if (hosts.isEmpty()) {
+      transport.replaceHosts(emptyList())
       mutableState.value = LiveReadonlyState.Unconfigured
       return
     }
     transport.replaceHosts(hosts)
     transport.prepareReadonlyRefresh()
-    val previous = (mutableState.value as? LiveReadonlyState.Ready)?.hosts.orEmpty()
+    val priorReady = mutableState.value as? LiveReadonlyState.Ready
+    val previous = priorReady?.hosts.orEmpty()
+    val previousSelected = priorReady?.selectedHostId
     if (previous.isNotEmpty()) {
       mutableState.value =
         LiveReadonlyState.Ready(
@@ -210,7 +320,10 @@ public class LiveReadonlyRepository(
                 rpcObserverConnected = false,
               )
             },
-          selectedHostId = previous.first().host.id,
+          selectedHostId =
+            defaultHostId?.takeIf { id -> previous.any { it.host.id == id } }
+              ?: previousSelected?.takeIf { id -> previous.any { it.host.id == id } }
+              ?: previous.first().host.id,
         )
     } else {
       mutableState.value = LiveReadonlyState.Loading("Connecting to registered Pi Daemon hosts")
@@ -233,11 +346,13 @@ public class LiveReadonlyRepository(
       }
     }
     if (snapshots.isNotEmpty()) {
-      val previousSelected = (mutableState.value as? LiveReadonlyState.Ready)?.selectedHostId
       mutableState.value =
         LiveReadonlyState.Ready(
           hosts = snapshots,
-          selectedHostId = previousSelected?.takeIf { id -> snapshots.any { it.host.id == id } } ?: snapshots.first().host.id,
+          selectedHostId =
+            defaultHostId?.takeIf { id -> snapshots.any { it.host.id == id } }
+              ?: previousSelected?.takeIf { id -> snapshots.any { it.host.id == id } }
+              ?: snapshots.first().host.id,
         )
     } else {
       mutableState.value = LiveReadonlyState.Failure(failureCode(failures.firstOrNull()), retryable = true)
@@ -273,10 +388,79 @@ public class LiveReadonlyRepository(
     if (ready.hosts.any { it.host.id == hostId }) mutableState.value = ready.copy(selectedHostId = hostId)
   }
 
+  public suspend fun selectDefaultHost(hostId: HostId) {
+    val hosts = registry.list()
+    require(hosts.any { it.id == hostId }) { "host is not registered" }
+    defaultHostStore.write(hostId)
+    defaultHostId = hostId
+    publishRegisteredHosts(hosts)
+    selectHost(hostId)
+  }
+
   public suspend fun removeHost(hostId: HostId) {
-    if (activeInteractive?.hostId == hostId) closeActiveInteractive()
+    val current = registry.list().singleOrNull { it.id == hostId } ?: return
     registry.remove(hostId)
+    if (activeInteractive?.hostId == hostId) closeActiveInteractive()
+    transport.invalidateHost(hostId)
+    val remaining = registry.list()
+    if (defaultHostId == hostId) {
+      defaultHostId = remaining.firstOrNull()?.id
+      defaultHostStore.write(defaultHostId)
+    }
+    publishRegisteredHosts(remaining, HostManagementNotice.Forgotten(current.displayName))
     refresh()
+  }
+
+  private suspend fun registerNewPayload(
+    payload: PairingPayload,
+    confirmInsecureHttp: Boolean,
+    refreshDuplicate: Boolean,
+  ) {
+    val existing = registry.list().firstOrNull { it.baseUri == payload.apiUri }
+    if (existing != null) {
+      payload.close()
+      publishRegisteredHosts(registry.list(), HostManagementNotice.DuplicateEndpoint(existing.id))
+      if (refreshDuplicate) refresh()
+      return
+    }
+    val registered = registry.register(payload, confirmInsecureHttp)
+    if (defaultHostId == null) {
+      defaultHostId = registered.id
+      defaultHostStore.write(defaultHostId)
+    }
+    publishRegisteredHosts(registry.list(), HostManagementNotice.Added(registered.id))
+    refresh()
+  }
+
+  private suspend fun replaceHostPayload(
+    hostId: HostId,
+    payload: PairingPayload,
+    confirmInsecureHttp: Boolean,
+  ) {
+    registry.replace(hostId, payload, confirmInsecureHttp)
+    afterHostMutation(hostId, HostManagementNotice.Repaired(hostId))
+  }
+
+  private suspend fun afterHostMutation(
+    hostId: HostId,
+    notice: HostManagementNotice,
+  ) {
+    if (activeInteractive?.hostId == hostId) closeActiveInteractive()
+    transport.invalidateHost(hostId)
+    publishRegisteredHosts(registry.list(), notice)
+    refresh()
+  }
+
+  private fun publishRegisteredHosts(
+    hosts: List<RegisteredHost>,
+    notice: HostManagementNotice? = mutableHostManagementState.value.notice,
+  ) {
+    mutableHostManagementState.value =
+      HostManagementState(
+        hosts = hosts.sortedBy { it.displayName.lowercase() },
+        defaultHostId = defaultHostId,
+        notice = notice,
+      )
   }
 
   public suspend fun handleInteraction(action: RichInteractionAction) {

@@ -600,6 +600,14 @@ sizes, event coalescing, and cancellation.
 - Clipboard actions are explicit and show content origin.
 - Host removal revokes local credentials/cache; daemon credential rotation is
   re-paired explicitly.
+- The Android Hosts surface remains reachable after failed startup and supports
+  zero/one/many hosts, durable default selection, non-secret metadata edits,
+  explicit atomic credential replacement, and confirmed per-host removal. A
+  duplicate endpoint routes to the existing host's re-pair flow rather than
+  being ignored. Replacement commits metadata plus a staged Keystore generation
+  before invalidating that host's sockets/cache or making any request; failed
+  commits roll back the staged generation. Other hosts and workspace references
+  remain intact, while missing-host views offer selection or re-registration.
 - Pairing/file/background endpoints, if added, retain auth-before-routing and
   content-free absent/unauthorized parity.
 

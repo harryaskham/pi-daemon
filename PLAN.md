@@ -484,6 +484,11 @@ process appears per wake.
 
 ## Provisional Beads work board
 
+- [x] `bd-d62946` Add daily-driver Pi Droid host management for zero/one/many
+  hosts with durable default selection, non-secret metadata edits, atomic
+  Keystore credential replacement and rollback, duplicate-endpoint re-pair,
+  confirmed per-host forget, affected-connection invalidation, and actionable
+  failed/missing-host recovery without clearing application data.
 - [x] `bd-fa30dd` Retire only idle HTTP connections before an explicit Pi Droid
   readonly refresh so a same-authority daemon rollover establishes its new host
   identity in one pass without retrying requests, replaying indeterminate
