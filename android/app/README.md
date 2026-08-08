@@ -72,8 +72,11 @@ scans all retained text for the exact disposable bearer before destroying the
 token, and leaves only a safe scan receipt. An unrelated app-failure modal is
 never dismissed: the fail-closed path retains owner-private normalized UI XML,
 a screenshot, a redacted logcat summary, safe identity class/hash metadata and
-content hashes without retaining the raw package, title or logcat text. Upload
-uses Gradle Play Publisher's `IGNORE`
+content hashes without retaining the raw package, title or logcat text. If any
+capture predicate fails, the same owner-private occurrence remains incomplete
+and names only that fixed predicate plus the safe identity class/hash and the
+status/hashes of bounded components; empty, oversized, unhashable or
+permission-unsafe files are discarded. Upload uses Gradle Play Publisher's `IGNORE`
 resolution for idempotent version-code retries, targets only `internal`, commits
 no wider rollout, and opens a separate read edit to verify the highest remote
 version and track.
