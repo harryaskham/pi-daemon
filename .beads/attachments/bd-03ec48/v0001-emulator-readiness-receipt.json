@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "status": "failed",
+  "classification": "guest_framework_boot_stalled",
+  "deadlineSeconds": 240,
+  "adbState": "device",
+  "bootCompleted": "",
+  "deviceAbi": "x86_64",
+  "expectedAbi": "x86_64",
+  "systemImage": "system-images;android-36;google_apis;x86_64",
+  "deviceProfile": "medium_phone",
+  "avdBootProfileVerified": true,
+  "adbServerIsolated": true,
+  "adbPublicKeyPayloadSha256": "sha256:257d6437f92193b013297fbdef5a4a14a8a7fcfcc2e5f00c84bec3db7b084690",
+  "delayedAdbUntilBootComplete": true,
+  "piServiceAccessed": false,
+  "piDroidBuiltOrInstalled": false,
+  "privateAdbKeyRetained": false,
+  "ownedProcessesAfterCleanup": "clean",
+  "ownedPortsAfterCleanup": "closed"
+}

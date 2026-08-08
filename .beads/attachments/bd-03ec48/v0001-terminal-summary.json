@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "beadId": "bd-03ec48",
+  "node": "ms-dev-4",
+  "runCount": 1,
+  "rerunPermitted": false,
+  "result": "terminal_failed",
+  "classification": "guest_framework_boot_stalled",
+  "source": {
+    "repository": "harryaskham/pi-daemon",
+    "githubMain": "084cca5fc4e19a0b8c1220e61f5bf1a235d82454",
+    "checkoutHead": "084cca5fc4e19a0b8c1220e61f5bf1a235d82454",
+    "checkoutCleanBeforeRun": true,
+    "diagnosticScriptBlob": "747dddd6e09fbe50f0f01d21997b7d9ff6ef7d8c"
+  },
+  "execution": {
+    "runner": "android/build-logic/emulator-readiness-diagnostic.sh",
+    "deadlineSeconds": 240,
+    "startedAt": "2026-08-08T04:02:57Z",
+    "sealedAt": "2026-08-08T04:08:54Z",
+    "exitCode": 70,
+    "forbiddenPhysicalProofInvoked": false,
+    "npmGradleApkPiBearerPlayInvoked": false
+  },
+  "acceptance": {
+    "api36GoogleApisX8664MediumPhoneProfile": "verified",
+    "multiCoreCpu": "verified",
+    "ramAtLeast2048MiB": "verified",
+    "vmHeapAtLeast192MiB": "verified",
+    "isolatedAdbState": "device",
+    "publicKeyFingerprintMatch": true,
+    "sysBootCompleted": "not_set",
+    "abiX8664": true,
+    "boundedSanitizedEvidence": true,
+    "privateAdbKeyRetained": false,
+    "ownedProcessesAfterCleanup": "clean",
+    "ownedPortsAfterCleanup": "closed"
+  },
+  "retainedEvidence": {
+    "guestAdbd": "running",
+    "guestZygote": "running",
+    "guestSystemServer": "running",
+    "guestUptimeSeconds": 234,
+    "activityManagerMissingEvents": 46,
+    "retainedLogLines": 257,
+    "rawPrivateLogsRetained": false
+  }
+}

@@ -1,0 +1,280 @@
+schema_version=1
+classification=guest_framework_boot_stalled
+connect_state=already_connected
+adb_state=device
+transport_connected=true
+expected_public_key_fingerprint=sha256:257d6437f92193b013297fbdef5a4a14a8a7fcfcc2e5f00c84bec3db7b084690
+emulator_public_key_fingerprint=sha256:257d6437f92193b013297fbdef5a4a14a8a7fcfcc2e5f00c84bec3db7b084690
+public_key_fingerprint_match=true
+activity_manager_missing_events=46
+guest_console=available
+guest_boot_completed=other
+guest_adbd_state=running
+guest_zygote_state=running
+guest_system_server_state=running
+guest_abi=x86_64
+guest_uptime_seconds=234
+source_log_bytes=8705
+source_log_truncated=false
+console_log_bytes=392174
+console_log_truncated=false
+retained_log_lines=257
+sanitized_emulator_log_begin
+INFO         | emuglConfig_init: vulkan_mode_selected:swiftshader gles_mode_selected:swiftshader
+INFO         | Sending adb public key [<redacted-public-key>]
+INFO         |   androidboot.qemu.adb.pubkey=<redacted-public-key>
+USER_INFO    | Emulator is performing a full startup. This may take upto two minutes, or more.
+[    0.000000] Linux version 6.6.66-android15-8-gd0c43a640eab-ab13812146 (kleaf@build-host) (Android (11368308, +pgo, +bolt, +lto, +mlgo, based on r510928) clang version 18.0.0 (https://android.googlesource.com/toolchain/llvm-project 477610d4d0d988e69dbc3fae4fe86bff3f07f2b5), LLD 18.0.0) #1 SMP PREEMPT Mon Jul 21 17:41:13 UTC 2025
+[    0.788582] Kernel command line: console=ttynull stack_depot_disable=on cgroup_disable=pressure bootconfig 8250.nr_uarts=1 clocksource=pit no_timer_check console=ttyS0,38400 earlyprintk=ttyS0 loop.max_part=7 ramoops.mem_address=0xff018000 ramoops.mem_size=0x10000 memmap=0x10000$0xff018000 printk.devkmsg=on bootconfig mac80211_hwsim.radios=0
+[    0.930919] mem auto-init: stack:all(zero), heap alloc:on, heap free:off
+[    1.041970] rcu: srcu_init: Setting srcu_struct sizes based on contention.
+d="$(getprop sys[    5.964322] Run /init as init process
+[    7.325260] init: init first stage started!
+[    7.329689] init: Loading module /lib/modules/virtio_dma_buf.ko with args ''
+[    7.346245] init: Loaded kernel module /lib/modules/virtio_dma_buf.ko
+[    7.358801] init: Loading module /lib/modules/virtio-rng.ko with args ''
+[    7.384454] init: Loaded kernel module /lib/modules/virtio-rng.ko
+[    7.394787] init: Loading module /lib/modules/virtio_blk.ko with args ''
+[    7.409594] init: Loaded kernel module /lib/modules/virtio_blk.ko
+[    7.419041] init: Loading module /lib/modules/virtio_console.ko with args ''
+[    7.435011] init: Loaded kernel module /lib/modules/virtio_console.ko
+[    7.442262] init: Loading module /lib/modules/virtio_pci_modern_dev.ko with args ''
+[    7.452460] init: Loaded kernel module /lib/modules/virtio_pci_modern_dev.ko
+[    7.456528] init: Loading module /lib/modules/virtio_pci_legacy_dev.ko with args ''
+[    7.474260] init: Loaded kernel module /lib/modules/virtio_pci_legacy_dev.ko
+[    7.479127] init: Loading module /lib/modules/virtio_pci.ko with args ''
+[    8.550423] init: Loaded kernel module /lib/modules/virtio_pci.ko
+[    8.557768] init: Loading module /lib/modules/vmw_vsock_virtio_transport.ko with args ''
+[    8.586963] init: Loaded kernel module /lib/modules/vmw_vsock_virtio_transport.ko
+[    8.591267] init: Loaded 8 modules from /lib/modules
+[    8.596039] init: Loaded 8 kernel modules took 1266 ms
+[    8.599924] init: [libfstab] Using Android DT directory /proc/device-tree/firmware/android/
+[    8.604066] init: [libfstab] ReadFstabFromDt(): failed to read fstab from dt
+[    8.626875] init: [libfs_mgr] superblock s_max_mnt_count:65535,/dev/block/pci/pci0000:00/0000:00:06.0/by-name/metadata
+[    8.669481] init: [libfs_mgr] __mount(source=/dev/block/pci/pci0000:00/0000:00:06.0/by-name/metadata,target=/metadata,type=ext4)=0: Success
+[    8.681527] init: Failed to copy /avb into /metadata/gsi/dsu/avb/: No such file or directory
+[    8.700915] init: [libfs_mgr] Created logical partition system on device /dev/block/dm-0
+[    8.714679] init: [libfs_mgr] Created logical partition system_dlkm on device /dev/block/dm-1
+[    8.722160] init: [libfs_mgr] Created logical partition system_ext on device /dev/block/dm-2
+[    8.739473] init: [libfs_mgr] Created logical partition product on device /dev/block/dm-3
+[    8.758095] init: [libfs_mgr] Created logical partition vendor on device /dev/block/dm-4
+[    8.765186] init: DSU not detected, proceeding with normal boot
+[    9.819205] init: [libfs_avb] Device path not found: /dev/block/by-name/system
+[   10.885360] init: [libfs_avb] Device path not found: /dev/block/by-name/system
+[   10.899965] init: [libfs_avb] Returning avb_handle with status: Success
+[   10.907069] init: [libfs_avb] Built verity table: '1 /dev/block/dm-0 /dev/block/dm-0 4096 4096 252273 252273 sha256 c2ca80fb546a391d49f229f21c012021a9ec9a7684d795d32c48ff17ac1c3e73 b0eadfd939f6087e65f9c418c1dab77a41c68d08fb44dfa9eac95b18313add2a 10 use_fec_from_device /dev/block/dm-0 fec_roots 2 fec_blocks 254261 fec_start 254261 restart_on_corruption ignore_zero_blocks'
+[   10.965363] init: [libfs_mgr] __mount(source=/dev/block/dm-5,target=/system,type=erofs)=-1: Invalid argument
+[   10.981477] init: [libfs_mgr] superblock s_max_mnt_count:65535,/dev/block/dm-5
+[   11.014669] init: [libfs_mgr] __mount(source=/dev/block/dm-5,target=/system,type=ext4)=0: Success
+[   11.021247] init: Switching root to '/system'
+[   11.057698] init: [libfs_mgr] __mount(source=/dev/block/dm-4,target=/vendor,type=erofs)=-1: Invalid argument
+[   11.066785] init: [libfs_mgr] superblock s_max_mnt_count:65535,/dev/block/dm-4
+[   11.087190] init: [libfs_mgr] __mount(source=/dev/block/dm-4,target=/vendor,type=ext4)=0: Success
+[   11.098372] init: [libfs_mgr] __mount(source=/dev/block/dm-3,target=/product,type=erofs)=-1: Invalid argument
+[   11.105161] init: [libfs_mgr] superblock s_max_mnt_count:65535,/dev/block/dm-3
+[   11.118770] init: [libfs_mgr] __mount(source=/dev/block/dm-3,target=/product,type=ext4)=0: Success
+[   11.128992] init: [libfs_mgr] __mount(source=/dev/block/dm-1,target=/system_dlkm,type=erofs)=0: Success
+[   11.163031] init: [libfs_mgr] __mount(source=/dev/block/dm-2,target=/system_ext,type=erofs)=-1: Invalid argument
+[   11.176488] init: [libfs_mgr] superblock s_max_mnt_count:65535,/dev/block/dm-2
+[   11.219484] init: [libfs_mgr] __mount(source=/dev/block/dm-2,target=/system_ext,type=ext4)=0: Success
+[   11.261140] init: Skipped setting INIT_AVB_VERSION (not in recovery mode)
+[   12.160699] init: [libfstab] Using Android DT directory /proc/device-tree/firmware/android/
+[   12.204004] init: Opening SELinux policy
+[   12.254310] init: Loading SELinux policy
+[   12.413918] init: init second stage started!
+[   12.586376] init: [libfstab] Using Android DT directory /proc/device-tree/firmware/android/
+[   12.612070] init: Overriding previous property 'ro.cp_system_other_odex':'1' with new value '0'
+[   12.631807] init: Overriding previous property 'ro.control_privapp_permissions':'disable' with new value 'enforce'
+[   12.659917] init: Overriding previous property 'ro.config.notification_sound':'OnTheHunt.ogg' with new value 'pixiedust.ogg'
+[   12.683999] init: Setting product property ro.product.brand to 'google' (from ro.product.product.brand)
+[   12.689110] init: Setting product property ro.product.device to 'emu64xa' (from ro.product.product.device)
+[   12.695878] init: Setting product property ro.product.manufacturer to 'Google' (from ro.product.product.manufacturer)
+[   12.701007] init: Setting product property ro.product.model to 'sdk_gphone64_x86_64' (from ro.product.product.model)
+[   12.707543] init: Setting product property ro.product.name to 'sdk_gphone64_x86_64' (from ro.product.product.name)
+[   12.713835] init: Setting property 'ro.build.fingerprint' to 'google/sdk_gphone64_x86_64/emu64xa:16/BE2A.250530.026.F3/13894323:userdebug/dev-keys'
+[   12.720912] init: Setting property 'ro.product.cpu.abilist' to 'x86_64,arm64-v8a'
+[   12.727194] init: Setting property 'ro.product.cpu.abilist32' to ''
+[   12.730412] init: Setting property 'ro.product.cpu.abilist64' to 'x86_64,arm64-v8a'
+[   12.743715] init: Running restorecon...
+[   12.762962] init: Created socket '/dev/socket/property_service_for_system', mode 660, user 0, group 1000
+[   12.768108] init: Created socket '/dev/socket/property_service', mode 666, user 0, group 0
+[   12.783743] init: [libfs_mgr] vendor overlay: vndk version not defined
+[   12.798675] init: SetupMountNamespaces done
+[   12.832419] init: Forked subcontext for 'u:r:vendor_init:s0' with pid 98
+[   12.855202] init: Parsing file /system/etc/init/hw/init.rc...
+[   12.872875] init: Added '/init.environ.rc' to import list
+[   12.876083] init: Added '/system/etc/init/hw/init.usb.rc' to import list
+[   12.881726] init: Added '/init.ranchu.rc' to import list
+[   12.885694] init: Added '/vendor/etc/init/hw/init.ranchu.rc' to import list
+[   12.892920] init: Added '/system/etc/init/hw/init.usb.configfs.rc' to import list
+[   12.899062] init: Added '/system/etc/init/hw/init.zygote64.rc' to import list
+[   12.908328] init: Added '/system/etc/init/hw/init.boringssl.zygote64.rc' to import list
+[   12.916585] init: Parsing file /init.environ.rc...
+[   12.932998] init: Parsing file /system/etc/init/hw/init.usb.rc...
+[   12.942215] init: Parsing file /init.ranchu.rc...
+[   12.949768] init: Unable to read config file '/init.ranchu.rc': open() failed: No such file or directory
+[   12.960330] init: Parsing file /vendor/etc/init/hw/init.ranchu.rc...
+[   12.967339] init: Parsing file /system/etc/init/hw/init.usb.configfs.rc...
+[   12.987297] init: Parsing file /system/etc/init/hw/init.zygote64.rc...
+[   12.997174] init: Parsing file /system/etc/init/hw/init.boringssl.zygote64.rc...
+[   13.007160] init: Parsing directory /system/etc/init...
+[   13.013424] init: Parsing file /system/etc/init/aconfigd.rc...
+[   13.025510] init: Parsing file /system/etc/init/android.system.suspend-service.rc...
+[   13.035002] init: Parsing file /system/etc/init/apexd.rc...
+[   13.042673] init: Parsing file /system/etc/init/atrace.rc...
+[   13.049662] init: Parsing file /system/etc/init/atrace_userdebug.rc...
+[   13.057363] init: Parsing file /system/etc/init/audioserver.rc...
+[   13.062302] init: Parsing file /system/etc/init/blank_screen.rc...
+[   13.066963] init: Parsing file /system/etc/init/bootanim.rc...
+[   13.070573] init: Parsing file /system/etc/init/bootstat-debug.rc...
+[   13.074720] init: Parsing file /system/etc/init/bootstat.rc...
+[   13.078446] init: Parsing file /system/etc/init/cameraserver.rc...
+[   13.082321] init: Parsing file /system/etc/init/clean_scratch_files.rc...
+[   13.088081] init: Parsing file /system/etc/init/cppreopts.rc...
+[   13.092012] init: Parsing file /system/etc/init/credstore.rc...
+[   13.104577] init: Parsing file /system/etc/init/dmesgd.rc...
+[   13.115719] init: Parsing file /system/etc/init/drmserver.rc...
+[   13.122362] init: Parsing file /system/etc/init/dumpstate.rc...
+[   13.128189] init: Parsing file /system/etc/init/flags_health_check.rc...
+[   13.136525] init: Parsing file /system/etc/init/gatekeeperd.rc...
+[   13.149139] init: Parsing file /system/etc/init/gpuservice.rc...
+[   13.154884] init: Parsing file /system/etc/init/gsid.rc...
+[   13.159342] init: Parsing file /system/etc/init/heapprofd.rc...
+[   13.163494] init: Parsing file /system/etc/init/idmap2d.rc...
+[   13.167041] init: Parsing file /system/etc/init/incidentd.rc...
+[   13.170813] init: Parsing file /system/etc/init/init-debug.rc...
+[   13.185442] init: Parsing file /system/etc/init/init-mmd-prop.rc...
+[   13.195721] init: Parsing file /system/etc/init/installd.rc...
+[   13.201655] init: Parsing file /system/etc/init/kcmdlinectrl.rc...
+[   13.205872] init: Parsing file /system/etc/init/keystore2.rc...
+[   13.214934] init: Parsing file /system/etc/init/llkd-debuggable.rc...
+bounded_log_lines_omitted=true
+[  151.706885] init: starting service 'incidentd'...
+[  151.729673] init: ... started service 'incidentd' has pid 781
+[  151.733481] init: starting service 'installd'...
+[  151.784432] init: ... started service 'installd' has pid 782
+[  151.793203] init: service 'mdnsd' requested start, but it is already running (flags: 134)
+[  151.799175] init: starting service 'mediaextractor'...
+[  151.897092] init: ... started service 'mediaextractor' has pid 785
+[  151.905183] init: starting service 'mediametrics'...
+[  151.972580] init: ... started service 'mediametrics' has pid 787
+[  151.987835] init: starting service 'media'...
+[  152.036577] init: ... started service 'media' has pid 789
+[  152.048905] init: service 'netd' requested start, but it is already running (flags: 4)
+[  152.072354] init: starting service 'storaged'...
+[  152.105627] init: ... started service 'storaged' has pid 790
+[  152.111300] init: starting service 'wificond'...
+[  152.132510] init: ... started service 'wificond' has pid 791
+[  152.146086] init: starting service 'media.swcodec'...
+[  152.169256] init: ... started service 'media.swcodec' has pid 792
+[  152.175770] init: service 'statsd' requested start, but it is already running (flags: 4)
+[  152.181129] init: Command 'class_start main' action=nonencrypted (/system/etc/init/hw/init.rc:1218) took 674ms and succeeded
+[  152.192087] init: starting service 'gatekeeperd'...
+[  152.230419] init: ... started service 'gatekeeperd' has pid 793
+diag_boot_completed="$(getprop sys.boot_completed)";                          <[  152.342463] init: service 'traced_probes' requested start, but it is already running (flags: 132)
+ate=running; e[  152.439867] init: Command 'class_start late_start' action=nonencrypted (/system/etc/init/hw/init.rc:1219) took 248ms and succeeded
+droid[  152.478267] init: processing action (load_persist_props_action) from (/system/etc/init/flags_health_check.rc:1)
+ho pidroid_diag[  152.509113] init: Encryption policy of /data/server_configurable_flags set to 8dd0559b22b35a99a1a53c241326d509 v2 modes 1/4 flags 0x2
+conds="$(cut -d. -f1 /proc/uptime)"; echo pi[  152.526978] init: starting service 'exec 17 (/system/bin/flags_health_check BOOT_FAILURE)'...
+[  152.584491] init: ... started service 'exec 17 (/system/bin/flags_health_check BOOT_FAILURE)' has pid 796
+[  152.601210] init: SVC_EXEC service 'exec 17 (/system/bin/flags_health_check BOOT_FAILURE)' pid 796 (uid 1000 gid 1000+0 context default) started; waiting...
+[  152.667780] init: service 'adbd' requested start, but it is already running (flags: 132)
+[  152.703544] init: Control message: Processed ctl.start for 'adbd' from pid: 794 (/system/bin/usbd)
+[  152.760212] init: Service 'exec 17 (/system/bin/flags_health_check BOOT_FAILURE)' (pid 796) exited with status 0 waiting took 0.214000 seconds
+[  152.795014] init: Sending signal 9 to service 'exec 17 (/system/bin/flags_health_check BOOT_FAILURE)' (pid 796) process group...
+[  152.890516] init: processing action (load_persist_props_action) from (/system/etc/init/logcatd.rc:29)
+[  152.922957] init: Service 'usbd' (pid 794) exited with status 0 oneshot service took 0.511000 seconds in background
+[  152.930236] init: Sending signal 9 to service 'usbd' (pid 794) process group...
+[  152.995164] init: processing action (llk.enable=0) from (/system/etc/init/llkd.rc:12)
+[  153.023672] init: processing action (khungtask.enable=1) from (/system/etc/init/llkd.rc:18)
+[  153.035844] init: processing action (llk.enable=0) from (/system/etc/init/llkd.rc:12)
+[  153.048398] init: processing action (khungtask.enable=0) from (/system/etc/init/llkd.rc:21)
+[  153.071520] init: processing action (init.svc.media=*) from (/system/etc/init/mediaserver.rc:1)
+[  153.084580] init: processing action (khungtask.enable=true) from (/system/etc/init/llkd.rc:25)
+[  153.091890] init: processing action (khungtask.enable=false) from (/system/etc/init/llkd.rc:31)
+[  153.471908] init: Control message: Could not find 'android.hardware.media.c2@1.0::IComponentStore/software' for ctl.interface_start from pid: 231 (/system/system_ext/bin/hwservicemanager)
+[  153.482390] init: Control message: Could not find 'android.hardware.media.c2@1.0::IComponentStore/software' for ctl.interface_start from pid: 231 (/system/system_ext/bin/hwservicemanager)
+[  153.632641] init: Control message: Could not find 'aidl/activity' for ctl.interface_start from pid: 230 (/system/bin/servicemanager)
+[  154.670729] init: Control message: Could not find 'aidl/activity' for ctl.interface_start from pid: 230 (/system/bin/servicemanager)
+[  155.685845] init: Control message: Could not find 'aidl/activity' for ctl.interface_start from pid: 230 (/system/bin/servicemanager)
+[  156.698441] init: Control message: Could not find 'aidl/activity' for ctl.interface_start from pid: 230 (/system/bin/servicemanager)
+[  157.717781] init: Control message: Could not find 'aidl/activity' for ctl.interface_start from pid: 230 (/system/bin/servicemanager)
+[  158.741344] init: Control message: Could not find 'aidl/activity' for ctl.interface_start from pid: 230 (/system/bin/servicemanager)
+[  159.773939] init: Control message: Could not find 'aidl/activity' for ctl.interface_start from pid: 230 (/system/bin/servicemanager)
+[  160.802756] init: Control message: Could not find 'aidl/activity' for ctl.interface_start from pid: 230 (/system/bin/servicemanager)
+[  161.849314] init: Control message: Could not find 'aidl/activity' for ctl.interface_start from pid: 230 (/system/bin/servicemanager)
+[  162.882838] init: Control message: Could not find 'aidl/activity' for ctl.interface_start from pid: 230 (/system/bin/servicemanager)
+[  163.908916] init: Control message: Could not find 'aidl/activity' for ctl.interface_start from pid: 230 (/system/bin/servicemanager)
+[  164.925985] init: Control message: Could not find 'aidl/activity' for ctl.interface_start from pid: 230 (/system/bin/servicemanager)
+[  165.952814] init: Control message: Could not find 'aidl/activity' for ctl.interface_start from pid: 230 (/system/bin/servicemanager)
+[  166.972252] init: Control message: Could not find 'aidl/activity' for ctl.interface_start from pid: 230 (/system/bin/servicemanager)
+[  167.994539] init: Control message: Could not find 'aidl/activity' for ctl.interface_start from pid: 230 (/system/bin/servicemanager)
+[  169.025365] init: Control message: Could not find 'aidl/activity' for ctl.interface_start from pid: 230 (/system/bin/servicemanager)
+[  170.068359] init: Control message: Could not find 'aidl/activity' for ctl.interface_start from pid: 230 (/system/bin/servicemanager)
+[  171.090665] init: Control message: Could not find 'aidl/activity' for ctl.interface_start from pid: 230 (/system/bin/servicemanager)
+[  172.117198] init: Control message: Could not find 'aidl/activity' for ctl.interface_start from pid: 230 (/system/bin/servicemanager)
+[  173.128540] init: Control message: Could not find 'aidl/activity' for ctl.interface_start from pid: 230 (/system/bin/servicemanager)
+[  174.151234] init: Control message: Could not find 'aidl/activity' for ctl.interface_start from pid: 230 (/system/bin/servicemanager)
+[  175.166002] init: Control message: Could not find 'aidl/activity' for ctl.interface_start from pid: 230 (/system/bin/servicemanager)
+[  176.180818] init: Control message: Could not find 'aidl/activity' for ctl.interface_start from pid: 230 (/system/bin/servicemanager)
+[  177.200481] init: Control message: Could not find 'aidl/activity' for ctl.interface_start from pid: 230 (/system/bin/servicemanager)
+[  179.257653] init: Control message: Could not find 'aidl/activity' for ctl.interface_start from pid: 230 (/system/bin/servicemanager)
+[  180.279697] init: Control message: Could not find 'aidl/activity' for ctl.interface_start from pid: 230 (/system/bin/servicemanager)
+[  181.294491] init: Control message: Could not find 'aidl/activity' for ctl.interface_start from pid: 230 (/system/bin/servicemanager)
+[  182.316783] init: Control message: Could not find 'aidl/activity' for ctl.interface_start from pid: 230 (/system/bin/servicemanager)
+[  183.329282] init: Control message: Could not find 'aidl/activity' for ctl.interface_start from pid: 230 (/system/bin/servicemanager)
+[  184.357246] init: Control message: Could not find 'aidl/activity' for ctl.interface_start from pid: 230 (/system/bin/servicemanager)
+[  185.377795] init: Control message: Could not find 'aidl/activity' for ctl.interface_start from pid: 230 (/system/bin/servicemanager)
+[  186.396240] init: Control message: Could not find 'aidl/activity' for ctl.interface_start from pid: 230 (/system/bin/servicemanager)
+[  187.417669] init: Control message: Could not find 'aidl/activity' for ctl.interface_start from pid: 230 (/system/bin/servicemanager)
+[  188.430990] init: Control message: Could not find 'aidl/activity' for ctl.interface_start from pid: 230 (/system/bin/servicemanager)
+[  189.456971] init: Control message: Could not find 'aidl/activity' for ctl.interface_start from pid: 230 (/system/bin/servicemanager)
+[  190.519770] init: Control message: Could not find 'aidl/activity' for ctl.interface_start from pid: 230 (/system/bin/servicemanager)
+[  191.510548] init: Control message: Could not find 'aidl/activity' for ctl.interface_start from pid: 230 (/system/bin/servicemanager)
+[  192.548252] init: Control message: Could not find 'aidl/activity' for ctl.interface_start from pid: 230 (/system/bin/servicemanager)
+[  193.571064] init: Control message: Could not find 'aidl/activity' for ctl.interface_start from pid: 230 (/system/bin/servicemanager)
+[  194.587933] init: Control message: Could not find 'aidl/activity' for ctl.interface_start from pid: 230 (/system/bin/servicemanager)
+[  195.608803] init: Control message: Could not find 'aidl/activity' for ctl.interface_start from pid: 230 (/system/bin/servicemanager)
+[  196.644183] init: Control message: Could not find 'aidl/activity' for ctl.interface_start from pid: 230 (/system/bin/servicemanager)
+[  197.675246] init: Control message: Could not find 'aidl/activity' for ctl.interface_start from pid: 230 (/system/bin/servicemanager)
+[  199.725952] init: Control message: Could not find 'aidl/activity' for ctl.interface_start from pid: 230 (/system/bin/servicemanager)
+[  199.798708] init: Control message: Could not find 'aidl/sensor_privacy' for ctl.interface_start from pid: 230 (/system/bin/servicemanager)
+[  200.862130] init: Control message: Could not find 'aidl/sensor_privacy' for ctl.interface_start from pid: 230 (/system/bin/servicemanager)
+console:/ $ [  204.481642] init: processing action (sys.sysctl.extra_free_kbytes=*) from (/system/etc/init/hw/init.rc:1236)
+[  204.515357] init: starting service 'exec 18 (/system/bin/extra_free_kbytes.sh 30375)'...
+[  204.572188] init: ... started service 'exec 18 (/system/bin/extra_free_kbytes.sh 30375)' has pid 1177
+[  204.581244] init: Command 'exec_background -- /system/bin/extra_free_kbytes.sh ${sys.sysctl.extra_free_kbytes}' action=sys.sysctl.extra_free_kbytes=* (/system/etc/init/hw/init.rc:1237) took 67ms and succeeded
+[  204.604195] init: starting service 'artd'...
+[  204.647343] init: ... started service 'artd' has pid 1183
+[  204.656254] init: Control message: Processed ctl.interface_start for 'aidl/artd' from pid: 230 (/system/bin/servicemanager)
+[  204.970039] init: Service 'exec 18 (/system/bin/extra_free_kbytes.sh 30375)' (pid 1177) exited with status 0 oneshot service took 0.432000 seconds in background
+[  204.979831] init: Sending signal 9 to service 'exec 18 (/system/bin/extra_free_kbytes.sh 30375)' (pid 1177) process group...
+console:/ $ [  211.571596] init: Sending signal 9 to service 'idmap2d' (pid 780) process group...
+[  211.631765] init: Control message: Processed ctl.stop for 'idmap2d' from pid: 894 (system_server)
+[  211.638560] init: Service 'idmap2d' (pid 780) received signal 9
+[  211.646187] init: Sending signal 9 to service 'idmap2d' (pid 780) process group...
+console:/ $ [  214.599608] init: starting service 'idmap2d'...
+[  214.629550] init: ... started service 'idmap2d' has pid 1403
+[  214.633104] init: Control message: Processed ctl.start for 'idmap2d' from pid: 894 (system_server)
+[  215.794781] init: starting service 'vendor.biometrics.fingerprint-service.ranchu'...
+[  215.871755] init: ... started service 'vendor.biometrics.fingerprint-service.ranchu' has pid 1449
+[  215.877708] init: Control message: Processed ctl.interface_start for 'aidl/android.hardware.biometrics.fingerprint.IFingerprint/default' from pid: 230 (/system/bin/servicemanager)
+[  217.782539] init: starting service 'ot-daemon'...
+[  217.791111] init: Created socket '/dev/socket/ot-daemon/thread-wpan.sock', mode 660, user 1084, group 1084
+[  217.916168] init: ... started service 'ot-daemon' has pid 1472
+[  217.922360] init: Control message: Processed ctl.interface_start for 'aidl/ot_daemon' from pid: 230 (/system/bin/servicemanager)
+[  222.526637] init: starting service 'vendor.gnss.ranchu'...
+[  222.537009] init: ... started service 'vendor.gnss.ranchu' has pid 1574
+[  222.544254] init: Control message: Processed ctl.interface_start for 'aidl/android.hardware.gnss.IGnss/default' from pid: 230 (/system/bin/servicemanager)
+[  225.614921] init: starting service 'wpa_supplicant'...
+[  225.636760] init: Created socket '/dev/socket/wpa_wlan0', mode 660, user 1010, group 1010
+[  225.722364] init: ... started service 'wpa_supplicant' has pid 1779
+[  225.725935] init: Control message: Processed ctl.interface_start for 'aidl/android.hardware.wifi.supplicant.ISupplicant/default' from pid: 230 (/system/bin/servicemanager)
+console:/ $ [  230.126663] init: Sending signal 9 to service 'idmap2d' (pid 1403) process group...
+[  230.219851] init: Control message: Processed ctl.stop for 'idmap2d' from pid: 894 (system_server)
+[  230.258272] init: Service 'idmap2d' (pid 1403) received signal 9
+[  230.270708] init: Sending signal 9 to service 'idmap2d' (pid 1403) process group...
+[  233.095126] init: starting service 'idmap2d'...
+[  233.316071] init: ... started service 'idmap2d' has pid 1948
+[  233.323834] init: Control message: Processed ctl.start for 'idmap2d' from pid: 894 (system_server)
+sanitized_emulator_log_end
