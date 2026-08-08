@@ -19,7 +19,7 @@ initialize_emulator_ui_health() {
   chmod 700 "$emulator_ui_health_private_dir"
   : > "$emulator_ui_health_diagnostics"
   chmod 600 "$emulator_ui_health_diagnostics"
-  printf '%s\n' 'status=initialized system_ui_wait_limit=1 recovery_attempt_limit=15 logcat_byte_limit=1048576 anr_event_byte_limit=1048576 app_failure_screenshot_byte_limit=16777216' \
+  printf '%s\n' 'status=initialized system_ui_wait_limit=1 recovery_attempt_limit=15 logcat_byte_limit=1048576 anr_event_byte_limit=1048576 app_failure_xml_byte_limit=16384 app_failure_logcat_byte_limit=4096 app_failure_screenshot_byte_limit=16777216' \
     >> "$emulator_ui_health_diagnostics"
 }
 
@@ -67,7 +67,17 @@ capture_emulator_ui_anr_events() {
 
 capture_emulator_ui_screenshot() {
   local destination="$1"
-  emulator_ui_adb exec-out screencap -p > "$destination" 2>/dev/null
+  local adb_status=0
+  local head_status=0
+  local pipeline_status=()
+  set +e
+  emulator_ui_adb exec-out screencap -p 2>/dev/null | \
+    LC_ALL=C head -c 16777217 > "$destination"
+  pipeline_status=("${PIPESTATUS[@]}")
+  adb_status="${pipeline_status[0]}"
+  head_status="${pipeline_status[1]}"
+  set -e
+  (( head_status == 0 && (adb_status == 0 || adb_status == 141) ))
 }
 
 classify_emulator_ui_health() {
@@ -94,6 +104,77 @@ record_emulator_ui_health_failure() {
     "$status" "$phase" "$emulator_system_ui_wait_used" "$emulator_system_ui_occurrences" \
     "$emulator_app_failure_occurrences" >> "$emulator_ui_health_diagnostics"
   printf '%s\n' "$status" >&2
+}
+
+emit_bounded_app_failure_evidence_file() {
+  local label="$1"
+  local file="$2"
+  local byte_limit="$3"
+  local bytes=''
+  local digest=''
+  local status='unavailable'
+  if [[ -f "$file" && ! -L "$file" ]]; then
+    if ! bytes="$(wc -c < "$file" 2>/dev/null | tr -d ' ')" || [[ ! "$bytes" =~ ^[0-9]+$ ]]; then
+      status='discarded_size_unavailable'
+      rm -f -- "$file"
+    elif (( bytes == 0 )); then
+      status='discarded_empty'
+      rm -f -- "$file"
+    elif (( bytes > byte_limit )); then
+      status='discarded_size_limit'
+      rm -f -- "$file"
+    elif ! digest="$(sha256sum "$file" 2>/dev/null | cut -d ' ' -f 1)" || [[ ! "$digest" =~ ^[0-9a-f]{64}$ ]]; then
+      status='discarded_hash_unavailable'
+      rm -f -- "$file"
+    elif chmod 600 "$file"; then
+      status='retained'
+    else
+      status='discarded_permission_failure'
+      rm -f -- "$file"
+    fi
+  else
+    rm -f -- "$file"
+  fi
+  printf '%s_status=%s\n' "$label" "$status"
+  if [[ "$status" == 'retained' ]]; then
+    printf '%s_bytes=%s\n' "$label" "$bytes"
+    printf '%s_sha256=sha256:%s\n' "$label" "$digest"
+  fi
+}
+
+retain_incomplete_app_failure_evidence() {
+  local predicate="$1"
+  local occurrence="$2"
+  local identity_source_field="$3"
+  local identity_class_field="$4"
+  local identity_sha256_field="$5"
+  local evidence_dir="$6"
+  local safe_xml="$7"
+  local screenshot="$8"
+  local safe_logcat="$9"
+  local evidence="${10}"
+  if [[ ! "$predicate" =~ ^(normalization|classification_mismatch|normalized_xml_missing|normalized_logcat_missing|screenshot_capture|screenshot_missing|content_size_unavailable|normalized_xml_size_limit|screenshot_size_limit|normalized_logcat_size_limit|content_hash)$ ]]; then
+    predicate='internal_contract'
+  fi
+  {
+    printf '%s\n' 'status=app_failure_evidence_incomplete'
+    printf 'occurrence=%s\n' "$occurrence"
+    printf 'capture_predicate=%s\n' "$predicate"
+    printf '%s\n' "$identity_source_field" "$identity_class_field" "$identity_sha256_field"
+    emit_bounded_app_failure_evidence_file normalized_xml "$safe_xml" 16384
+    emit_bounded_app_failure_evidence_file screenshot "$screenshot" 16777216
+    emit_bounded_app_failure_evidence_file safe_logcat "$safe_logcat" 4096
+  } > "$evidence" || {
+    rm -rf -- "$evidence_dir"
+    return 1
+  }
+  if ! chmod 600 "$evidence"; then
+    rm -rf -- "$evidence_dir"
+    return 1
+  fi
+  printf 'status=app_failure_evidence_incomplete occurrence=%s capture_predicate=%s %s %s %s\n' \
+    "$occurrence" "$predicate" "$identity_source_field" "$identity_class_field" \
+    "$identity_sha256_field" >> "$emulator_ui_health_diagnostics"
 }
 
 capture_system_ui_anr_evidence() {
@@ -162,30 +243,78 @@ capture_app_failure_modal_evidence() {
   chmod 700 "$emulator_app_failure_artifacts_dir" "$evidence_dir"
   if ! safe_classification="$(python3 "$repo_root/android/build-logic/emulator-ui-health.py" \
     "$xml" "$logcat" --write-app-failure-evidence "$safe_xml" "$safe_logcat" 2>/dev/null)"; then
-    rm -rf "$evidence_dir"
+    retain_incomplete_app_failure_evidence normalization "$occurrence" \
+      "$identity_source_field" "$identity_class_field" "$identity_sha256_field" \
+      "$evidence_dir" "$safe_xml" "$screenshot" "$safe_logcat" "$evidence" || true
     return 1
   fi
-  if [[ "$safe_classification" != "other_app_failure_modal $identity_source_field $identity_class_field $identity_sha256_field" ]] ||
-    ! capture_emulator_ui_screenshot "$screenshot" ||
-    [[ ! -s "$safe_xml" || ! -s "$screenshot" || ! -s "$safe_logcat" ]]; then
-    rm -rf "$evidence_dir"
+  if [[ "$safe_classification" != "other_app_failure_modal $identity_source_field $identity_class_field $identity_sha256_field" ]]; then
+    retain_incomplete_app_failure_evidence classification_mismatch "$occurrence" \
+      "$identity_source_field" "$identity_class_field" "$identity_sha256_field" \
+      "$evidence_dir" "$safe_xml" "$screenshot" "$safe_logcat" "$evidence" || true
     return 1
   fi
-  xml_bytes="$(wc -c < "$safe_xml" | tr -d ' ')"
-  screenshot_bytes="$(wc -c < "$screenshot" | tr -d ' ')"
-  logcat_bytes="$(wc -c < "$safe_logcat" | tr -d ' ')"
-  if [[ ! "$xml_bytes" =~ ^[0-9]+$ || ! "$screenshot_bytes" =~ ^[0-9]+$ || ! "$logcat_bytes" =~ ^[0-9]+$ ]] ||
-    (( xml_bytes > 16384 || screenshot_bytes > 16777216 || logcat_bytes > 4096 )); then
-    rm -rf "$evidence_dir"
+  if [[ ! -s "$safe_xml" ]]; then
+    retain_incomplete_app_failure_evidence normalized_xml_missing "$occurrence" \
+      "$identity_source_field" "$identity_class_field" "$identity_sha256_field" \
+      "$evidence_dir" "$safe_xml" "$screenshot" "$safe_logcat" "$evidence" || true
     return 1
   fi
-  xml_sha256="$(sha256sum "$safe_xml" | cut -d ' ' -f 1)"
-  screenshot_sha256="$(sha256sum "$screenshot" | cut -d ' ' -f 1)"
-  safe_logcat_sha256="$(sha256sum "$safe_logcat" | cut -d ' ' -f 1)"
-  if [[ ! "$xml_sha256" =~ ^[0-9a-f]{64}$ ||
-        ! "$screenshot_sha256" =~ ^[0-9a-f]{64}$ ||
-        ! "$safe_logcat_sha256" =~ ^[0-9a-f]{64}$ ]]; then
-    rm -rf "$evidence_dir"
+  if [[ ! -s "$safe_logcat" ]]; then
+    retain_incomplete_app_failure_evidence normalized_logcat_missing "$occurrence" \
+      "$identity_source_field" "$identity_class_field" "$identity_sha256_field" \
+      "$evidence_dir" "$safe_xml" "$screenshot" "$safe_logcat" "$evidence" || true
+    return 1
+  fi
+  if ! capture_emulator_ui_screenshot "$screenshot"; then
+    rm -f -- "$screenshot"
+    retain_incomplete_app_failure_evidence screenshot_capture "$occurrence" \
+      "$identity_source_field" "$identity_class_field" "$identity_sha256_field" \
+      "$evidence_dir" "$safe_xml" "$screenshot" "$safe_logcat" "$evidence" || true
+    return 1
+  fi
+  if [[ ! -s "$screenshot" ]]; then
+    retain_incomplete_app_failure_evidence screenshot_missing "$occurrence" \
+      "$identity_source_field" "$identity_class_field" "$identity_sha256_field" \
+      "$evidence_dir" "$safe_xml" "$screenshot" "$safe_logcat" "$evidence" || true
+    return 1
+  fi
+  if ! xml_bytes="$(wc -c < "$safe_xml" 2>/dev/null | tr -d ' ')" ||
+    ! screenshot_bytes="$(wc -c < "$screenshot" 2>/dev/null | tr -d ' ')" ||
+    ! logcat_bytes="$(wc -c < "$safe_logcat" 2>/dev/null | tr -d ' ')" ||
+    [[ ! "$xml_bytes" =~ ^[0-9]+$ || ! "$screenshot_bytes" =~ ^[0-9]+$ || ! "$logcat_bytes" =~ ^[0-9]+$ ]]; then
+    retain_incomplete_app_failure_evidence content_size_unavailable "$occurrence" \
+      "$identity_source_field" "$identity_class_field" "$identity_sha256_field" \
+      "$evidence_dir" "$safe_xml" "$screenshot" "$safe_logcat" "$evidence" || true
+    return 1
+  fi
+  if (( xml_bytes > 16384 )); then
+    retain_incomplete_app_failure_evidence normalized_xml_size_limit "$occurrence" \
+      "$identity_source_field" "$identity_class_field" "$identity_sha256_field" \
+      "$evidence_dir" "$safe_xml" "$screenshot" "$safe_logcat" "$evidence" || true
+    return 1
+  fi
+  if (( screenshot_bytes > 16777216 )); then
+    retain_incomplete_app_failure_evidence screenshot_size_limit "$occurrence" \
+      "$identity_source_field" "$identity_class_field" "$identity_sha256_field" \
+      "$evidence_dir" "$safe_xml" "$screenshot" "$safe_logcat" "$evidence" || true
+    return 1
+  fi
+  if (( logcat_bytes > 4096 )); then
+    retain_incomplete_app_failure_evidence normalized_logcat_size_limit "$occurrence" \
+      "$identity_source_field" "$identity_class_field" "$identity_sha256_field" \
+      "$evidence_dir" "$safe_xml" "$screenshot" "$safe_logcat" "$evidence" || true
+    return 1
+  fi
+  if ! xml_sha256="$(sha256sum "$safe_xml" 2>/dev/null | cut -d ' ' -f 1)" ||
+    ! screenshot_sha256="$(sha256sum "$screenshot" 2>/dev/null | cut -d ' ' -f 1)" ||
+    ! safe_logcat_sha256="$(sha256sum "$safe_logcat" 2>/dev/null | cut -d ' ' -f 1)" ||
+    [[ ! "$xml_sha256" =~ ^[0-9a-f]{64}$ ||
+       ! "$screenshot_sha256" =~ ^[0-9a-f]{64}$ ||
+       ! "$safe_logcat_sha256" =~ ^[0-9a-f]{64}$ ]]; then
+    retain_incomplete_app_failure_evidence content_hash "$occurrence" \
+      "$identity_source_field" "$identity_class_field" "$identity_sha256_field" \
+      "$evidence_dir" "$safe_xml" "$screenshot" "$safe_logcat" "$evidence" || true
     return 1
   fi
   {

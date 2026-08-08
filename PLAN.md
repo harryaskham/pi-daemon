@@ -524,6 +524,10 @@ process appears per wake.
   owner-file-only bearer import over ADB stdin, GET-only preflight, exact
   host/session fencing, content-free evidence, idle-only observer attach, binary
   and app-private leak scans, and verified run-owned process/port cleanup.
+- [x] `bd-61ac6b` Preserve a bounded owner-private incomplete occurrence when
+  app-failure modal evidence capture fails, naming only the fixed failed predicate,
+  safe identity class/hash, and retained-component hashes while discarding unsafe
+  files and preserving Pi Droid priority and arbitrary-tap refusal.
 - [ ] `bd-032326` Diagnose transport-connected/offline emulator starts with bounded
   guest kernel and private-console evidence, delay ADB traffic until guest boot,
   and prove isolated x86_64 readiness without invoking either physical proof.
