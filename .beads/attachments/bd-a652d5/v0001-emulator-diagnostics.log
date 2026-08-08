@@ -1,0 +1,27 @@
+phase=adb_server status=started server_port=42089 selection_attempts=1 key_home=run_scoped server_mode=owned_nodaemon public_key_payload_sha256=sha256:9b5184e6985416228b730f2903bd3be157ed4b85c1bb8d66d191db3069297d85
+host_arch=x86_64
+expected_emulator_abi=x86_64
+emulator_binary=/nix/store/gmgkl76njlwfxsh8a3fy7bsnwvk3l38l-androidsdk/bin/emulator
+Android emulator version 36.6.11.0 (build_id 15507667) (CL:N/A)
+Copyright (C) 2006-2024 The Android Open Source Project and many others.
+This program is a derivative of the QEMU CPU emulator (www.qemu.org).
+accel:
+0
+KVM (version 12) is installed and usable.
+accel
+adb_binary=/nix/store/gmgkl76njlwfxsh8a3fy7bsnwvk3l38l-androidsdk/bin/adb
+Android Debug Bridge version 1.0.41
+Version 37.0.0-14910828
+Installed as /nix/store/ndycmz15543v55jz6116n97nr34ma9g1-android-sdk-platform-tools-37.0.0/libexec/android-sdk/platform-tools/adb
+status=selected emulator_console_port=5568 emulator_adb_port=5569 emulator_port_attempts=1 verification=both_localhost_ports_free
+phase=adb_readiness status=polling attempts=1 connect_attempts=1 deadline_seconds=240 elapsed_seconds=0 remaining_seconds=240 connect_state=refused adb_state=not_found transport_connected=false
+phase=adb_readiness status=polling attempts=3 connect_attempts=3 deadline_seconds=240 elapsed_seconds=7 remaining_seconds=233 connect_state=unavailable adb_state=offline transport_connected=false
+phase=adb_readiness status=polling attempts=4 connect_attempts=4 deadline_seconds=240 elapsed_seconds=8 remaining_seconds=232 connect_state=already_connected adb_state=offline transport_connected=true
+phase=adb_readiness status=polling attempts=33 connect_attempts=4 deadline_seconds=240 elapsed_seconds=38 remaining_seconds=202 connect_state=already_connected adb_state=offline transport_connected=true
+phase=adb_readiness status=polling attempts=62 connect_attempts=4 deadline_seconds=240 elapsed_seconds=68 remaining_seconds=172 connect_state=already_connected adb_state=offline transport_connected=true
+phase=adb_readiness status=polling attempts=91 connect_attempts=4 deadline_seconds=240 elapsed_seconds=98 remaining_seconds=142 connect_state=already_connected adb_state=offline transport_connected=true
+phase=adb_readiness status=polling attempts=120 connect_attempts=4 deadline_seconds=240 elapsed_seconds=128 remaining_seconds=112 connect_state=already_connected adb_state=offline transport_connected=true
+phase=adb_readiness status=polling attempts=150 connect_attempts=4 deadline_seconds=240 elapsed_seconds=158 remaining_seconds=82 connect_state=already_connected adb_state=offline transport_connected=true
+phase=adb_readiness status=polling attempts=179 connect_attempts=4 deadline_seconds=240 elapsed_seconds=188 remaining_seconds=52 connect_state=already_connected adb_state=offline transport_connected=true
+phase=adb_readiness status=polling attempts=209 connect_attempts=4 deadline_seconds=240 elapsed_seconds=218 remaining_seconds=22 connect_state=already_connected adb_state=offline transport_connected=true
+phase=adb_readiness status=timed_out attempts=229 connect_attempts=4 deadline_seconds=240 elapsed_seconds=240 remaining_seconds=0 connect_state=already_connected adb_state=offline transport_connected=true

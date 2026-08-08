@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "checkedAt": "2026-08-08T02:32:00.093254+00:00",
+  "runOwnedProcessMatches": [],
+  "runOwnedProcessCount": 0,
+  "ports": {
+    "42089": "closed",
+    "5568": "closed",
+    "5569": "closed",
+    "49152": "closed"
+  },
+  "allRunOwnedPortsClosed": true
+}

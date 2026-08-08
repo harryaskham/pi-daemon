@@ -1,0 +1,1 @@
+status=locked source=package-lock.json command=npm_ci_ignore_scripts

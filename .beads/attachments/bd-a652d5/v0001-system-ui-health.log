@@ -1,0 +1,1 @@
+status=initialized system_ui_wait_limit=1 recovery_attempt_limit=15 logcat_byte_limit=1048576 app_failure_screenshot_byte_limit=16777216

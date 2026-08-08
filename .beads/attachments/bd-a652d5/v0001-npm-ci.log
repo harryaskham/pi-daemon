@@ -1,0 +1,17 @@
+pi-droid release shell: Android API 36, build-tools 36.0.0, Java openjdk version "21.0.12" 2026-07-21
+npm warn deprecated node-domexception@1.0.0: Use your platform's native DOMException instead
+
+added 243 packages, and audited 245 packages in 26s
+
+41 packages are looking for funding
+  run `npm fund` for details
+
+6 vulnerabilities (2 moderate, 4 high)
+
+To address issues that do not require attention, run:
+  npm audit fix
+
+To address all issues (including breaking changes), run:
+  npm audit fix --force
+
+Run `npm audit` for details.

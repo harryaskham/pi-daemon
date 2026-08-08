@@ -1,0 +1,10 @@
+schema_version=1
+bead=bd-a652d5
+source_revision=58e2774164066dba2f911ef7afe42998f0131830
+proof_invocation_count=1
+started_at=2026-08-08T02:26:10Z
+command=nix_develop_androidRelease_live_interactive_proof
+completed_at=2026-08-08T02:31:07Z
+exit_status=70
+terminal=true
+rerun_authorized=false

@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "checkedAt": "2026-08-08T02:33:19.670406+00:00",
+  "exactDisposableBearerEqualityScan": true,
+  "exactScanStatus": "clean",
+  "exactScanRetainedFiles": 7,
+  "exactScanRetainedBytes": 14994,
+  "exactScanSkippedBinaryFiles": 0,
+  "exactScanPerformedBeforePrivateTokenDestruction": true,
+  "genericPatternScanFiles": 16,
+  "genericPatternScanBytes": 18810,
+  "genericPatternMatches": {
+    "authorizationBearer": 0,
+    "jsonBearerValue": 0,
+    "pairingEnvelope": 0,
+    "bearerHexAssignment": 0
+  },
+  "genericPatternMatchTotal": 0,
+  "privateBearerRetained": false
+}

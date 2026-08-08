@@ -1,0 +1,5 @@
+
+> @harryaskham/pi-daemon@0.3.0 build:src
+> node scripts/clean.mjs --keep-web && tsc -p tsconfig.json && node scripts/postbuild.mjs
+
+postbuild: web/dist is absent, so dist/dashboard was not written. Run `npm run build` before anything that serves or asserts the packaged Dash SPA.
