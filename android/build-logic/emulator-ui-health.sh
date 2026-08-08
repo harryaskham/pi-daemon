@@ -19,7 +19,7 @@ initialize_emulator_ui_health() {
   chmod 700 "$emulator_ui_health_private_dir"
   : > "$emulator_ui_health_diagnostics"
   chmod 600 "$emulator_ui_health_diagnostics"
-  printf '%s\n' 'status=initialized system_ui_wait_limit=1 recovery_attempt_limit=15 logcat_byte_limit=1048576 app_failure_screenshot_byte_limit=16777216' \
+  printf '%s\n' 'status=initialized system_ui_wait_limit=1 recovery_attempt_limit=15 logcat_byte_limit=1048576 anr_event_byte_limit=1048576 app_failure_screenshot_byte_limit=16777216' \
     >> "$emulator_ui_health_diagnostics"
 }
 
@@ -49,6 +49,22 @@ capture_emulator_ui_logcat() {
   (( head_status == 0 && (adb_status == 0 || adb_status == 141) ))
 }
 
+capture_emulator_ui_anr_events() {
+  local destination="$1"
+  local adb_status=0
+  local head_status=0
+  local pipeline_status=()
+  set +e
+  timeout 10 "${isolated_adb_command[@]}" -s "$emulator_device_serial" \
+    logcat -b events -d -v threadtime 'am_anr:I' '*:S' 2>/dev/null | \
+    LC_ALL=C head -c 1048576 > "$destination"
+  pipeline_status=("${PIPESTATUS[@]}")
+  adb_status="${pipeline_status[0]}"
+  head_status="${pipeline_status[1]}"
+  set -e
+  (( head_status == 0 && (adb_status == 0 || adb_status == 141) ))
+}
+
 capture_emulator_ui_screenshot() {
   local destination="$1"
   emulator_ui_adb exec-out screencap -p > "$destination" 2>/dev/null
@@ -57,7 +73,9 @@ capture_emulator_ui_screenshot() {
 classify_emulator_ui_health() {
   local xml="$1"
   local logcat="$2"
-  python3 "$repo_root/android/build-logic/emulator-ui-health.py" "$xml" "$logcat"
+  local anr_events="$3"
+  python3 "$repo_root/android/build-logic/emulator-ui-health.py" \
+    "$xml" "$logcat" --system-anr-events "$anr_events"
 }
 
 emulator_system_ui_ready() {
@@ -81,7 +99,8 @@ record_emulator_ui_health_failure() {
 capture_system_ui_anr_evidence() {
   local xml="$1"
   local logcat="$2"
-  local occurrence="$3"
+  local anr_events="$3"
+  local occurrence="$4"
   local evidence_dir="$emulator_ui_health_artifacts_dir/occurrence-$occurrence"
   local screenshot="$evidence_dir/screenshot.png"
   local copied_xml="$evidence_dir/window.xml"
@@ -89,28 +108,32 @@ capture_system_ui_anr_evidence() {
   local xml_sha256=''
   local screenshot_sha256=''
   local logcat_sha256=''
+  local anr_events_sha256=''
   mkdir -p "$evidence_dir"
   chmod 700 "$emulator_ui_health_artifacts_dir" "$evidence_dir"
   cp "$xml" "$copied_xml" || return 1
   capture_emulator_ui_screenshot "$screenshot" || return 1
-  [[ -s "$copied_xml" && -s "$screenshot" && -s "$logcat" ]] || return 1
+  [[ -s "$copied_xml" && -s "$screenshot" && -f "$logcat" && -f "$anr_events" ]] || return 1
   xml_sha256="$(sha256sum "$copied_xml" | cut -d ' ' -f 1)"
   screenshot_sha256="$(sha256sum "$screenshot" | cut -d ' ' -f 1)"
   logcat_sha256="$(sha256sum "$logcat" | cut -d ' ' -f 1)"
+  anr_events_sha256="$(sha256sum "$anr_events" | cut -d ' ' -f 1)"
   [[ "$xml_sha256" =~ ^[0-9a-f]{64}$ ]] || return 1
   [[ "$screenshot_sha256" =~ ^[0-9a-f]{64}$ ]] || return 1
   [[ "$logcat_sha256" =~ ^[0-9a-f]{64}$ ]] || return 1
+  [[ "$anr_events_sha256" =~ ^[0-9a-f]{64}$ ]] || return 1
   {
     printf '%s\n' 'status=system_ui_anr'
     printf 'occurrence=%s\n' "$occurrence"
     printf 'xml_sha256=sha256:%s\n' "$xml_sha256"
     printf 'screenshot_sha256=sha256:%s\n' "$screenshot_sha256"
     printf 'safe_logcat_sha256=sha256:%s\n' "$logcat_sha256"
+    printf 'anr_events_sha256=sha256:%s\n' "$anr_events_sha256"
   } > "$evidence"
   chmod 600 "$copied_xml" "$screenshot" "$evidence"
-  printf 'status=evidence_captured occurrence=%s wait_used=%s xml_sha256=sha256:%s screenshot_sha256=sha256:%s safe_logcat_sha256=sha256:%s\n' \
+  printf 'status=evidence_captured occurrence=%s wait_used=%s xml_sha256=sha256:%s screenshot_sha256=sha256:%s safe_logcat_sha256=sha256:%s anr_events_sha256=sha256:%s\n' \
     "$occurrence" "$emulator_system_ui_wait_used" "$xml_sha256" "$screenshot_sha256" "$logcat_sha256" \
-    >> "$emulator_ui_health_diagnostics"
+    "$anr_events_sha256" >> "$emulator_ui_health_diagnostics"
 }
 
 capture_app_failure_modal_evidence() {
@@ -182,13 +205,19 @@ capture_app_failure_modal_evidence() {
 scan_emulator_ui_health() {
   local xml="$1"
   local logcat="$emulator_ui_health_private_dir/logcat.txt"
+  local anr_events="$emulator_ui_health_private_dir/anr-events.txt"
   local classification=''
   : > "$logcat"
+  : > "$anr_events"
   if ! capture_emulator_ui_logcat "$logcat"; then
     printf '%s\n' 'system_ui_unhealthy'
     return 0
   fi
-  classification="$(classify_emulator_ui_health "$xml" "$logcat" 2>/dev/null || printf '%s\n' 'ui_unavailable')"
+  # The structured events ring is sparse and outlives the broad 4,096-record
+  # tail. Failure to read it does not weaken the original logcat correlation;
+  # an empty file keeps title-only recovery refused.
+  capture_emulator_ui_anr_events "$anr_events" || : > "$anr_events"
+  classification="$(classify_emulator_ui_health "$xml" "$logcat" "$anr_events" 2>/dev/null || printf '%s\n' 'ui_unavailable')"
   case "$classification" in
     healthy|ui_unavailable|pidroid_app_failure)
       printf '%s\n' "$classification"
@@ -274,7 +303,8 @@ recover_system_ui_anr() {
         if [[ "$saw_clear" == 'true' ]]; then
           emulator_system_ui_occurrences=$((emulator_system_ui_occurrences + 1))
           capture_system_ui_anr_evidence \
-            "$recovery_xml" "$emulator_ui_health_private_dir/logcat.txt" "$emulator_system_ui_occurrences" || true
+            "$recovery_xml" "$emulator_ui_health_private_dir/logcat.txt" \
+            "$emulator_ui_health_private_dir/anr-events.txt" "$emulator_system_ui_occurrences" || true
           record_emulator_ui_health_failure system_ui_unhealthy recurrence
           return 1
         fi
@@ -335,7 +365,8 @@ check_emulator_ui_health() {
     system_ui_anr)
       emulator_system_ui_occurrences=$((emulator_system_ui_occurrences + 1))
       if ! capture_system_ui_anr_evidence \
-        "$xml" "$emulator_ui_health_private_dir/logcat.txt" "$emulator_system_ui_occurrences"; then
+        "$xml" "$emulator_ui_health_private_dir/logcat.txt" \
+        "$emulator_ui_health_private_dir/anr-events.txt" "$emulator_system_ui_occurrences"; then
         record_emulator_ui_health_failure system_ui_unhealthy evidence_capture
         return 1
       fi
