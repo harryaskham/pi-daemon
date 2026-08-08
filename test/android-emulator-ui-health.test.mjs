@@ -12,34 +12,54 @@ const classifier = path.join(root, "android/build-logic/emulator-ui-health.py");
 const helper = path.join(root, "android/build-logic/emulator-ui-health.sh");
 const systemUiXml = path.join(root, "fixtures/android/uiautomator.system-ui-anr.xml");
 const systemUiLogcat = path.join(root, "fixtures/android/logcat.system-ui-anr.txt");
+const systemUiEvents = path.join(root, "fixtures/android/logcat-events.system-ui-anr.txt");
 const pidroidFatalLogcat = path.join(root, "fixtures/android/logcat.pidroid-fatal.txt");
 
 async function source(relative) {
   return readFile(path.join(root, relative), "utf8");
 }
 
-function classify(xml, logcat) {
-  return execFileSync("python3", [classifier, xml, logcat], { encoding: "utf8" }).trim();
+function classify(xml, logcat, anrEvents) {
+  const args = [classifier, xml, logcat];
+  if (anrEvents !== undefined) args.push("--system-anr-events", anrEvents);
+  return execFileSync("python3", args, { encoding: "utf8" }).trim();
 }
 
 test("captured System UI ANR is exact and Pi Droid failures take precedence", async () => {
   const sandbox = await mkdtemp(path.join(tmpdir(), "pidroid-ui-health-"));
   try {
     const emptyLogcat = path.join(sandbox, "empty.log");
+    const emptyEvents = path.join(sandbox, "empty-events.log");
     const arbitraryLogcat = path.join(sandbox, "arbitrary.log");
     const arbitraryXml = path.join(sandbox, "arbitrary.xml");
     const crashXml = path.join(sandbox, "crash.xml");
     const googleLogcat = path.join(sandbox, "google.log");
+    const missingCloseXml = path.join(sandbox, "missing-close.xml");
+    const missingTitleXml = path.join(sandbox, "missing-title.xml");
+    const missingWaitXml = path.join(sandbox, "missing-wait.xml");
     const nativeFatalLogcat = path.join(sandbox, "native-fatal.log");
+    const pidroidEvents = path.join(sandbox, "pidroid-events.log");
+    const pidroidThenSystemUiEvents = path.join(sandbox, "pidroid-then-system-ui-events.log");
+    const staleSystemUiEvents = path.join(sandbox, "stale-system-ui-events.log");
+    const oversizedEvents = path.join(sandbox, "oversized-events.log");
     const oversizedLogcat = path.join(sandbox, "oversized.log");
     const spoofedXml = path.join(sandbox, "spoofed.xml");
     const capturedXml = await readFile(systemUiXml, "utf8");
+    const capturedEvents = await readFile(systemUiEvents, "utf8");
     await writeFile(emptyLogcat, "");
+    await writeFile(emptyEvents, "");
     await writeFile(arbitraryLogcat, "08-05 12:14:18.003 1124 1367 E ActivityManager: ANR in com.example.maps\n08-05 12:14:18.004 raw sensitive-token=S3CR3T path=/private/modal\n");
     await writeFile(arbitraryXml, capturedXml.replace("System UI isn't responding", "Maps isn't responding"));
     await writeFile(crashXml, '<hierarchy><node package="android" text="Maps keeps stopping" bounds="[0,0][1080,2400]" /></hierarchy>');
     await writeFile(googleLogcat, "08-05 12:14:18.003 1124 1367 E ActivityManager: ANR in com.google.android.gms\n");
+    await writeFile(missingCloseXml, capturedXml.replace("Close app", "Dismiss"));
+    await writeFile(missingTitleXml, capturedXml.replace("System UI isn't responding", ""));
+    await writeFile(missingWaitXml, capturedXml.replace("Wait", "Dismiss"));
     await writeFile(nativeFatalLogcat, "08-05 12:14:18.101 2488 2488 F libc: Fatal signal 6 (SIGABRT), code -1 in tid 2488, pid 2488 (com.harryaskham.pidroid)\n");
+    await writeFile(pidroidEvents, capturedEvents.replaceAll("com.android.systemui", "com.harryaskham.pidroid.debug"));
+    await writeFile(pidroidThenSystemUiEvents, `${await readFile(pidroidEvents, "utf8")}${capturedEvents}`);
+    await writeFile(staleSystemUiEvents, `${capturedEvents}08-05 12:14:19.003  1124  1367 I am_anr  : [0,1777,com.example.maps,0,input dispatch timed out]\n`);
+    await writeFile(oversizedEvents, "x".repeat(1_048_577));
     await writeFile(oversizedLogcat, "x".repeat(1_048_577));
     await writeFile(spoofedXml, capturedXml.replaceAll('package="android"', 'package="com.example.spoof"'));
 
@@ -49,14 +69,22 @@ test("captured System UI ANR is exact and Pi Droid failures take precedence", as
     const systemTitleIdentity = createHash("sha256").update("System UI isn't responding").digest("hex");
     const appFailureClassification = `other_app_failure_modal identity_source=logcat_package identity_class=third_party identity_sha256=sha256:${mapsIdentity}`;
     assert.equal(classify(systemUiXml, systemUiLogcat), "system_ui_anr 768 1406");
-    assert.equal(classify(systemUiXml, pidroidFatalLogcat), "pidroid_app_failure");
-    assert.equal(classify(systemUiXml, nativeFatalLogcat), "pidroid_app_failure");
+    assert.equal(classify(systemUiXml, emptyLogcat, systemUiEvents), "system_ui_anr 768 1406");
+    assert.equal(classify(systemUiXml, pidroidFatalLogcat, systemUiEvents), "pidroid_app_failure");
+    assert.equal(classify(systemUiXml, nativeFatalLogcat, systemUiEvents), "pidroid_app_failure");
+    assert.equal(classify(systemUiXml, emptyLogcat, pidroidEvents), "pidroid_app_failure");
+    assert.equal(classify(systemUiXml, emptyLogcat, pidroidThenSystemUiEvents), "pidroid_app_failure");
     assert.equal(classify(arbitraryXml, arbitraryLogcat), appFailureClassification);
     assert.equal(classify(arbitraryXml, googleLogcat), `other_app_failure_modal identity_source=logcat_package identity_class=google_system identity_sha256=sha256:${googleIdentity}`);
     assert.equal(classify(crashXml, emptyLogcat), `other_app_failure_modal identity_source=dialog_title identity_class=unknown identity_sha256=sha256:${mapsTitleIdentity}`);
-    assert.equal(classify(spoofedXml, systemUiLogcat), "healthy");
-    assert.equal(classify(systemUiXml, emptyLogcat), `other_app_failure_modal identity_source=dialog_title identity_class=unknown identity_sha256=sha256:${systemTitleIdentity}`);
-    assert.equal(classify(systemUiXml, oversizedLogcat), "ui_unavailable");
+    assert.equal(classify(spoofedXml, systemUiLogcat, systemUiEvents), "healthy");
+    assert.equal(classify(systemUiXml, emptyLogcat, emptyEvents), `other_app_failure_modal identity_source=dialog_title identity_class=unknown identity_sha256=sha256:${systemTitleIdentity}`);
+    assert.match(classify(systemUiXml, systemUiLogcat, staleSystemUiEvents), /^other_app_failure_modal /);
+    assert.match(classify(missingCloseXml, emptyLogcat, systemUiEvents), /^other_app_failure_modal /);
+    assert.equal(classify(missingTitleXml, emptyLogcat, systemUiEvents), "healthy");
+    assert.match(classify(missingWaitXml, emptyLogcat, systemUiEvents), /^other_app_failure_modal /);
+    assert.equal(classify(systemUiXml, oversizedLogcat, systemUiEvents), "ui_unavailable");
+    assert.equal(classify(systemUiXml, emptyLogcat, oversizedEvents), "ui_unavailable");
 
     const safeXml = path.join(sandbox, "safe-window.xml");
     const safeLogcat = path.join(sandbox, "safe-logcat.txt");
@@ -90,12 +118,19 @@ repo_root="$2"
 system_xml="$3"
 system_log="$4"
 pidroid_log="$5"
+system_events="$6"
 sandbox="$(mktemp -d)"
 trap 'rm -rf "$sandbox"' EXIT
 source "$helper"
 healthy_xml="$sandbox/healthy.xml"
 arbitrary_xml="$sandbox/arbitrary.xml"
 arbitrary_log="$sandbox/arbitrary.log"
+empty_log="$sandbox/empty.log"
+empty_events="$sandbox/empty-events.log"
+pidroid_events="$sandbox/pidroid-events.log"
+: > "$empty_log"
+: > "$empty_events"
+sed 's/com\.android\.systemui/com.harryaskham.pidroid.debug/g' "$system_events" > "$pidroid_events"
 cat > "$healthy_xml" <<'XML'
 <hierarchy rotation="0"><node package="com.harryaskham.pidroid.debug" text="Readonly session Contract fixture" bounds="[0,0][1080,2400]" /></hierarchy>
 XML
@@ -110,6 +145,7 @@ PY
 } > "$arbitrary_log"
 case_number=0
 current_log="$system_log"
+current_events="$empty_events"
 next_xml="$healthy_xml"
 ready='true'
 tap_calls=0
@@ -126,6 +162,7 @@ new_case() {
   tap_calls=0
   dump_calls=0
   ready='true'
+  current_events="$empty_events"
   oversized_screenshot='false'
   initialize_emulator_ui_health "$private" "$artifacts"
 }
@@ -133,9 +170,14 @@ capture_emulator_ui_logcat() {
   printf '%s\n' logcat >> "$events"
   cp "$current_log" "$1"
 }
+capture_emulator_ui_anr_events() {
+  printf '%s\n' anr_events >> "$events"
+  cp "$current_events" "$1"
+}
 classify_emulator_ui_health() {
   printf '%s\n' classify >> "$events"
-  python3 "$repo_root/android/build-logic/emulator-ui-health.py" "$1" "$2"
+  python3 "$repo_root/android/build-logic/emulator-ui-health.py" \
+    "$1" "$2" --system-anr-events "$3"
 }
 capture_emulator_ui_screenshot() {
   printf '%s\n' screenshot >> "$events"
@@ -174,15 +216,37 @@ grep -Fxq 'status=system_ui_anr' "$artifacts/system-ui-evidence/occurrence-1/evi
 grep -Eq '^xml_sha256=sha256:[0-9a-f]{64}$' "$artifacts/system-ui-evidence/occurrence-1/evidence.txt"
 grep -Eq '^screenshot_sha256=sha256:[0-9a-f]{64}$' "$artifacts/system-ui-evidence/occurrence-1/evidence.txt"
 grep -Eq '^safe_logcat_sha256=sha256:[0-9a-f]{64}$' "$artifacts/system-ui-evidence/occurrence-1/evidence.txt"
+grep -Eq '^anr_events_sha256=sha256:[0-9a-f]{64}$' "$artifacts/system-ui-evidence/occurrence-1/evidence.txt"
 [[ ! -e "$artifacts/system-ui-evidence/occurrence-1/logcat.txt" ]]
-printf '%s\n' 'logcat classify screenshot tap' > "$sandbox/expected-order"
-head -n 4 "$events" | paste -sd ' ' | grep -Fxq "$(cat "$sandbox/expected-order")"
+[[ ! -e "$artifacts/system-ui-evidence/occurrence-1/anr-events.txt" ]]
+printf '%s\n' 'logcat anr_events classify screenshot tap' > "$sandbox/expected-order"
+head -n 5 "$events" | paste -sd ' ' | grep -Fxq "$(cat "$sandbox/expected-order")"
 recurrence_status=0
 check_emulator_ui_health "$system_xml" || recurrence_status=$?
 [[ "$recurrence_status" == 1 ]]
 [[ "$tap_calls" == 1 ]]
 [[ "$emulator_system_ui_occurrences" == 2 ]]
 grep -Fq 'status=system_ui_unhealthy phase=recurrence wait_used=true occurrences=2' "$artifacts/system-ui-health.log"
+
+new_case
+current_log="$empty_log"
+current_events="$system_events"
+next_xml="$healthy_xml"
+check_emulator_ui_health "$system_xml"
+[[ "$tap_calls" == 1 ]]
+[[ "$dump_calls" == 1 ]]
+[[ "$emulator_system_ui_occurrences" == 1 ]]
+grep -Eq '^anr_events_sha256=sha256:[0-9a-f]{64}$' "$artifacts/system-ui-evidence/occurrence-1/evidence.txt"
+
+new_case
+current_log="$empty_log"
+current_events="$pidroid_events"
+next_xml="$healthy_xml"
+pidroid_event_status=0
+check_emulator_ui_health "$system_xml" || pidroid_event_status=$?
+[[ "$pidroid_event_status" == 1 ]]
+[[ "$tap_calls" == 0 ]]
+grep -Fq 'status=pidroid_app_failure phase=ui_wait wait_used=false occurrences=0' "$artifacts/system-ui-health.log"
 
 new_case
 current_log="$pidroid_log"
@@ -252,7 +316,7 @@ check_emulator_ui_health "$system_xml" || readiness_status=$?
 grep -Fq 'status=system_ui_unhealthy phase=recovery_deadline wait_used=true occurrences=1' "$artifacts/system-ui-health.log"
 
 printf '%s\n' 'system_ui_recovery_contract=ok wait_max=1 deadline_attempts=15 arbitrary_taps=0 pidroid_taps=0'
-`, "emulator-ui-health-test", helper, root, systemUiXml, systemUiLogcat, pidroidFatalLogcat], {
+`, "emulator-ui-health-test", helper, root, systemUiXml, systemUiLogcat, pidroidFatalLogcat, systemUiEvents], {
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -278,8 +342,11 @@ test("interactive and readonly harnesses run the shared guard before selectors a
   assert.match(parser, /identity_source=\{metadata\['identity_source'\]\}/);
   assert.match(parser, /raw-content-retained/);
   assert.match(parser, /raw_logcat_retained=false/);
-  assert.match(guard, /system_ui_wait_limit=1 recovery_attempt_limit=15 logcat_byte_limit=1048576/);
+  assert.match(guard, /system_ui_wait_limit=1 recovery_attempt_limit=15 logcat_byte_limit=1048576 anr_event_byte_limit=1048576/);
   assert.match(guard, /app_failure_screenshot_byte_limit=16777216/);
+  assert.match(guard, /logcat -b events -d -v threadtime 'am_anr:I' '\*:S'/);
+  assert.match(guard, /--system-anr-events/);
+  assert.match(parser, /latest_anr_event_is/);
   assert.match(guard, /capture_app_failure_modal_evidence/);
   assert.match(guard, /app-failure-evidence/);
   assert.match(guard, /timeout 10 "\$\{isolated_adb_command\[@\]\}" -s "\$emulator_device_serial"/);

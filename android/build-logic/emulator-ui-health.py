@@ -20,6 +20,11 @@ SYSTEM_UI_TITLES = (
     "System UI isn’t responding",
 )
 PACKAGE_PATTERN = r"[A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)+"
+ANR_EVENT_PATTERN = re.compile(
+    rf"^(?:[^\n]*\sI\s+am_anr|[^\n]*\sI/am_anr\s*\(\s*\d+\s*\))"
+    rf"\s*:\s*\[\s*-?\d+\s*,\s*\d+\s*,\s*({PACKAGE_PATTERN})\s*,",
+    re.MULTILINE,
+)
 SAFE_IDENTITY_SOURCES = frozenset({"logcat_package", "dialog_title"})
 SAFE_IDENTITY_CLASSES = frozenset({"android_system", "google_system", "third_party", "unknown"})
 
@@ -30,6 +35,26 @@ def logcat_has_anr(logcat: str, package: str) -> bool:
         logcat,
         re.MULTILINE,
     ) is not None
+
+
+def anr_event_packages(anr_events: str) -> list[str]:
+    return [match.group(1) for match in ANR_EVENT_PATTERN.finditer(anr_events)]
+
+
+def anr_events_have_package(anr_events: str, package: str) -> bool:
+    return package in anr_event_packages(anr_events)
+
+
+def latest_anr_event_is(anr_events: str, package: str) -> bool:
+    packages = anr_event_packages(anr_events)
+    return bool(packages) and packages[-1] == package
+
+
+def system_ui_anr_correlated(logcat: str, anr_events: str) -> bool:
+    packages = anr_event_packages(anr_events)
+    if packages:
+        return latest_anr_event_is(anr_events, SYSTEM_UI_PACKAGE)
+    return logcat_has_anr(logcat, SYSTEM_UI_PACKAGE)
 
 
 def logcat_has_fatal(logcat: str, package: str) -> bool:
@@ -50,9 +75,11 @@ def logcat_has_fatal(logcat: str, package: str) -> bool:
     return False
 
 
-def has_pidroid_failure(logcat: str) -> bool:
+def has_pidroid_failure(logcat: str, anr_events: str = "") -> bool:
     return any(
-        logcat_has_anr(logcat, package) or logcat_has_fatal(logcat, package)
+        logcat_has_anr(logcat, package)
+        or anr_events_have_package(anr_events, package)
+        or logcat_has_fatal(logcat, package)
         for package in PIDROID_PACKAGES
     )
 
@@ -235,10 +262,11 @@ def write_app_failure_evidence(xml_text: str, logcat: str, safe_xml: Path, safe_
     return format_app_failure_classification(metadata)
 
 
-def classify(xml_text: str, logcat: str) -> tuple[str, tuple[int, int] | None]:
+def classify(xml_text: str, logcat: str, anr_events: str = "") -> tuple[str, tuple[int, int] | None]:
     # Pi Droid failures always win over any system dialog. This prevents a
-    # coincident System UI modal from hiding a product failure.
-    if has_pidroid_failure(logcat):
+    # coincident System UI modal from hiding a product failure, including when
+    # the structured event outlives the broad logcat tail.
+    if has_pidroid_failure(logcat, anr_events):
         return ("pidroid_app_failure", None)
     try:
         root = ET.fromstring(xml_text)
@@ -256,7 +284,7 @@ def classify(xml_text: str, logcat: str) -> tuple[str, tuple[int, int] | None]:
         title_is_exact
         and wait_center is not None
         and close_center is not None
-        and logcat_has_anr(logcat, SYSTEM_UI_PACKAGE)
+        and system_ui_anr_correlated(logcat, anr_events)
     ):
         return ("system_ui_anr", wait_center)
     if failure_modal_present(root):
@@ -274,16 +302,18 @@ def read_bounded(path: Path) -> str:
 
 def main(argv: list[str]) -> int:
     evidence_mode = len(argv) == 6 and argv[3] == "--write-app-failure-evidence"
-    if len(argv) != 3 and not evidence_mode:
+    event_mode = len(argv) == 5 and argv[3] == "--system-anr-events"
+    if len(argv) != 3 and not evidence_mode and not event_mode:
         print(
             "usage: emulator-ui-health.py XML LOGCAT "
-            "[--write-app-failure-evidence SAFE_XML SAFE_LOGCAT]",
+            "[--system-anr-events EVENTS | --write-app-failure-evidence SAFE_XML SAFE_LOGCAT]",
             file=sys.stderr,
         )
         return 64
     try:
         xml_text = read_bounded(Path(argv[1]))
         logcat = read_bounded(Path(argv[2]))
+        anr_events = read_bounded(Path(argv[4])) if event_mode else ""
     except (OSError, ValueError):
         print("evidence_unavailable" if evidence_mode else "ui_unavailable")
         return 70 if evidence_mode else 0
@@ -294,7 +324,7 @@ def main(argv: list[str]) -> int:
             print("evidence_unavailable")
             return 70
         return 0
-    state, center = classify(xml_text, logcat)
+    state, center = classify(xml_text, logcat, anr_events)
     if state == "other_app_failure_modal":
         root = ET.fromstring(xml_text)
         print(format_app_failure_classification(app_failure_metadata(root, logcat)))

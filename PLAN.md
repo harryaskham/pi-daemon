@@ -508,6 +508,10 @@ process appears per wake.
   proof waits, retain XML/screenshot/safe-logcat hashes, choose Wait at most once,
   require SystemUI process/readiness recovery, and give Pi Droid fatal/ANR evidence
   fail-closed precedence without dismissing arbitrary application failures.
+- [x] `bd-4acb69` Correlate a persistent System UI ANR dialog with the latest exact
+  package in Android's bounded structured `am_anr` event ring when the broad
+  logcat tail has rolled over, while preserving Pi Droid failure precedence,
+  title-and-button checks, title-only refusal, and hashed non-retained evidence.
 - [x] `bd-792a59` Make every physical-proof exit stop its owned processes and scan
   retained text for the exact disposable bearer before token destruction; retain
   bounded owner-private normalized XML, screenshot, redacted logcat and safe
