@@ -143,10 +143,13 @@ The capabilities response must report `host.ready: true` and
 `host.draining: false`; otherwise the helper stops after that first GET, before
 inventory/transcript selection, staging, build, emulator, ADB, install, or app
 launch. The resulting debug-only one-shot import fences `hostInstanceId` and
-`inventoryId`; only a session that remains both `idle` and `resident-idle` may
-receive an observer attach. The installed app renders a dedicated content-free
-canary surface, while all content-bearing hydration stays out of screenshots and
-logs. App-private data and every retained text or binary artifact receive exact
+`inventoryId`; only a session that remains both `idle` and `resident-idle`, has
+no recovery quarantine, and reports an available/current transcript with
+`observerAttachAllowed: true` may receive an observer attach. A retained
+quarantined or memory-only row is still a successful readonly hydration: its
+identity-matched `records: []` resource keeps host listing ready while attach is
+suppressed. The installed app renders a dedicated content-free canary surface,
+while all content-bearing hydration stays out of screenshots and logs. App-private data and every retained text or binary artifact receive exact
 bearer and structured credential-pattern scans on every exit. Uninstall,
 run-owned PID termination, and selected emulator/ADB port probes are part of the
 receipt. See `app/README.md` for the command and the full evidence contract.
@@ -157,8 +160,9 @@ receipt. See `app/README.md` for the command and the full evidence contract.
 fixtures into a Cacophony-neutral readonly `SessionSurface`. It receives decoded
 host/cache state only—never a bearer or transport—and exposes no composer,
 controller, wake, TUI, tree, or extension command. Stable record keys back a
-bounded lazy transcript; reconnecting, stale, resyncing, and offline cache state
-remain visible.
+bounded lazy transcript; unavailable transcript resources must contain no
+records, and are rendered as truthful empty readonly state. Reconnecting, stale,
+resyncing, and offline cache state remain visible.
 
 The same Compose test artifact writes exact 430x932 phone and 1280x800 tablet
 proofs only when an output directory is requested:

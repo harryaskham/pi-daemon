@@ -100,6 +100,27 @@ class LiveReadonlyRepositoryTest {
     }
 
   @Test
+  fun `quarantined unavailable transcript keeps host listing ready without observer attach`() =
+    runTest {
+      val harness = harness()
+      harness.transport.unavailableTranscript = true
+      harness.repository.registerManual(
+        apiUri = URI("http://10.0.2.2:48123"),
+        displayName = "Recovered daemon",
+        bearer = "bearer".toCharArray(),
+        tlsFingerprint = null,
+        confirmInsecureHttp = true,
+      )
+
+      val ready = harness.repository.state.value as LiveReadonlyState.Ready
+      assertEquals("Contract fixture", ready.selected.session.session.title)
+      assertEquals(0, ready.selected.session.records.size)
+      assertFalse(ready.selected.rpcObserverEligible)
+      assertFalse(ready.selected.rpcObserverConnected)
+      assertEquals(0, harness.transport.rpcOpenCount)
+    }
+
+  @Test
   fun `external canary fences host inventory and idle observer state`() =
     runTest {
       val hostChanged = harness()
@@ -663,6 +684,7 @@ class LiveReadonlyRepositoryTest {
     var unexpectedExecuteFailure: Boolean = false
     var capabilitiesWithoutInteractive: Boolean = false
     var runningSession: Boolean = false
+    var unavailableTranscript: Boolean = false
     var authorizationObserved: Boolean = false
     var interactiveRpcSocket: FakeSocket? = null
     var rpcOpenCount: Int = 0
@@ -698,11 +720,29 @@ class LiveReadonlyRepositoryTest {
       paths += request.uri.path
       val fixture =
         when (request.uri.path) {
-          "/v1/capabilities" -> "fixtures/session-api/capabilities.response.json"
-          "/v1/dashboard/inventory" -> "fixtures/session-api/dashboard.inventory.response.json"
-          "/v1/dashboard/inventory/inventory-fixture-01" -> "fixtures/session-api/dashboard.info.response.json"
-          "/v1/dashboard/inventory/inventory-fixture-01/transcript" -> "fixtures/session-api/dashboard.transcript.response.json"
-          else -> error("unexpected request path ${request.uri.path}")
+          "/v1/capabilities" -> {
+            "fixtures/session-api/capabilities.response.json"
+          }
+
+          "/v1/dashboard/inventory" -> {
+            "fixtures/session-api/dashboard.inventory.response.json"
+          }
+
+          "/v1/dashboard/inventory/inventory-fixture-01" -> {
+            "fixtures/session-api/dashboard.info.response.json"
+          }
+
+          "/v1/dashboard/inventory/inventory-fixture-01/transcript" -> {
+            if (unavailableTranscript) {
+              "fixtures/session-api/dashboard.transcript.unavailable.response.json"
+            } else {
+              "fixtures/session-api/dashboard.transcript.response.json"
+            }
+          }
+
+          else -> {
+            error("unexpected request path ${request.uri.path}")
+          }
         }
       var body = repositoryRoot.resolve(fixture).toFile().readText()
       body = body.replace("host-01", hostInstanceId).replace("host-fixture-01", hostInstanceId)

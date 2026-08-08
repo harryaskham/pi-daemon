@@ -176,7 +176,7 @@ The provisional routes are fixed under `/dash/v1`:
 | `GET /bootstrap` | capabilities, settings, workspace, and persisted inventory page; no hydration |
 | `GET /sessions` | searchable/paged merged inventory without canonical paths |
 | `GET /sessions/{inventoryId}` | authenticated full information and ownership resource; may include canonical path |
-| `GET /sessions/{inventoryId}/transcript` | normalized active-branch preview; no SDK runtime required |
+| `GET /sessions/{inventoryId}/transcript` | normalized active-branch preview or identity-matched unavailable empty resource; no SDK runtime required |
 | `POST /sessions/{inventoryId}/activate` | idempotent reuse/direct/fork/preview-only admission |
 | `GET /activation/{ticketId}` | retained activation ticket |
 | `POST /sessions/{sessionRef}/export` | idempotent export-as-new or guarded append |
@@ -239,7 +239,12 @@ Opening a chat pane has three independent stages:
 1. **Preview** reads a fingerprint-keyed projection from durable JSONL data.
    `TranscriptPage.hydration` is literally `"not-requested"`; preview does not
    load provider auth, extensions, tools, models, or an `AgentSessionRuntime`,
-   and never sends a prompt.
+   and never sends a prompt. Every response also carries explicit availability,
+   freshness, and observer-attach truth. A retained memory-only or quarantined
+   generation without a projectable source returns `200`, its exact identity,
+   `records: []`, unavailable freshness, and `observerAttachAllowed: false`.
+   Clients render that as an empty readonly state and never infer or attach to
+   missing history.
 2. **Activation/ownership** explicitly chooses `reuse`, `direct`, `fork`, or
    `preview-only`. Direct co-opt is never implied by reading. Fingerprints are
    opaque optimistic preconditions. Frozen tickets cover queued direct,

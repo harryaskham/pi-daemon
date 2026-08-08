@@ -1517,7 +1517,7 @@
       ],
       "get": {
         "operationId": "getDashboardInventoryTranscript",
-        "summary": "Project a bounded active-branch transcript without runtime hydration",
+        "summary": "Return a bounded transcript or truthful source-unavailable empty state without runtime hydration",
         "parameters": [
           {
             "$ref": "#/components/parameters/PageCursor"
@@ -1559,7 +1559,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Normalized preview-only transcript page",
+            "description": "Identity-matched preview resource with availability, freshness, quarantine and observer-attach truth; unprojectable rows return records=[]",
             "content": {
               "application/json": {
                 "schema": {

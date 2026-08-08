@@ -298,6 +298,8 @@ export class InProcessDashboardBackend implements DashboardBackend {
     const info = await this.#inventory.getInfo(inventoryId);
     if (info === undefined) throw new InProcessDashboardBackendError("inventory_not_found", "inventory session does not exist");
     if (info.source.canonicalPath === undefined) {
+      const observedAt = new Date().toISOString();
+      const quarantine = info.managed?.recovery;
       return {
         inventoryId,
         ...(info.piSessionId === undefined ? {} : { piSessionId: info.piSessionId }),
@@ -311,8 +313,16 @@ export class InProcessDashboardBackend implements DashboardBackend {
           formatVersion: 1,
           cached: false,
           truncated: false,
-          builtAt: new Date().toISOString(),
+          builtAt: observedAt,
         },
+        availability: {
+          state: "unavailable",
+          reasonCode: quarantine === undefined ? "source_unavailable" : "session_quarantined",
+          retryable: quarantine?.retryable ?? false,
+          observerAttachAllowed: false,
+        },
+        freshness: { state: "unavailable", observedAt },
+        ...(quarantine === undefined ? {} : { quarantine: structuredClone(quarantine) }),
         hydration: "not-requested",
       };
     }
@@ -324,8 +334,17 @@ export class InProcessDashboardBackend implements DashboardBackend {
         ? {}
         : { expectedFingerprint: info.source.fingerprint.value }),
     };
+    const quarantine = info.managed?.recovery;
+    const withRuntimeAvailability = (page: TranscriptPage): TranscriptPage => ({
+      ...page,
+      availability: {
+        ...page.availability,
+        observerAttachAllowed: quarantine === undefined,
+      },
+      ...(quarantine === undefined ? {} : { quarantine: structuredClone(quarantine) }),
+    });
     try {
-      return await this.#projector.project(projectionRequest);
+      return withRuntimeAvailability(await this.#projector.project(projectionRequest));
     } catch (error) {
       if (
         !(error instanceof TranscriptProjectionError) ||
@@ -338,11 +357,11 @@ export class InProcessDashboardBackend implements DashboardBackend {
       // writer can therefore advance a safe read-only preview between scans.
       // Rebuild once from the projector's own stable before/after file check;
       // activation still requires this returned current fingerprint.
-      return this.#projector.project({
+      return withRuntimeAvailability(await this.#projector.project({
         inventoryId,
         path: info.source.canonicalPath,
         query,
-      });
+      }));
     }
   }
 

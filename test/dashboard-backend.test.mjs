@@ -242,6 +242,24 @@ test("embedded backend delegates inventory, preview, ownership and catalog witho
   );
 });
 
+test("embedded backend preserves quarantined memory identity without fabricating transcript", async (t) => {
+  const { backend, calls, fixtures } = await harness(t);
+  fixtures.sessionInfo.source = { aliases: [] };
+  fixtures.sessionInfo.managed.recovery = {
+    state: "reprovision_required",
+    code: "tool_adapter_reprovision_required",
+    retryable: true,
+  };
+  const transcript = await backend.getTranscript(fixtures.sessionInfo.inventoryId, { limit: 50 });
+  assert.deepEqual(transcript.records, []);
+  assert.equal(transcript.availability.state, "unavailable");
+  assert.equal(transcript.availability.reasonCode, "session_quarantined");
+  assert.equal(transcript.availability.observerAttachAllowed, false);
+  assert.equal(transcript.freshness.state, "unavailable");
+  assert.deepEqual(transcript.quarantine, fixtures.sessionInfo.managed.recovery);
+  assert.equal(calls.project.length, 0);
+});
+
 test("preview retries once from a stable current file when periodic inventory fingerprint is stale", async (t) => {
   const requests = [];
   let currentTranscript;

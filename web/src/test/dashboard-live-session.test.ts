@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { DashboardLiveSessionController } from "../dashboard-live-session";
 import { liveComposerPresentation } from "../components/ChatPane";
 import { LiveFixtureDashboardBackend } from "../live-fixture-backend";
@@ -36,6 +36,42 @@ describe("Dashboard live session controller", () => {
     expect(controller.state.sessionStats).toMatchObject({ messages: expect.any(Number) });
     expect(controller.state.availableCommands).toMatchObject({ commands: expect.arrayContaining(["/model", "/compact"]) });
     expect(controller.state.availableModels).toMatchObject({ models: expect.arrayContaining(["gpt-5.6"]) });
+    await controller.stop();
+  });
+
+  it("keeps an unavailable quarantined transcript readonly without observer attach", async () => {
+    const backend = new LiveFixtureDashboardBackend();
+    const session = backend.sessions[0]!;
+    const available = await backend.getTranscript(session.inventoryId, { limit: 200 });
+    const withoutFingerprint = { ...available };
+    delete withoutFingerprint.sourceFingerprint;
+    vi.spyOn(backend, "getTranscript").mockResolvedValue({
+      ...withoutFingerprint,
+      records: [],
+      availability: {
+        state: "unavailable",
+        reasonCode: "session_quarantined",
+        retryable: true,
+        observerAttachAllowed: false,
+      },
+      freshness: {
+        state: "unavailable",
+        observedAt: "2026-07-18T12:00:00.000Z",
+      },
+      quarantine: {
+        state: "reprovision_required",
+        code: "tool_adapter_reprovision_required",
+        retryable: true,
+      },
+    });
+    const attach = vi.spyOn(backend, "openSessionChannel");
+    const controller = new DashboardLiveSessionController(backend, session.inventoryId);
+    await controller.start();
+    expect(controller.state.phase).toBe("preview-only");
+    expect(controller.state.transcript?.records).toEqual([]);
+    expect(controller.state.transcriptAvailability?.state).toBe("unavailable");
+    expect(controller.state.transcriptFreshness?.state).toBe("unavailable");
+    expect(attach).not.toHaveBeenCalled();
     await controller.stop();
   });
 

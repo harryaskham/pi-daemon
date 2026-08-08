@@ -524,6 +524,9 @@ process appears per wake.
   owner-file-only bearer import over ADB stdin, GET-only preflight, exact
   host/session fencing, content-free evidence, idle-only observer attach, binary
   and app-private leak scans, and verified run-owned process/port cleanup.
+- [x] `bd-50aa48` Return identity-matched, bounded unavailable transcript resources
+  for retained quarantined or source-less sessions, preserve safe recovery and
+  freshness truth, and prevent browser, SDK, Pi Droid, or canary observer attach.
 - [x] `bd-61ac6b` Preserve a bounded owner-private incomplete occurrence when
   app-failure modal evidence capture fails, naming only the fixed failed predicate,
   safe identity class/hash, and retained-component hashes while discarding unsafe

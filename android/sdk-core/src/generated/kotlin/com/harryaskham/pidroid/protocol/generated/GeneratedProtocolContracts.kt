@@ -609,7 +609,7 @@ public object GeneratedProtocolContracts {
       schemaPath = "dashboard-api.schema.json",
       name = "managedSessionSummary",
       kind = SchemaKind.OBJECT,
-      knownFields = setOf("generation", "name", "residency", "revision", "sessionId", "state"),
+      knownFields = setOf("generation", "name", "recovery", "residency", "revision", "sessionId", "state"),
       requiredFields = setOf("generation", "residency", "revision", "sessionId", "state"),
       enumValues = emptyList(),
       diagnostics = emptyList(),
@@ -890,6 +890,15 @@ public object GeneratedProtocolContracts {
       kind = SchemaKind.OBJECT,
       knownFields = setOf("clientId", "dashVersion", "data", "ok", "requestId", "serverInstanceId", "workspaceId"),
       requiredFields = setOf("clientId", "dashVersion", "data", "ok", "requestId", "serverInstanceId", "workspaceId"),
+      enumValues = emptyList(),
+      diagnostics = emptyList(),
+    ),
+    SchemaDefinition(
+      schemaPath = "dashboard-api.schema.json",
+      name = "sessionRecoveryCondition",
+      kind = SchemaKind.OBJECT,
+      knownFields = setOf("code", "retryable", "state"),
+      requiredFields = setOf("code", "retryable", "state"),
       enumValues = emptyList(),
       diagnostics = emptyList(),
     ),
@@ -1176,10 +1185,10 @@ public object GeneratedProtocolContracts {
       schemaPath = "dashboard-api.schema.json",
       name = "transcriptPage",
       kind = SchemaKind.OBJECT,
-      knownFields = setOf("currentLeafId", "hydration", "inventoryId", "managedSession", "newerCursor", "olderCursor", "order", "piSessionId", "projection", "records", "sourceFingerprint"),
-      requiredFields = setOf("hydration", "inventoryId", "order", "projection", "records"),
+      knownFields = setOf("availability", "currentLeafId", "freshness", "hydration", "inventoryId", "managedSession", "newerCursor", "olderCursor", "order", "piSessionId", "projection", "quarantine", "records", "sourceFingerprint"),
+      requiredFields = setOf("availability", "freshness", "hydration", "inventoryId", "order", "projection", "records"),
       enumValues = emptyList(),
-      diagnostics = emptyList(),
+      diagnostics = listOf("dashboard-api.schema.json#/\$defs/transcriptPage/allOf/0: if remains authoritative in JSON Schema and is not flattened into generated object metadata", "dashboard-api.schema.json#/\$defs/transcriptPage/allOf/0: then remains authoritative in JSON Schema and is not flattened into generated object metadata", "dashboard-api.schema.json#/\$defs/transcriptPage/allOf/1: if remains authoritative in JSON Schema and is not flattened into generated object metadata", "dashboard-api.schema.json#/\$defs/transcriptPage/allOf/1: then remains authoritative in JSON Schema and is not flattened into generated object metadata"),
     ),
     SchemaDefinition(
       schemaPath = "dashboard-api.schema.json",
@@ -3229,12 +3238,12 @@ public object GeneratedProtocolContracts {
   public val inputs: List<ProtocolInput> = listOf(
     ProtocolInput(
       path = "dashboard-api.openapi.json",
-      sha256 = "54074e725c38e21c4d4f17b52813f818fce22f2061d31784d38b206ce34efbd8",
+      sha256 = "7120c802e7d66b197af843895026b2a3c73f2df136a72cdb220f92c489b3744f",
       kind = ProtocolInputKind.CONTRACT,
     ),
     ProtocolInput(
       path = "dashboard-api.schema.json",
-      sha256 = "fa4695621535419da1ce3114e1f36b67b844727982332d52ee2dee76c75adf30",
+      sha256 = "24bbed397a976fb4b45579794c13d457b479b502caa37c76830d46369f76fb13",
       kind = ProtocolInputKind.CONTRACT,
     ),
     ProtocolInput(
@@ -3264,7 +3273,7 @@ public object GeneratedProtocolContracts {
     ),
     ProtocolInput(
       path = "session-api.openapi.json",
-      sha256 = "0bc03e7ea53f9719f75b7a0d62c8abec6469f521e4cbe5ef06493c6441b6ca4c",
+      sha256 = "54b559561b1cad418781a05ccada85f63ff3d0321a8bf0bea830b81c02ba7fee",
       kind = ProtocolInputKind.CONTRACT,
     ),
     ProtocolInput(
@@ -3459,7 +3468,12 @@ public object GeneratedProtocolContracts {
     ),
     ProtocolInput(
       path = "fixtures/dashboard-api/transcript.response.json",
-      sha256 = "67909c3d8f2a4025cf0fe6502bd024299610dd3822b591075966795aa26ec56c",
+      sha256 = "24bf195693ce2c9be24ff532828cc7aa15d87c3e062c5dd95805d95e8a90a10a",
+      kind = ProtocolInputKind.FIXTURE,
+    ),
+    ProtocolInput(
+      path = "fixtures/dashboard-api/transcript.unavailable.response.json",
+      sha256 = "090627849e2049a2d0be48d8cf159b15d8b16c3e6ae7bdca84512a603e25af13",
       kind = ProtocolInputKind.FIXTURE,
     ),
     ProtocolInput(
@@ -3634,7 +3648,12 @@ public object GeneratedProtocolContracts {
     ),
     ProtocolInput(
       path = "fixtures/session-api/dashboard.transcript.response.json",
-      sha256 = "45cf511b1aa31307d72eb8f9cc14ff4120c16f9f84ddcb8e0179d19d6f663fc5",
+      sha256 = "65e9e3fe4760014c89a79677a1c5e33b9ad8799e813efd2e8d8f9c5ceea1be60",
+      kind = ProtocolInputKind.FIXTURE,
+    ),
+    ProtocolInput(
+      path = "fixtures/session-api/dashboard.transcript.unavailable.response.json",
+      sha256 = "ba8f189607766f7017036de4b8f7b00b2440b3ac93571c3b4137f3ebeddcc1c3",
       kind = ProtocolInputKind.FIXTURE,
     ),
     ProtocolInput(

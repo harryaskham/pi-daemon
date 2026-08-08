@@ -370,6 +370,16 @@ export function createDashboardContractFixtures(): DashboardContractFixtures {
       truncated: false,
       builtAt: FIXTURE_TIME,
     },
+    availability: {
+      state: "available",
+      retryable: false,
+      observerAttachAllowed: true,
+    },
+    freshness: {
+      state: "current",
+      observedAt: FIXTURE_TIME,
+      sourceModifiedAt: FIXTURE_TIME,
+    },
     hydration: "not-requested",
   };
   const activationRequest: ActivationRequest = {

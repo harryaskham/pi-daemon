@@ -137,6 +137,7 @@ function catalogRecord(
     conversation,
     state = "idle",
     residency = "dormant",
+    recovery,
     updatedAt = "2026-07-18T12:00:00.000Z",
   } = {},
 ) {
@@ -159,6 +160,7 @@ function catalogRecord(
     environment: { keys: [], persistence: "memory-only", provisioned: true },
     policyDigest: `digest-${sessionId}`,
     ...(conversation === undefined ? {} : { conversation }),
+    ...(recovery === undefined ? {} : { recovery }),
   };
 }
 
@@ -322,7 +324,14 @@ test("managed/external/memory rows merge without collapsing duplicate Pi IDs", a
       conversation: { sessionId: "duplicate-pi-id", sessionFile: first },
       residency: "resident",
     }),
-    catalogRecord("memory-one", { name: "Memory conversation" }),
+    catalogRecord("memory-one", {
+      name: "Memory conversation",
+      recovery: {
+        state: "reprovision_required",
+        code: "tool_adapter_reprovision_required",
+        retryable: true,
+      },
+    }),
   ]);
   const inventory = new SessionInventory({ stateDir, catalog, roots: [sessionsRoot] });
   const result = await inventory.reconcile();
@@ -345,7 +354,14 @@ test("managed/external/memory rows merge without collapsing duplicate Pi IDs", a
     reasonCode: "activation-policy-required",
   });
   assert.equal(memory.title, "Memory conversation");
+  assert.equal(memory.managed.recovery.code, "tool_adapter_reprovision_required");
 
+  const memoryInfo = await inventory.getInfo(memory.inventoryId);
+  assert.deepEqual(memoryInfo.managed.recovery, {
+    state: "reprovision_required",
+    code: "tool_adapter_reprovision_required",
+    retryable: true,
+  });
   const info = await inventory.getInfo(managed.inventoryId);
   assert.equal(info.source.aliases.length, 1);
   assert.equal(info.diagnostics[0].code, "duplicate_pi_session_id");

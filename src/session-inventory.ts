@@ -1019,6 +1019,7 @@ function managedSummary(record: SessionCatalogRecord): ManagedSessionSummary {
     revision: record.revision,
     residency: record.residency,
     state: record.state,
+    ...(record.recovery === undefined ? {} : { recovery: structuredClone(record.recovery) }),
   };
 }
 

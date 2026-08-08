@@ -47,7 +47,25 @@ public object SessionFixtureDecoder {
     require(transcriptData.requiredString("inventoryId") == info.inventoryId) {
       "transcript fixture does not match session information"
     }
+    val availability =
+      transcriptData["availability"] as? JsonObject
+        ?: throw SessionFixtureException("invalid_transcript", "transcript availability is missing")
+    val freshness =
+      transcriptData["freshness"] as? JsonObject
+        ?: throw SessionFixtureException("invalid_transcript", "transcript freshness is missing")
+    val availabilityState = availability.requiredString("state")
+    if (availabilityState != "available" && availabilityState != "unavailable") {
+      throw SessionFixtureException("invalid_transcript", "transcript availability is invalid")
+    }
+    val freshnessState = freshness.requiredString("state")
+    if (freshnessState != "current" && freshnessState != "unavailable") {
+      throw SessionFixtureException("invalid_transcript", "transcript freshness is invalid")
+    }
+    availability.requiredBoolean("observerAttachAllowed")
     val records = decodeRecords(transcriptData, maxRetainedRecords, maxContentChars)
+    if (availabilityState == "unavailable" && records.isNotEmpty()) {
+      throw SessionFixtureException("invalid_transcript", "unavailable transcript cannot contain records")
+    }
     return SessionSurfaceState(
       host = host,
       inventory = inventory,

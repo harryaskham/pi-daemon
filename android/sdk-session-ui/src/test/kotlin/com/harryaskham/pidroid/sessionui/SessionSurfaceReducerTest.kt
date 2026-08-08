@@ -45,6 +45,21 @@ class SessionSurfaceReducerTest {
   }
 
   @Test
+  fun `unavailable quarantined transcript remains a truthful empty readonly state`() {
+    val state =
+      fixtureState(
+        transcript =
+          Files.readString(
+            repositoryRoot.resolve("fixtures/session-api/dashboard.transcript.unavailable.response.json"),
+          ),
+      )
+
+    assertEquals("Contract fixture", state.session.title)
+    assertEquals(0, state.records.size)
+    assertFalse(state.canMutate)
+  }
+
+  @Test
   fun `duplicate stable keys replace in place without reordering`() {
     val fixture = transcriptFixture()
     val records = fixture.getValue("data").jsonObject.getValue("records") as JsonArray
