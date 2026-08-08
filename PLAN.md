@@ -524,6 +524,9 @@ process appears per wake.
   owner-file-only bearer import over ADB stdin, GET-only preflight, exact
   host/session fencing, content-free evidence, idle-only observer attach, binary
   and app-private leak scans, and verified run-owned process/port cleanup.
+- [x] `bd-3804d2` Accept the canonical generated base64url service bearer and
+  bounded legacy HTTP Bearer-safe tokens in both external-canary readers while
+  retaining owner-only no-follow reads and exact plus structured leak scans.
 - [ ] `bd-032326` Diagnose transport-connected/offline emulator starts with bounded
   guest kernel and private-console evidence, delay ADB traffic until guest boot,
   and prove isolated x86_64 readiness without invoking either physical proof.
