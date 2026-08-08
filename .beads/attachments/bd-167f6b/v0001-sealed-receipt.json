@@ -1,0 +1,91 @@
+{
+  "agentId": "b6ee95a3a6e063fc",
+  "artifactHashes": {
+    "cleanupSha256": "803b37856e6df6f25dd634a1329f581099e5d64e6bdf59eade38a225139787d5",
+    "diagnosticReceiptSha256": "756ae39dad938375cced49bf8dbdc2125d18e8a6f2d266439a6449f8ed29e32b",
+    "diagnosticsSha256": "f26b295cd6d6bed6dd0ca916dbe1855803a607d8afb1175db87c01e8b90f6f76",
+    "invocationExitStatusSha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "invocationStderrSha256": "3fa425678562b8631fb19300257e83613068d07fc9c2d6f70635ab7a3298891c",
+    "invocationStdoutSha256": "48e73f362e7c698a1bfbf3a28b65dfac6521331da7a9f2a49eeb45a3ebff60d6",
+    "readinessEvidenceSha256": "7f4c9bfff253197e5fe1c68e0b8f53172bf79eb5f5b7029b74d23d3e7dd919b3"
+  },
+  "authorizedDiagnosticInvocationCount": 1,
+  "beadId": "bd-167f6b",
+  "boundedSanitizedEvidence": {
+    "consoleLogBytes": 363556,
+    "consoleLogTruncated": false,
+    "privateKeyMarkerCounts": {
+      "BEGIN PRIVATE KEY": 0,
+      "BEGIN RSA PRIVATE KEY": 0,
+      "SENSITIVE_PRIVATE_KEY": 0
+    },
+    "publicKeyPayloadRedacted": true,
+    "retainedLogLines": 257,
+    "retainedPrivateKeyPaths": [],
+    "sourceLogBytes": 8701,
+    "sourceLogTruncated": false
+  },
+  "cleanup": {
+    "independentResidualOwnedProcessPids": [],
+    "independentlyClosedPorts": [
+      42110,
+      5566,
+      5567
+    ],
+    "privateAdbKeyRetained": false,
+    "scriptOwnedPorts": "closed",
+    "scriptOwnedProcesses": "clean"
+  },
+  "contract": {
+    "abi": "x86_64",
+    "aosp": true,
+    "apiLevel": 36,
+    "avdBootProfileVerified": true,
+    "deviceProfile": "medium_phone",
+    "imageType": "default",
+    "systemImage": "system-images;android-36;default;x86_64"
+  },
+  "invocationExitStatus": 0,
+  "node": "ms-dev-4",
+  "readiness": {
+    "adbReadinessElapsedSeconds": 145,
+    "adbServerIsolated": true,
+    "adbState": "device",
+    "bootCompleted": "1",
+    "classification": "ready",
+    "deviceAbi": "x86_64",
+    "expectedPublicKeyFingerprint": "sha256:2ac9c4e2862c15ed96859a5b9d3c8ae7c560504c3e7489c073e3a82bcd1f6a05",
+    "guestAdbdState": "running",
+    "guestConsole": "available",
+    "guestSystemServerState": "running",
+    "guestUptimeSeconds": 204,
+    "guestZygoteState": "running",
+    "observedEmulatorPublicKeyFingerprint": "sha256:2ac9c4e2862c15ed96859a5b9d3c8ae7c560504c3e7489c073e3a82bcd1f6a05",
+    "publicKeyFingerprintMatch": true
+  },
+  "schemaVersion": 1,
+  "scope": {
+    "apkBuiltOrInstalled": false,
+    "gradleInvoked": false,
+    "liveInteractiveOrReadonlyHarnessInvoked": false,
+    "npmInvoked": false,
+    "physicalProofInvoked": false,
+    "piBearerAccessed": false,
+    "piServiceAccessed": false,
+    "playInvoked": false,
+    "rerunInvoked": false,
+    "sourceEdited": false
+  },
+  "sealedAtUtc": "2026-08-08T12:42:21.320990+00:00",
+  "source": {
+    "checkoutCleanBeforeAndAfterInvocation": true,
+    "commit": "c1d01d60890ca05a9ad6b0cf955826ef40524caa",
+    "diagnosticScriptSha256": "8d92c17a85b6ea9a9a838d566ee78d87e122cd76d37b8028f306da1b123718f2",
+    "exactGitHubMainVerifiedBeforeInvocation": true,
+    "freshManagedCheckout": true,
+    "repository": "harryaskham/pi-daemon",
+    "systemImageContractSha256": "6689b6f2b3084cb5374c09a558d1ae88181a15119e08138581242ab682601d06",
+    "tree": "197b5d2c87cbba0809574aa06fdaca2d0d1c29d7"
+  },
+  "terminalResult": "verified"
+}

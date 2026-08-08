@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "status": "verified",
+  "classification": "ready",
+  "deadlineSeconds": 240,
+  "adbState": "device",
+  "bootCompleted": "1",
+  "deviceAbi": "x86_64",
+  "expectedAbi": "x86_64",
+  "systemImage": "system-images;android-36;default;x86_64",
+  "deviceProfile": "medium_phone",
+  "avdBootProfileVerified": true,
+  "adbServerIsolated": true,
+  "adbPublicKeyPayloadSha256": "sha256:2ac9c4e2862c15ed96859a5b9d3c8ae7c560504c3e7489c073e3a82bcd1f6a05",
+  "delayedAdbUntilBootComplete": true,
+  "piServiceAccessed": false,
+  "piDroidBuiltOrInstalled": false,
+  "privateAdbKeyRetained": false,
+  "ownedProcessesAfterCleanup": "clean",
+  "ownedPortsAfterCleanup": "closed"
+}
