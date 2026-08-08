@@ -41,6 +41,14 @@ function runProcess(command, args, { input, env } = {}) {
   });
 }
 
+async function resolveBash() {
+  if (process.env.BASH && path.isAbsolute(process.env.BASH)) return process.env.BASH;
+  const result = await runProcess("bash", ["-c", 'printf %s "$BASH"']);
+  const bash = result.stdout.trim();
+  assert.ok(path.isAbsolute(bash), "resolved Bash must be an absolute path for a shebang");
+  return bash;
+}
+
 async function privateDirectory(parent, name) {
   const directory = path.join(parent, name);
   await mkdir(directory, { mode: 0o700 });
@@ -344,8 +352,9 @@ test("false observer eligibility reaches the next bounded harness phase", async 
   const artifacts = path.join(sandbox, "artifacts");
   const fakeBin = await privateDirectory(sandbox, "bin");
   const fakeNpm = path.join(fakeBin, "npm");
+  const bash = await resolveBash();
   await writePrivateToken(tokenFile, `${fixtureToken}\n`);
-  await writeFile(fakeNpm, "#!/usr/bin/env bash\nprintf '%s\\n' 'phase=node-build boundary=entered'\nexit 23\n", { mode: 0o700 });
+  await writeFile(fakeNpm, `#!${bash}\nprintf '%s\\n' 'phase=node-build boundary=entered'\nexit 23\n`, { mode: 0o700 });
   await chmod(fakeNpm, 0o700);
 
   await withFixtureServer(fixtureToken, async ({ origin, requests, setTranscriptUnavailable }) => {
