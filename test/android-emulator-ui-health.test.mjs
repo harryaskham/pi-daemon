@@ -150,7 +150,7 @@ next_xml="$healthy_xml"
 ready='true'
 tap_calls=0
 dump_calls=0
-oversized_screenshot='false'
+screenshot_mode='bounded'
 events=''
 new_case() {
   case_number=$((case_number + 1))
@@ -163,7 +163,7 @@ new_case() {
   dump_calls=0
   ready='true'
   current_events="$empty_events"
-  oversized_screenshot='false'
+  screenshot_mode='bounded'
   initialize_emulator_ui_health "$private" "$artifacts"
 }
 capture_emulator_ui_logcat() {
@@ -181,11 +181,21 @@ classify_emulator_ui_health() {
 }
 capture_emulator_ui_screenshot() {
   printf '%s\n' screenshot >> "$events"
-  if [[ "$oversized_screenshot" == 'true' ]]; then
-    truncate -s 16777217 "$1"
-  else
-    printf '%s\n' 'bounded-fixture-screenshot' > "$1"
-  fi
+  case "$screenshot_mode" in
+    bounded)
+      printf '%s\n' 'bounded-fixture-screenshot' > "$1"
+      ;;
+    failed)
+      printf '%s\n' 'partial-fixture-screenshot' > "$1"
+      return 1
+      ;;
+    oversized)
+      truncate -s 16777217 "$1"
+      ;;
+    *)
+      return 64
+      ;;
+  esac
 }
 dump_emulator_ui_window() {
   dump_calls=$((dump_calls + 1))
@@ -286,12 +296,46 @@ grep -Fxq 'raw_logcat_retained=false' "$artifacts/app-failure-evidence/occurrenc
 new_case
 current_log="$arbitrary_log"
 next_xml="$healthy_xml"
-oversized_screenshot='true'
+screenshot_mode='failed'
+capture_status=0
+check_emulator_ui_health "$arbitrary_xml" || capture_status=$?
+[[ "$capture_status" == 1 ]]
+[[ "$tap_calls" == 0 ]]
+grep -Fxq 'status=app_failure_evidence_incomplete' "$artifacts/app-failure-evidence/occurrence-1/evidence.txt"
+grep -Fxq 'capture_predicate=screenshot_capture' "$artifacts/app-failure-evidence/occurrence-1/evidence.txt"
+grep -Fxq 'identity_source=logcat_package' "$artifacts/app-failure-evidence/occurrence-1/evidence.txt"
+grep -Fxq 'identity_class=third_party' "$artifacts/app-failure-evidence/occurrence-1/evidence.txt"
+grep -Eq '^identity_sha256=sha256:[0-9a-f]{64}$' "$artifacts/app-failure-evidence/occurrence-1/evidence.txt"
+grep -Fxq 'normalized_xml_status=retained' "$artifacts/app-failure-evidence/occurrence-1/evidence.txt"
+grep -Eq '^normalized_xml_sha256=sha256:[0-9a-f]{64}$' "$artifacts/app-failure-evidence/occurrence-1/evidence.txt"
+grep -Fxq 'screenshot_status=unavailable' "$artifacts/app-failure-evidence/occurrence-1/evidence.txt"
+grep -Fxq 'safe_logcat_status=retained' "$artifacts/app-failure-evidence/occurrence-1/evidence.txt"
+grep -Eq '^safe_logcat_sha256=sha256:[0-9a-f]{64}$' "$artifacts/app-failure-evidence/occurrence-1/evidence.txt"
+[[ ! -e "$artifacts/app-failure-evidence/occurrence-1/screenshot.png" ]]
+[[ "$(stat -c '%a' "$artifacts/app-failure-evidence/occurrence-1")" == 700 ]]
+[[ "$(stat -c '%a' "$artifacts/app-failure-evidence/occurrence-1/evidence.txt")" == 600 ]]
+[[ "$(stat -c '%a' "$artifacts/app-failure-evidence/occurrence-1/window.xml")" == 600 ]]
+[[ "$(stat -c '%a' "$artifacts/app-failure-evidence/occurrence-1/safe-logcat.txt")" == 600 ]]
+! grep -ERq 'Maps|com\.example\.maps|S3CR3T|private/modal|sensitive-token|partial-fixture' "$artifacts/app-failure-evidence"
+grep -Fq 'status=app_failure_evidence_incomplete occurrence=1 capture_predicate=screenshot_capture identity_source=logcat_package identity_class=third_party' "$artifacts/system-ui-health.log"
+grep -Fq 'status=system_ui_unhealthy phase=app_failure_evidence wait_used=false occurrences=0 app_failure_occurrences=1' "$artifacts/system-ui-health.log"
+
+new_case
+current_log="$arbitrary_log"
+next_xml="$healthy_xml"
+screenshot_mode='oversized'
 oversized_status=0
 check_emulator_ui_health "$arbitrary_xml" || oversized_status=$?
 [[ "$oversized_status" == 1 ]]
 [[ "$tap_calls" == 0 ]]
-[[ ! -e "$artifacts/app-failure-evidence/occurrence-1" ]]
+grep -Fxq 'status=app_failure_evidence_incomplete' "$artifacts/app-failure-evidence/occurrence-1/evidence.txt"
+grep -Fxq 'capture_predicate=screenshot_size_limit' "$artifacts/app-failure-evidence/occurrence-1/evidence.txt"
+grep -Fxq 'normalized_xml_status=retained' "$artifacts/app-failure-evidence/occurrence-1/evidence.txt"
+grep -Fxq 'screenshot_status=discarded_size_limit' "$artifacts/app-failure-evidence/occurrence-1/evidence.txt"
+grep -Fxq 'safe_logcat_status=retained' "$artifacts/app-failure-evidence/occurrence-1/evidence.txt"
+[[ ! -e "$artifacts/app-failure-evidence/occurrence-1/screenshot.png" ]]
+! grep -ERq 'Maps|com\.example\.maps|S3CR3T|private/modal|sensitive-token' "$artifacts/app-failure-evidence"
+grep -Fq 'status=app_failure_evidence_incomplete occurrence=1 capture_predicate=screenshot_size_limit identity_source=logcat_package identity_class=third_party' "$artifacts/system-ui-health.log"
 grep -Fq 'status=system_ui_unhealthy phase=app_failure_evidence wait_used=false occurrences=0 app_failure_occurrences=1' "$artifacts/system-ui-health.log"
 
 new_case
@@ -343,11 +387,14 @@ test("interactive and readonly harnesses run the shared guard before selectors a
   assert.match(parser, /raw-content-retained/);
   assert.match(parser, /raw_logcat_retained=false/);
   assert.match(guard, /system_ui_wait_limit=1 recovery_attempt_limit=15 logcat_byte_limit=1048576 anr_event_byte_limit=1048576/);
-  assert.match(guard, /app_failure_screenshot_byte_limit=16777216/);
+  assert.match(guard, /app_failure_xml_byte_limit=16384 app_failure_logcat_byte_limit=4096 app_failure_screenshot_byte_limit=16777216/);
   assert.match(guard, /logcat -b events -d -v threadtime 'am_anr:I' '\*:S'/);
   assert.match(guard, /--system-anr-events/);
   assert.match(parser, /latest_anr_event_is/);
   assert.match(guard, /capture_app_failure_modal_evidence/);
+  assert.match(guard, /retain_incomplete_app_failure_evidence/);
+  assert.match(guard, /capture_predicate=%s/);
+  assert.match(guard, /head -c 16777217/);
   assert.match(guard, /app-failure-evidence/);
   assert.match(guard, /timeout 10 "\$\{isolated_adb_command\[@\]\}" -s "\$emulator_device_serial"/);
   assert.match(guard, /logcat -d -v threadtime -t 4096/);
