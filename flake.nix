@@ -30,10 +30,9 @@
     # adding ATD fails evaluation until the optimized image is reviewed.
     androidEmulatorSystemImage =
       builtins.fromJSON (builtins.readFile ./android/build-logic/emulator-system-image.json);
-    androidSdkCatalog =
-      builtins.fromJSON (
-        builtins.readFile "${nixpkgs}/pkgs/development/mobile/androidenv/repo.json"
-      );
+    androidSdkCatalog = builtins.fromJSON (
+      builtins.readFile "${nixpkgs}/pkgs/development/mobile/androidenv/repo.json"
+    );
     androidApiImageCatalog =
       androidSdkCatalog.images.${toString androidEmulatorSystemImage.apiLevel};
     androidSystemImagePackage =
@@ -42,29 +41,27 @@
     androidSystemImageDirectory =
       "system-images/android-${toString androidEmulatorSystemImage.apiLevel}/"
       + "${androidEmulatorSystemImage.imageType}/${androidEmulatorSystemImage.abi}/";
-    androidSystemImageContractValid =
-      assert androidEmulatorSystemImage.schemaVersion == 1;
-      assert !builtins.hasAttr "aosp_atd" androidApiImageCatalog;
-      assert !builtins.hasAttr "google_atd" androidApiImageCatalog;
-      assert androidEmulatorSystemImage.aospAtdAvailableInPinnedCatalog == false;
-      assert androidEmulatorSystemImage.googleAtdAvailableInPinnedCatalog == false;
-      assert androidEmulatorSystemImage.googleApisRequired == false;
-      assert androidEmulatorSystemImage.googlePlayServicesRequired == false;
-      assert androidEmulatorSystemImage.googlePlayStoreRequired == false;
-      assert androidEmulatorSystemImage.package == androidSystemImagePackage;
-      assert androidEmulatorSystemImage.directory == androidSystemImageDirectory;
-      assert builtins.hasAttr androidEmulatorSystemImage.imageType androidApiImageCatalog;
-      assert builtins.hasAttr androidEmulatorSystemImage.abi (
+    androidSystemImageContractValid = assert androidEmulatorSystemImage.schemaVersion == 1;
+    assert !builtins.hasAttr "aosp_atd" androidApiImageCatalog;
+    assert !builtins.hasAttr "google_atd" androidApiImageCatalog;
+    assert androidEmulatorSystemImage.aospAtdAvailableInPinnedCatalog == false;
+    assert androidEmulatorSystemImage.googleAtdAvailableInPinnedCatalog == false;
+    assert androidEmulatorSystemImage.googleApisRequired == false;
+    assert androidEmulatorSystemImage.googlePlayServicesRequired == false;
+    assert androidEmulatorSystemImage.googlePlayStoreRequired == false;
+    assert androidEmulatorSystemImage.package == androidSystemImagePackage;
+    assert androidEmulatorSystemImage.directory == androidSystemImageDirectory;
+    assert builtins.hasAttr androidEmulatorSystemImage.imageType androidApiImageCatalog;
+    assert builtins.hasAttr androidEmulatorSystemImage.abi (
+      builtins.getAttr androidEmulatorSystemImage.imageType androidApiImageCatalog
+    ); let
+      selected = builtins.getAttr androidEmulatorSystemImage.abi (
         builtins.getAttr androidEmulatorSystemImage.imageType androidApiImageCatalog
       );
-      let
-        selected = builtins.getAttr androidEmulatorSystemImage.abi (
-          builtins.getAttr androidEmulatorSystemImage.imageType androidApiImageCatalog
-        );
-      in
-        selected.path
-        == builtins.substring 0 (builtins.stringLength androidSystemImageDirectory - 1)
-        androidSystemImageDirectory;
+    in
+      selected.path
+      == builtins.substring 0 (builtins.stringLength androidSystemImageDirectory - 1)
+      androidSystemImageDirectory;
     androidReleaseSdkFor = system: let
       # Android SDK/emulator artifacts are licensed and unfree. This import is
       # used only by the explicit image package and heavy release shell.
@@ -283,9 +280,8 @@
       default = package;
       pi-daemon = package;
       npm-deps = npmDeps;
-      android-test-system-image =
-        assert builtins.length androidReleaseSdk."system-images" == 1;
-          builtins.head androidReleaseSdk."system-images";
+      android-test-system-image = assert builtins.length androidReleaseSdk."system-images" == 1;
+        builtins.head androidReleaseSdk."system-images";
       inherit pages;
     });
 
@@ -306,72 +302,73 @@
 
     checks = forAllSystems (system: let
       pkgs = import nixpkgs {inherit system;};
-    in {
-      package = self.packages.${system}.default;
-      pages = self.packages.${system}.pages;
-      # Fails fast, and prints the exact replacement hash, when package-lock.json
-      # moved without `npm run nix:deps-hash`. Fetching the dependency cache is
-      # far cheaper than discovering the same mismatch through a full build.
-      npm-deps-hash = import ./nix/npm-deps.nix {
-        inherit pkgs;
-        hash = npmDepsHash;
-        name = "pi-daemon-npm-deps-oracle";
-      };
-      home-manager-module = import ./nix/home-manager-module-check.nix {
-        inherit self pkgs;
-      };
-      # The ordinary Pi Droid gate is deliberately source/JVM-only: schema and
-      # fixture drift must fail without fetching an Android SDK, emulator, APK,
-      # AAB, signing material, or Play tooling.
-      android-contract-generation =
-        pkgs.runCommand "pi-droid-generated-contracts" {
-          nativeBuildInputs = [pkgs.ktlint pkgs.nodejs_24];
-          src = self;
-        } ''
-          cp -R "$src" source
-          chmod -R u+w source
-          cd source
-          node android/build-logic/generate-protocol-models.mjs --check
-          node --test test/android-contract-generation.test.mjs
-          find android -type f \( -name '*.kt' -o -name '*.kts' \) -print0 \
-            | xargs -0 ktlint --relative
-          touch "$out"
-        '';
-      workflow-syntax =
-        pkgs.runCommand "pi-daemon-workflow-syntax" {
-          nativeBuildInputs = [pkgs.actionlint];
-        } ''
-          for workflow in ${./.github/workflows}/*.yml; do
-            actionlint -config-file ${./.github/actionlint.yaml} "$workflow"
-          done
-          touch "$out"
-        '';
-      # Asserts what the e2e shell actually exports, rather than matching
-      # `flake.nix` source text from the Node gate. Source matching is a proxy
-      # for the property: it broke once when a legitimate edit changed a string
-      # (bd-228b91) and it survived the alejandra reformat by luck rather than
-      # construction (bd-58a7fa).
-      #
-      # The browsers path is read with its string context discarded on purpose.
-      # Interpolating it directly would put the ~2.1 GiB Playwright closure in
-      # this check's build inputs, so a check that costs nothing today would
-      # fetch the whole bundle on every `nix flake check`. This asserts the
-      # shell's contract, not the bundle's contents; the bundle is exercised by
-      # the browser suite itself.
-      e2e-shell = import ./nix/e2e-shell-check.nix {
-        inherit pkgs;
-        shell = self.devShells.${system}.e2e;
-        webPackage = builtins.fromJSON (builtins.readFile ./web/package.json);
-        justfile = ./Justfile;
-      };
-    }
-    // pkgs.lib.optionalAttrs (system == "x86_64-linux") {
-      android-test-system-image-closure = import ./nix/android-test-system-image-check.nix {
-        inherit pkgs;
-        image = self.packages.${system}.android-test-system-image;
-        contract = androidEmulatorSystemImage;
-      };
-    });
+    in
+      {
+        package = self.packages.${system}.default;
+        pages = self.packages.${system}.pages;
+        # Fails fast, and prints the exact replacement hash, when package-lock.json
+        # moved without `npm run nix:deps-hash`. Fetching the dependency cache is
+        # far cheaper than discovering the same mismatch through a full build.
+        npm-deps-hash = import ./nix/npm-deps.nix {
+          inherit pkgs;
+          hash = npmDepsHash;
+          name = "pi-daemon-npm-deps-oracle";
+        };
+        home-manager-module = import ./nix/home-manager-module-check.nix {
+          inherit self pkgs;
+        };
+        # The ordinary Pi Droid gate is deliberately source/JVM-only: schema and
+        # fixture drift must fail without fetching an Android SDK, emulator, APK,
+        # AAB, signing material, or Play tooling.
+        android-contract-generation =
+          pkgs.runCommand "pi-droid-generated-contracts" {
+            nativeBuildInputs = [pkgs.ktlint pkgs.nodejs_24];
+            src = self;
+          } ''
+            cp -R "$src" source
+            chmod -R u+w source
+            cd source
+            node android/build-logic/generate-protocol-models.mjs --check
+            node --test test/android-contract-generation.test.mjs
+            find android -type f \( -name '*.kt' -o -name '*.kts' \) -print0 \
+              | xargs -0 ktlint --relative
+            touch "$out"
+          '';
+        workflow-syntax =
+          pkgs.runCommand "pi-daemon-workflow-syntax" {
+            nativeBuildInputs = [pkgs.actionlint];
+          } ''
+            for workflow in ${./.github/workflows}/*.yml; do
+              actionlint -config-file ${./.github/actionlint.yaml} "$workflow"
+            done
+            touch "$out"
+          '';
+        # Asserts what the e2e shell actually exports, rather than matching
+        # `flake.nix` source text from the Node gate. Source matching is a proxy
+        # for the property: it broke once when a legitimate edit changed a string
+        # (bd-228b91) and it survived the alejandra reformat by luck rather than
+        # construction (bd-58a7fa).
+        #
+        # The browsers path is read with its string context discarded on purpose.
+        # Interpolating it directly would put the ~2.1 GiB Playwright closure in
+        # this check's build inputs, so a check that costs nothing today would
+        # fetch the whole bundle on every `nix flake check`. This asserts the
+        # shell's contract, not the bundle's contents; the bundle is exercised by
+        # the browser suite itself.
+        e2e-shell = import ./nix/e2e-shell-check.nix {
+          inherit pkgs;
+          shell = self.devShells.${system}.e2e;
+          webPackage = builtins.fromJSON (builtins.readFile ./web/package.json);
+          justfile = ./Justfile;
+        };
+      }
+      // pkgs.lib.optionalAttrs (system == "x86_64-linux") {
+        android-test-system-image-closure = import ./nix/android-test-system-image-check.nix {
+          inherit pkgs;
+          image = self.packages.${system}.android-test-system-image;
+          contract = androidEmulatorSystemImage;
+        };
+      });
 
     devShells = forAllSystems (system: let
       pkgs = import nixpkgs {inherit system;};
