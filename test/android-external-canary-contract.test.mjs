@@ -200,7 +200,7 @@ test("external canary receipt parser accepts only present JSON booleans", async 
   t.after(() => rm(sandbox, { recursive: true, force: true }));
   await chmod(sandbox, 0o700);
   const parser = path.join(root, "android/build-logic/external-canary-receipt.sh");
-  const fixtures = JSON.parse(await source("fixtures/android/external-canary-observer-eligibility.json"));
+  const fixtures = JSON.parse(await source("test/fixtures/android-external-canary-observer-eligibility.json"));
   const expectedError = "external canary preflight receipt observerAttachAllowed must be a JSON boolean\n";
 
   for (const fixture of fixtures.cases) {
