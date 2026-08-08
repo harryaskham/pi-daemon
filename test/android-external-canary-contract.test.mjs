@@ -136,6 +136,7 @@ async function withFixtureServer(expectedToken, block) {
 test("external canary surface is debug-only, content-free, fenced, and mutation-free", async () => {
   const [
     harness,
+    receiptParser,
     preflight,
     scanner,
     activity,
@@ -146,6 +147,7 @@ test("external canary surface is debug-only, content-free, fenced, and mutation-
     mainManifest,
   ] = await Promise.all([
     source("android/build-logic/external-canary-proof.sh"),
+    source("android/build-logic/external-canary-receipt.sh"),
     source("android/build-logic/external-canary-preflight.py"),
     source("android/build-logic/external-canary-secret-scan.py"),
     source("android/app/src/main/kotlin/com/harryaskham/pidroid/MainActivity.kt"),
@@ -160,7 +162,10 @@ test("external canary surface is debug-only, content-free, fenced, and mutation-
   assert.match(harness, /--allow-insecure-http/);
   assert.match(harness, /external-canary-preflight\.py/);
   assert.match(harness, /external-canary-receipt\.sh/);
-  assert.doesNotMatch(harness, /jq -er '\.observerAttachAllowed'/);
+  assert.doesNotMatch(harness, /\bjq\b/);
+  assert.doesNotMatch(receiptParser, /\bjq\b/);
+  assert.match(receiptParser, /EXTERNAL_CANARY_PYTHON_BIN:-python3/);
+  assert.match(receiptParser, /type\(observer_attach_allowed\) is not bool/);
   assert.match(harness, /case "\$observer_attach_allowed" in[\s\S]*true\)[\s\S]*OBSERVER · ATTACHED TO IDLE SESSION[\s\S]*false\)[\s\S]*OBSERVER · NOT REQUESTED/);
   assert.match(harness, /run-as "\$package_name" sh -c[\s\S]*cat > no_backup\/external-canary-import\.json/);
   assert.match(harness, /< "\$staging_file" > \/dev\/null/);

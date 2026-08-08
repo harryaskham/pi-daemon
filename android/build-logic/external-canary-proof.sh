@@ -232,9 +232,12 @@ if [[ "$allow_insecure_http" == 'true' ]]; then
   preflight_arguments+=(--allow-insecure-http)
 fi
 python3 "$repo_root/android/build-logic/external-canary-preflight.py" "${preflight_arguments[@]}"
-network_host="$(jq -er '.network.host' "$artifacts_dir/external-canary-preflight.json")"
-network_port="$(jq -er '.network.port' "$artifacts_dir/external-canary-preflight.json")"
-network_scheme="$(jq -er '.network.scheme' "$artifacts_dir/external-canary-preflight.json")"
+preflight_network="$(parse_external_canary_network "$artifacts_dir/external-canary-preflight.json")"
+mapfile -t preflight_network_fields <<< "$preflight_network"
+(( ${#preflight_network_fields[@]} == 3 )) || exit 70
+network_host="${preflight_network_fields[0]}"
+network_port="${preflight_network_fields[1]}"
+network_scheme="${preflight_network_fields[2]}"
 observer_attach_allowed="$(parse_external_canary_observer_attach_allowed "$artifacts_dir/external-canary-preflight.json")"
 [[ "$network_port" =~ ^[0-9]+$ && "$network_port" -ge 1 && "$network_port" -le 65535 ]] || exit 70
 
