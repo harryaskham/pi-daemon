@@ -89,9 +89,30 @@ record_emulator_adb_readiness() {
   case "$connect_state" in
     connected|already_connected) transport_connected='true' ;;
   esac
+  emulator_adb_last_status="$status"
+  emulator_adb_last_connect_state="$connect_state"
+  emulator_adb_last_state="$adb_state"
+  emulator_adb_last_transport_connected="$transport_connected"
   printf 'phase=adb_readiness status=%s attempts=%s connect_attempts=%s deadline_seconds=%s elapsed_seconds=%s remaining_seconds=%s connect_state=%s adb_state=%s transport_connected=%s\n' \
     "$status" "$attempts" "$connect_attempts" "$deadline_seconds" "$elapsed_seconds" \
     "$remaining_seconds" "$connect_state" "$adb_state" "$transport_connected" >> "$diagnostics_file"
+}
+
+capture_emulator_readiness_evidence() {
+  local classifier="$1"
+  local emulator_log="$2"
+  local console_state="$3"
+  local console_log="$4"
+  local output="$5"
+  local expected_public_key_fingerprint="$6"
+  python3 "$classifier" \
+    --emulator-log "$emulator_log" \
+    --console-state "$console_state" \
+    --console-log "$console_log" \
+    --output "$output" \
+    --expected-public-key-fingerprint "$expected_public_key_fingerprint" \
+    --connect-state "${emulator_adb_last_connect_state:-unavailable}" \
+    --adb-state "${emulator_adb_last_state:-unavailable}"
 }
 
 wait_for_emulator_adb() {
@@ -128,6 +149,10 @@ wait_for_emulator_adb() {
   local elapsed_seconds=0
   local remaining_seconds="$max_seconds"
   local command_timeout_seconds=0
+  emulator_adb_last_status='initializing'
+  emulator_adb_last_connect_state='unavailable'
+  emulator_adb_last_state='unavailable'
+  emulator_adb_last_transport_connected='false'
 
   while (( SECONDS < deadline_at_seconds )); do
     now_seconds="$SECONDS"

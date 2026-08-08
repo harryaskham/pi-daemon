@@ -4,6 +4,7 @@ umask 077
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "$repo_root/android/build-logic/emulator-adb-readiness.sh"
+source "$repo_root/android/build-logic/emulator-avd-boot-profile.sh"
 source "$repo_root/android/build-logic/emulator-ui-health.sh"
 source "$repo_root/android/build-logic/isolated-adb-server.sh"
 source "$repo_root/android/build-logic/physical-proof-lifecycle.sh"
@@ -37,9 +38,15 @@ emulator_diagnostics="$artifacts_dir/emulator-diagnostics.log"
 
 private_dir="$(mktemp -d)"
 chmod 700 "$private_dir"
+emulator_raw_log="$private_dir/emulator.log"
+emulator_guest_console_socket="$private_dir/emulator-guest-console.sock"
+emulator_guest_console_log="$private_dir/emulator-guest-console.log"
+emulator_guest_console_state="$private_dir/emulator-guest-console.state"
+emulator_readiness_evidence="$artifacts_dir/emulator-readiness-evidence.log"
 initialize_emulator_ui_health "$private_dir" "$artifacts_dir"
 daemon_pid=''
 emulator_pid=''
+emulator_console_probe_pid=''
 emulator_device_serial=''
 emulator_port=''
 emulator_adb_port=''
@@ -200,8 +207,10 @@ fi
 apk="$repo_root/android/app/build/outputs/apk/debug/app-debug.apk"
 [[ -f "$apk" ]] || { printf '%s\n' 'debug APK missing' >&2; exit 70; }
 
-printf 'no\n' | avdmanager create avd --force --name pi-droid-live \
-  --package "system-images;android-36;google_apis;$emulator_abi" >/dev/null
+if ! create_api36_google_apis_x86_64_avd pi-droid-live "$emulator_diagnostics"; then
+  printf '%s\n' 'Android emulator AVD boot profile is unavailable or invalid' >&2
+  exit 70
+fi
 if ! select_emulator_port_pair; then
   printf '%s\n' 'status=emulator_port_unavailable emulator_console_port=none emulator_adb_port=none emulator_port_attempts=16' >> "$emulator_diagnostics"
   printf '%s\n' 'emulator_port_unavailable: no supported localhost console/ADB pair is free after 16 attempts' >&2
@@ -211,24 +220,40 @@ fi
 # commands use only the paired loopback TCP transport registered explicitly
 # with this run's isolated ADB server.
 emulator_device_serial="127.0.0.1:$emulator_adb_port"
+# Hold emulator-to-adbd traffic until guest boot completion. Emulator 36.6 can
+# otherwise expose the TCP bridge early enough for an accepted transport to
+# remain offline indefinitely. Kernel and private root-console output provide
+# bounded timeout discrimination without broad reconnects.
+python3 "$repo_root/android/build-logic/emulator-guest-console-recorder.py" \
+  --console-socket "$emulator_guest_console_socket" \
+  --raw-log "$emulator_guest_console_log" \
+  --state "$emulator_guest_console_state" &
+emulator_console_probe_pid="$!"
 emulator -avd pi-droid-live -port "$emulator_port" -no-window -noaudio -no-boot-anim \
-  -no-metrics -no-snapshot -wipe-data -gpu swiftshader_indirect \
-  > "$artifacts_dir/emulator.log" 2>&1 &
+  -no-metrics -no-snapshot -wipe-data -gpu swiftshader_indirect -delay-adb -show-kernel \
+  -shell-serial "unix:$emulator_guest_console_socket,server" \
+  > "$emulator_raw_log" 2>&1 &
 emulator_pid="$!"
 adb_readiness_status=0
 wait_for_emulator_adb \
   "$emulator_pid" "$emulator_device_serial" "$adb_server_port" "$emulator_diagnostics" 240 || \
   adb_readiness_status="$?"
 if (( adb_readiness_status != 0 )); then
+  if ! capture_emulator_readiness_evidence \
+    "$repo_root/android/build-logic/emulator-readiness-evidence.py" \
+    "$emulator_raw_log" "$emulator_guest_console_state" "$emulator_guest_console_log" \
+    "$emulator_readiness_evidence" "$adb_public_key_payload_sha256"; then
+    printf '%s\n' 'phase=adb_readiness_evidence status=capture_failed' >> "$emulator_diagnostics"
+  fi
   if (( adb_readiness_status == 69 )); then
     wait "$emulator_pid" 2>/dev/null || true
     printf 'Android emulator exited before ADB readiness for ABI %s\n' "$emulator_abi" >&2
-    tail -40 "$artifacts_dir/emulator.log" >&2 || true
   elif (( adb_readiness_status == 70 )); then
     printf '%s\n' 'Android emulator ADB readiness timed out after 240 seconds' >&2
   else
     printf '%s\n' 'Android emulator ADB readiness gate rejected its bounded configuration' >&2
   fi
+  [[ ! -f "$emulator_readiness_evidence" ]] || tail -40 "$emulator_readiness_evidence" >&2 || true
   exit 70
 fi
 booted=''
@@ -314,6 +339,9 @@ cat > "$artifacts_dir/live-readonly-receipt.json" <<EOF
   "schemaVersion": 1,
   "status": "verified",
   "apiEndpoint": "http://10.0.2.2:$api_port",
+  "systemImage": "system-images;android-36;google_apis;x86_64",
+  "deviceProfile": "medium_phone",
+  "avdBootProfileVerified": true,
   "emulatorConsolePort": $emulator_port,
   "emulatorAdbPort": $emulator_adb_port,
   "emulatorPortSelectionAttempts": $emulator_port_attempts,

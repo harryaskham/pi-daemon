@@ -81,6 +81,37 @@ packages, following explicit operator approval; ordinary shells retain their
 free-package policy. See `app/README.md` for the two-phase signed internal release
 command and evidence contract.
 
+### Diagnostic-only emulator readiness
+
+The readiness diagnostic exercises only a fresh x86_64 emulator and its
+run-scoped ADB server. It does not run npm or Gradle, build or install Pi Droid,
+start Pi Daemon, or read a Pi bearer. The destination must be an empty,
+owner-private evidence directory:
+
+```console
+nix develop .#androidRelease --command \
+  android/build-logic/emulator-readiness-diagnostic.sh \
+  --artifacts "$PWD/artifacts/emulator-readiness"
+```
+
+The deadline remains bounded to 240 seconds. Emulator ADB traffic is delayed
+until guest boot completion so an early TCP attach cannot strand the accepted
+transport offline. Every diagnostic and physical proof creates the pinned API
+36 Google APIs x86_64 image with the explicit `medium_phone` device profile and
+then validates its generated configuration before launch. Omitting `--device`
+selects avdmanager's generic 32 MiB VM-heap fallback; on this API 36 image,
+zygote can run while the under-provisioned `system_server` never registers
+ActivityManager. The validated phone profile provides a 228 MiB VM heap, at
+least 2 GiB RAM, and multiple vCPUs; the harness fails closed instead of booting
+if those resource classes drift.
+
+A failure retains only a bounded, sanitized kernel/emulator excerpt, public-key
+payload fingerprints, and fixed-enum guest root-console state
+(`boot_completed`, `adbd`, zygote, `system_server`, ABI, and uptime). The
+private ADB key, raw console output, and raw emulator log remain in the
+run-private temporary directory and are destroyed during verified process/port
+cleanup.
+
 ## Readonly session fixture and image proof
 
 `sdk-session-ui` projects the neutral inventory, information, and transcript

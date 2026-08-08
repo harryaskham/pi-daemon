@@ -31,6 +31,8 @@ stop_physical_proof_owned_processes() {
   # Emulator shutdown can legitimately use its documented 20-second grace.
   physical_proof_stop_pid "${emulator_pid:-}" TERM 250
   emulator_pid=''
+  physical_proof_stop_pid "${emulator_console_probe_pid:-}" TERM 50
+  emulator_console_probe_pid=''
   if declare -F stop_isolated_adb_server >/dev/null; then
     stop_isolated_adb_server
   fi
