@@ -7,7 +7,10 @@ EXPECTED_TRACK='internal'
 EXPECTED_CERT_SHA256='FA:58:80:A7:C9:6D:F8:7B:B4:63:7D:18:58:7E:32:F6:CD:F6:95:06:52:34:FE:54:95:E2:4F:ED:12:1E:CE:4C'
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+source "$repo_root/android/build-logic/emulator-adb-readiness.sh"
 source "$repo_root/android/build-logic/emulator-avd-boot-profile.sh"
+source "$repo_root/android/build-logic/emulator-ui-health.sh"
+source "$repo_root/android/build-logic/isolated-adb-server.sh"
 version_code=''
 version_name=''
 artifacts_dir=''
@@ -71,14 +74,25 @@ private_dir="$(mktemp -d)"
 chmod 700 "$private_dir"
 emulator_pid=''
 emulator_serial=''
+emulator_port=''
+emulator_adb_port=''
+emulator_port_attempts=''
+adb_server_port=''
+adb_server_port_attempts=''
+adb_server_pid=''
+adb_server_started='false'
+adb_key_home=''
+adb_public_key_payload_sha256=''
+declare -a isolated_adb_command=()
 cleanup() {
-  if [[ -n "$emulator_serial" ]]; then
-    adb -s "$emulator_serial" emu kill >/dev/null 2>&1 || true
+  if [[ -n "$emulator_serial" && "${#isolated_adb_command[@]}" -gt 0 ]]; then
+    "${isolated_adb_command[@]}" -s "$emulator_serial" emu kill >/dev/null 2>&1 || true
   fi
   if [[ -n "$emulator_pid" ]] && kill -0 "$emulator_pid" 2>/dev/null; then
     kill "$emulator_pid" 2>/dev/null || true
     wait "$emulator_pid" 2>/dev/null || true
   fi
+  stop_isolated_adb_server
   rm -rf "$private_dir"
 }
 trap 'cleanup' EXIT
@@ -237,94 +251,101 @@ if [[ "$upload_prepared" != 'true' ]]; then
     --key-pass="file:$key_password_file" >/dev/null
   unzip -q "$private_dir/pi-droid.apks" universal.apk -d "$private_dir/apks"
 
-  : > "$private_dir/emulator-diagnostics.log"
-  if ! create_bounded_api36_test_avd pi-droid-release "$private_dir/emulator-diagnostics.log"; then
+  emulator_diagnostics="$artifacts_dir/emulator-diagnostics.log"
+  : > "$emulator_diagnostics"
+  if ! create_bounded_api36_test_avd pi-droid-release "$emulator_diagnostics"; then
     printf '%s\n' 'Android emulator AVD boot profile is unavailable or invalid' >&2
     exit 70
   fi
-emulator_port="$(python3 - <<'PY'
-import socket
-for port in range(5600, 5683, 2):
-    sockets = []
-    try:
-        for candidate in (port, port + 1):
-            sock = socket.socket()
-            sock.bind(("127.0.0.1", candidate))
-            sockets.append(sock)
-    except OSError:
-        pass
-    else:
-        print(port)
-        break
-    finally:
-        for sock in sockets:
-            sock.close()
-else:
-    raise SystemExit("no free Android emulator port")
-PY
-)"
-emulator_serial="emulator-$emulator_port"
-emulator \
-  -avd pi-droid-release \
-  -port "$emulator_port" \
-  -no-window \
-  -noaudio \
-  -no-boot-anim \
-  -no-metrics \
-  -no-snapshot \
-  -wipe-data \
-  -gpu swiftshader_indirect \
-  > "$private_dir/emulator.log" 2>&1 &
-emulator_pid="$!"
+  start_isolated_adb_server \
+    "$private_dir" \
+    "$emulator_diagnostics" \
+    "$repo_root/android/build-logic/select-adb-server-port.py"
+  isolated_adb_command=(adb -H 127.0.0.1 -P "$adb_server_port")
+  initialize_emulator_ui_health "$private_dir" "$artifacts_dir"
+  emulator_selection=''
+  emulator_selection_extra=''
+  if ! emulator_selection="$(python3 "$repo_root/android/build-logic/select-emulator-port-pair.py" 2>/dev/null)"; then
+    printf '%s\n' 'status=emulator_port_unavailable emulator_console_port=none emulator_adb_port=none emulator_port_attempts=16' >> "$emulator_diagnostics"
+    printf '%s\n' 'emulator_port_unavailable: no supported localhost console/ADB pair is free after 16 attempts' >&2
+    exit 70
+  fi
+  read -r emulator_port emulator_adb_port emulator_port_attempts emulator_selection_extra <<< "$emulator_selection"
+  if [[ -n "$emulator_selection_extra" || ! "$emulator_port" =~ ^[0-9]+$ ||
+        ! "$emulator_adb_port" =~ ^[0-9]+$ || ! "$emulator_port_attempts" =~ ^[0-9]+$ ]] ||
+    (( emulator_port < 5554 || emulator_port > 5584 || emulator_port % 2 != 0 ||
+       emulator_adb_port != emulator_port + 1 || emulator_port_attempts < 1 || emulator_port_attempts > 16 )); then
+    printf '%s\n' 'emulator port selector returned an invalid result' >&2
+    exit 70
+  fi
+  printf 'status=selected emulator_console_port=%s emulator_adb_port=%s emulator_port_attempts=%s verification=both_localhost_ports_free\n' \
+    "$emulator_port" "$emulator_adb_port" "$emulator_port_attempts" >> "$emulator_diagnostics"
+  emulator_serial="127.0.0.1:$emulator_adb_port"
+  emulator_device_serial="$emulator_serial"
+  emulator \
+    -avd pi-droid-release \
+    -port "$emulator_port" \
+    -no-window \
+    -noaudio \
+    -no-boot-anim \
+    -no-metrics \
+    -no-snapshot \
+    -wipe-data \
+    -gpu swiftshader_indirect \
+    -delay-adb \
+    > "$private_dir/emulator.log" 2>&1 &
+  emulator_pid="$!"
 
-device_ready=''
-for _ in $(seq 1 120); do
-  if adb -s "$emulator_serial" get-state 2>/dev/null | grep -qx device; then
-    device_ready='true'
-    break
-  fi
-  if ! kill -0 "$emulator_pid" 2>/dev/null; then
-    wait "$emulator_pid" 2>/dev/null || true
-    printf 'Android emulator exited before ADB readiness for ABI %s\n' "$emulator_abi" >&2
-    tail -40 "$private_dir/emulator.log" >&2 || true
+  adb_readiness_status=0
+  wait_for_emulator_adb \
+    "$emulator_pid" "$emulator_serial" "$adb_server_port" "$emulator_diagnostics" 240 || \
+    adb_readiness_status="$?"
+  if (( adb_readiness_status != 0 )); then
+    if (( adb_readiness_status == 69 )); then
+      wait "$emulator_pid" 2>/dev/null || true
+      printf 'Android emulator exited before ADB readiness for ABI %s\n' "$emulator_abi" >&2
+      tail -40 "$private_dir/emulator.log" >&2 || true
+    elif (( adb_readiness_status == 70 )); then
+      printf '%s\n' 'Android emulator ADB readiness timed out after 240 seconds' >&2
+    else
+      printf '%s\n' 'Android emulator ADB readiness gate rejected its bounded configuration' >&2
+    fi
+    tail -40 "$emulator_diagnostics" >&2 || true
     exit 70
   fi
-  sleep 1
-done
-if [[ "$device_ready" != 'true' ]]; then
-  printf '%s\n' 'Android emulator ADB readiness timed out' >&2
-  exit 70
-fi
-booted=''
-for _ in $(seq 1 240); do
-  booted="$(adb -s "$emulator_serial" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')"
-  [[ "$booted" == '1' ]] && break
-  if ! kill -0 "$emulator_pid" 2>/dev/null; then
-    printf '%s\n' 'Android emulator exited before boot completed' >&2
+  booted=''
+  for _ in $(seq 1 240); do
+    booted="$("${isolated_adb_command[@]}" -s "$emulator_serial" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')"
+    [[ "$booted" == '1' ]] && break
+    if ! kill -0 "$emulator_pid" 2>/dev/null; then
+      printf '%s\n' 'Android emulator exited before boot completed' >&2
+      exit 70
+    fi
+    sleep 1
+  done
+  if [[ "$booted" != '1' ]]; then
+    printf '%s\n' 'Android emulator did not complete boot within 240 seconds' >&2
     exit 70
   fi
-  sleep 1
-done
-if [[ "$booted" != '1' ]]; then
-  printf '%s\n' 'Android emulator did not complete boot within 240 seconds' >&2
-  exit 70
-fi
-adb -s "$emulator_serial" install -r "$private_dir/apks/universal.apk" >/dev/null
+  probe_emulator_ui_health || exit 70
+  "${isolated_adb_command[@]}" -s "$emulator_serial" install -r "$private_dir/apks/universal.apk" >/dev/null
 
 capture_profile() {
   local name="$1"
   local size="$2"
   local density="$3"
-  adb -s "$emulator_serial" shell wm size "$size" >/dev/null
-  adb -s "$emulator_serial" shell wm density "$density" >/dev/null
+  "${isolated_adb_command[@]}" -s "$emulator_serial" shell wm size "$size" >/dev/null
+  "${isolated_adb_command[@]}" -s "$emulator_serial" shell wm density "$density" >/dev/null
   sleep 1
-  adb -s "$emulator_serial" shell am force-stop "$EXPECTED_PACKAGE" >/dev/null
-  adb -s "$emulator_serial" shell am start -W -n "$EXPECTED_PACKAGE/.MainActivity" >/dev/null
+  "${isolated_adb_command[@]}" -s "$emulator_serial" shell am force-stop "$EXPECTED_PACKAGE" >/dev/null
+  "${isolated_adb_command[@]}" -s "$emulator_serial" shell am start -W -n "$EXPECTED_PACKAGE/.MainActivity" >/dev/null
   local ready='false'
-  for _ in $(seq 1 30); do
-    adb -s "$emulator_serial" shell uiautomator dump /sdcard/pi-droid-window.xml >/dev/null 2>&1 || true
-    if adb -s "$emulator_serial" exec-out cat /sdcard/pi-droid-window.xml 2>/dev/null \
-      | grep -Eq 'WORKSPACE FIXTURE|Pane Build room|Connect a trusted-tailnet Pi Daemon|Pi Daemon API URL'; then
+  local window_xml="$private_dir/pi-droid-window.xml"
+  for _ in $(seq 1 60); do
+    : > "$window_xml"
+    dump_emulator_ui_window "$window_xml" || true
+    check_emulator_ui_health "$window_xml" || exit 70
+    if grep -Eq 'WORKSPACE FIXTURE|Pane Build room|Connect a trusted-tailnet Pi Daemon|Pi Daemon API URL' "$window_xml"; then
       ready='true'
       break
     fi
@@ -335,7 +356,7 @@ capture_profile() {
     exit 70
   fi
   sleep 1
-  adb -s "$emulator_serial" exec-out screencap -p > "$artifacts_dir/screenshots/pi-droid-$name.png"
+  "${isolated_adb_command[@]}" -s "$emulator_serial" exec-out screencap -p > "$artifacts_dir/screenshots/pi-droid-$name.png"
 }
 
   capture_profile phone 1080x2400 420
@@ -365,6 +386,8 @@ if [[ "$prepare_only" == 'true' ]]; then
       pi-droid-release.aab \
       mapping.txt \
       release-build-receipt.json \
+      emulator-diagnostics.log \
+      system-ui-health.log \
       screenshots/pi-droid-phone.png \
       screenshots/pi-droid-tablet.png \
       screenshots/pi-droid-wide.png \
@@ -387,6 +410,8 @@ fi
     mapping.txt \
     play-internal-receipt.json \
     release-build-receipt.json \
+    emulator-diagnostics.log \
+    system-ui-health.log \
     screenshots/pi-droid-phone.png \
     screenshots/pi-droid-tablet.png \
     screenshots/pi-droid-wide.png \

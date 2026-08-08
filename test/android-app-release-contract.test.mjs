@@ -15,13 +15,14 @@ async function source(relativePath) {
 }
 
 test("Pi Droid app is conditional, fixed-identity, source-gated, and release signed", async () => {
-  const [settings, catalog, build, manifest, activity, liveScreen] = await Promise.all([
+  const [settings, catalog, build, manifest, activity, liveScreen, releaseNotes] = await Promise.all([
     source("android/settings.gradle.kts"),
     source("android/gradle/libs.versions.toml"),
     source("android/app/build.gradle.kts"),
     source("android/app/src/main/AndroidManifest.xml"),
     source("android/app/src/main/kotlin/com/harryaskham/pidroid/MainActivity.kt"),
     source("android/app/src/main/kotlin/com/harryaskham/pidroid/live/LiveReadonlyScreen.kt"),
+    source("android/app/src/main/play/release-notes/en-US/internal.txt"),
   ]);
 
   assert.match(settings, /piDroidAndroidApp/);
@@ -52,6 +53,12 @@ test("Pi Droid app is conditional, fixed-identity, source-gated, and release sig
   assert.match(activity, /handleInteraction/);
   assert.match(liveScreen, /SessionSurface/);
   assert.match(liveScreen, /HostRegistrationScreen/);
+  assert.match(releaseNotes, /reconnect and host recovery/);
+  assert.match(releaseNotes, /canonical bearer/);
+  assert.match(releaseNotes, /transcript-unavailable/);
+  assert.match(releaseNotes, /editable, forget, re-pair, crash-safe multi-host management/);
+  assert.match(releaseNotes, /Create\/adopt daily-driver polish is still in progress/);
+  assert.ok(releaseNotes.length <= 500, "Play internal release notes must remain within the locale limit");
 });
 
 test("Android shells select the pinned platform-specific Java home", async () => {
@@ -91,9 +98,21 @@ test("release script materializes secrets privately and verifies fixed identity 
   assert.match(script, /play-internal-receipt\.json/);
   assert.match(script, /pi-droid-release\.aab/);
   assert.match(script, /mapping\.txt/);
+  assert.match(script, /source "\$repo_root\/android\/build-logic\/emulator-adb-readiness\.sh"/);
   assert.match(script, /source "\$repo_root\/android\/build-logic\/emulator-avd-boot-profile\.sh"/);
+  assert.match(script, /source "\$repo_root\/android\/build-logic\/emulator-ui-health\.sh"/);
+  assert.match(script, /source "\$repo_root\/android\/build-logic\/isolated-adb-server\.sh"/);
   assert.match(script, /create_bounded_api36_test_avd pi-droid-release/);
-  assert.match(script, /adb[^\n]*get-state/);
+  assert.match(script, /select-emulator-port-pair\.py/);
+  assert.match(script, /start_isolated_adb_server/);
+  assert.match(script, /wait_for_emulator_adb[^]*240/);
+  assert.match(script, /emulator_serial="127\.0\.0\.1:\$emulator_adb_port"/);
+  assert.match(script, /initialize_emulator_ui_health/);
+  assert.match(script, /probe_emulator_ui_health/);
+  assert.match(script, /check_emulator_ui_health/);
+  assert.match(script, /system-ui-health\.log/);
+  assert.match(script, /-delay-adb/);
+  assert.doesNotMatch(script, /range\(5600, 5683/);
   assert.doesNotMatch(script, /adb[^\n]*wait-for-device/);
   assert.doesNotMatch(script, /echo\s+.*(?:PASSWORD|SERVICE_ACCOUNT|KEYSTORE)/i);
 });

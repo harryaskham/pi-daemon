@@ -1,0 +1,3 @@
+Pi Droid preview 4 adds resilient reconnect and host recovery, canonical bearer connections, retained app-failure modal evidence, the reviewed external-canary contract, and a clear transcript-unavailable state.
+
+It now includes editable, forget, re-pair, crash-safe multi-host management. Create/adopt daily-driver polish is still in progress.
