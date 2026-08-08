@@ -512,6 +512,13 @@ process appears per wake.
   retained text for the exact disposable bearer before token destruction; retain
   bounded owner-private normalized XML, screenshot, redacted logcat and safe
   identity hashes for unrelated app-failure modals without dismissing them.
+- [ ] `bd-032326` Diagnose transport-connected/offline emulator starts with bounded
+  guest kernel and private-console evidence, delay ADB traffic until guest boot,
+  and prove isolated x86_64 readiness without invoking either physical proof.
+- [ ] `bd-128d25` Replace avdmanager's under-provisioned profile-less API 36 guest
+  with a validated medium-phone Google APIs x86_64 boot contract, then prove ADB,
+  framework completion, matching public-key fingerprints, and clean teardown in
+  one diagnostic-only smoke before either physical proof.
 - [x] `bd-988946` Make Android fast verification self-contained by exposing the
   flake-pinned Python runtime to both plain Node CI versions and executing the
   Java environment export directly in its pinned Nix shell without nested quote
