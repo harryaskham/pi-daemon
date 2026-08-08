@@ -528,6 +528,9 @@ process appears per wake.
   app-failure modal evidence capture fails, naming only the fixed failed predicate,
   safe identity class/hash, and retained-component hashes while discarding unsafe
   files and preserving Pi Droid priority and arbitrary-tap refusal.
+- [x] `bd-3804d2` Accept the canonical generated base64url service bearer and
+  bounded legacy HTTP Bearer-safe tokens in both external-canary readers while
+  retaining owner-only no-follow reads and exact plus structured leak scans.
 - [ ] `bd-032326` Diagnose transport-connected/offline emulator starts with bounded
   guest kernel and private-console evidence, delay ADB traffic until guest boot,
   and prove isolated x86_64 readiness without invoking either physical proof.
