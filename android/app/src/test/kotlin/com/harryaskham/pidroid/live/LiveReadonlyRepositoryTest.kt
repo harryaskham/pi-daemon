@@ -18,6 +18,8 @@ import com.harryaskham.pidroid.sdk.core.NeutralHeaders
 import com.harryaskham.pidroid.sdk.core.NeutralHttpRequest
 import com.harryaskham.pidroid.sdk.core.NeutralHttpResponse
 import com.harryaskham.pidroid.sdk.core.NeutralWebSocketRequest
+import com.harryaskham.pidroid.sdk.core.PairingPayload
+import com.harryaskham.pidroid.sdk.core.PairingPayloadCodec
 import com.harryaskham.pidroid.sdk.core.PiDaemonHostDescriptor
 import com.harryaskham.pidroid.sdk.core.PiDaemonSocket
 import com.harryaskham.pidroid.sdk.core.ProtectedCredential
@@ -75,6 +77,64 @@ class LiveReadonlyRepositoryTest {
       assertTrue(harness.transport.paths.contains("/v1/dashboard/inventory"))
       assertTrue(harness.transport.authorizationObserved)
       assertFalse(harness.repository.toString().contains("disposable-bearer"))
+    }
+
+  @Test
+  fun `readonly hydration never opens an observer for a running session`() =
+    runTest {
+      val harness = harness()
+      harness.transport.runningSession = true
+      harness.repository.registerManual(
+        apiUri = URI("http://10.0.2.2:48123"),
+        displayName = "Disposable daemon",
+        bearer = "bearer".toCharArray(),
+        tlsFingerprint = null,
+        confirmInsecureHttp = true,
+      )
+
+      val ready = harness.repository.state.value as LiveReadonlyState.Ready
+      assertEquals(CacheFreshness.FRESH, ready.selected.session.host.freshness)
+      assertFalse(ready.selected.rpcObserverEligible)
+      assertFalse(ready.selected.rpcObserverConnected)
+      assertEquals(0, harness.transport.rpcOpenCount)
+    }
+
+  @Test
+  fun `external canary fences host inventory and idle observer state`() =
+    runTest {
+      val hostChanged = harness()
+      hostChanged.repository.registerExternalCanary(
+        envelope = externalCanaryEnvelope(),
+        expectation = ExternalCanaryExpectation("unexpected-host", "inventory-fixture-01", true),
+        confirmInsecureHttp = true,
+      )
+      assertEquals("external_canary_host_changed", (hostChanged.repository.state.value as LiveReadonlyState.Failure).code)
+      assertEquals(0, hostChanged.transport.rpcOpenCount)
+
+      val inventoryChanged = harness()
+      inventoryChanged.repository.registerExternalCanary(
+        envelope = externalCanaryEnvelope(),
+        expectation = ExternalCanaryExpectation("host-fixture-01", "missing-inventory", true),
+        confirmInsecureHttp = true,
+      )
+      assertEquals(
+        "external_canary_session_changed",
+        (inventoryChanged.repository.state.value as LiveReadonlyState.Failure).code,
+      )
+      assertEquals(0, inventoryChanged.transport.rpcOpenCount)
+
+      val sessionBecameRunning = harness()
+      sessionBecameRunning.transport.runningSession = true
+      sessionBecameRunning.repository.registerExternalCanary(
+        envelope = externalCanaryEnvelope(),
+        expectation = ExternalCanaryExpectation("host-fixture-01", "inventory-fixture-01", true),
+        confirmInsecureHttp = true,
+      )
+      assertEquals(
+        "external_canary_session_unsafe",
+        (sessionBecameRunning.repository.state.value as LiveReadonlyState.Failure).code,
+      )
+      assertEquals(0, sessionBecameRunning.transport.rpcOpenCount)
     }
 
   @Test
@@ -482,6 +542,20 @@ class LiveReadonlyRepositoryTest {
       assertEquals(1, replacementSocket.promptSendAttempts)
     }
 
+  private fun externalCanaryEnvelope(): String {
+    val bearer = "fixture-bearer".toCharArray()
+    return try {
+      PairingPayload
+        .create(
+          apiUri = URI("http://10.0.2.2:48123"),
+          displayName = "External canary",
+          bearer = bearer,
+        ).use(PairingPayloadCodec::encode)
+    } finally {
+      bearer.fill('\u0000')
+    }
+  }
+
   private fun controlGranted(): String =
     JsonObject(
       mapOf(
@@ -588,6 +662,7 @@ class LiveReadonlyRepositoryTest {
     var fail: Boolean = false
     var unexpectedExecuteFailure: Boolean = false
     var capabilitiesWithoutInteractive: Boolean = false
+    var runningSession: Boolean = false
     var authorizationObserved: Boolean = false
     var interactiveRpcSocket: FakeSocket? = null
     var rpcOpenCount: Int = 0
@@ -633,6 +708,12 @@ class LiveReadonlyRepositoryTest {
       body = body.replace("host-01", hostInstanceId).replace("host-fixture-01", hostInstanceId)
       if (request.uri.path == "/v1/capabilities" && capabilitiesWithoutInteractive) {
         body = body.replace("          \"prompt\",\n", "").replace("          \"get_tree\",\n", "")
+      }
+      if (runningSession && request.uri.path in setOf("/v1/dashboard/inventory", "/v1/dashboard/inventory/inventory-fixture-01")) {
+        body =
+          body
+            .replace("\"state\": \"idle\"", "\"state\": \"running\"")
+            .replace("\"runtime\": \"resident-idle\"", "\"runtime\": \"running\"")
       }
       return NeutralHttpResponse(200, NeutralHeaders.empty(), body.encodeToByteArray())
     }

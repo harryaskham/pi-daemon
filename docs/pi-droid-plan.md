@@ -731,7 +731,11 @@ SHA-256 is `72adf5bacefac22c1569d2b7579b547d4f48c28881808e4f7036fde6560331aa`.
 - Pi Droid and Cacophony embedding the same SDK session fixture;
 - Surface Duo/fold posture, tablet, phone, DeX/external display;
 - overlay permission denied/granted/revoked;
-- Play internal install/update and encrypted credential persistence.
+- Play internal install/update and encrypted credential persistence;
+- reviewed external-canary debug install using a canonical API origin and an
+  owner-only token file, with GET-only preflight, exact host/session fencing,
+  idle-only observer attach, no target-daemon lifecycle or mutation, and zero
+  run-owned emulator/ADB/process/port residue.
 
 ### Visual proof contract
 
@@ -749,7 +753,13 @@ artifact surface, not only Gradle reports. Required sets include:
 
 Use device screenshots from the exact tested APK/AAB. Contact sheets should be
 roughly square and split when dense; include raw named screenshots for detailed
-inspection. Screenshot review is a release gate, not decoration.
+inspection. Screenshot review is a release gate, not decoration. External
+canaries are the exception to content-bearing screenshot evidence: their
+reviewed debug-only screen renders content-free readiness, hydration, observer,
+and no-mutation markers while the session projection remains hidden. The bearer
+must remain absent from intents, argv, environment, stdout/stderr, logs,
+screenshots, backup, and retained artifacts; exact-value and structured-pattern
+scans run on every exit.
 
 ## 20. Delivery stages and gates
 

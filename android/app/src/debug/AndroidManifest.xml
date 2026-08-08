@@ -4,5 +4,8 @@
     <meta-data
       android:name="com.harryaskham.pidroid.ALLOW_DISPOSABLE_EMULATOR_BRIDGE"
       android:value="true" />
+    <meta-data
+      android:name="com.harryaskham.pidroid.ALLOW_EXTERNAL_CANARY_IMPORT"
+      android:value="true" />
   </application>
 </manifest>

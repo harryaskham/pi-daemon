@@ -78,6 +78,48 @@ resolution for idempotent version-code retries, targets only `internal`, commits
 no wider rollout, and opens a separate read edit to verify the highest remote
 version and track.
 
+### Reviewed external-canary readonly proof
+
+`external-canary-proof.sh` is the only reviewed path for installing the debug
+app against an already-running Pi Daemon canary. It accepts a canonical base API
+URL and the path to an owner-owned regular token file; plain remote HTTP also
+requires the explicit `--allow-insecure-http` acknowledgement.
+
+```console
+nix develop .#androidRelease --command \
+  android/build-logic/external-canary-proof.sh \
+    --api-url https://pi.example.test \
+    --token-file "$HOME/.local/state/pi-daemon/instance/api-token" \
+    --artifacts "$PWD/artifacts/pi-droid-external-canary"
+```
+
+The harness performs four authenticated, bounded `GET` requests only:
+capabilities, inventory, information, and transcript. It records the exact host
+incarnation and first inventory identity, then fences the app to both identities.
+An observer socket is permitted only when the same managed session remains
+`idle` and `resident-idle` in both inventory and information; otherwise readonly
+REST hydration proceeds with no observer attach. The canary UI contains only
+content-free proof markers and exposes no refresh, control, prompt, create,
+update, delete, or restart action.
+
+The service bearer never enters an intent, process argument, environment value,
+terminal output, retained log, or screenshot. A private host process builds the
+canonical pairing envelope, streams it over ADB stdin into the debug app's fixed
+`noBackupFilesDir` staging name, and the app deletes that one-shot file while
+consuming it. The import metadata exists only in the debug manifest. The release
+manifest still disables backup and device transfer, while the accepted
+credential is Android-Keystore ciphertext in no-backup storage.
+
+Every success and failure path streams the app-private sandbox through an exact
+bearer plus structured-pattern scanner before uninstall, stops only the
+run-owned emulator and private ADB server, verifies their PIDs and selected ports
+are gone, and repeats the scan over all retained text and binary artifacts.
+Success retains a content-free screenshot, bounded app logcat, preflight and
+cleanup receipts, scan receipts, and SHA-256s. The harness never starts, stops,
+or restarts the target Pi Daemon. Do not improvise a deep-link, clipboard, shell
+argument, environment variable, or pairing-envelope alternative for production
+canaries.
+
 Retained evidence is the signed AAB, R8 mapping, exact APK screenshots,
 `sha256sums.txt`, a local build receipt, and a remote Play edit/version receipt.
 Those binary artifacts belong in Cacophony session or CI artifact storage, never

@@ -520,6 +520,10 @@ process appears per wake.
   retained text for the exact disposable bearer before token destruction; retain
   bounded owner-private normalized XML, screenshot, redacted logcat and safe
   identity hashes for unrelated app-failure modals without dismissing them.
+- [x] `bd-0bfd83` Add a reviewed external-canary Pi Droid debug smoke path with
+  owner-file-only bearer import over ADB stdin, GET-only preflight, exact
+  host/session fencing, content-free evidence, idle-only observer attach, binary
+  and app-private leak scans, and verified run-owned process/port cleanup.
 - [ ] `bd-032326` Diagnose transport-connected/offline emulator starts with bounded
   guest kernel and private-console evidence, delay ADB traffic until guest boot,
   and prove isolated x86_64 readiness without invoking either physical proof.

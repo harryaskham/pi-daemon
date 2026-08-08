@@ -50,6 +50,7 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.intOrNull
 import java.net.URI
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
@@ -79,8 +80,24 @@ public data class LiveHostSession(
   public val host: RegisteredHost,
   public val session: SessionSurfaceState,
   public val rpcObserverConnected: Boolean,
+  public val rpcObserverEligible: Boolean,
   public val interactiveCommands: Set<PiRpcCommandType>,
 )
+
+public data class ExternalCanaryExpectation(
+  public val hostInstanceId: String,
+  public val inventoryId: String,
+  public val observerAttachAllowed: Boolean,
+) {
+  init {
+    require(hostInstanceId.matches(OPAQUE_EXTERNAL_CANARY_ID) && hostInstanceId.length <= 128) {
+      "external canary host identity is invalid"
+    }
+    require(inventoryId.matches(OPAQUE_EXTERNAL_CANARY_ID)) {
+      "external canary inventory identity is invalid"
+    }
+  }
+}
 
 public sealed interface LiveInteractiveAppState {
   public data object Inactive : LiveInteractiveAppState
@@ -117,6 +134,7 @@ public class LiveReadonlyRepository(
   private val interactiveConnectMutex = Mutex()
   private val json = Json
   private var activeInteractive: ActiveInteractive? = null
+  private var externalCanaryExpectation: ExternalCanaryExpectation? = null
 
   public val state: StateFlow<LiveReadonlyState> = mutableState.asStateFlow()
   public val interactiveState: StateFlow<LiveInteractiveAppState> = mutableInteractiveState.asStateFlow()
@@ -143,6 +161,15 @@ public class LiveReadonlyRepository(
       registry.register(payload, confirmInsecureHttp)
     }
     refresh()
+  }
+
+  public suspend fun registerExternalCanary(
+    envelope: String,
+    expectation: ExternalCanaryExpectation,
+    confirmInsecureHttp: Boolean,
+  ) {
+    externalCanaryExpectation = expectation
+    registerEnvelope(envelope, confirmInsecureHttp)
   }
 
   public suspend fun registerManual(
@@ -565,11 +592,21 @@ public class LiveReadonlyRepository(
               )
           }
 
+          val expectation = externalCanaryExpectation
+          if (expectation != null && hostInstanceId != expectation.hostInstanceId) {
+            throw LiveReadonlyFailure("external_canary_host_changed")
+          }
           val inventoryEnvelope = get(factory, "/v1/dashboard/inventory?limit=50")
-          val inventoryId = firstInventoryId(inventoryEnvelope)
-          val encodedId = URLEncoder.encode(inventoryId, StandardCharsets.UTF_8.name()).replace("+", "%20")
+          val inventorySelection = selectInventory(inventoryEnvelope, expectation?.inventoryId)
+          val encodedId =
+            URLEncoder.encode(inventorySelection.inventoryId, StandardCharsets.UTF_8.name()).replace("+", "%20")
           val infoEnvelope = get(factory, "/v1/dashboard/inventory/$encodedId")
           val transcriptEnvelope = get(factory, "/v1/dashboard/inventory/$encodedId/transcript?limit=50")
+          val observerSafe = observerAttachIsSafe(inventorySelection, infoEnvelope)
+          if (expectation?.observerAttachAllowed == true && !observerSafe) {
+            throw LiveReadonlyFailure("external_canary_session_unsafe")
+          }
+          val observerEligible = observerSafe && expectation?.observerAttachAllowed != false
           val authority = HostAuthority(host.id, host.bearerGeneration, hostInstanceId)
           val session =
             SessionFixtureDecoder.decode(
@@ -580,7 +617,7 @@ public class LiveReadonlyRepository(
             )
           val rpcConnected =
             if (
-              session.session.sessionId != null && session.session.generation != null &&
+              observerEligible && session.session.sessionId != null && session.session.generation != null &&
               capabilitySuccess.value.rpcSubprotocols.contains("pi-daemon-rpc.v1")
             ) {
               runCatching {
@@ -607,6 +644,7 @@ public class LiveReadonlyRepository(
             host = host,
             session = session,
             rpcObserverConnected = rpcConnected,
+            rpcObserverEligible = observerEligible,
             interactiveCommands = InteractiveCapabilities.from(capabilitySuccess.value).commands,
           )
         }
@@ -631,17 +669,59 @@ public class LiveReadonlyRepository(
       parts.first() to parts.getOrElse(1) { "" }
     }
 
-  private fun firstInventoryId(envelope: String): String {
+  private fun selectInventory(
+    envelope: String,
+    expectedInventoryId: String?,
+  ): InventorySelection {
     require(envelope.length <= 4 * 1_024 * 1_024) { "inventory response is too large" }
     val root = json.parseToJsonElement(envelope) as? JsonObject ?: throw LiveReadonlyFailure("invalid_inventory")
     val sessions =
       ((root["data"] as? JsonObject)?.get("sessions") as? JsonArray)
         ?: throw LiveReadonlyFailure("invalid_inventory")
-    val first = sessions.firstOrNull() as? JsonObject ?: throw LiveReadonlyFailure("inventory_empty")
-    return (first["inventoryId"] as? JsonPrimitive)
-      ?.contentOrNull
-      ?.takeIf { it.matches(Regex("^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$")) }
-      ?: throw LiveReadonlyFailure("invalid_inventory")
+    val records = sessions.mapNotNull { it as? JsonObject }
+    val selected =
+      if (expectedInventoryId == null) {
+        records.firstOrNull()
+      } else {
+        records.firstOrNull { record ->
+          (record["inventoryId"] as? JsonPrimitive)?.contentOrNull == expectedInventoryId
+        }
+      } ?: throw LiveReadonlyFailure(
+        if (expectedInventoryId == null) "inventory_empty" else "external_canary_session_changed",
+      )
+    val inventoryId =
+      (selected["inventoryId"] as? JsonPrimitive)
+        ?.contentOrNull
+        ?.takeIf { it.matches(OPAQUE_EXTERNAL_CANARY_ID) }
+        ?: throw LiveReadonlyFailure("invalid_inventory")
+    return InventorySelection(inventoryId, idleManagedIdentity(selected))
+  }
+
+  private fun observerAttachIsSafe(
+    selection: InventorySelection,
+    informationEnvelope: String,
+  ): Boolean {
+    val root = json.parseToJsonElement(informationEnvelope) as? JsonObject ?: return false
+    val information = root["data"] as? JsonObject ?: return false
+    return selection.idleManagedIdentity != null && selection.idleManagedIdentity == idleManagedIdentity(information)
+  }
+
+  private fun idleManagedIdentity(record: JsonObject): ManagedIdentity? {
+    val managed = record["managed"] as? JsonObject ?: return null
+    val presence = record["presence"] as? JsonObject ?: return null
+    if (
+      (managed["state"] as? JsonPrimitive)?.contentOrNull != "idle" ||
+      (presence["runtime"] as? JsonPrimitive)?.contentOrNull != "resident-idle"
+    ) {
+      return null
+    }
+    val sessionId =
+      (managed["sessionId"] as? JsonPrimitive)
+        ?.contentOrNull
+        ?.takeIf { it.matches(OPAQUE_EXTERNAL_CANARY_ID) }
+        ?: return null
+    val generation = (managed["generation"] as? JsonPrimitive)?.intOrNull?.takeIf { it > 0 } ?: return null
+    return ManagedIdentity(sessionId, generation)
   }
 
   private fun failureCode(error: Throwable?): String =
@@ -651,6 +731,16 @@ public class LiveReadonlyRepository(
       else -> "host_unavailable"
     }
 }
+
+private data class InventorySelection(
+  val inventoryId: String,
+  val idleManagedIdentity: ManagedIdentity?,
+)
+
+private data class ManagedIdentity(
+  val sessionId: String,
+  val generation: Int,
+)
 
 private data class OpenedInteractive(
   val machine: LiveInteractiveSessionMachine,
@@ -692,6 +782,7 @@ private suspend fun <T> attachStage(
   }
 
 private val INTERACTIVE_SAFE_CODE = Regex("^[a-z][a-z0-9_]{0,127}$")
+private val OPAQUE_EXTERNAL_CANARY_ID = Regex("^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$")
 
 public class LiveReadonlyFailure(
   public val code: String,

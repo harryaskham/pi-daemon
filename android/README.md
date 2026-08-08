@@ -128,6 +128,26 @@ private ADB key, raw console output, and raw emulator log remain in the
 run-private temporary directory and are destroyed during verified process/port
 cleanup.
 
+## External canary device proof
+
+The production-canary-compatible physical path is
+`build-logic/external-canary-proof.sh`. Unlike the disposable readonly and
+interactive proofs, it starts no Pi Daemon and receives no bearer value through
+argv or environment. It accepts only a canonical API origin, an owner-only
+regular token file, and an empty private artifact directory. Remote plaintext
+HTTP is refused unless `--allow-insecure-http` is present.
+
+Before emulator work, its host preflight uses authenticated bounded GETs to
+capabilities, inventory, the selected information resource, and its transcript.
+The resulting debug-only one-shot import fences `hostInstanceId` and
+`inventoryId`; only a session that remains both `idle` and `resident-idle` may
+receive an observer attach. The installed app renders a dedicated content-free
+canary surface, while all content-bearing hydration stays out of screenshots and
+logs. App-private data and every retained text or binary artifact receive exact
+bearer and structured credential-pattern scans on every exit. Uninstall,
+run-owned PID termination, and selected emulator/ADB port probes are part of the
+receipt. See `app/README.md` for the command and the full evidence contract.
+
 ## Readonly session fixture and image proof
 
 `sdk-session-ui` projects the neutral inventory, information, and transcript
