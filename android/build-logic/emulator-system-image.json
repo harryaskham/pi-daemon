@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "apiLevel": 36,
+  "imageType": "default",
+  "abi": "x86_64",
+  "package": "system-images;android-36;default;x86_64",
+  "directory": "system-images/android-36/default/x86_64/",
+  "deviceProfile": "medium_phone",
+  "automatedTestDevice": false,
+  "aospAtdAvailableInPinnedCatalog": false,
+  "googleAtdAvailableInPinnedCatalog": false,
+  "googleApisRequired": false,
+  "googlePlayServicesRequired": false,
+  "googlePlayStoreRequired": false
+}

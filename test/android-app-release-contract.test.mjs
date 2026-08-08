@@ -91,7 +91,8 @@ test("release script materializes secrets privately and verifies fixed identity 
   assert.match(script, /play-internal-receipt\.json/);
   assert.match(script, /pi-droid-release\.aab/);
   assert.match(script, /mapping\.txt/);
-  assert.match(script, /emulator_abi='x86_64'/);
+  assert.match(script, /source "\$repo_root\/android\/build-logic\/emulator-avd-boot-profile\.sh"/);
+  assert.match(script, /create_bounded_api36_test_avd pi-droid-release/);
   assert.match(script, /adb[^\n]*get-state/);
   assert.doesNotMatch(script, /adb[^\n]*wait-for-device/);
   assert.doesNotMatch(script, /echo\s+.*(?:PASSWORD|SERVICE_ACCOUNT|KEYSTORE)/i);

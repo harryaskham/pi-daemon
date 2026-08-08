@@ -205,7 +205,7 @@ PY
 apk="$repo_root/android/app/build/outputs/apk/debug/app-debug.apk"
 [[ -f "$apk" ]] || { printf '%s\n' 'debug APK missing' >&2; exit 70; }
 
-if ! create_api36_google_apis_x86_64_avd pi-droid-live "$emulator_diagnostics"; then
+if ! create_bounded_api36_test_avd pi-droid-live "$emulator_diagnostics"; then
   printf '%s\n' 'Android emulator AVD boot profile is unavailable or invalid' >&2
   exit 70
 fi
@@ -437,8 +437,8 @@ cat > "$artifacts_dir/live-interactive-receipt.json" <<EOF
   "schemaVersion": 1,
   "status": "verified",
   "apiEndpoint": "http://10.0.2.2:$api_port",
-  "systemImage": "system-images;android-36;google_apis;x86_64",
-  "deviceProfile": "medium_phone",
+  "systemImage": "$emulator_system_image_package",
+  "deviceProfile": "$emulator_device_profile",
   "avdBootProfileVerified": true,
   "emulatorConsolePort": $emulator_port,
   "emulatorAdbPort": $emulator_adb_port,

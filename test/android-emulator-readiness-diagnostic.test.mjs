@@ -234,6 +234,7 @@ print("recorder=ok preboot_kernel=retained fixed_state=ok private_key_bytes=abse
 
 test("API 36 AVD boot profile rejects the 32 MiB generic fallback", () => {
   const verifier = path.join(root, "android/build-logic/emulator-avd-boot-profile.py");
+  const contract = path.join(root, "android/build-logic/emulator-system-image.json");
   const output = execFileSync("python3", ["-c", String.raw`
 import pathlib
 import subprocess
@@ -241,11 +242,25 @@ import sys
 import tempfile
 
 verifier = pathlib.Path(sys.argv[1])
+contract = pathlib.Path(sys.argv[2])
+printed = subprocess.run(
+    [sys.executable, str(verifier), "--print-contract", str(contract)],
+    check=False,
+    text=True,
+    stdout=subprocess.PIPE,
+    stderr=subprocess.PIPE,
+)
+assert printed.returncode == 0
+assert printed.stdout == (
+    "system-images;android-36;default;x86_64\t"
+    "system-images/android-36/default/x86_64/\tdefault\tmedium_phone\t36\tx86_64\n"
+)
+assert printed.stderr == ""
 base = {
     "abi.type": "x86_64",
-    "tag.id": "google_apis",
+    "tag.id": "default",
     "hw.device.name": "medium_phone",
-    "image.sysdir.1": "system-images/android-36/google_apis/x86_64/",
+    "image.sysdir.1": "system-images/android-36/default/x86_64/",
     "hw.cpu.ncore": "4",
     "hw.ramSize": "2G",
     "vm.heapSize": "228M",
@@ -258,7 +273,7 @@ with tempfile.TemporaryDirectory() as temporary:
         config = root / (name + ".ini")
         config.write_text("".join(f"{key}={value}\n" for key, value in fields.items()))
         return subprocess.run(
-            [sys.executable, str(verifier), str(config)],
+            [sys.executable, str(verifier), str(config), str(contract)],
             check=False,
             text=True,
             stdout=subprocess.PIPE,
@@ -269,14 +284,14 @@ with tempfile.TemporaryDirectory() as temporary:
     assert valid.returncode == 0
     assert valid.stdout == (
         "phase=avd_boot_profile status=verified "
-        "system_image=android_36_google_apis_x86_64 device_profile=medium_phone "
+        "system_image=android_36_default_x86_64 device_profile=medium_phone "
         "ram_class=at_least_2048_mib vm_heap_class=at_least_192_mib cpu_class=multi_core\n"
     )
     assert valid.stderr == ""
     for name, updates in (
         ("generic_heap", {"vm.heapSize": "32M"}),
         ("profile_missing", {"hw.device.name": ""}),
-        ("wrong_image", {"tag.id": "default"}),
+        ("wrong_image", {"tag.id": "google_apis"}),
         ("low_ram", {"hw.ramSize": "1536M"}),
         ("single_core", {"hw.cpu.ncore": "1"}),
     ):
@@ -285,8 +300,47 @@ with tempfile.TemporaryDirectory() as temporary:
         assert rejected.stdout == ""
         assert rejected.stderr == "invalid emulator AVD boot profile\n"
 print("avd_profile=ok generic_32_mib_heap=rejected phone_228_mib_heap=verified")
-`, verifier], { encoding: "utf8", env: { ...process.env, PYTHONDONTWRITEBYTECODE: "1" } });
+`, verifier, contract], { encoding: "utf8", env: { ...process.env, PYTHONDONTWRITEBYTECODE: "1" } });
   assert.match(output, /avd_profile=ok generic_32_mib_heap=rejected phone_228_mib_heap=verified/);
+});
+
+test("pinned API 36 image is minimal AOSP and Pi Droid needs no Google runtime", async () => {
+  const [contractText, flake, appBuild, appLock, versionCatalog, manifest, release] = await Promise.all([
+    source("android/build-logic/emulator-system-image.json"),
+    source("flake.nix"),
+    source("android/app/build.gradle.kts"),
+    source("android/app/gradle.lockfile"),
+    source("android/gradle/libs.versions.toml"),
+    source("android/app/src/main/AndroidManifest.xml"),
+    source("android/build-logic/release-internal.sh"),
+  ]);
+  const contract = JSON.parse(contractText);
+  assert.deepEqual(contract, {
+    schemaVersion: 1,
+    apiLevel: 36,
+    imageType: "default",
+    abi: "x86_64",
+    package: "system-images;android-36;default;x86_64",
+    directory: "system-images/android-36/default/x86_64/",
+    deviceProfile: "medium_phone",
+    automatedTestDevice: false,
+    aospAtdAvailableInPinnedCatalog: false,
+    googleAtdAvailableInPinnedCatalog: false,
+    googleApisRequired: false,
+    googlePlayServicesRequired: false,
+    googlePlayStoreRequired: false,
+  });
+  assert.match(flake, /androidenv\/repo\.json/);
+  assert.match(flake, /!builtins\.hasAttr "aosp_atd" androidApiImageCatalog/);
+  assert.match(flake, /!builtins\.hasAttr "google_atd" androidApiImageCatalog/);
+  assert.match(flake, /systemImageTypes = \[androidEmulatorSystemImage\.imageType\]/);
+  assert.match(flake, /android-test-system-image-closure/);
+  assert.match(flake, /builtins\.head androidReleaseSdk\."system-images"/);
+  assert.doesNotMatch(appBuild, /com\.google\.android\.gms|com\.google\.firebase|play-services|firebase-/i);
+  assert.doesNotMatch(appLock, /com\.google\.android\.gms|com\.google\.firebase|play-services|firebase-/i);
+  assert.doesNotMatch(versionCatalog, /module\s*=\s*"com\.google\.android\.gms|module\s*=\s*"com\.google\.firebase/i);
+  assert.doesNotMatch(manifest, /<uses-library[^>]+com\.google|com\.google\.android\.gms/i);
+  assert.match(release, /create_bounded_api36_test_avd pi-droid-release/);
 });
 
 test("diagnostic runner is bounded, isolated, app-free, and uses delayed ADB", async () => {
@@ -301,8 +355,8 @@ test("diagnostic runner is bounded, isolated, app-free, and uses delayed ADB", a
   assert.match(runner, /deadline_seconds=240/);
   assert.match(runner, /deadline_seconds < 30 \|\| deadline_seconds > 240/);
   assert.match(runner, /start_isolated_adb_server/);
-  assert.match(runner, /create_api36_google_apis_x86_64_avd/);
-  assert.match(runner, /"deviceProfile": "medium_phone"/);
+  assert.match(runner, /create_bounded_api36_test_avd/);
+  assert.match(runner, /"deviceProfile": "\$emulator_device_profile"/);
   assert.match(runner, /"avdBootProfileVerified": \$avd_boot_profile_verified/);
   assert.match(runner, /avd_boot_profile_verified='true'/);
   assert.match(runner, /wait_for_emulator_adb/);
@@ -324,14 +378,15 @@ test("diagnostic runner is bounded, isolated, app-free, and uses delayed ADB", a
   assert.doesNotMatch(runner, /npm\s|gradlew|assemble|install -r|service-bearer|token-file|pi-droid-disposable-daemon|shell am start/);
 
   assert.match(profile, /avdmanager create avd --force/);
-  assert.match(profile, /--device medium_phone/);
-  assert.match(profile, /system-images;android-36;google_apis;x86_64/);
+  assert.match(profile, /--device "\$emulator_device_profile"/);
+  assert.match(profile, /--package "\$emulator_system_image_package"/);
+  assert.match(profile, /emulator-system-image\.json/);
   assert.match(profile, /emulator-avd-boot-profile\.py/);
   assert.match(profile, /phase=avd_boot_profile status=invalid/);
 
   for (const harness of [interactive, readonly]) {
-    assert.match(harness, /create_api36_google_apis_x86_64_avd/);
-    assert.match(harness, /"deviceProfile": "medium_phone"/);
+    assert.match(harness, /create_bounded_api36_test_avd/);
+    assert.match(harness, /"deviceProfile": "\$emulator_device_profile"/);
     assert.match(harness, /"avdBootProfileVerified": true/);
     assert.match(harness, /-delay-adb -show-kernel/);
     assert.match(harness, /emulator-guest-console-recorder\.py/);

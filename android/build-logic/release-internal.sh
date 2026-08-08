@@ -7,6 +7,7 @@ EXPECTED_TRACK='internal'
 EXPECTED_CERT_SHA256='FA:58:80:A7:C9:6D:F8:7B:B4:63:7D:18:58:7E:32:F6:CD:F6:95:06:52:34:FE:54:95:E2:4F:ED:12:1E:CE:4C'
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+source "$repo_root/android/build-logic/emulator-avd-boot-profile.sh"
 version_code=''
 version_name=''
 artifacts_dir=''
@@ -162,7 +163,6 @@ export PI_DROID_PLAY_RECEIPT_FILE="$artifacts_dir/play-internal-receipt.json"
 export ANDROID_USER_HOME="$private_dir/android-user"
 export ANDROID_AVD_HOME="$private_dir/avd"
 mkdir -p "$ANDROID_USER_HOME" "$ANDROID_AVD_HOME"
-emulator_abi='x86_64'
 
 common_gradle_args=(
   -p "$repo_root/android"
@@ -237,10 +237,11 @@ if [[ "$upload_prepared" != 'true' ]]; then
     --key-pass="file:$key_password_file" >/dev/null
   unzip -q "$private_dir/pi-droid.apks" universal.apk -d "$private_dir/apks"
 
-  printf 'no\n' | avdmanager create avd \
-  --force \
-  --name pi-droid-release \
-  --package "system-images;android-36;google_apis;$emulator_abi" >/dev/null
+  : > "$private_dir/emulator-diagnostics.log"
+  if ! create_bounded_api36_test_avd pi-droid-release "$private_dir/emulator-diagnostics.log"; then
+    printf '%s\n' 'Android emulator AVD boot profile is unavailable or invalid' >&2
+    exit 70
+  fi
 emulator_port="$(python3 - <<'PY'
 import socket
 for port in range(5600, 5683, 2):
