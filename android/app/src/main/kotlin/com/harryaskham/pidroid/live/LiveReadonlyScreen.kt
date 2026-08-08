@@ -34,6 +34,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import com.harryaskham.pidroid.sdk.core.CacheFreshness
 import com.harryaskham.pidroid.sdk.core.HostId
 import com.harryaskham.pidroid.sdk.core.InteractiveConnectionState
 import com.harryaskham.pidroid.sdk.core.InteractiveControllerRole
@@ -61,6 +62,7 @@ private val LiveWarning = Color(0xFFE7C987)
 public fun LiveReadonlyScreen(
   state: LiveReadonlyState,
   interaction: LiveInteractiveAppState,
+  externalCanaryMode: Boolean,
   onRegisterManual: (String, String, CharArray, String?, Boolean) -> Unit,
   onRegisterEnvelope: (String, Boolean) -> Unit,
   onRefresh: () -> Unit,
@@ -71,6 +73,10 @@ public fun LiveReadonlyScreen(
 ) {
   MaterialTheme {
     Surface(modifier = Modifier.fillMaxSize(), color = LiveCanvas) {
+      if (externalCanaryMode) {
+        ExternalCanaryScreen(state)
+        return@Surface
+      }
       when (state) {
         LiveReadonlyState.Unconfigured -> {
           HostRegistrationScreen(onRegisterManual, onRegisterEnvelope)
@@ -95,6 +101,60 @@ public fun LiveReadonlyScreen(
             onReconnectInteractive,
           )
         }
+      }
+    }
+  }
+}
+
+@Composable
+private fun ExternalCanaryScreen(state: LiveReadonlyState) {
+  Column(
+    modifier = Modifier.fillMaxSize().padding(24.dp),
+    verticalArrangement = Arrangement.spacedBy(16.dp),
+  ) {
+    Text("PI DROID", color = LiveAccent, fontWeight = FontWeight.Black)
+    Text("EXTERNAL CANARY · READONLY", color = LivePrimary, style = MaterialTheme.typography.headlineMedium)
+    Text(
+      "Content-free physical proof. No create, update, delete, prompt, control, or restart action is available.",
+      color = LiveMuted,
+    )
+    when (state) {
+      LiveReadonlyState.Unconfigured -> {
+        Text("PAIRING · PENDING", color = LiveWarning, fontWeight = FontWeight.Bold)
+      }
+
+      is LiveReadonlyState.Loading -> {
+        Text("READINESS · CHECKING", color = LiveWarning, fontWeight = FontWeight.Bold)
+      }
+
+      is LiveReadonlyState.Failure -> {
+        Text("CANARY · FAILED · ${state.code.uppercase()}", color = LiveWarning, fontWeight = FontWeight.Bold)
+      }
+
+      is LiveReadonlyState.Ready -> {
+        val selected = state.selected
+        val fresh = selected.session.host.freshness == CacheFreshness.FRESH
+        Text("HOST LISTING · VERIFIED", color = LiveGreen, fontWeight = FontWeight.Bold)
+        Text(
+          if (fresh) "READINESS · READY" else "READINESS · NOT FRESH",
+          color = if (fresh) LiveGreen else LiveWarning,
+          fontWeight = FontWeight.Bold,
+        )
+        Text(
+          if (fresh) "READONLY HYDRATION · VERIFIED" else "READONLY HYDRATION · NOT VERIFIED",
+          color = if (fresh) LiveGreen else LiveWarning,
+          fontWeight = FontWeight.Bold,
+        )
+        Text(
+          when {
+            selected.rpcObserverConnected -> "OBSERVER · ATTACHED TO IDLE SESSION"
+            selected.rpcObserverEligible -> "OBSERVER · ATTACH FAILED"
+            else -> "OBSERVER · NOT REQUESTED"
+          },
+          color = if (selected.rpcObserverEligible && !selected.rpcObserverConnected) LiveWarning else LiveGreen,
+          fontWeight = FontWeight.Bold,
+        )
+        Text("MUTATION SURFACE · ABSENT", color = LiveGreen, fontWeight = FontWeight.Bold)
       }
     }
   }

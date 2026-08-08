@@ -8,6 +8,8 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.lifecycle.lifecycleScope
 import com.harryaskham.pidroid.live.AndroidHostRegistry
 import com.harryaskham.pidroid.live.LiveReadonlyRepository
@@ -20,6 +22,7 @@ import java.net.URI
 
 class MainActivity : ComponentActivity() {
   private lateinit var repository: LiveReadonlyRepository
+  private var externalCanaryMode: Boolean by mutableStateOf(false)
 
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
@@ -32,9 +35,14 @@ class MainActivity : ComponentActivity() {
         transport = OkHttpPiDaemonTransport(),
       )
 
+    externalCanaryMode = isExternalCanaryIntent(intent)
     lifecycleScope.launch {
       repository.initialize()
-      intent?.dataString?.takeIf { it.startsWith(PAIRING_PREFIX) }?.let { registerEnvelope(it) }
+      if (externalCanaryMode) {
+        registerExternalCanary(intent)
+      } else {
+        intent?.dataString?.takeIf { it.startsWith(PAIRING_PREFIX) }?.let { registerEnvelope(it) }
+      }
     }
 
     setContent {
@@ -43,6 +51,7 @@ class MainActivity : ComponentActivity() {
       LiveReadonlyScreen(
         state = state,
         interaction = interaction,
+        externalCanaryMode = externalCanaryMode,
         onRegisterManual = { endpoint, displayName, bearer, fingerprint, confirmInsecure ->
           lifecycleScope.launch {
             runCatching {
@@ -94,14 +103,42 @@ class MainActivity : ComponentActivity() {
   override fun onNewIntent(intent: Intent) {
     super.onNewIntent(intent)
     setIntent(intent)
-    intent.dataString?.takeIf { it.startsWith(PAIRING_PREFIX) }?.let { envelope ->
-      lifecycleScope.launch { registerEnvelope(envelope) }
+    externalCanaryMode = isExternalCanaryIntent(intent)
+    if (externalCanaryMode) {
+      lifecycleScope.launch { registerExternalCanary(intent) }
+    } else {
+      intent.dataString?.takeIf { it.startsWith(PAIRING_PREFIX) }?.let { envelope ->
+        lifecycleScope.launch { registerEnvelope(envelope) }
+      }
     }
   }
 
   override fun onDestroy() {
     repository.close()
     super.onDestroy()
+  }
+
+  private suspend fun registerExternalCanary(intent: Intent) {
+    val allowInsecureHttp = intent.action == EXTERNAL_CANARY_INSECURE_ACTION
+    runCatching {
+      val imported = consumeExternalCanaryImport(this)
+      repository.registerExternalCanary(
+        envelope = imported.pairingEnvelope,
+        expectation = imported.expectation,
+        confirmInsecureHttp = allowInsecureHttp,
+      )
+    }.onFailure { repository.reportFailure(safeCode(it)) }
+  }
+
+  private fun isExternalCanaryIntent(intent: Intent?): Boolean {
+    if (intent?.action !in setOf(EXTERNAL_CANARY_ACTION, EXTERNAL_CANARY_INSECURE_ACTION)) return false
+    val metadata =
+      packageManager
+        .getApplicationInfo(
+          packageName,
+          PackageManager.ApplicationInfoFlags.of(PackageManager.GET_META_DATA.toLong()),
+        ).metaData
+    return metadata?.getBoolean(EXTERNAL_CANARY_METADATA, false) == true
   }
 
   private suspend fun registerEnvelope(envelope: String) {
@@ -127,6 +164,10 @@ class MainActivity : ComponentActivity() {
       }
 
       is com.harryaskham.pidroid.live.LiveReadonlyFailure -> {
+        error.code
+      }
+
+      is ExternalCanaryImportException -> {
         error.code
       }
 
@@ -162,6 +203,7 @@ class MainActivity : ComponentActivity() {
   private companion object {
     const val PAIRING_PREFIX: String = "pidroid://pair/v1/"
     const val DISPOSABLE_EMULATOR_METADATA: String = "com.harryaskham.pidroid.ALLOW_DISPOSABLE_EMULATOR_BRIDGE"
+    const val EXTERNAL_CANARY_METADATA: String = "com.harryaskham.pidroid.ALLOW_EXTERNAL_CANARY_IMPORT"
   }
 }
 

@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "pairingEnvelope": "pidroid://pair/v1/eyJ2ZXJzaW9uIjoxLCJhcGlVcmwiOiJodHRwOi8vMTI3LjAuMC4xOjQzMTIzIiwiZGlzcGxheU5hbWUiOiJFeHRlcm5hbCBQaSBEYWVtb24gY2FuYXJ5IiwiYmVhcmVyIjoiMDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWYwMTIzNDU2Nzg5YWJjZGVmMDEyMzQ1Njc4OWFiY2RlZiJ9",
+  "expectedHostInstanceId": "host-fixture-01",
+  "expectedInventoryId": "inventory-fixture-01",
+  "observerAttachAllowed": true
+}

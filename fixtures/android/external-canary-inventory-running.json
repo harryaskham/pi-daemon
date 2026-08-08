@@ -1,0 +1,23 @@
+{
+  "apiVersion": "1.0",
+  "requestId": "req-external-canary-running-inventory",
+  "hostInstanceId": "host-fixture-01",
+  "ok": true,
+  "data": {
+    "sessions": [
+      {
+        "inventoryId": "inventory-fixture-01",
+        "sourceKind": "direct",
+        "title": "Running fixture content must not enter evidence",
+        "managed": {
+          "sessionId": "session-fixture-01",
+          "generation": 3,
+          "state": "running"
+        },
+        "presence": {
+          "runtime": "running"
+        }
+      }
+    ]
+  }
+}
