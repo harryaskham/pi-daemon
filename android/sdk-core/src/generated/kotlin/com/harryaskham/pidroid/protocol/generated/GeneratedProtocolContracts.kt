@@ -3269,6 +3269,21 @@ public object GeneratedProtocolContracts {
       kind = ProtocolInputKind.CONTRACT,
     ),
     ProtocolInput(
+      path = "fixtures/android/external-canary-import.json",
+      sha256 = "3a777903587b185a74879c84a247daca6738d3e5bf58cfc2518e66e67fbb2c54",
+      kind = ProtocolInputKind.FIXTURE,
+    ),
+    ProtocolInput(
+      path = "fixtures/android/external-canary-info-running.json",
+      sha256 = "51c3af38959eb7f71ebf9c8f3572ef495f1b11b39998188ae02768d012e09c39",
+      kind = ProtocolInputKind.FIXTURE,
+    ),
+    ProtocolInput(
+      path = "fixtures/android/external-canary-inventory-running.json",
+      sha256 = "ce5747f4bdbcfdd57795bee3071b32376cc93339cb7b3f29e20c368da7a520b4",
+      kind = ProtocolInputKind.FIXTURE,
+    ),
+    ProtocolInput(
       path = "fixtures/attach.command.json",
       sha256 = "2f503324d2280ec6e482a54efadca56197297086e37bde73831486a44899a5cb",
       kind = ProtocolInputKind.FIXTURE,
