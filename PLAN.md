@@ -519,6 +519,10 @@ process appears per wake.
   with a validated medium-phone Google APIs x86_64 boot contract, then prove ADB,
   framework completion, matching public-key fingerprints, and clean teardown in
   one diagnostic-only smoke before either physical proof.
+- [ ] `bd-2af62a` Use the pinned API 36 minimal AOSP x86_64 image through one
+  flake/diagnostic/physical-proof contract because the hermetic catalog has no
+  API 36 ATD, retain the bounded isolated readiness evidence, and require one
+  fresh-main diagnostic before either physical proof.
 - [x] `bd-988946` Make Android fast verification self-contained by exposing the
   flake-pinned Python runtime to both plain Node CI versions and executing the
   Java environment export directly in its pinned Nix shell without nested quote

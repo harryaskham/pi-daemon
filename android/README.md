@@ -75,11 +75,14 @@ available through `PI_DROID_FIXTURE_DIAGNOSTICS=1`; its timing and recomposition
 count are measurements, never standard gate bounds.
 
 The separate `nix develop .#androidRelease` shell pins API 36, build-tools 36,
-the x86_64 Google APIs system image/emulator, JDK 21, bundletool, SOPS and
-ssh-to-age. It is the only shell that accepts the Android SDK license and unfree
-packages, following explicit operator approval; ordinary shells retain their
-free-package policy. See `app/README.md` for the two-phase signed internal release
-command and evidence contract.
+the minimal x86_64 AOSP `default` system image/emulator, JDK 21, bundletool,
+SOPS and ssh-to-age. The same image is exposed as
+`packages.<system>.android-test-system-image`, and the Linux flake check opens
+that package closure and verifies its API, tag, ABI, and package metadata. It is
+the only shell that accepts the Android SDK license and unfree packages,
+following explicit operator approval; ordinary shells retain their free-package
+policy. See `app/README.md` for the two-phase signed internal release command and
+evidence contract.
 
 ### Diagnostic-only emulator readiness
 
@@ -96,14 +99,27 @@ nix develop .#androidRelease --command \
 
 The deadline remains bounded to 240 seconds. Emulator ADB traffic is delayed
 until guest boot completion so an early TCP attach cannot strand the accepted
-transport offline. Every diagnostic and physical proof creates the pinned API
-36 Google APIs x86_64 image with the explicit `medium_phone` device profile and
-then validates its generated configuration before launch. Omitting `--device`
-selects avdmanager's generic 32 MiB VM-heap fallback; on this API 36 image,
-zygote can run while the under-provisioned `system_server` never registers
-ActivityManager. The validated phone profile provides a 228 MiB VM heap, at
-least 2 GiB RAM, and multiple vCPUs; the harness fails closed instead of booting
-if those resource classes drift.
+transport offline. Every diagnostic and physical proof reads the same reviewed
+`emulator-system-image.json` contract, creates the pinned API 36 AOSP `default`
+x86_64 image with the explicit `medium_phone` device profile, and validates its
+generated configuration before launch. Omitting `--device` selects avdmanager's
+generic 32 MiB VM-heap fallback; on API 36, zygote can run while the
+under-provisioned `system_server` never registers ActivityManager. The validated
+phone profile provides a 228 MiB VM heap, at least 2 GiB RAM, and multiple
+vCPUs; the harness fails closed instead of booting if those resource classes
+drift.
+
+The pinned nixpkgs Android catalog contains API 36 `default`, `google_apis`, and
+other device images but no `aosp_atd` or `google_atd`, so an Automated Test
+Device is not hermetically selectable at this API level. Flake evaluation
+asserts that absence and will fail for review if a future catalog pin adds an
+ATD. The fallback does not remove a guest requirement: Pi Droid declares only
+the Android `INTERNET` permission and its runtime graph uses AndroidX, Compose,
+Kotlin serialization, and OkHttp, with no Google APIs, Google Play Services, or
+Play Store library or manifest dependency. The Play Publisher plugin and Play
+receipt tooling are host-side release concerns and are not loaded by the app in
+the emulator. The proofs exercise platform UI/ADB plus loopback HTTP/WebSocket
+connectivity, all provided by the AOSP image.
 
 A failure retains only a bounded, sanitized kernel/emulator excerpt, public-key
 payload fingerprints, and fixed-enum guest root-console state

@@ -23,6 +23,69 @@
     # stale pin without needing Nix on the runner.
     # npm-deps-lock: sha256-w7xo7p97dsxQZR+u18telAp9rn1tdHxLz5HXoQcdblA=
     npmDepsHash = "sha256-zby5nWPsJBjSEs3quJIZla4YsMEhlxN+dKwHrOeh8Rg=";
+
+    # One contract selects the hermetic API 36 image for the flake closure and
+    # every diagnostic/physical harness. The pinned nixpkgs catalog has no
+    # aosp_atd or google_atd at API 36; keep those assertions so a future pin
+    # adding ATD fails evaluation until the optimized image is reviewed.
+    androidEmulatorSystemImage =
+      builtins.fromJSON (builtins.readFile ./android/build-logic/emulator-system-image.json);
+    androidSdkCatalog =
+      builtins.fromJSON (
+        builtins.readFile "${nixpkgs}/pkgs/development/mobile/androidenv/repo.json"
+      );
+    androidApiImageCatalog =
+      androidSdkCatalog.images.${toString androidEmulatorSystemImage.apiLevel};
+    androidSystemImagePackage =
+      "system-images;android-${toString androidEmulatorSystemImage.apiLevel};"
+      + "${androidEmulatorSystemImage.imageType};${androidEmulatorSystemImage.abi}";
+    androidSystemImageDirectory =
+      "system-images/android-${toString androidEmulatorSystemImage.apiLevel}/"
+      + "${androidEmulatorSystemImage.imageType}/${androidEmulatorSystemImage.abi}/";
+    androidSystemImageContractValid =
+      assert androidEmulatorSystemImage.schemaVersion == 1;
+      assert !builtins.hasAttr "aosp_atd" androidApiImageCatalog;
+      assert !builtins.hasAttr "google_atd" androidApiImageCatalog;
+      assert androidEmulatorSystemImage.aospAtdAvailableInPinnedCatalog == false;
+      assert androidEmulatorSystemImage.googleAtdAvailableInPinnedCatalog == false;
+      assert androidEmulatorSystemImage.googleApisRequired == false;
+      assert androidEmulatorSystemImage.googlePlayServicesRequired == false;
+      assert androidEmulatorSystemImage.googlePlayStoreRequired == false;
+      assert androidEmulatorSystemImage.package == androidSystemImagePackage;
+      assert androidEmulatorSystemImage.directory == androidSystemImageDirectory;
+      assert builtins.hasAttr androidEmulatorSystemImage.imageType androidApiImageCatalog;
+      assert builtins.hasAttr androidEmulatorSystemImage.abi (
+        builtins.getAttr androidEmulatorSystemImage.imageType androidApiImageCatalog
+      );
+      let
+        selected = builtins.getAttr androidEmulatorSystemImage.abi (
+          builtins.getAttr androidEmulatorSystemImage.imageType androidApiImageCatalog
+        );
+      in
+        selected.path
+        == builtins.substring 0 (builtins.stringLength androidSystemImageDirectory - 1)
+        androidSystemImageDirectory;
+    androidReleaseSdkFor = system: let
+      # Android SDK/emulator artifacts are licensed and unfree. This import is
+      # used only by the explicit image package and heavy release shell.
+      androidPkgs = import nixpkgs {
+        inherit system;
+        config = {
+          allowUnfree = true;
+          android_sdk.accept_license = true;
+        };
+      };
+    in
+      assert androidSystemImageContractValid;
+        androidPkgs.androidenv.composeAndroidPackages {
+          platformVersions = [(toString androidEmulatorSystemImage.apiLevel)];
+          buildToolsVersions = ["36.0.0"];
+          includeEmulator = true;
+          includeSystemImages = true;
+          systemImageTypes = [androidEmulatorSystemImage.imageType];
+          abiVersions = [androidEmulatorSystemImage.abi];
+          includeNDK = false;
+        };
   in {
     homeManagerModules.pi-daemon = import ./nix/home-manager-module.nix {inherit self;};
     homeManagerModules.default = self.homeManagerModules.pi-daemon;
@@ -38,6 +101,7 @@
 
     packages = forAllSystems (system: let
       pkgs = import nixpkgs {inherit system;};
+      androidReleaseSdk = androidReleaseSdkFor system;
       npmDeps = import ./nix/npm-deps.nix {
         inherit pkgs;
         hash = npmDepsHash;
@@ -219,6 +283,9 @@
       default = package;
       pi-daemon = package;
       npm-deps = npmDeps;
+      android-test-system-image =
+        assert builtins.length androidReleaseSdk."system-images" == 1;
+          builtins.head androidReleaseSdk."system-images";
       inherit pages;
     });
 
@@ -297,20 +364,18 @@
         webPackage = builtins.fromJSON (builtins.readFile ./web/package.json);
         justfile = ./Justfile;
       };
+    }
+    // pkgs.lib.optionalAttrs (system == "x86_64-linux") {
+      android-test-system-image-closure = import ./nix/android-test-system-image-check.nix {
+        inherit pkgs;
+        image = self.packages.${system}.android-test-system-image;
+        contract = androidEmulatorSystemImage;
+      };
     });
 
     devShells = forAllSystems (system: let
       pkgs = import nixpkgs {inherit system;};
-      # Google licenses the Android SDK/emulator as unfree. Keep that allowance
-      # isolated to the explicit heavy release shell; ordinary shells continue
-      # to evaluate against the default free-package policy.
-      androidPkgs = import nixpkgs {
-        inherit system;
-        config = {
-          allowUnfree = true;
-          android_sdk.accept_license = true;
-        };
-      };
+      androidReleaseSdk = androidReleaseSdkFor system;
       playwright = pkgs.playwright-driver;
       commonPackages = [
         pkgs.nodejs_24
@@ -337,15 +402,6 @@
         pkgs.libxrender
         pkgs.libxtst
       ];
-      androidReleaseSdk = androidPkgs.androidenv.composeAndroidPackages {
-        platformVersions = ["36"];
-        buildToolsVersions = ["36.0.0"];
-        includeEmulator = true;
-        includeSystemImages = true;
-        systemImageTypes = ["google_apis"];
-        abiVersions = ["x86_64"];
-        includeNDK = false;
-      };
       androidJavaHome =
         if pkgs.stdenv.isDarwin
         then "${pkgs.jdk21}/Library/Java/JavaVirtualMachines/zulu-21.jdk/Contents/Home"

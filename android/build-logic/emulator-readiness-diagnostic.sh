@@ -153,8 +153,8 @@ write_receipt() {
   "bootCompleted": "$boot_completed",
   "deviceAbi": "$device_abi",
   "expectedAbi": "x86_64",
-  "systemImage": "system-images;android-36;google_apis;x86_64",
-  "deviceProfile": "medium_phone",
+  "systemImage": "$emulator_system_image_package",
+  "deviceProfile": "$emulator_device_profile",
   "avdBootProfileVerified": $avd_boot_profile_verified,
   "adbServerIsolated": true,
   "adbPublicKeyPayloadSha256": "$adb_public_key_payload_sha256",
@@ -199,7 +199,7 @@ start_isolated_adb_server \
   "$repo_root/android/build-logic/select-adb-server-port.py"
 isolated_adb_command=(adb -H 127.0.0.1 -P "$adb_server_port")
 
-if ! create_api36_google_apis_x86_64_avd \
+if ! create_bounded_api36_test_avd \
   pi-droid-readiness-diagnostic "$emulator_diagnostics"; then
   diagnostic_classification='avd_boot_profile_invalid'
   printf '%s\n' 'Android emulator AVD boot profile is unavailable or invalid' >&2

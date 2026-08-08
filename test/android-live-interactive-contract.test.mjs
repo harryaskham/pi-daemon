@@ -738,7 +738,7 @@ test("disposable interactive proof uses private identity bounded cleanup and phy
     assert.match(harness, /source "\$repo_root\/android\/build-logic\/physical-proof-lifecycle\.sh"/);
     assert.match(harness, /select-adb-server-port\.py/);
     assert.match(harness, /start_isolated_adb_server/);
-    assert.ok(harness.indexOf("start_isolated_adb_server") < harness.indexOf("create_api36_google_apis_x86_64_avd"));
+    assert.ok(harness.indexOf("start_isolated_adb_server") < harness.indexOf("create_bounded_api36_test_avd"));
     assert.ok(harness.indexOf("start_isolated_adb_server") < harness.indexOf("emulator -avd pi-droid-live"));
     assert.doesNotMatch(harness, /reserve_port_pair 5600 5682/);
     assert.match(harness, /emulator_port < 5554 \|\| emulator_port > 5584/);
