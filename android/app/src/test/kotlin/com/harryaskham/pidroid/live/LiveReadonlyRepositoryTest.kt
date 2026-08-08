@@ -94,7 +94,7 @@ class LiveReadonlyRepositoryTest {
           harness.repository.state.collect(emissions::add)
         }
 
-      harness.transport.hostInstanceId = "host-fixture-02"
+      harness.transport.replaceDaemonIdentity("host-fixture-02")
       harness.repository.refresh()
       assertTrue(
         emissions
@@ -105,6 +105,7 @@ class LiveReadonlyRepositoryTest {
       assertEquals("host-fixture-02", ready.selected.session.host.authority.hostInstanceId)
       assertEquals(CacheFreshness.FRESH, ready.selected.session.host.freshness)
       assertTrue(PiRpcCommandType.PROMPT in ready.selected.interactiveCommands)
+      assertEquals(1, harness.transport.retiredStaleReadonlyConnections)
 
       harness.transport.fail = true
       harness.repository.refresh()
@@ -112,6 +113,57 @@ class LiveReadonlyRepositoryTest {
       assertEquals(CacheFreshness.OFFLINE_CACHED, ready.selected.session.host.freshness)
       assertFalse(ready.selected.rpcObserverConnected)
       collector.cancel()
+    }
+
+  @Test
+  fun `one explicit readonly refresh accepts replacement identity without replaying indeterminate prompt`() =
+    runTest {
+      val harness = harness()
+      harness.repository.registerManual(
+        URI("http://10.0.2.2:48123"),
+        "Disposable daemon",
+        "bearer".toCharArray(),
+        null,
+        true,
+      )
+      harness.repository.connectInteractiveObserver()
+      harness.repository.requestControl()
+      val originalSocket = requireNotNull(harness.transport.interactiveRpcSocket)
+      originalSocket.push(controlGranted())
+      withTimeout(5_000) {
+        harness.repository.interactiveState
+          .filterIsInstance<LiveInteractiveAppState.Ready>()
+          .first { it.snapshot.role == InteractiveControllerRole.CONTROLLER }
+      }
+
+      harness.repository.handleInteraction(RichInteractionAction.SubmitPrompt("lost across daemon replacement"))
+      assertEquals(1, originalSocket.promptSendAttempts)
+      originalSocket.disconnect()
+      val lost =
+        withTimeout(5_000) {
+          harness.repository.interactiveState
+            .filterIsInstance<LiveInteractiveAppState.Failure>()
+            .first { it.code == "transport_lost" }
+        }
+      assertEquals(CommandLifecycle.INDETERMINATE, requireNotNull(lost.lastSnapshot).receipts.last().lifecycle)
+
+      val rpcOpensBeforeRefresh = harness.transport.rpcOpenCount
+      harness.transport.replaceDaemonIdentity("host-fixture-02")
+      harness.repository.refresh()
+
+      val refreshed = harness.repository.state.value as LiveReadonlyState.Ready
+      assertEquals("host-fixture-02", refreshed.selected.session.host.authority.hostInstanceId)
+      assertEquals(CacheFreshness.FRESH, refreshed.selected.session.host.freshness)
+      assertEquals(1, harness.transport.retiredStaleReadonlyConnections)
+      assertEquals(rpcOpensBeforeRefresh + 1, harness.transport.rpcOpenCount)
+      assertEquals(1, originalSocket.promptSendAttempts)
+      assertEquals(1, harness.transport.rpcSockets.sumOf(FakeSocket::promptSendAttempts))
+      assertEquals("transport_lost", (harness.repository.interactiveState.value as LiveInteractiveAppState.Failure).code)
+
+      harness.repository.reconnectInteractive()
+      val observer = harness.repository.interactiveState.value as LiveInteractiveAppState.Ready
+      assertEquals(InteractiveControllerRole.OBSERVER, observer.snapshot.role)
+      assertEquals(1, harness.transport.rpcSockets.sumOf(FakeSocket::promptSendAttempts))
     }
 
   @Test
@@ -529,6 +581,10 @@ class LiveReadonlyRepositoryTest {
   private class FakeLiveTransport : LiveHostTransport {
     override val hosts: Flow<List<PiDaemonHostDescriptor>> = MutableStateFlow(emptyList())
     var hostInstanceId: String = "host-fixture-01"
+      private set
+    var retiredStaleReadonlyConnections: Int = 0
+      private set
+    private var staleReadonlyConnection: Boolean = false
     var fail: Boolean = false
     var unexpectedExecuteFailure: Boolean = false
     var capabilitiesWithoutInteractive: Boolean = false
@@ -540,14 +596,28 @@ class LiveReadonlyRepositoryTest {
     var failRpcReady: Boolean = false
     var failTuiOpen: Boolean = false
     val paths = mutableListOf<String>()
+    val rpcSockets = mutableListOf<FakeSocket>()
+
+    fun replaceDaemonIdentity(replacement: String) {
+      hostInstanceId = replacement
+      staleReadonlyConnection = true
+    }
 
     override fun replaceHosts(hosts: List<RegisteredHost>) = Unit
+
+    override fun prepareReadonlyRefresh() {
+      if (staleReadonlyConnection) {
+        staleReadonlyConnection = false
+        retiredStaleReadonlyConnections += 1
+      }
+    }
 
     override suspend fun execute(
       host: HostId,
       request: NeutralHttpRequest,
     ): NeutralHttpResponse {
       if (unexpectedExecuteFailure) throw IllegalStateException("https://secret.example/private response body")
+      if (staleReadonlyConnection) throw TransportFailure("stale_connection_reused")
       if (fail) throw TransportFailure("disposable_offline")
       authorizationObserved = request.headers["Authorization"]?.startsWith("Bearer ") == true
       paths += request.uri.path
@@ -580,6 +650,7 @@ class LiveReadonlyRepositoryTest {
         )
       } else {
         rpcOpenCount += 1
+        rpcSockets += socket
         if (failRpcOpen) throw IllegalStateException("https://secret.example/private rpc open")
         var frame = repositoryRoot.resolve("fixtures/session-api/rpc.ready.frame.json").toFile().readText()
         frame =

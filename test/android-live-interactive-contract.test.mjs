@@ -80,6 +80,7 @@ test("interactive app delegates exact authority correlation tree and TUI state t
   assert.match(repository, /LiveReadonlyFailure\("interactive_attach_failed"\)/);
   assert.match(repository, /publishInteractive\(active, "interactive_send_indeterminate"\)/);
   assert.match(repository, /throw LiveReadonlyFailure\("interactive_send_indeterminate"\)/);
+  assert.match(repository, /transport\.prepareReadonlyRefresh\(\)/);
   assert.match(repository, /safeCode == "interactive_failed"[^\n]*existing\.code != "interactive_failed"/);
   assert.match(transport, /DEFAULT_WEBSOCKET_PING_INTERVAL: Duration = Duration\.ofSeconds\(5\)/);
   assert.match(transport, /\.pingInterval\(webSocketPingInterval\)/);
@@ -88,6 +89,13 @@ test("interactive app delegates exact authority correlation tree and TUI state t
   assert.match(transport, /acknowledgePeerClosing\(webSocket, code, reason, incomingCloser\)/);
   assert.match(transport, /webSocket\.close\(code, reason\.take\(WEBSOCKET_CLOSE_REASON_CHARS\)\)/);
   assert.match(transport, /retryOnConnectionFailure\(false\)/);
+  assert.match(transport, /override fun prepareReadonlyRefresh\(\)[^]*connectionPool\.evictAll\(\)/);
+  assert.match(repositoryTest, /one explicit readonly refresh accepts replacement identity without replaying indeterminate prompt/);
+  assert.match(repositoryTest, /stale_connection_reused/);
+  assert.match(repositoryTest, /sumOf\(FakeSocket::promptSendAttempts\)/);
+  assert.match(transportTest, /readonly refresh retires idle HTTP connections without interrupting active WebSocket/);
+  assert.match(transportTest, /transport\.prepareReadonlyRefresh\(\)/);
+  assert.match(transportTest, /still-open-after-readonly-refresh/);
   assert.match(transportTest, /peer closing helper acknowledges bounded reason and closes incoming exactly once/);
   assert.match(transportTest, /acknowledgePeerClosing\(socket, 1_001, "x"\.repeat\(200\), closer\)/);
   assert.match(transportTest, /assertEquals\(1, socket\.closeCalls\)/);

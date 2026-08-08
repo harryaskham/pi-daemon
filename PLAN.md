@@ -484,6 +484,10 @@ process appears per wake.
 
 ## Provisional Beads work board
 
+- [x] `bd-fa30dd` Retire only idle HTTP connections before an explicit Pi Droid
+  readonly refresh so a same-authority daemon rollover establishes its new host
+  identity in one pass without retrying requests, replaying indeterminate
+  mutations, or interrupting active WebSockets.
 - [x] `bd-0a39dd` Isolate each physical Pi Droid proof onto a private ADB server
   port and matching run-scoped authentication key home.
 - [x] `bd-5a9f4e` Make both physical Pi Droid proof harnesses cold-boot safe with
