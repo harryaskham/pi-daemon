@@ -1,0 +1,102 @@
+{
+  "schemaVersion": 1,
+  "beadId": "bd-aa7241",
+  "status": "proof_infrastructure_failure",
+  "terminal": true,
+  "proofInvocationCount": 1,
+  "authorizedInvocationBudget": 1,
+  "rerunPermittedOrPerformed": false,
+  "sourceCommit": "715a25a568ffcb8af4bddc57296a07a49dbf125f",
+  "sourceTree": "b0d3f2e06a79ea2afac2c55ea79927c5f8d3af6e",
+  "sourceCleanAfterInvocation": true,
+  "sourceEdited": false,
+  "playAction": false,
+  "signedRebuild": false,
+  "managedCanaryBearerRead": false,
+  "managedCanaryServiceOrSessionMutation": false,
+  "harnessExitStatus": 70,
+  "firstFailure": {
+    "code": "other_app_failure_modal_safe_evidence_capture_failed",
+    "phase": "initial_readonly_hydration",
+    "expectedPattern": "Readonly session Contract fixture|READONLY RPC ATTACHED",
+    "uiHealthClassification": "other_app_failure_modal",
+    "terminalDiagnostic": "status=system_ui_unhealthy phase=app_failure_evidence",
+    "piDroidFailureClassified": false,
+    "safeNormalizedEvidenceRetained": false,
+    "failureIdentityAvailable": false,
+    "disposition": "terminal_no_rerun",
+    "followUp": "bd-61ac6b"
+  },
+  "preconditions": {
+    "hostArchitecture": "x86_64",
+    "kvmUsable": true,
+    "systemImage": "android_36_default_x86_64",
+    "deviceProfile": "medium_phone",
+    "adbServerIsolated": true,
+    "adbServerPort": 42114,
+    "emulatorConsolePort": 5580,
+    "emulatorAdbPort": 5581,
+    "apiPort": 49152,
+    "adbPublicKeyPayloadSha256": "sha256:9a05d01b4961ca9d662c29ec6d00bb7eea81684fff6b1a045f9ac2c6584c07e0",
+    "adbState": "device",
+    "deviceAbi": "x86_64",
+    "bootCompleted": true,
+    "hostPortReachable": true
+  },
+  "apk": {
+    "sha256": "bf6a409cc71827f8e8d7fb08752db94abab4f891ab80f3d20268d6c1629dc579",
+    "applicationId": "com.harryaskham.pidroid.debug",
+    "versionName": "0.3.0-internal.2-debug",
+    "versionCode": 2,
+    "debuggable": true,
+    "internetPermission": true,
+    "buildSucceeded": true,
+    "installAndLaunchReached": true
+  },
+  "disposableHostIdentity": {
+    "before": "pidroid-67b6f7f7-bcf1-4f73-8978-9d675ea8e351",
+    "after": null,
+    "restartReached": false
+  },
+  "stages": {
+    "readonlyHydration": false,
+    "observerAttached": false,
+    "controllerGranted": false,
+    "uniquePromptSucceeded": false,
+    "treeRendered": false,
+    "tuiRendered": false,
+    "daemonLossExercised": false,
+    "pendingCommandIndeterminateObserved": false,
+    "blindReplay": false,
+    "daemonRestartedWithNewIdentity": false,
+    "postRestartReadonlyFresh": false,
+    "reconnectAttempted": false,
+    "postRestartPromptSucceeded": false,
+    "phoneEvidenceRetained": false,
+    "tabletEvidenceRetained": false
+  },
+  "priorEvidence": {
+    "beadId": "bd-9271f7",
+    "preserved": true,
+    "path": "/home/harryaskham/.cacophony/agents/pi-daemon/a0c5394e48a3e941/artifacts/bd-9271f7-20260808T163100Z-a0c5394e",
+    "terminalReceiptSha256": "acd1c7bc3ebac9ba2ce2e8a508464bf3e1c00dd34c229dd60138642abbf8f577",
+    "artifactManifestSha256": "9cae417012138e2073f1b3659299493962eea8d464822e5c2b21bb5f06e5e27f"
+  },
+  "secrecy": {
+    "exactDisposableBearerEqualityScan": "clean",
+    "exactScanEvidence": "bearer-scan.log",
+    "scannedFiles": 14,
+    "scannedBytes": 9432,
+    "skippedBinaryFiles": 0,
+    "independentRetainedPatternScanEvidence": "secrecy-scan.json",
+    "canaryBearerRead": false,
+    "canaryBearerEmitted": false,
+    "privateAdbKeyRetained": false
+  },
+  "cleanup": {
+    "residualOwnedProcesses": 0,
+    "residualOwnedPorts": 0,
+    "portsVerifiedClosed": [42114, 5580, 5581, 49152]
+  },
+  "followUps": ["bd-61ac6b"]
+}
