@@ -44,10 +44,13 @@ Responses have `kind: "response"`, the request ID, host instance ID, and either
 sequence. A client must discard events from stale host instances or session
 generations. Handshake `host.ready` is true only after bounded background wake
 and mutation replay has settled without recovery failures/indeterminate work and
-the adapter reports usable authenticated models. `host.recovery` exposes only
-safe phase/count/code summaries. A listening but recovering/degraded host still
-serves status/reconciliation and may admit unaffected sessions, but probe returns
-temporary failure.
+the adapter reports usable authenticated models. `host.recovery` exposes safe
+phase/count/code summaries plus typed session/generation quarantine conditions;
+it never includes adapter endpoints, capability handles, prompts, or error text.
+A retained idle generation whose process-bound host tool adapter was lost may be
+quarantined without making unrelated host readiness false. A listening but
+recovering/degraded host still serves status/reconciliation and may admit
+unaffected sessions, but probe returns temporary failure.
 
 ## Operations
 

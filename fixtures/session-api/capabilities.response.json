@@ -105,6 +105,10 @@
       "unisolated"
     ],
     "authentication": "service-bearer",
+    "host": {
+      "ready": true,
+      "draining": false
+    },
     "schedules": {
       "contractVersion": "1.0",
       "persistence": true,

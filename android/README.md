@@ -139,7 +139,10 @@ HTTP is refused unless `--allow-insecure-http` is present.
 
 Before emulator work, its host preflight uses authenticated bounded GETs to
 capabilities, inventory, the selected information resource, and its transcript.
-The resulting debug-only one-shot import fences `hostInstanceId` and
+The capabilities response must report `host.ready: true` and
+`host.draining: false`; otherwise the helper stops after that first GET, before
+inventory/transcript selection, staging, build, emulator, ADB, install, or app
+launch. The resulting debug-only one-shot import fences `hostInstanceId` and
 `inventoryId`; only a session that remains both `idle` and `resident-idle` may
 receive an observer attach. The installed app renders a dedicated content-free
 canary surface, while all content-bearing hydration stays out of screenshots and

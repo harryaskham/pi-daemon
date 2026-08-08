@@ -76,6 +76,7 @@ async function withFixtureServer(expectedToken, block) {
   };
   const requests = [];
   let running = false;
+  let hostReady = true;
   const server = createServer((request, response) => {
     requests.push({ method: request.method, url: request.url, authorization: request.headers.authorization });
     if (request.headers.authorization !== `Bearer ${expectedToken}`) {
@@ -85,8 +86,11 @@ async function withFixtureServer(expectedToken, block) {
     }
     const pathname = new URL(request.url, "http://fixture.invalid").pathname;
     let body;
-    if (pathname === "/v1/capabilities") body = fixtures.capabilities;
-    else if (pathname === "/v1/dashboard/inventory") body = running ? fixtures.runningInventory : fixtures.inventory;
+    if (pathname === "/v1/capabilities") {
+      const capabilities = JSON.parse(fixtures.capabilities);
+      capabilities.data.host.ready = hostReady;
+      body = JSON.stringify(capabilities);
+    } else if (pathname === "/v1/dashboard/inventory") body = running ? fixtures.runningInventory : fixtures.inventory;
     else if (pathname.endsWith("/transcript")) body = fixtures.transcript;
     else if (pathname === "/v1/dashboard/inventory/inventory-fixture-01") {
       body = running ? fixtures.runningInformation : fixtures.information;
@@ -113,6 +117,7 @@ async function withFixtureServer(expectedToken, block) {
       origin: `http://127.0.0.1:${address.port}`,
       requests,
       setRunning(value) { running = value; },
+      setHostReady(value) { hostReady = value; },
     });
   } finally {
     await new Promise((resolve) => server.close(resolve));
@@ -186,7 +191,7 @@ test("preflight uses only bounded authenticated GETs and emits a content-free fe
   await writePrivateToken(tokenFile, `${fixtureToken}\n`);
   const helper = path.join(root, "android/build-logic/external-canary-preflight.py");
 
-  await withFixtureServer(fixtureToken, async ({ origin, requests, setRunning }) => {
+  await withFixtureServer(fixtureToken, async ({ origin, requests, setRunning, setHostReady }) => {
     const safe = await invokePreflight(sandbox, "safe", origin, tokenFile);
     assert.equal(safe.result.stdout, "");
     assert.equal(safe.result.stderr, "");
@@ -203,6 +208,7 @@ test("preflight uses only bounded authenticated GETs and emits a content-free fe
     const receiptText = await readFile(safe.receiptFile, "utf8");
     const receipt = JSON.parse(receiptText);
     assert.equal(receipt.observerAttachAllowed, true);
+    assert.equal(receipt.hostReady, true);
     assert.deepEqual(receipt.methods, ["GET"]);
     assert.equal(receipt.capabilities, true);
     assert.equal(receipt.inventory, true);
@@ -227,6 +233,19 @@ test("preflight uses only bounded authenticated GETs and emits a content-free fe
     assert.equal(JSON.parse(await readFile(running.receiptFile, "utf8")).observerAttachAllowed, false);
     assert.equal(JSON.parse(await readFile(running.stagingFile, "utf8")).observerAttachAllowed, false);
     assert.equal(requests.length - beforeRunning, 4);
+
+    setHostReady(false);
+    const beforeNotReady = requests.length;
+    await assert.rejects(
+      invokePreflight(sandbox, "not-ready", origin, tokenFile),
+      (error) => {
+        assert.equal(error.code, 70);
+        assert.equal(error.stdout, "");
+        assert.equal(error.stderr, "external_canary_preflight_failed code=host_not_ready\n");
+        return true;
+      },
+    );
+    assert.equal(requests.length - beforeNotReady, 1, "readiness must gate inventory and transcript GETs");
 
     await chmod(tokenFile, 0o644);
     const invalidPrivate = await privateDirectory(sandbox, "invalid-private");

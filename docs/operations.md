@@ -862,8 +862,11 @@ host that cannot answer a 2.x handshake still yields a truthful v1 result.
 
 Status retains safe recovery
 phase, pending replay/mutation counts, indeterminate counts, failure-code counts,
-metrics, memory, resident/retained sessions, turns, and draining state; it
-excludes prompts, results, credentials, error text, and private paths.
+typed quarantined session/generation conditions, metrics, memory,
+resident/retained sessions, turns, and draining state; it excludes prompts,
+results, credentials, adapter endpoints/handles, error text, and private paths.
+The authenticated `GET /v1/capabilities` surface exposes only the current
+`host.ready` and `host.draining` booleans needed by reviewed remote preflights.
 
 ## Shutdown
 
@@ -930,6 +933,17 @@ managed conversation's active branch. Full secret-free runtime configuration is 
 queued mutation tickets replay through their secret-free commands. `accepted` wakes and `running` mutations become
 `indeterminate` and require client reconciliation. Readiness logs expose only
 queued/indeterminate/pruned counts, never ticket commands or results.
+
+A process-bound host tool-adapter capability is a distinct safe quarantine case.
+Restart preserves its manifest, conversation, catalog record, and journal but
+leaves the exact generation dormant with the typed
+`tool_adapter_reprovision_required` condition. This condition does not make an
+otherwise settled host globally unready. A queued wake is failed without adapter
+or model dispatch; an accepted wake remains indeterminate and therefore keeps
+readiness degraded. An exact current-host v2 descriptor with the retained
+nonsecret adapter policy can explicitly reprovision the generation and clear the
+condition. Recovery never silently enables no-tools, invents adapter authority,
+deletes evidence, or replays indeterminate work.
 
 A missing/corrupt Pi file, a legacy `new`/`continue` manifest without resolved
 identity, or a generation mismatch blocks replay and is reported as a recovery

@@ -25,6 +25,11 @@
           "persistence": "memory-only",
           "provisioned": true
         },
+        "recovery": {
+          "state": "reprovision_required",
+          "code": "tool_adapter_reprovision_required",
+          "retryable": true
+        },
         "links": {
           "self": "/v1/session/agent-a",
           "rpc": "/v1/session/agent-a/rpc",
