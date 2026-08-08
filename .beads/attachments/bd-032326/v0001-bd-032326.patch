@@ -1,0 +1,1347 @@
+diff --git a/PLAN.md b/PLAN.md
+index 11dcd91..34b2737 100644
+--- a/PLAN.md
++++ b/PLAN.md
+@@ -512,6 +512,9 @@ process appears per wake.
+   retained text for the exact disposable bearer before token destruction; retain
+   bounded owner-private normalized XML, screenshot, redacted logcat and safe
+   identity hashes for unrelated app-failure modals without dismissing them.
++- [ ] `bd-032326` Diagnose transport-connected/offline emulator starts with bounded
++  guest kernel and private-console evidence, delay ADB traffic until guest boot,
++  and prove isolated x86_64 readiness without invoking either physical proof.
+ - [x] `bd-988946` Make Android fast verification self-contained by exposing the
+   flake-pinned Python runtime to both plain Node CI versions and executing the
+   Java environment export directly in its pinned Nix shell without nested quote
+diff --git a/android/README.md b/android/README.md
+index 5dc58e2..54c6dcf 100644
+--- a/android/README.md
++++ b/android/README.md
+@@ -81,6 +81,27 @@ packages, following explicit operator approval; ordinary shells retain their
+ free-package policy. See `app/README.md` for the two-phase signed internal release
+ command and evidence contract.
+ 
++### Diagnostic-only emulator readiness
++
++The readiness diagnostic exercises only a fresh x86_64 emulator and its
++run-scoped ADB server. It does not run npm or Gradle, build or install Pi Droid,
++start Pi Daemon, or read a Pi bearer. The destination must be an empty,
++owner-private evidence directory:
++
++```console
++nix develop .#androidRelease --command \
++  android/build-logic/emulator-readiness-diagnostic.sh \
++  --artifacts "$PWD/artifacts/emulator-readiness"
++```
++
++The deadline remains bounded to 240 seconds. Emulator ADB traffic is delayed
++until guest boot completion so an early TCP attach cannot strand the accepted
++transport offline. A failure retains only a bounded, sanitized kernel/emulator
++excerpt, public-key payload fingerprints, and fixed-enum guest root-console
++state (`boot_completed`, `adbd`, zygote, ABI, and uptime). The private ADB key,
++raw console output, and raw emulator log remain in the run-private temporary
++directory and are destroyed during verified process/port cleanup.
++
+ ## Readonly session fixture and image proof
+ 
+ `sdk-session-ui` projects the neutral inventory, information, and transcript
+diff --git a/android/build-logic/emulator-adb-readiness.sh b/android/build-logic/emulator-adb-readiness.sh
+index 1e2ea8e..5aee748 100644
+--- a/android/build-logic/emulator-adb-readiness.sh
++++ b/android/build-logic/emulator-adb-readiness.sh
+@@ -89,11 +89,32 @@ record_emulator_adb_readiness() {
+   case "$connect_state" in
+     connected|already_connected) transport_connected='true' ;;
+   esac
++  emulator_adb_last_status="$status"
++  emulator_adb_last_connect_state="$connect_state"
++  emulator_adb_last_state="$adb_state"
++  emulator_adb_last_transport_connected="$transport_connected"
+   printf 'phase=adb_readiness status=%s attempts=%s connect_attempts=%s deadline_seconds=%s elapsed_seconds=%s remaining_seconds=%s connect_state=%s adb_state=%s transport_connected=%s\n' \
+     "$status" "$attempts" "$connect_attempts" "$deadline_seconds" "$elapsed_seconds" \
+     "$remaining_seconds" "$connect_state" "$adb_state" "$transport_connected" >> "$diagnostics_file"
+ }
+ 
++capture_emulator_readiness_evidence() {
++  local classifier="$1"
++  local emulator_log="$2"
++  local console_state="$3"
++  local console_log="$4"
++  local output="$5"
++  local expected_public_key_fingerprint="$6"
++  python3 "$classifier" \
++    --emulator-log "$emulator_log" \
++    --console-state "$console_state" \
++    --console-log "$console_log" \
++    --output "$output" \
++    --expected-public-key-fingerprint "$expected_public_key_fingerprint" \
++    --connect-state "${emulator_adb_last_connect_state:-unavailable}" \
++    --adb-state "${emulator_adb_last_state:-unavailable}"
++}
++
+ wait_for_emulator_adb() {
+   local emulator_pid="$1"
+   local device_serial="$2"
+@@ -128,6 +149,10 @@ wait_for_emulator_adb() {
+   local elapsed_seconds=0
+   local remaining_seconds="$max_seconds"
+   local command_timeout_seconds=0
++  emulator_adb_last_status='initializing'
++  emulator_adb_last_connect_state='unavailable'
++  emulator_adb_last_state='unavailable'
++  emulator_adb_last_transport_connected='false'
+ 
+   while (( SECONDS < deadline_at_seconds )); do
+     now_seconds="$SECONDS"
+diff --git a/android/build-logic/live-interactive-proof.sh b/android/build-logic/live-interactive-proof.sh
+index 1368066..097e31b 100755
+--- a/android/build-logic/live-interactive-proof.sh
++++ b/android/build-logic/live-interactive-proof.sh
+@@ -32,9 +32,15 @@ emulator_diagnostics="$artifacts_dir/emulator-diagnostics.log"
+ 
+ private_dir="$(mktemp -d)"
+ chmod 700 "$private_dir"
++emulator_raw_log="$private_dir/emulator.log"
++emulator_guest_console_socket="$private_dir/emulator-guest-console.sock"
++emulator_guest_console_log="$private_dir/emulator-guest-console.log"
++emulator_guest_console_state="$private_dir/emulator-guest-console.state"
++emulator_readiness_evidence="$artifacts_dir/emulator-readiness-evidence.log"
+ initialize_emulator_ui_health "$private_dir" "$artifacts_dir"
+ daemon_pid=''
+ emulator_pid=''
++emulator_console_probe_pid=''
+ emulator_device_serial=''
+ emulator_port=''
+ emulator_adb_port=''
+@@ -209,24 +215,40 @@ fi
+ # commands use only the paired loopback TCP transport registered explicitly
+ # with this run's isolated ADB server.
+ emulator_device_serial="127.0.0.1:$emulator_adb_port"
++# Hold emulator-to-adbd traffic until guest boot completion. Emulator 36.6 can
++# otherwise expose the TCP bridge early enough for an accepted transport to
++# remain offline indefinitely. Kernel and private root-console output provide
++# bounded timeout discrimination without broad reconnects.
++python3 "$repo_root/android/build-logic/emulator-guest-console-recorder.py" \
++  --console-socket "$emulator_guest_console_socket" \
++  --raw-log "$emulator_guest_console_log" \
++  --state "$emulator_guest_console_state" &
++emulator_console_probe_pid="$!"
+ emulator -avd pi-droid-live -port "$emulator_port" -no-window -noaudio -no-boot-anim \
+-  -no-metrics -no-snapshot -wipe-data -gpu swiftshader_indirect \
+-  > "$artifacts_dir/emulator.log" 2>&1 &
++  -no-metrics -no-snapshot -wipe-data -gpu swiftshader_indirect -delay-adb -show-kernel \
++  -shell-serial "unix:$emulator_guest_console_socket,server" \
++  > "$emulator_raw_log" 2>&1 &
+ emulator_pid="$!"
+ adb_readiness_status=0
+ wait_for_emulator_adb \
+   "$emulator_pid" "$emulator_device_serial" "$adb_server_port" "$emulator_diagnostics" 240 || \
+   adb_readiness_status="$?"
+ if (( adb_readiness_status != 0 )); then
++  if ! capture_emulator_readiness_evidence \
++    "$repo_root/android/build-logic/emulator-readiness-evidence.py" \
++    "$emulator_raw_log" "$emulator_guest_console_state" "$emulator_guest_console_log" \
++    "$emulator_readiness_evidence" "$adb_public_key_payload_sha256"; then
++    printf '%s\n' 'phase=adb_readiness_evidence status=capture_failed' >> "$emulator_diagnostics"
++  fi
+   if (( adb_readiness_status == 69 )); then
+     wait "$emulator_pid" 2>/dev/null || true
+     printf 'Android emulator exited before ADB readiness for ABI %s\n' "$emulator_abi" >&2
+-    tail -40 "$artifacts_dir/emulator.log" >&2 || true
+   elif (( adb_readiness_status == 70 )); then
+     printf '%s\n' 'Android emulator ADB readiness timed out after 240 seconds' >&2
+   else
+     printf '%s\n' 'Android emulator ADB readiness gate rejected its bounded configuration' >&2
+   fi
++  [[ ! -f "$emulator_readiness_evidence" ]] || tail -40 "$emulator_readiness_evidence" >&2 || true
+   exit 70
+ fi
+ {
+diff --git a/android/build-logic/live-readonly-proof.sh b/android/build-logic/live-readonly-proof.sh
+index 02d9471..baac3d0 100755
+--- a/android/build-logic/live-readonly-proof.sh
++++ b/android/build-logic/live-readonly-proof.sh
+@@ -37,9 +37,15 @@ emulator_diagnostics="$artifacts_dir/emulator-diagnostics.log"
+ 
+ private_dir="$(mktemp -d)"
+ chmod 700 "$private_dir"
++emulator_raw_log="$private_dir/emulator.log"
++emulator_guest_console_socket="$private_dir/emulator-guest-console.sock"
++emulator_guest_console_log="$private_dir/emulator-guest-console.log"
++emulator_guest_console_state="$private_dir/emulator-guest-console.state"
++emulator_readiness_evidence="$artifacts_dir/emulator-readiness-evidence.log"
+ initialize_emulator_ui_health "$private_dir" "$artifacts_dir"
+ daemon_pid=''
+ emulator_pid=''
++emulator_console_probe_pid=''
+ emulator_device_serial=''
+ emulator_port=''
+ emulator_adb_port=''
+@@ -211,24 +217,40 @@ fi
+ # commands use only the paired loopback TCP transport registered explicitly
+ # with this run's isolated ADB server.
+ emulator_device_serial="127.0.0.1:$emulator_adb_port"
++# Hold emulator-to-adbd traffic until guest boot completion. Emulator 36.6 can
++# otherwise expose the TCP bridge early enough for an accepted transport to
++# remain offline indefinitely. Kernel and private root-console output provide
++# bounded timeout discrimination without broad reconnects.
++python3 "$repo_root/android/build-logic/emulator-guest-console-recorder.py" \
++  --console-socket "$emulator_guest_console_socket" \
++  --raw-log "$emulator_guest_console_log" \
++  --state "$emulator_guest_console_state" &
++emulator_console_probe_pid="$!"
+ emulator -avd pi-droid-live -port "$emulator_port" -no-window -noaudio -no-boot-anim \
+-  -no-metrics -no-snapshot -wipe-data -gpu swiftshader_indirect \
+-  > "$artifacts_dir/emulator.log" 2>&1 &
++  -no-metrics -no-snapshot -wipe-data -gpu swiftshader_indirect -delay-adb -show-kernel \
++  -shell-serial "unix:$emulator_guest_console_socket,server" \
++  > "$emulator_raw_log" 2>&1 &
+ emulator_pid="$!"
+ adb_readiness_status=0
+ wait_for_emulator_adb \
+   "$emulator_pid" "$emulator_device_serial" "$adb_server_port" "$emulator_diagnostics" 240 || \
+   adb_readiness_status="$?"
+ if (( adb_readiness_status != 0 )); then
++  if ! capture_emulator_readiness_evidence \
++    "$repo_root/android/build-logic/emulator-readiness-evidence.py" \
++    "$emulator_raw_log" "$emulator_guest_console_state" "$emulator_guest_console_log" \
++    "$emulator_readiness_evidence" "$adb_public_key_payload_sha256"; then
++    printf '%s\n' 'phase=adb_readiness_evidence status=capture_failed' >> "$emulator_diagnostics"
++  fi
+   if (( adb_readiness_status == 69 )); then
+     wait "$emulator_pid" 2>/dev/null || true
+     printf 'Android emulator exited before ADB readiness for ABI %s\n' "$emulator_abi" >&2
+-    tail -40 "$artifacts_dir/emulator.log" >&2 || true
+   elif (( adb_readiness_status == 70 )); then
+     printf '%s\n' 'Android emulator ADB readiness timed out after 240 seconds' >&2
+   else
+     printf '%s\n' 'Android emulator ADB readiness gate rejected its bounded configuration' >&2
+   fi
++  [[ ! -f "$emulator_readiness_evidence" ]] || tail -40 "$emulator_readiness_evidence" >&2 || true
+   exit 70
+ fi
+ booted=''
+diff --git a/android/build-logic/physical-proof-lifecycle.sh b/android/build-logic/physical-proof-lifecycle.sh
+index de1b30f..0358153 100755
+--- a/android/build-logic/physical-proof-lifecycle.sh
++++ b/android/build-logic/physical-proof-lifecycle.sh
+@@ -31,6 +31,8 @@ stop_physical_proof_owned_processes() {
+   # Emulator shutdown can legitimately use its documented 20-second grace.
+   physical_proof_stop_pid "${emulator_pid:-}" TERM 250
+   emulator_pid=''
++  physical_proof_stop_pid "${emulator_console_probe_pid:-}" TERM 50
++  emulator_console_probe_pid=''
+   if declare -F stop_isolated_adb_server >/dev/null; then
+     stop_isolated_adb_server
+   fi
+diff --git a/android/build-logic/emulator-guest-console-recorder.py b/android/build-logic/emulator-guest-console-recorder.py
+new file mode 100755
+index 0000000..396c7db
+--- /dev/null
++++ b/android/build-logic/emulator-guest-console-recorder.py
+@@ -0,0 +1,173 @@
++#!/usr/bin/env python3
++"""Record one private emulator root console and publish only fixed-enum state."""
++
++from __future__ import annotations
++
++import argparse
++import os
++import re
++import socket
++import time
++from pathlib import Path
++
++MAX_RAW_CONSOLE_BYTES = 4 * 1024 * 1024
++MAX_PARSE_BYTES = 128 * 1024
++CONNECT_DEADLINE_SECONDS = 30
++PROBE_INTERVAL_SECONDS = 5
++CONSOLE_COMMAND = (
++    "echo pidroid_diag_begin; "
++    "echo pidroid_diag_boot_completed=\"$(getprop sys.boot_completed)\"; "
++    "echo pidroid_diag_adbd_state=\"$(getprop init.svc.adbd)\"; "
++    "echo pidroid_diag_zygote_state=\"$(getprop init.svc.zygote)\"; "
++    "echo pidroid_diag_abi=\"$(getprop ro.product.cpu.abi)\"; "
++    "echo pidroid_diag_uptime_seconds=\"$(cut -d. -f1 /proc/uptime)\"; "
++    "echo pidroid_diag_end\n"
++).encode()
++
++
++def parse_args() -> argparse.Namespace:
++    parser = argparse.ArgumentParser()
++    parser.add_argument("--console-socket", required=True)
++    parser.add_argument("--raw-log", required=True)
++    parser.add_argument("--state", required=True)
++    return parser.parse_args()
++
++
++def fixed_value(text: str, name: str) -> str | None:
++    matches = re.findall(rf"(?m)^pidroid_diag_{re.escape(name)}=([^\r\n]*)\r?$", text)
++    return matches[-1] if matches else None
++
++
++def service_state(value: str | None) -> str:
++    if value is None or not value.strip():
++        return "empty"
++    value = value.strip()
++    return value if value in {"running", "stopped", "restarting"} else "other"
++
++
++def boot_completed(value: str | None) -> str:
++    if value is None or not value.strip():
++        return "empty"
++    value = value.strip()
++    return value if value in {"0", "1"} else "other"
++
++
++def abi(value: str | None) -> str:
++    if value is None or not value.strip():
++        return "empty"
++    return "x86_64" if value.strip() == "x86_64" else "other"
++
++
++def uptime(value: str | None) -> str:
++    if value is None:
++        return "unknown"
++    value = value.strip()
++    return value if re.fullmatch(r"[0-9]{1,10}", value) else "unknown"
++
++
++def write_state(path: Path, *, connected: bool, raw: bytes, raw_bytes: int, truncated: bool) -> None:
++    text = raw.decode("utf-8", "replace")
++    fields = {
++        "schema_version": "1",
++        "guest_console": "available" if connected else "unavailable",
++        "guest_boot_completed": boot_completed(fixed_value(text, "boot_completed")),
++        "guest_adbd_state": service_state(fixed_value(text, "adbd_state")),
++        "guest_zygote_state": service_state(fixed_value(text, "zygote_state")),
++        "guest_abi": abi(fixed_value(text, "abi")),
++        "guest_uptime_seconds": uptime(fixed_value(text, "uptime_seconds")),
++        "kernel_started": str("Linux version" in text).lower(),
++        "init_started": str("Run /init" in text or " init:" in text or "init:" in text).lower(),
++        "kernel_failure": str(
++            re.search(r"Kernel panic|kernel panic|watchdog.*(?:lockup|BUG)|EXT4-fs error|I/O error", text, re.I)
++            is not None
++        ).lower(),
++        "raw_console_bytes": str(raw_bytes),
++        "raw_console_truncated": str(truncated).lower(),
++    }
++    temporary = path.with_name(path.name + ".new")
++    temporary.write_text("".join(f"{key}={value}\n" for key, value in fields.items()), encoding="utf-8")
++    temporary.chmod(0o600)
++    os.replace(temporary, path)
++
++
++def main() -> int:
++    args = parse_args()
++    socket_path = Path(args.console_socket)
++    raw_path = Path(args.raw_log)
++    state_path = Path(args.state)
++    for destination in (raw_path, state_path):
++        if destination.exists() or destination.is_symlink():
++            raise SystemExit(f"destination already exists: {destination.name}")
++        destination.parent.mkdir(parents=True, exist_ok=True)
++    write_state(state_path, connected=False, raw=b"", raw_bytes=0, truncated=False)
++
++    client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
++    client.settimeout(0.2)
++    deadline = time.monotonic() + CONNECT_DEADLINE_SECONDS
++    while True:
++        try:
++            client.connect(os.fspath(socket_path))
++            break
++        except FileNotFoundError:
++            if time.monotonic() >= deadline:
++                client.close()
++                return 70
++            time.sleep(0.01)
++        except (ConnectionRefusedError, BlockingIOError):
++            if time.monotonic() >= deadline:
++                client.close()
++                return 70
++            time.sleep(0.01)
++
++    raw_path.touch(mode=0o600)
++    retained = bytearray()
++    raw_bytes = 0
++    truncated = False
++    next_probe = time.monotonic()
++    with client, raw_path.open("ab", buffering=0) as raw_output:
++        while True:
++            now = time.monotonic()
++            if now >= next_probe:
++                try:
++                    client.sendall(CONSOLE_COMMAND)
++                except OSError:
++                    break
++                next_probe = now + PROBE_INTERVAL_SECONDS
++            try:
++                chunk = client.recv(4096)
++            except TimeoutError:
++                continue
++            except OSError:
++                break
++            if not chunk:
++                break
++            raw_bytes += len(chunk)
++            if raw_output.tell() < MAX_RAW_CONSOLE_BYTES:
++                writable = chunk[: MAX_RAW_CONSOLE_BYTES - raw_output.tell()]
++                raw_output.write(writable)
++                if len(writable) != len(chunk):
++                    truncated = True
++            else:
++                truncated = True
++            retained.extend(chunk)
++            if len(retained) > MAX_PARSE_BYTES:
++                del retained[: len(retained) - MAX_PARSE_BYTES]
++            write_state(
++                state_path,
++                connected=True,
++                raw=bytes(retained),
++                raw_bytes=raw_bytes,
++                truncated=truncated,
++            )
++    write_state(
++        state_path,
++        connected=True,
++        raw=bytes(retained),
++        raw_bytes=raw_bytes,
++        truncated=truncated,
++    )
++    return 0
++
++
++if __name__ == "__main__":
++    raise SystemExit(main())
+diff --git a/android/build-logic/emulator-readiness-diagnostic.sh b/android/build-logic/emulator-readiness-diagnostic.sh
+new file mode 100755
+index 0000000..7bbdca5
+--- /dev/null
++++ b/android/build-logic/emulator-readiness-diagnostic.sh
+@@ -0,0 +1,283 @@
++#!/usr/bin/env bash
++set -euo pipefail
++umask 077
++
++repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
++source "$repo_root/android/build-logic/emulator-adb-readiness.sh"
++source "$repo_root/android/build-logic/isolated-adb-server.sh"
++source "$repo_root/android/build-logic/physical-proof-lifecycle.sh"
++
++artifacts_dir=''
++deadline_seconds=240
++while [[ $# -gt 0 ]]; do
++  case "$1" in
++    --artifacts)
++      artifacts_dir="${2:-}"
++      shift 2
++      ;;
++    --deadline-seconds)
++      deadline_seconds="${2:-}"
++      shift 2
++      ;;
++    *)
++      printf 'unknown option: %s\n' "$1" >&2
++      exit 64
++      ;;
++  esac
++done
++if [[ -z "$artifacts_dir" || ! "$deadline_seconds" =~ ^[1-9][0-9]*$ ]] ||
++  (( deadline_seconds < 30 || deadline_seconds > 240 )); then
++  printf '%s\n' 'usage: emulator-readiness-diagnostic.sh --artifacts DIR [--deadline-seconds 30..240]' >&2
++  exit 64
++fi
++if [[ -L "$artifacts_dir" ]]; then
++  printf '%s\n' 'diagnostic artifacts directory must not be a symlink' >&2
++  exit 64
++fi
++mkdir -p "$artifacts_dir"
++artifacts_dir="$(cd "$artifacts_dir" && pwd)"
++if [[ -n "$(find "$artifacts_dir" -mindepth 1 -maxdepth 1 -print -quit)" ]]; then
++  printf '%s\n' 'diagnostic artifacts directory must be empty' >&2
++  exit 64
++fi
++chmod 700 "$artifacts_dir"
++
++private_dir="$(mktemp -d)"
++chmod 700 "$private_dir"
++emulator_raw_log="$private_dir/emulator.log"
++emulator_guest_console_socket="$private_dir/emulator-guest-console.sock"
++emulator_guest_console_log="$private_dir/emulator-guest-console.log"
++emulator_guest_console_state="$private_dir/emulator-guest-console.state"
++emulator_readiness_evidence="$artifacts_dir/emulator-readiness-evidence.log"
++emulator_diagnostics="$artifacts_dir/emulator-diagnostics.log"
++cleanup_evidence="$artifacts_dir/cleanup.log"
++receipt="$artifacts_dir/emulator-readiness-receipt.json"
++: > "$emulator_diagnostics"
++
++emulator_pid=''
++emulator_console_probe_pid=''
++emulator_port=''
++emulator_adb_port=''
++emulator_port_attempts=''
++emulator_device_serial=''
++adb_server_port=''
++adb_server_port_attempts=''
++adb_server_pid=''
++adb_server_started='false'
++adb_key_home=''
++adb_public_key_payload_sha256=''
++diagnostic_finalized='false'
++diagnostic_status='failed'
++diagnostic_classification='setup_failed'
++adb_state='unavailable'
++boot_completed='unknown'
++device_abi='unknown'
++cleanup_processes='unknown'
++cleanup_ports='unknown'
++
++select_emulator_port_pair() {
++  local selection=''
++  local extra=''
++  if ! selection="$(python3 "$repo_root/android/build-logic/select-emulator-port-pair.py" 2>/dev/null)"; then
++    return 1
++  fi
++  read -r emulator_port emulator_adb_port emulator_port_attempts extra <<< "$selection"
++  if [[ -n "$extra" || ! "$emulator_port" =~ ^[0-9]+$ ||
++        ! "$emulator_adb_port" =~ ^[0-9]+$ || ! "$emulator_port_attempts" =~ ^[0-9]+$ ]] ||
++    (( emulator_port < 5554 || emulator_port > 5584 || emulator_port % 2 != 0 ||
++       emulator_adb_port != emulator_port + 1 || emulator_port_attempts < 1 ||
++       emulator_port_attempts > 16 )); then
++    return 1
++  fi
++  printf 'status=selected emulator_console_port=%s emulator_adb_port=%s emulator_port_attempts=%s verification=both_localhost_ports_free\n' \
++    "$emulator_port" "$emulator_adb_port" "$emulator_port_attempts" >> "$emulator_diagnostics"
++}
++
++port_is_closed() {
++  local port="$1"
++  [[ "$port" =~ ^[0-9]+$ ]] || return 0
++  ! probe_localhost_port "$port"
++}
++
++stop_diagnostic_processes() {
++  physical_proof_stop_pid "${emulator_pid:-}" TERM 250
++  emulator_pid=''
++  physical_proof_stop_pid "${emulator_console_probe_pid:-}" TERM 50
++  emulator_console_probe_pid=''
++  stop_isolated_adb_server
++}
++
++finalize_diagnostic() {
++  local process_status='clean'
++  local port_status='closed'
++  local owned_emulator_pid="${emulator_pid:-}"
++  local owned_console_probe_pid="${emulator_console_probe_pid:-}"
++  local owned_adb_server_pid="${adb_server_pid:-}"
++  if [[ "$diagnostic_finalized" == 'true' ]]; then
++    return 0
++  fi
++  stop_diagnostic_processes
++  for owned_pid in "$owned_emulator_pid" "$owned_console_probe_pid" "$owned_adb_server_pid"; do
++    if [[ "$owned_pid" =~ ^[1-9][0-9]*$ ]] && kill -0 "$owned_pid" 2>/dev/null; then
++      process_status='residual'
++    fi
++  done
++  for owned_port in "${emulator_port:-}" "${emulator_adb_port:-}" "${adb_server_port:-}"; do
++    if ! port_is_closed "$owned_port"; then
++      port_status='open'
++    fi
++  done
++  cleanup_processes="$process_status"
++  cleanup_ports="$port_status"
++  {
++    printf 'owned_processes=%s\n' "$cleanup_processes"
++    printf 'owned_ports=%s\n' "$cleanup_ports"
++    printf 'private_adb_key_retained=false\n'
++  } > "$cleanup_evidence"
++  chmod 600 "$cleanup_evidence"
++  rm -rf "$private_dir"
++  diagnostic_finalized='true'
++  [[ "$cleanup_processes" == 'clean' && "$cleanup_ports" == 'closed' ]]
++}
++
++write_receipt() {
++  cat > "$receipt" <<EOF
++{
++  "schemaVersion": 1,
++  "status": "$diagnostic_status",
++  "classification": "$diagnostic_classification",
++  "deadlineSeconds": $deadline_seconds,
++  "adbState": "$adb_state",
++  "bootCompleted": "$boot_completed",
++  "deviceAbi": "$device_abi",
++  "expectedAbi": "x86_64",
++  "adbServerIsolated": true,
++  "adbPublicKeyPayloadSha256": "$adb_public_key_payload_sha256",
++  "delayedAdbUntilBootComplete": true,
++  "piServiceAccessed": false,
++  "piDroidBuiltOrInstalled": false,
++  "privateAdbKeyRetained": false,
++  "ownedProcessesAfterCleanup": "$cleanup_processes",
++  "ownedPortsAfterCleanup": "$cleanup_ports"
++}
++EOF
++  chmod 600 "$receipt"
++}
++
++cleanup() {
++  local original_status="${1:-$?}"
++  trap - EXIT
++  set +e
++  if ! finalize_diagnostic; then
++    original_status=70
++  fi
++  if [[ ! -e "$receipt" ]]; then
++    write_receipt || original_status=70
++  fi
++  exit "$original_status"
++}
++trap 'cleanup "$?"' EXIT
++trap 'exit 130' INT
++trap 'exit 143' TERM
++
++{
++  printf 'host_arch=%s\n' "$(uname -m)"
++  printf 'expected_emulator_abi=x86_64\n'
++  emulator -version 2>&1 | head -3
++  emulator -accel-check 2>&1 || true
++  adb version 2>&1 | head -3
++} >> "$emulator_diagnostics"
++
++start_isolated_adb_server \
++  "$private_dir" \
++  "$emulator_diagnostics" \
++  "$repo_root/android/build-logic/select-adb-server-port.py"
++isolated_adb_command=(adb -H 127.0.0.1 -P "$adb_server_port")
++
++printf 'no\n' | avdmanager create avd --force --name pi-droid-readiness-diagnostic \
++  --package 'system-images;android-36;google_apis;x86_64' >/dev/null
++if ! select_emulator_port_pair; then
++  diagnostic_classification='emulator_port_unavailable'
++  printf '%s\n' 'emulator_port_unavailable: no supported localhost console/ADB pair is free' >&2
++  exit 70
++fi
++emulator_device_serial="127.0.0.1:$emulator_adb_port"
++
++# This runner deliberately has no Pi Daemon, APK, Gradle, npm, bearer, or app
++# operation. It exercises only emulator boot and the isolated ADB transport.
++# The console server waits for this owned recorder before guest boot, retaining
++# early kernel evidence privately instead of attaching after a timeout.
++python3 "$repo_root/android/build-logic/emulator-guest-console-recorder.py" \
++  --console-socket "$emulator_guest_console_socket" \
++  --raw-log "$emulator_guest_console_log" \
++  --state "$emulator_guest_console_state" &
++emulator_console_probe_pid="$!"
++emulator -avd pi-droid-readiness-diagnostic -port "$emulator_port" \
++  -no-window -noaudio -no-boot-anim -no-metrics -no-snapshot -wipe-data \
++  -gpu swiftshader_indirect -delay-adb -show-kernel \
++  -shell-serial "unix:$emulator_guest_console_socket,server" \
++  > "$emulator_raw_log" 2>&1 &
++emulator_pid="$!"
++
++readiness_status=0
++readiness_started_seconds="$SECONDS"
++readiness_deadline_seconds=$((readiness_started_seconds + deadline_seconds))
++wait_for_emulator_adb \
++  "$emulator_pid" "$emulator_device_serial" "$adb_server_port" \
++  "$emulator_diagnostics" "$deadline_seconds" || readiness_status="$?"
++if (( readiness_status != 0 )); then
++  if ! capture_emulator_readiness_evidence \
++    "$repo_root/android/build-logic/emulator-readiness-evidence.py" \
++    "$emulator_raw_log" "$emulator_guest_console_state" "$emulator_guest_console_log" \
++    "$emulator_readiness_evidence" "$adb_public_key_payload_sha256"; then
++    diagnostic_classification='evidence_capture_failed'
++  else
++    diagnostic_classification="$(sed -n 's/^classification=//p' "$emulator_readiness_evidence")"
++  fi
++  exit 70
++fi
++
++adb_state="$("${isolated_adb_command[@]}" -s "$emulator_device_serial" get-state 2>/dev/null || true)"
++adb_state="$(sanitize_emulator_adb_state "$adb_state")"
++boot_completed=''
++while (( SECONDS < readiness_deadline_seconds )); do
++  boot_completed="$(timeout --foreground --signal=KILL 5s \
++    "${isolated_adb_command[@]}" -s "$emulator_device_serial" shell getprop sys.boot_completed \
++    2>/dev/null | tr -d '\r' || true)"
++  [[ "$boot_completed" == '1' ]] && break
++  kill -0 "$emulator_pid" 2>/dev/null || break
++  sleep 1
++done
++device_abi="$(timeout --foreground --signal=KILL 10s \
++  "${isolated_adb_command[@]}" -s "$emulator_device_serial" shell getprop ro.product.cpu.abi \
++  2>/dev/null | tr -d '\r' || true)"
++if ! capture_emulator_readiness_evidence \
++  "$repo_root/android/build-logic/emulator-readiness-evidence.py" \
++  "$emulator_raw_log" "$emulator_guest_console_state" "$emulator_guest_console_log" \
++  "$emulator_readiness_evidence" "$adb_public_key_payload_sha256"; then
++  diagnostic_classification='evidence_capture_failed'
++  exit 70
++fi
++diagnostic_classification="$(sed -n 's/^classification=//p' "$emulator_readiness_evidence")"
++[[ "$diagnostic_classification" =~ ^[a-z_]+$ ]] || {
++  diagnostic_classification='evidence_classification_invalid'
++  exit 70
++}
++if [[ "$adb_state" != 'device' || "$boot_completed" != '1' || "$device_abi" != 'x86_64' ]]; then
++  diagnostic_status='failed'
++  if [[ "$diagnostic_classification" == 'ready' ]]; then
++    diagnostic_classification='post_readiness_identity_mismatch'
++  fi
++  exit 70
++fi
++
++diagnostic_status='verified'
++diagnostic_classification='ready'
++if ! finalize_diagnostic; then
++  diagnostic_status='failed'
++  diagnostic_classification='cleanup_failed'
++  exit 70
++fi
++write_receipt
++printf 'Emulator readiness diagnostic verified: adb=%s boot_completed=%s abi=%s cleanup=%s/%s artifacts=%s\n' \
++  "$adb_state" "$boot_completed" "$device_abi" "$cleanup_processes" "$cleanup_ports" "$artifacts_dir"
+diff --git a/android/build-logic/emulator-readiness-evidence.py b/android/build-logic/emulator-readiness-evidence.py
+new file mode 100755
+index 0000000..1e366ce
+--- /dev/null
++++ b/android/build-logic/emulator-readiness-evidence.py
+@@ -0,0 +1,361 @@
++#!/usr/bin/env python3
++"""Retain bounded, secret-safe evidence for an emulator ADB readiness failure."""
++
++from __future__ import annotations
++
++import argparse
++import hashlib
++import os
++import re
++import socket
++import stat
++from pathlib import Path
++
++MAX_LOG_INPUT_BYTES = 4 * 1024 * 1024
++MAX_RETAINED_LINES = 256
++MAX_RETAINED_LINE_BYTES = 512
++MAX_CONSOLE_BYTES = 64 * 1024
++SHA256_FINGERPRINT = re.compile(r"sha256:[0-9a-f]{64}\Z")
++PUBLIC_KEY_PATTERNS = (
++    re.compile(r"Sending adb public key \[([A-Za-z0-9+/=]+)(?:[ \]])"),
++    re.compile(r"androidboot\.qemu\.adb\.pubkey=([A-Za-z0-9+/=]+)(?:[ \]]|$)"),
++)
++SAFE_LOG_MARKERS = (
++    "Linux version",
++    "Kernel command line",
++    "Run /init",
++    " init:",
++    "init:",
++    "adbd",
++    "Boot completed",
++    "full startup",
++    "Kernel panic",
++    "kernel panic",
++    "watchdog",
++    "EXT4-fs error",
++    "I/O error",
++    "Sending adb public key",
++    "androidboot.qemu.adb.pubkey",
++)
++PRIVATE_KEY_MARKERS = (
++    "BEGIN PRIVATE KEY",
++    "BEGIN RSA PRIVATE KEY",
++    "SENSITIVE_PRIVATE_KEY",
++)
++CONSOLE_COMMAND = (
++    "echo pidroid_diag_begin; "
++    "echo pidroid_diag_boot_completed=\"$(getprop sys.boot_completed)\"; "
++    "echo pidroid_diag_adbd_state=\"$(getprop init.svc.adbd)\"; "
++    "echo pidroid_diag_zygote_state=\"$(getprop init.svc.zygote)\"; "
++    "echo pidroid_diag_abi=\"$(getprop ro.product.cpu.abi)\"; "
++    "echo pidroid_diag_uptime_seconds=\"$(cut -d. -f1 /proc/uptime)\"; "
++    "echo pidroid_diag_end\n"
++).encode()
++
++
++def parse_args() -> argparse.Namespace:
++    parser = argparse.ArgumentParser()
++    parser.add_argument("--emulator-log", required=True)
++    console = parser.add_mutually_exclusive_group(required=True)
++    console.add_argument("--console-socket")
++    console.add_argument("--console-state")
++    parser.add_argument("--console-log")
++    parser.add_argument("--output", required=True)
++    parser.add_argument("--expected-public-key-fingerprint", required=True)
++    parser.add_argument(
++        "--connect-state",
++        required=True,
++        choices=("refused", "connected", "already_connected", "failed", "unavailable", "other"),
++    )
++    parser.add_argument(
++        "--adb-state",
++        required=True,
++        choices=(
++            "device",
++            "offline",
++            "bootloader",
++            "recovery",
++            "sideload",
++            "unauthorized",
++            "unknown",
++            "not_found",
++            "unavailable",
++            "other",
++        ),
++    )
++    return parser.parse_args()
++
++
++def bounded_log(path: Path) -> tuple[str, int, bool]:
++    size = path.stat().st_size
++    with path.open("rb") as source:
++        if size <= MAX_LOG_INPUT_BYTES:
++            payload = source.read(MAX_LOG_INPUT_BYTES + 1)
++            truncated = len(payload) > MAX_LOG_INPUT_BYTES
++            payload = payload[:MAX_LOG_INPUT_BYTES]
++        else:
++            half = MAX_LOG_INPUT_BYTES // 2
++            head = source.read(half)
++            source.seek(max(0, size - half))
++            payload = head + b"\n[bounded_middle_omitted]\n" + source.read(half)
++            truncated = True
++    return payload.decode("utf-8", "replace"), size, truncated
++
++
++def public_key_fingerprints(text: str) -> list[str]:
++    fingerprints: set[str] = set()
++    for pattern in PUBLIC_KEY_PATTERNS:
++        for match in pattern.finditer(text):
++            fingerprints.add(f"sha256:{hashlib.sha256(match.group(1).encode()).hexdigest()}")
++    return sorted(fingerprints)
++
++
++def sanitize_log_line(line: str) -> str | None:
++    if "pidroid_diag_" in line or not any(marker in line for marker in SAFE_LOG_MARKERS):
++        return None
++    if any(marker in line for marker in PRIVATE_KEY_MARKERS):
++        return "redacted_sensitive_emulator_log_line=true"
++    line = re.sub(
++        r"(Sending adb public key \[)[A-Za-z0-9+/=]+(?: [^\]]*)?(\])",
++        r"\1<redacted-public-key>\2",
++        line,
++    )
++    line = re.sub(
++        r"(androidboot\.qemu\.adb\.pubkey=)[A-Za-z0-9+/=]+(?: [^ ]*)?",
++        r"\1<redacted-public-key>",
++        line,
++    )
++    line = re.sub(r"(?:/home|/tmp)/[^\s]+", "<host-path>", line)
++    line = re.sub(r"[A-Za-z0-9+/=]{256,}", "<redacted-long-payload>", line)
++    encoded = line.encode("utf-8", "replace")[:MAX_RETAINED_LINE_BYTES]
++    return encoded.decode("utf-8", "ignore")
++
++
++def sanitized_log_lines(text: str) -> list[str]:
++    retained = [sanitized for line in text.splitlines() if (sanitized := sanitize_log_line(line))]
++    if len(retained) <= MAX_RETAINED_LINES:
++        return retained
++    half = MAX_RETAINED_LINES // 2
++    return retained[:half] + ["bounded_log_lines_omitted=true"] + retained[-half:]
++
++
++def normalize_service_state(value: str | None) -> str:
++    if value is None or not value.strip():
++        return "empty"
++    value = value.strip()
++    return value if value in {"running", "stopped", "restarting"} else "other"
++
++
++def normalize_boot_completed(value: str | None) -> str:
++    if value is None or not value.strip():
++        return "empty"
++    value = value.strip()
++    return value if value in {"0", "1"} else "other"
++
++
++def normalize_abi(value: str | None) -> str:
++    if value is None or not value.strip():
++        return "empty"
++    return "x86_64" if value.strip() == "x86_64" else "other"
++
++
++def normalize_uptime(value: str | None) -> str:
++    if value is None:
++        return "unknown"
++    value = value.strip()
++    return value if re.fullmatch(r"[0-9]{1,10}", value) else "unknown"
++
++
++def unavailable_console() -> dict[str, str]:
++    return {
++        "guest_console": "unavailable",
++        "guest_boot_completed": "unknown",
++        "guest_adbd_state": "unknown",
++        "guest_zygote_state": "unknown",
++        "guest_abi": "unknown",
++        "guest_uptime_seconds": "unknown",
++    }
++
++
++def console_state(path: Path) -> dict[str, str]:
++    result = unavailable_console()
++    try:
++        if path.is_symlink() or not path.is_file() or path.stat().st_size > 4096:
++            return result
++        fields = dict(
++            line.split("=", 1)
++            for line in path.read_text(encoding="utf-8").splitlines()
++            if "=" in line
++        )
++    except (OSError, UnicodeError, ValueError):
++        return result
++    if fields.get("guest_console") != "available":
++        return result
++    result.update(
++        guest_console="available",
++        guest_boot_completed=normalize_boot_completed(fields.get("guest_boot_completed")),
++        guest_adbd_state=normalize_service_state(fields.get("guest_adbd_state")),
++        guest_zygote_state=normalize_service_state(fields.get("guest_zygote_state")),
++        guest_abi=normalize_abi(fields.get("guest_abi")),
++        guest_uptime_seconds=normalize_uptime(fields.get("guest_uptime_seconds")),
++    )
++    return result
++
++
++def console_probe(path: Path) -> dict[str, str]:
++    result = unavailable_console()
++    try:
++        mode = path.stat().st_mode
++        if not stat.S_ISSOCK(mode):
++            return result
++        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
++            client.settimeout(2.0)
++            client.connect(os.fspath(path))
++            client.sendall(CONSOLE_COMMAND)
++            chunks: list[bytes] = []
++            size = 0
++            while size < MAX_CONSOLE_BYTES:
++                try:
++                    chunk = client.recv(min(4096, MAX_CONSOLE_BYTES - size))
++                except TimeoutError:
++                    break
++                if not chunk:
++                    break
++                chunks.append(chunk)
++                size += len(chunk)
++                if re.search(rb"(?m)^pidroid_diag_end\r?$", b"".join(chunks)):
++                    break
++    except (OSError, TimeoutError):
++        return result
++
++    text = b"".join(chunks).decode("utf-8", "replace")
++    begin = re.search(r"(?m)^pidroid_diag_begin\r?$", text)
++    end = re.search(r"(?m)^pidroid_diag_end\r?$", text)
++    if not begin or not end or end.start() <= begin.end():
++        return result
++    body = text[begin.end() : end.start()]
++
++    def field(name: str) -> str | None:
++        match = re.search(rf"(?m)^pidroid_diag_{re.escape(name)}=([^\r\n]*)\r?$", body)
++        return match.group(1) if match else None
++
++    result.update(
++        guest_console="available",
++        guest_boot_completed=normalize_boot_completed(field("boot_completed")),
++        guest_adbd_state=normalize_service_state(field("adbd_state")),
++        guest_zygote_state=normalize_service_state(field("zygote_state")),
++        guest_abi=normalize_abi(field("abi")),
++        guest_uptime_seconds=normalize_uptime(field("uptime_seconds")),
++    )
++    return result
++
++
++def classify(
++    *,
++    adb_state: str,
++    expected_fingerprint: str,
++    observed_fingerprints: list[str],
++    console: dict[str, str],
++    text: str,
++    activity_manager_missing_events: int,
++) -> str:
++    fingerprint_match = expected_fingerprint in observed_fingerprints
++    if observed_fingerprints and not fingerprint_match:
++        return "adbd_auth_key_mismatch"
++    if adb_state == "unauthorized":
++        return "adbd_auth_rejected"
++    if adb_state == "device":
++        if console["guest_boot_completed"] == "1":
++            return "ready"
++        if activity_manager_missing_events >= 3:
++            return "guest_framework_boot_stalled"
++        if console["guest_console"] == "available":
++            return "guest_boot_incomplete"
++        return "device_ready_boot_indeterminate"
++    if console["guest_console"] == "available":
++        if console["guest_boot_completed"] == "1" and console["guest_adbd_state"] == "running":
++            return "adbd_transport_handshake_stalled" if fingerprint_match else "adbd_auth_indeterminate"
++        return "guest_boot_incomplete"
++    if re.search(r"Kernel panic|kernel panic|watchdog.*(?:lockup|BUG)|EXT4-fs error|I/O error", text, re.I):
++        return "guest_kernel_failure"
++    if "Linux version" in text or "Run /init" in text:
++        return "guest_userspace_stalled"
++    return "guest_boot_indeterminate"
++
++
++def main() -> int:
++    args = parse_args()
++    expected = args.expected_public_key_fingerprint
++    if not SHA256_FINGERPRINT.fullmatch(expected):
++        raise SystemExit("invalid expected public-key fingerprint")
++
++    source = Path(args.emulator_log)
++    destination = Path(args.output)
++    if not source.is_file() or source.is_symlink():
++        raise SystemExit("emulator log must be a regular file")
++    if destination.exists() or destination.is_symlink():
++        raise SystemExit("output must not already exist")
++    destination.parent.mkdir(parents=True, exist_ok=True)
++
++    text, source_bytes, input_truncated = bounded_log(source)
++    console_source_bytes = 0
++    console_input_truncated = False
++    if args.console_log:
++        console_log = Path(args.console_log)
++        if console_log.is_symlink() or not console_log.is_file():
++            raise SystemExit("console log must be a regular file")
++        console_text, console_source_bytes, console_input_truncated = bounded_log(console_log)
++        text = text + "\n" + console_text
++    fingerprints = public_key_fingerprints(text)
++    retained_lines = sanitized_log_lines(text)
++    console = (
++        console_state(Path(args.console_state))
++        if args.console_state
++        else console_probe(Path(args.console_socket))
++    )
++    activity_manager_missing_events = min(
++        999,
++        len(re.findall(r"Could not find ['\"]aidl/activity['\"]", text)),
++    )
++    classification = classify(
++        adb_state=args.adb_state,
++        expected_fingerprint=expected,
++        observed_fingerprints=fingerprints,
++        console=console,
++        text=text,
++        activity_manager_missing_events=activity_manager_missing_events,
++    )
++    fingerprint_match = expected in fingerprints
++    transport_connected = args.connect_state in {"connected", "already_connected"}
++    observed = fingerprints[0] if len(fingerprints) == 1 else ("multiple" if fingerprints else "unavailable")
++
++    fields = [
++        "schema_version=1",
++        f"classification={classification}",
++        f"connect_state={args.connect_state}",
++        f"adb_state={args.adb_state}",
++        f"transport_connected={str(transport_connected).lower()}",
++        f"expected_public_key_fingerprint={expected}",
++        f"emulator_public_key_fingerprint={observed}",
++        f"public_key_fingerprint_match={str(fingerprint_match).lower()}",
++        f"activity_manager_missing_events={activity_manager_missing_events}",
++        *[f"{key}={value}" for key, value in console.items()],
++        f"source_log_bytes={source_bytes}",
++        f"source_log_truncated={str(input_truncated).lower()}",
++        f"console_log_bytes={console_source_bytes}",
++        f"console_log_truncated={str(console_input_truncated).lower()}",
++        f"retained_log_lines={len(retained_lines)}",
++        "sanitized_emulator_log_begin",
++        *retained_lines,
++        "sanitized_emulator_log_end",
++    ]
++    payload = "\n".join(fields) + "\n"
++    if any(marker in payload for marker in PRIVATE_KEY_MARKERS):
++        raise SystemExit("private-key marker reached retained evidence")
++    destination.write_text(payload, encoding="utf-8")
++    destination.chmod(0o600)
++    return 0
++
++
++if __name__ == "__main__":
++    raise SystemExit(main())
+diff --git a/test/android-emulator-readiness-diagnostic.test.mjs b/test/android-emulator-readiness-diagnostic.test.mjs
+new file mode 100644
+index 0000000..3542231
+--- /dev/null
++++ b/test/android-emulator-readiness-diagnostic.test.mjs
+@@ -0,0 +1,271 @@
++import assert from "node:assert/strict";
++import { execFileSync } from "node:child_process";
++import { readFile } from "node:fs/promises";
++import { fileURLToPath } from "node:url";
++import path from "node:path";
++import test from "node:test";
++
++const root = fileURLToPath(new URL("../", import.meta.url));
++
++async function source(relative) {
++  return readFile(path.join(root, relative), "utf8");
++}
++
++test("readiness evidence discriminates offline transport without retaining key bytes", () => {
++  const classifier = path.join(root, "android/build-logic/emulator-readiness-evidence.py");
++  const output = execFileSync("python3", ["-c", String.raw`
++import hashlib
++import importlib.util
++import pathlib
++import socket
++import sys
++import tempfile
++import threading
++
++classifier_path = pathlib.Path(sys.argv[1])
++spec = importlib.util.spec_from_file_location("emulator_readiness_evidence", classifier_path)
++classifier = importlib.util.module_from_spec(spec)
++spec.loader.exec_module(classifier)
++
++public_payload = "cHVibGljLWZpeHR1cmUta2V5"
++expected = "sha256:" + hashlib.sha256(public_payload.encode()).hexdigest()
++mismatch = "sha256:" + hashlib.sha256(b"different-public-key").hexdigest()
++private_marker = "SENSITIVE_PRIVATE_KEY_BYTES_MUST_NOT_SURVIVE"
++
++with tempfile.TemporaryDirectory() as temporary:
++    root = pathlib.Path(temporary)
++    emulator_log = root / "emulator.log"
++    emulator_log.write_text(
++        "INFO | Sending adb public key [" + public_payload + " fixture@host]\n"
++        "[    0.000000] Linux version fixture\n"
++        "[    1.000000] init: starting service 'adbd' " + private_marker + "\n"
++    )
++
++    def run_case(name, expected_fingerprint, reply, *, adb_state="offline", extra_log=""):
++        case_log = root / f"{name}.log"
++        case_log.write_text(emulator_log.read_text() + extra_log)
++        socket_path = root / f"{name}.sock"
++        thread = None
++        if reply is not None:
++            server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
++            server.bind(str(socket_path))
++            server.listen(1)
++            def serve():
++                try:
++                    connection, _ = server.accept()
++                    with connection:
++                        connection.recv(65536)
++                        connection.sendall(reply.encode())
++                finally:
++                    server.close()
++            thread = threading.Thread(target=serve, daemon=True)
++            thread.start()
++        destination = root / f"{name}.evidence"
++        original_argv = sys.argv
++        try:
++            sys.argv = [
++                str(classifier_path),
++                "--emulator-log", str(case_log),
++                "--console-socket", str(socket_path),
++                "--output", str(destination),
++                "--expected-public-key-fingerprint", expected_fingerprint,
++                "--connect-state", "already_connected",
++                "--adb-state", adb_state,
++            ]
++            assert classifier.main() == 0
++        finally:
++            sys.argv = original_argv
++        if thread is not None:
++            thread.join(timeout=2)
++            assert not thread.is_alive()
++        retained = destination.read_text()
++        assert len(retained.encode()) < 160_000
++        assert public_payload not in retained
++        assert private_marker not in retained
++        assert "fixture@host" not in retained
++        assert "private_adb" not in retained.lower()
++        return retained
++
++    ready_console = """
++root:/ # echo pidroid_diag_begin; echo commands
++pidroid_diag_begin
++pidroid_diag_boot_completed=1
++pidroid_diag_adbd_state=running
++pidroid_diag_zygote_state=running
++pidroid_diag_abi=x86_64
++pidroid_diag_uptime_seconds=151
++pidroid_diag_end
++"""
++    handshake = run_case("handshake", expected, ready_console)
++    assert "classification=adbd_transport_handshake_stalled\n" in handshake
++    assert "public_key_fingerprint_match=true\n" in handshake
++    assert "guest_boot_completed=1\n" in handshake
++    assert "guest_adbd_state=running\n" in handshake
++
++    auth = run_case("auth", mismatch, ready_console)
++    assert "classification=adbd_auth_key_mismatch\n" in auth
++    assert "public_key_fingerprint_match=false\n" in auth
++
++    boot_console = ready_console.replace("boot_completed=1", "boot_completed=0").replace("adbd_state=running", "adbd_state=stopped")
++    boot = run_case("boot", expected, boot_console)
++    assert "classification=guest_boot_incomplete\n" in boot
++    assert "guest_boot_completed=0\n" in boot
++    assert "guest_adbd_state=stopped\n" in boot
++
++    framework_console = ready_console.replace("boot_completed=1", "boot_completed=0")
++    framework = run_case(
++        "framework",
++        expected,
++        framework_console,
++        adb_state="device",
++        extra_log=("init: Control message: Could not find 'aidl/activity' for ctl.interface_start\n" * 3),
++    )
++    assert "classification=guest_framework_boot_stalled\n" in framework
++    assert "activity_manager_missing_events=3\n" in framework
++
++    panic = run_case("panic", expected, None, extra_log="[  42.0] Kernel panic - not syncing: fixture\n")
++    assert "classification=guest_kernel_failure\n" in panic
++    assert "guest_console=unavailable\n" in panic
++
++print("fixture=ok transport_connected_offline=classified private_key_bytes=absent bounded=true")
++`, classifier], {
++    encoding: "utf8",
++    env: { ...process.env, PYTHONDONTWRITEBYTECODE: "1" },
++  });
++  assert.match(output, /fixture=ok transport_connected_offline=classified private_key_bytes=absent bounded=true/);
++});
++
++test("pre-boot console recorder retains kernel progress and only fixed-enum state", () => {
++  const recorder = path.join(root, "android/build-logic/emulator-guest-console-recorder.py");
++  const classifier = path.join(root, "android/build-logic/emulator-readiness-evidence.py");
++  const output = execFileSync("python3", ["-c", String.raw`
++import hashlib
++import pathlib
++import socket
++import subprocess
++import sys
++import tempfile
++import time
++
++recorder, classifier = map(pathlib.Path, sys.argv[1:])
++public_payload = "cmVjb3JkZXItcHVibGljLWtleQ=="
++expected = "sha256:" + hashlib.sha256(public_payload.encode()).hexdigest()
++private_marker = "SENSITIVE_PRIVATE_KEY_BYTES_MUST_NOT_SURVIVE"
++with tempfile.TemporaryDirectory() as temporary:
++    root = pathlib.Path(temporary)
++    console_socket = root / "console.sock"
++    raw_console = root / "console.log"
++    state = root / "console.state"
++    emulator_log = root / "emulator.log"
++    evidence = root / "evidence.log"
++    server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
++    server.bind(str(console_socket))
++    server.listen(1)
++    process = subprocess.Popen([
++        sys.executable, str(recorder),
++        "--console-socket", str(console_socket),
++        "--raw-log", str(raw_console),
++        "--state", str(state),
++    ])
++    connection, _ = server.accept()
++    with connection:
++        connection.sendall((
++            "[    0.000000] Linux version fixture\n"
++            "[    1.000000] Run /init as init process\n"
++            "[    2.000000] init: starting service 'adbd' " + private_marker + "\n"
++        ).encode())
++        command = connection.recv(65536)
++        assert b"getprop sys.boot_completed" in command
++        connection.sendall(b"""
++pidroid_diag_begin
++pidroid_diag_boot_completed=1
++pidroid_diag_adbd_state=running
++pidroid_diag_zygote_state=running
++pidroid_diag_abi=x86_64
++pidroid_diag_uptime_seconds=147
++pidroid_diag_end
++""")
++        deadline = time.monotonic() + 3
++        while time.monotonic() < deadline:
++            if state.exists() and "guest_boot_completed=1\n" in state.read_text():
++                break
++            time.sleep(0.02)
++        else:
++            raise AssertionError("recorder did not publish boot-complete state")
++    server.close()
++    assert process.wait(timeout=3) == 0
++    state_text = state.read_text()
++    assert "guest_console=available\n" in state_text
++    assert "guest_adbd_state=running\n" in state_text
++    assert "guest_abi=x86_64\n" in state_text
++    assert "kernel_started=true\n" in state_text
++    assert "init_started=true\n" in state_text
++    emulator_log.write_text("INFO | Sending adb public key [" + public_payload + " fixture@host]\n")
++    subprocess.check_call([
++        sys.executable, str(classifier),
++        "--emulator-log", str(emulator_log),
++        "--console-state", str(state),
++        "--console-log", str(raw_console),
++        "--output", str(evidence),
++        "--expected-public-key-fingerprint", expected,
++        "--connect-state", "already_connected",
++        "--adb-state", "offline",
++    ])
++    retained = evidence.read_text()
++    assert "classification=adbd_transport_handshake_stalled\n" in retained
++    assert "guest_boot_completed=1\n" in retained
++    assert "Linux version fixture" in retained
++    assert "Run /init as init process" in retained
++    assert public_payload not in retained
++    assert private_marker not in retained
++print("recorder=ok preboot_kernel=retained fixed_state=ok private_key_bytes=absent")
++`, recorder, classifier], {
++    encoding: "utf8",
++    env: { ...process.env, PYTHONDONTWRITEBYTECODE: "1" },
++  });
++  assert.match(output, /recorder=ok preboot_kernel=retained fixed_state=ok private_key_bytes=absent/);
++});
++
++test("diagnostic runner is bounded, isolated, app-free, and uses delayed ADB", async () => {
++  const [runner, interactive, readonly, readiness] = await Promise.all([
++    source("android/build-logic/emulator-readiness-diagnostic.sh"),
++    source("android/build-logic/live-interactive-proof.sh"),
++    source("android/build-logic/live-readonly-proof.sh"),
++    source("android/build-logic/emulator-adb-readiness.sh"),
++  ]);
++
++  assert.match(runner, /deadline_seconds=240/);
++  assert.match(runner, /deadline_seconds < 30 \|\| deadline_seconds > 240/);
++  assert.match(runner, /start_isolated_adb_server/);
++  assert.match(runner, /wait_for_emulator_adb/);
++  assert.match(runner, /-delay-adb -show-kernel/);
++  assert.match(runner, /emulator-guest-console-recorder\.py/);
++  assert.match(runner, /-shell-serial "unix:\$emulator_guest_console_socket,server"/);
++  assert.doesNotMatch(runner, /emulator_guest_console_socket,server,nowait/);
++  assert.match(runner, /capture_emulator_readiness_evidence/);
++  assert.match(runner, /readiness_deadline_seconds=\$\(\(readiness_started_seconds \+ deadline_seconds\)\)/);
++  assert.match(runner, /while \(\( SECONDS < readiness_deadline_seconds \)\); do/);
++  assert.match(runner, /boot_completed.*!= '1'/s);
++  assert.match(runner, /device_abi.*!= 'x86_64'/s);
++  assert.match(runner, /privateAdbKeyRetained": false/);
++  assert.match(runner, /piServiceAccessed": false/);
++  assert.match(runner, /piDroidBuiltOrInstalled": false/);
++  assert.match(runner, /finalize_diagnostic/);
++  assert.match(runner, /owned_processes=%s/);
++  assert.match(runner, /owned_ports=%s/);
++  assert.doesNotMatch(runner, /npm\s|gradlew|assemble|install -r|service-bearer|token-file|pi-droid-disposable-daemon|shell am start/);
++
++  for (const harness of [interactive, readonly]) {
++    assert.match(harness, /-delay-adb -show-kernel/);
++    assert.match(harness, /emulator-guest-console-recorder\.py/);
++    assert.match(harness, /-shell-serial "unix:\$emulator_guest_console_socket,server"/);
++    assert.doesNotMatch(harness, /emulator_guest_console_socket,server,nowait/);
++    assert.match(harness, /capture_emulator_readiness_evidence/);
++    assert.match(harness, /emulator-readiness-evidence\.log/);
++    assert.match(harness, /wait_for_emulator_adb\s+\\\n\s+"\$emulator_pid" "\$emulator_device_serial" "\$adb_server_port" "\$emulator_diagnostics" 240/);
++    assert.doesNotMatch(harness, /adb\s+(?:kill-server|reconnect)\b/);
++  }
++  assert.match(readiness, /emulator_adb_last_connect_state/);
++  assert.match(readiness, /emulator_adb_last_state/);
++  assert.match(readiness, /--expected-public-key-fingerprint/);
++});

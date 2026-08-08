@@ -1,0 +1,3 @@
+owned_processes=clean
+owned_ports=closed
+private_adb_key_retained=false

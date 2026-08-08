@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "bead": "bd-032326",
+  "agent": "53a2192c55be20a1",
+  "node": "ms-dev-4",
+  "status": "terminal_environment_failure",
+  "rerunAuthorized": false,
+  "diagnosticInvocation": 2,
+  "diagnosticInvocationLimit": 2,
+  "sourceBaseRevision": "58e2774164066dba2f911ef7afe42998f0131830",
+  "physicalProofInvoked": false,
+  "piServiceAccessed": false,
+  "piDroidBuiltOrInstalled": false,
+  "playMutation": false,
+  "result": {
+    "classification": "guest_framework_boot_stalled",
+    "adbState": "device",
+    "adbReadyElapsedSeconds": 183,
+    "bootCompleted": "unset_at_240_second_total_deadline",
+    "deviceAbi": "x86_64",
+    "adbdState": "running",
+    "zygoteState": "running",
+    "guestUptimeSeconds": 231,
+    "publicKeyFingerprintMatch": true,
+    "activityManagerMissingEventsRetained": 51
+  },
+  "secrecy": {
+    "privateAdbKeyRetained": false,
+    "privateKeyPemMarkers": 0,
+    "rawConsoleRetained": false,
+    "rawEmulatorLogRetained": false
+  },
+  "cleanup": {
+    "ownedProcesses": "clean",
+    "ownedPorts": "closed"
+  },
+  "priorDiagnosticPreserved": "/home/harryaskham/.cacophony/agents/pi-daemon/53a2192c55be20a1/artifacts/bd-032326-diagnostic-20260808T025806Z",
+  "disposition": "seal_and_route_without_rerun"
+}

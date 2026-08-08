@@ -1,0 +1,7 @@
+6442bc26a7c562f5afe6467dab36365c709909f6a81afcecfc0c25cff0f1bab0  ./exit-status
+6122bfd160c39f4cf60c453ada79a1ffd035978e58da5a8a5b746a5f0bfbbb22  ./invocation.receipt
+803b37856e6df6f25dd634a1329f581099e5d64e6bdf59eade38a225139787d5  ./run/cleanup.log
+45d58d52a4bc66ed3a0bd90b6f1ac18f56debe6459ac96a8cf1252dd5d579a49  ./run/emulator-diagnostics.log
+e8ac0ea2576cbcfadade8231e5a75206a0bd643e75c06801afa211578facc2ed  ./run/emulator-readiness-evidence.log
+659b5ea40d24fa037d523a50fd2a5e2b119c9d6dbee833fb221c6cbfdf4a1831  ./run/emulator-readiness-receipt.json
+ce1853a128f5d52ac1572665c3f28fa770586c1992e907bf998124357d6cfb42  ./terminal-summary.json

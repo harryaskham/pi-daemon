@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "status": "failed",
+  "classification": "post_readiness_identity_mismatch",
+  "deadlineSeconds": 240,
+  "adbState": "device",
+  "bootCompleted": "",
+  "deviceAbi": "x86_64",
+  "expectedAbi": "x86_64",
+  "adbServerIsolated": true,
+  "adbPublicKeyPayloadSha256": "sha256:1a9a36d443dad0d2632558f5cfa169c8f912bfeef8bdcfd5cec123e452295375",
+  "delayedAdbUntilBootComplete": true,
+  "piServiceAccessed": false,
+  "piDroidBuiltOrInstalled": false,
+  "privateAdbKeyRetained": false,
+  "ownedProcessesAfterCleanup": "clean",
+  "ownedPortsAfterCleanup": "closed"
+}
