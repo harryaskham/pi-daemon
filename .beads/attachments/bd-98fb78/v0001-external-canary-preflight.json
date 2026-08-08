@@ -1,0 +1,22 @@
+{
+  "apiUrl": "http://100.92.92.73:7466",
+  "capabilities": true,
+  "hostInstanceIdSha256": "sha256:28f562c00d5ed9f6f2c2ae17e71e74ccc85427421934e87c616fffdfa880fea8",
+  "hostReady": true,
+  "information": true,
+  "inventory": true,
+  "inventoryCount": 1,
+  "methods": [
+    "GET"
+  ],
+  "network": {
+    "host": "100.92.92.73",
+    "port": 7466,
+    "scheme": "http"
+  },
+  "observerAttachAllowed": false,
+  "schemaVersion": 1,
+  "selectedInventoryIdSha256": "sha256:96e61aea4aebe5d55e0ac593e4f14adf083f89d83ce6efd0fc951c1d041185a6",
+  "status": "verified",
+  "transcript": true
+}

@@ -1,0 +1,10 @@
+e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  ./emulator-diagnostics.log
+380f2005a4ec4b6914a8deaa1845db99979f6034d1c0e7d215e071988161e402  ./external-canary-app-data-scan.log
+6696d104b4d0cf714a95ecb67fdfe041a97d870b6fa0f08fcf6d4864ae49a1f0  ./external-canary-cleanup.log
+d0c59fd5622a1d15787989d4ef77abdb366133765672c91bcca8aa93b58fb1bf  ./external-canary-evidence-scan.log
+822c7414a705f0a8b67b4b51da86d3127a1811be320bd1adc26d1760039405ca  ./external-canary-preflight.json
+2885c38faafd376642722b456610a800c0d6a12b236e9d1676dfa39d34fa2a48  ./system-ui-health.log
+03380548bfbfb313cde2f8220e12f96991cd6fcee1f1965cf18d3bcc8a8bb60f  ./terminal-evidence-scan.log
+8f6de5adefee07ba5dae9c58cdb71915e7f6e851a0cb6df2a0b71412fc397aef  ./terminal-final-evidence-scan.log
+d9380293fa6ad2a2a9755ee7cd429bd99ad65a219b428b94750e5307a0ea567d  ./terminal-receipt.json
+17f00c402febe3b2631c91b9a7fc75cfd80f9255b268a73677afb5a1d4d78fe0  ./terminal-receipt.sha256
