@@ -527,6 +527,9 @@ process appears per wake.
 - [x] `bd-50aa48` Return identity-matched, bounded unavailable transcript resources
   for retained quarantined or source-less sessions, preserve safe recovery and
   freshness truth, and prevent browser, SDK, Pi Droid, or canary observer attach.
+- [x] `bd-4e6f17` Accept a present JSON boolean false observer eligibility in the
+  external-canary harness, reject missing and wrong-type values, and continue the
+  readonly proof through the explicit observer-not-requested path.
 - [x] `bd-61ac6b` Preserve a bounded owner-private incomplete occurrence when
   app-failure modal evidence capture fails, naming only the fixed failed predicate,
   safe identity class/hash, and retained-component hashes while discarding unsafe

@@ -15,9 +15,13 @@ async function source(relative) {
   return readFile(path.join(root, relative), "utf8");
 }
 
-function runProcess(command, args, { input } = {}) {
+function runProcess(command, args, { input, env } = {}) {
   return new Promise((resolve, reject) => {
-    const child = spawn(command, args, { cwd: root, stdio: ["pipe", "pipe", "pipe"] });
+    const child = spawn(command, args, {
+      cwd: root,
+      env: env === undefined ? process.env : { ...process.env, ...env },
+      stdio: ["pipe", "pipe", "pipe"],
+    });
     const stdout = [];
     const stderr = [];
     child.stdout.on("data", (chunk) => stdout.push(chunk));
@@ -35,6 +39,14 @@ function runProcess(command, args, { input } = {}) {
     });
     child.stdin.end(input);
   });
+}
+
+async function resolveBash() {
+  if (process.env.BASH && path.isAbsolute(process.env.BASH)) return process.env.BASH;
+  const result = await runProcess("bash", ["-c", 'printf %s "$BASH"']);
+  const bash = result.stdout.trim();
+  assert.ok(path.isAbsolute(bash), "resolved Bash must be an absolute path for a shebang");
+  return bash;
 }
 
 async function privateDirectory(parent, name) {
@@ -132,6 +144,7 @@ async function withFixtureServer(expectedToken, block) {
 test("external canary surface is debug-only, content-free, fenced, and mutation-free", async () => {
   const [
     harness,
+    receiptParser,
     preflight,
     scanner,
     activity,
@@ -142,6 +155,7 @@ test("external canary surface is debug-only, content-free, fenced, and mutation-
     mainManifest,
   ] = await Promise.all([
     source("android/build-logic/external-canary-proof.sh"),
+    source("android/build-logic/external-canary-receipt.sh"),
     source("android/build-logic/external-canary-preflight.py"),
     source("android/build-logic/external-canary-secret-scan.py"),
     source("android/app/src/main/kotlin/com/harryaskham/pidroid/MainActivity.kt"),
@@ -155,6 +169,12 @@ test("external canary surface is debug-only, content-free, fenced, and mutation-
   assert.match(harness, /--api-url URL --token-file FILE --artifacts DIR/);
   assert.match(harness, /--allow-insecure-http/);
   assert.match(harness, /external-canary-preflight\.py/);
+  assert.match(harness, /external-canary-receipt\.sh/);
+  assert.doesNotMatch(harness, /\bjq\b/);
+  assert.doesNotMatch(receiptParser, /\bjq\b/);
+  assert.match(receiptParser, /EXTERNAL_CANARY_PYTHON_BIN:-python3/);
+  assert.match(receiptParser, /type\(observer_attach_allowed\) is not bool/);
+  assert.match(harness, /case "\$observer_attach_allowed" in[\s\S]*true\)[\s\S]*OBSERVER · ATTACHED TO IDLE SESSION[\s\S]*false\)[\s\S]*OBSERVER · NOT REQUESTED/);
   assert.match(harness, /run-as "\$package_name" sh -c[\s\S]*cat > no_backup\/external-canary-import\.json/);
   assert.match(harness, /< "\$staging_file" > \/dev\/null/);
   assert.doesNotMatch(harness, /am start[^\n]*-d|pidroid:\/\/pair\/v1\/|cat "\$token_file"/);
@@ -186,6 +206,42 @@ test("external canary surface is debug-only, content-free, fenced, and mutation-
   assert.doesNotMatch(mainManifest, /ALLOW_EXTERNAL_CANARY_IMPORT/);
   assert.match(mainManifest, /android:allowBackup="false"/);
   assert.match(mainManifest, /android:fullBackupContent="false"/);
+});
+
+test("external canary receipt parser accepts only present JSON booleans", async (t) => {
+  const sandbox = await mkdtemp(path.join(tmpdir(), "pi-droid-external-receipt-test-"));
+  t.after(() => rm(sandbox, { recursive: true, force: true }));
+  await chmod(sandbox, 0o700);
+  const parser = path.join(root, "android/build-logic/external-canary-receipt.sh");
+  const fixtures = JSON.parse(await source("test/fixtures/android-external-canary-observer-eligibility.json"));
+  const expectedError = "external canary preflight receipt observerAttachAllowed must be a JSON boolean\n";
+
+  for (const fixture of fixtures.cases) {
+    const receiptFile = path.join(sandbox, `${fixture.name}.json`);
+    await writeFile(receiptFile, `${JSON.stringify(fixture.receipt)}\n`, { mode: 0o600 });
+    const invocation = [
+      "-c",
+      'source "$1"; parse_external_canary_observer_attach_allowed "$2"',
+      "external-canary-receipt-test",
+      parser,
+      receiptFile,
+    ];
+    if (fixture.expected !== undefined) {
+      const result = await runProcess("bash", invocation);
+      assert.equal(result.stdout, `${fixture.expected}\n`, fixture.name);
+      assert.equal(result.stderr, "", fixture.name);
+    } else {
+      await assert.rejects(
+        runProcess("bash", invocation),
+        (error) => {
+          assert.equal(error.code, fixture.expectedExit, fixture.name);
+          assert.equal(error.stdout, "", fixture.name);
+          assert.equal(error.stderr, expectedError, fixture.name);
+          return true;
+        },
+      );
+    }
+  }
 });
 
 test("preflight uses only bounded authenticated GETs and emits a content-free fenced import", async (t) => {
@@ -286,6 +342,55 @@ test("preflight uses only bounded authenticated GETs and emits a content-free fe
       },
     );
   });
+});
+
+test("false observer eligibility reaches the next bounded harness phase", async (t) => {
+  const sandbox = await mkdtemp(path.join(tmpdir(), "pi-droid-external-false-path-test-"));
+  t.after(() => rm(sandbox, { recursive: true, force: true }));
+  await chmod(sandbox, 0o700);
+  const tokenFile = path.join(sandbox, "api-token");
+  const artifacts = path.join(sandbox, "artifacts");
+  const fakeBin = await privateDirectory(sandbox, "bin");
+  const fakeNpm = path.join(fakeBin, "npm");
+  const bash = await resolveBash();
+  await writePrivateToken(tokenFile, `${fixtureToken}\n`);
+  await writeFile(fakeNpm, `#!${bash}\nprintf '%s\\n' 'phase=node-build boundary=entered'\nexit 23\n`, { mode: 0o700 });
+  await chmod(fakeNpm, 0o700);
+
+  await withFixtureServer(fixtureToken, async ({ origin, requests, setTranscriptUnavailable }) => {
+    setTranscriptUnavailable(true);
+    await assert.rejects(
+      runProcess("bash", [
+        path.join(root, "android/build-logic/external-canary-proof.sh"),
+        "--api-url", origin,
+        "--token-file", tokenFile,
+        "--artifacts", artifacts,
+        "--allow-insecure-http",
+      ], { env: { PATH: `${fakeBin}:${process.env.PATH ?? ""}` } }),
+      (error) => {
+        assert.equal(error.code, 23);
+        assert.equal(error.stdout, "");
+        assert.equal(error.stderr, "");
+        return true;
+      },
+    );
+    assert.equal(requests.length, 4);
+    assert.deepEqual(requests.map(({ method }) => method), ["GET", "GET", "GET", "GET"]);
+    assert.ok(requests.every(({ authorization }) => authorization === `Bearer ${fixtureToken}`));
+  });
+
+  const receipt = JSON.parse(await readFile(path.join(artifacts, "external-canary-preflight.json"), "utf8"));
+  const nodeBuild = await readFile(path.join(artifacts, "node-build.log"), "utf8");
+  const evidenceScan = await readFile(path.join(artifacts, "external-canary-evidence-scan.log"), "utf8");
+  const appScan = await readFile(path.join(artifacts, "external-canary-app-data-scan.log"), "utf8");
+  const cleanup = await readFile(path.join(artifacts, "external-canary-cleanup.log"), "utf8");
+  assert.equal(receipt.observerAttachAllowed, false);
+  assert.equal(nodeBuild, "phase=node-build boundary=entered\n");
+  assert.match(evidenceScan, /^status=clean scan=retained_artifacts /);
+  assert.match(appScan, /^status=not_installed scan=app_private_stream /);
+  assert.equal(cleanup, "status=clean residual_processes=0 residual_ports=0 adb_server=stopped emulator=stopped\n");
+  assert.doesNotMatch(`${nodeBuild}${evidenceScan}${appScan}${cleanup}`, new RegExp(fixtureToken));
+  await assert.rejects(stat(path.join(artifacts, "android-build.log")), { code: "ENOENT" });
 });
 
 test("external canary token readers share the canonical bounded Bearer contract", async (t) => {

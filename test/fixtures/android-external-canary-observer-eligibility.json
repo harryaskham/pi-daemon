@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "cases": [
+    {
+      "name": "true",
+      "receipt": { "observerAttachAllowed": true },
+      "expected": "true"
+    },
+    {
+      "name": "false",
+      "receipt": { "observerAttachAllowed": false },
+      "expected": "false"
+    },
+    {
+      "name": "missing",
+      "receipt": {},
+      "expectedExit": 70
+    },
+    {
+      "name": "null",
+      "receipt": { "observerAttachAllowed": null },
+      "expectedExit": 70
+    },
+    {
+      "name": "string",
+      "receipt": { "observerAttachAllowed": "false" },
+      "expectedExit": 70
+    },
+    {
+      "name": "number",
+      "receipt": { "observerAttachAllowed": 0 },
+      "expectedExit": 70
+    },
+    {
+      "name": "object",
+      "receipt": { "observerAttachAllowed": {} },
+      "expectedExit": 70
+    },
+    {
+      "name": "array",
+      "receipt": { "observerAttachAllowed": [] },
+      "expectedExit": 70
+    }
+  ]
+}

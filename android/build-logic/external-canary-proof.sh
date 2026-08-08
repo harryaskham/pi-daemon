@@ -6,6 +6,7 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "$repo_root/android/build-logic/emulator-adb-readiness.sh"
 source "$repo_root/android/build-logic/emulator-avd-boot-profile.sh"
 source "$repo_root/android/build-logic/emulator-ui-health.sh"
+source "$repo_root/android/build-logic/external-canary-receipt.sh"
 source "$repo_root/android/build-logic/isolated-adb-server.sh"
 source "$repo_root/android/build-logic/physical-proof-lifecycle.sh"
 
@@ -231,12 +232,14 @@ if [[ "$allow_insecure_http" == 'true' ]]; then
   preflight_arguments+=(--allow-insecure-http)
 fi
 python3 "$repo_root/android/build-logic/external-canary-preflight.py" "${preflight_arguments[@]}"
-network_host="$(jq -er '.network.host' "$artifacts_dir/external-canary-preflight.json")"
-network_port="$(jq -er '.network.port' "$artifacts_dir/external-canary-preflight.json")"
-network_scheme="$(jq -er '.network.scheme' "$artifacts_dir/external-canary-preflight.json")"
-observer_attach_allowed="$(jq -er '.observerAttachAllowed' "$artifacts_dir/external-canary-preflight.json")"
+preflight_network="$(parse_external_canary_network "$artifacts_dir/external-canary-preflight.json")"
+mapfile -t preflight_network_fields <<< "$preflight_network"
+(( ${#preflight_network_fields[@]} == 3 )) || exit 70
+network_host="${preflight_network_fields[0]}"
+network_port="${preflight_network_fields[1]}"
+network_scheme="${preflight_network_fields[2]}"
+observer_attach_allowed="$(parse_external_canary_observer_attach_allowed "$artifacts_dir/external-canary-preflight.json")"
 [[ "$network_port" =~ ^[0-9]+$ && "$network_port" -ge 1 && "$network_port" -le 65535 ]] || exit 70
-[[ "$observer_attach_allowed" == 'true' || "$observer_attach_allowed" == 'false' ]] || exit 70
 
 cd "$repo_root"
 npm run build:src > "$artifacts_dir/node-build.log" 2>&1
@@ -380,11 +383,17 @@ wait_ui() {
 }
 wait_ui 'EXTERNAL CANARY · READONLY' 30
 wait_ui 'READONLY HYDRATION · VERIFIED' 90
-if [[ "$observer_attach_allowed" == 'true' ]]; then
-  wait_ui 'OBSERVER · ATTACHED TO IDLE SESSION' 30
-else
-  wait_ui 'OBSERVER · NOT REQUESTED' 30
-fi
+case "$observer_attach_allowed" in
+  true)
+    wait_ui 'OBSERVER · ATTACHED TO IDLE SESSION' 30
+    ;;
+  false)
+    wait_ui 'OBSERVER · NOT REQUESTED' 30
+    ;;
+  *)
+    exit 70
+    ;;
+esac
 if ! "${isolated_adb_command[@]}" -s "$emulator_device_serial" exec-out \
   run-as "$package_name" test ! -e no_backup/external-canary-import.json; then
   printf '%s\n' 'external canary one-shot staging file was not consumed' >&2
