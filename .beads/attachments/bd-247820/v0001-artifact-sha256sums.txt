@@ -1,0 +1,7 @@
+e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  ./emulator-diagnostics.log
+380f2005a4ec4b6914a8deaa1845db99979f6034d1c0e7d215e071988161e402  ./external-canary-app-data-scan.log
+6696d104b4d0cf714a95ecb67fdfe041a97d870b6fa0f08fcf6d4864ae49a1f0  ./external-canary-cleanup.log
+157399d40a432bf3b1fcd570208d6730afe1965a3dc2afe63f492b532111ff66  ./external-canary-evidence-scan.log
+9edc8da2e3c976c371ba86e757b54f24b73142d6710c8b96b8ebad72b23206c9  ./system-ui-health.log
+610624b724f8b03cf8b9bcbc18aa966468460ab85fb724a2687352e997c1e3d6  ./terminal-receipt.json
+993202ea752966ece6861a57a6ec7d96be0dae6ba97facbac8a1ffa86f82b82d  ./terminal-receipt.sha256

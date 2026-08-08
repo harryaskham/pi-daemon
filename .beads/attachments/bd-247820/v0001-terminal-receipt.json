@@ -1,0 +1,58 @@
+{
+  "schemaVersion": 1,
+  "beadId": "bd-247820",
+  "status": "terminal_failure",
+  "failurePhase": "token_preflight",
+  "failureCode": "token_file_format_invalid",
+  "exitCode": 70,
+  "attempts": 1,
+  "rerun": false,
+  "sourceRevision": "6a1d8c3757308d6e8db11b70c78486db712c4fc0",
+  "sourceTree": "60268971c1c622221fd573010ba9d014d0f84eb7",
+  "reviewedHarness": "android/build-logic/external-canary-proof.sh",
+  "apiOrigin": "http://100.92.92.73:7466",
+  "insecureHttpExplicitlyAcknowledged": true,
+  "tokenFileMetadata": {
+    "regular": true,
+    "ownerUidMatched": true,
+    "mode": "0600",
+    "fileBytes": 44
+  },
+  "formatFinding": {
+    "daemonGeneratedFormat": "32 random bytes encoded as 43 base64url characters plus one newline",
+    "harnessRequiredFormat": "64 lowercase hexadecimal characters plus optional line ending",
+    "sourceAnchor": "src/api-auth.ts:59-76",
+    "followUpBead": "bd-3804d2"
+  },
+  "execution": {
+    "authenticatedGetRequests": 0,
+    "methodsAttempted": [],
+    "nodeBuildStarted": false,
+    "androidBuildStarted": false,
+    "emulatorStarted": false,
+    "adbServerStarted": false,
+    "appInstalled": false,
+    "appLaunched": false,
+    "observerAttached": false,
+    "managedMutationRequests": 0,
+    "daemonRestarted": false,
+    "playMutation": false,
+    "sourceEdited": false
+  },
+  "secrecy": {
+    "bearerInArgv": false,
+    "bearerInEnvironment": false,
+    "bearerPrinted": false,
+    "appPrivateScan": "not_installed",
+    "retainedExactAndPatternScan": "scan_failed_token_invalid",
+    "retainedExactAndPatternScanVerified": false
+  },
+  "cleanup": {
+    "status": "clean",
+    "residualProcesses": 0,
+    "residualPorts": 0,
+    "adbServer": "stopped",
+    "emulator": "stopped"
+  },
+  "artifactDirectory": "/home/harryaskham/.cacophony/agents/pi-daemon/122b2afc1753bf33/artifacts/bd-247820-20260808T175639Z-122b2afc1753bf33"
+}
