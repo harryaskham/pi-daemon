@@ -18,12 +18,12 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
-MAX_TOKEN_BYTES = 4_096
+from external_canary_token import BearerFormatError, MAX_RAW_TOKEN_BYTES, parse_http_bearer
+
 MAX_CAPABILITIES_BYTES = 1 * 1_024 * 1_024
 MAX_DASHBOARD_BYTES = 4 * 1_024 * 1_024
 MAX_STAGING_BYTES = 24 * 1_024
 OPAQUE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$")
-TOKEN = re.compile(rb"^[0-9a-f]{64}$")
 DISPLAY_NAME = "External Pi Daemon canary"
 
 
@@ -82,16 +82,17 @@ def read_owner_token(path: Path) -> bytes:
             raise PreflightError("token_file_not_owner_regular")
         if info.st_mode & 0o077 or not info.st_mode & stat.S_IRUSR:
             raise PreflightError("token_file_not_owner_only")
-        if info.st_size < 1 or info.st_size > MAX_TOKEN_BYTES:
+        if info.st_size < 1 or info.st_size > MAX_RAW_TOKEN_BYTES:
             raise PreflightError("token_file_size_invalid")
-        token = os.read(descriptor, MAX_TOKEN_BYTES + 1).rstrip(b"\r\n")
+        raw_token = os.read(descriptor, MAX_RAW_TOKEN_BYTES + 1)
     except OSError as error:
         raise PreflightError("token_file_unavailable") from error
     finally:
         os.close(descriptor)
-    if TOKEN.fullmatch(token) is None:
-        raise PreflightError("token_file_format_invalid")
-    return token
+    try:
+        return parse_http_bearer(raw_token)
+    except BearerFormatError as error:
+        raise PreflightError("token_file_format_invalid") from error
 
 
 def read_json_response(

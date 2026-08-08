@@ -10,13 +10,14 @@ import stat
 import sys
 from pathlib import Path
 
-MAX_TOKEN_BYTES = 4_096
+from external_canary_token import BearerFormatError, MAX_RAW_TOKEN_BYTES, parse_http_bearer
+
 MAX_FILE_BYTES = 16 * 1_024 * 1_024
 MAX_ROOT_BYTES = 64 * 1_024 * 1_024
 MAX_STREAM_BYTES = 32 * 1_024 * 1_024
 EXCLUDED_FILENAMES = frozenset({"external-canary-evidence-scan.log"})
 LEAK_PATTERNS = (
-    re.compile(rb"authorization\s*[:=]\s*bearer\s+[A-Za-z0-9._~-]{8,4096}", re.IGNORECASE),
+    re.compile(rb"authorization\s*[:=]\s*bearer\s+[A-Za-z0-9._~+/=\-]{8,4096}", re.IGNORECASE),
     re.compile(rb"pidroid://pair/v1/[A-Za-z0-9_-]{16,16384}"),
     re.compile(rb'"bearer"\s*:\s*"[^"\r\n]{1,4096}"', re.IGNORECASE),
 )
@@ -36,16 +37,17 @@ def read_token(path: Path) -> bytes:
         info = os.fstat(descriptor)
         if not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid() or info.st_mode & 0o077:
             raise ScanError("token_invalid")
-        if info.st_size < 1 or info.st_size > MAX_TOKEN_BYTES:
+        if info.st_size < 1 or info.st_size > MAX_RAW_TOKEN_BYTES:
             raise ScanError("token_invalid")
-        token = os.read(descriptor, MAX_TOKEN_BYTES + 1).rstrip(b"\r\n")
+        raw_token = os.read(descriptor, MAX_RAW_TOKEN_BYTES + 1)
     except OSError as error:
         raise ScanError("token_unavailable") from error
     finally:
         os.close(descriptor)
-    if re.fullmatch(rb"[0-9a-f]{64}", token) is None:
-        raise ScanError("token_invalid")
-    return token
+    try:
+        return parse_http_bearer(raw_token)
+    except BearerFormatError as error:
+        raise ScanError("token_invalid") from error
 
 
 def leak_kind(token: bytes, data: bytes) -> str | None:
