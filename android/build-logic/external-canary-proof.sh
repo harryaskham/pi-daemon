@@ -5,6 +5,7 @@ umask 077
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "$repo_root/android/build-logic/emulator-adb-readiness.sh"
 source "$repo_root/android/build-logic/emulator-avd-boot-profile.sh"
+source "$repo_root/android/build-logic/external-canary-adb-staging.sh"
 source "$repo_root/android/build-logic/emulator-ui-health.sh"
 source "$repo_root/android/build-logic/external-canary-receipt.sh"
 source "$repo_root/android/build-logic/isolated-adb-server.sh"
@@ -161,7 +162,8 @@ run_external_canary_device_scan() {
   fi
   set +e
   set +o pipefail
-  "${isolated_adb_command[@]}" -s "$emulator_device_serial" exec-out \
+  timeout --signal=TERM --kill-after=2s 20s \
+    "${isolated_adb_command[@]}" -s "$emulator_device_serial" exec-out \
     run-as "$package_name" tar -cf - . 2> "$private_dir/app-data-tar.stderr" |
     python3 "$repo_root/android/build-logic/external-canary-secret-scan.py" \
       --token-file "$token_file" --stream > "$scan_log"
@@ -389,14 +391,10 @@ if ! wait_external_host_port; then
   exit 70
 fi
 
-"${isolated_adb_command[@]}" -s "$emulator_device_serial" exec-out \
-  run-as "$package_name" sh -c \
-  'umask 077; mkdir -p no_backup; cat > no_backup/external-canary-import.json; chmod 600 no_backup/external-canary-import.json' \
-  < "$staging_file" > /dev/null
-staged_mode_size="$("${isolated_adb_command[@]}" -s "$emulator_device_serial" exec-out \
-  run-as "$package_name" stat -c '%a:%s' no_backup/external-canary-import.json 2>/dev/null | tr -d '\r')"
-[[ "$staged_mode_size" =~ ^600:[1-9][0-9]{0,4}$ ]] || { printf '%s\n' 'external canary staging file is not bounded owner-only data' >&2; exit 70; }
-printf 'status=staged mode=600 bytes=%s transport=adb_stdin\n' "${staged_mode_size#*:}" > "$artifacts_dir/external-canary-staging.log"
+# The literal production deadline is not ambiently configurable: test fixtures
+# call the sourced helper directly with a shorter bound.
+stage_external_canary_import \
+  "$emulator_device_serial" "$package_name" "$staging_file" "$artifacts_dir" 30
 
 canary_action='com.harryaskham.pidroid.action.EXTERNAL_CANARY_IMPORT'
 if [[ "$network_scheme" == 'http' ]]; then
@@ -481,6 +479,9 @@ cat > "$artifacts_dir/external-canary-receipt.json" <<EOF
   "daemonRestarted": false,
   "bearerInArgv": false,
   "bearerInEnvironment": false,
+  "adbStagingShellV2NoPty": true,
+  "adbStagingDeadlineSeconds": 30,
+  "adbStagingExactBytesVerified": true,
   "oneShotNoBackupImportRemoved": true,
   "appPrivateExactAndPatternScan": true,
   "retainedExactAndPatternScan": true,
