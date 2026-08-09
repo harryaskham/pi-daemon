@@ -74,6 +74,31 @@ artifact tree rather than product history. An optional first-frame diagnostic is
 available through `PI_DROID_FIXTURE_DIAGNOSTICS=1`; its timing and recomposition
 count are measurements, never standard gate bounds.
 
+### Daily-driver UX proof
+
+The same module owns the app-shared adaptive daily-driver contract: phone/tablet/
+wide width policy, Nord dark/light fallback theme, status and empty/error/loading
+primitives, secure endpoint classification, session search/filter/recency, and
+Transcript/Tree/Terminal/Extensions navigation. Its synthetic showcase emits
+phone, tablet, wide, large-text, and generated contact-sheet proof only when
+requested:
+
+```console
+env -u DISPLAY \
+  PI_DROID_DAILY_DRIVER_SCREENSHOT_DIR="$PWD/.cacophony/images/bd-8e2c2a" \
+  nix develop .#android --command \
+  android/build-logic/run-with-xvfb.sh \
+  ./android/gradlew -p android --no-daemon \
+    :sdk-workspace-ui:test \
+    --tests com.harryaskham.pidroid.workspace.DailyDriverUxScreenshotArtifactTest \
+    --rerun-tasks
+```
+
+Keep these synthetic PNGs in the session/image artifact tree, not git. See
+[`../docs/pi-droid-ux.md`](../docs/pi-droid-ux.md) for the web-to-Android audit,
+adaptive/accessibility contract, endpoint warning matrix, state semantics, and
+screenshot inventory.
+
 The separate `nix develop .#androidRelease` shell pins API 36, build-tools 36,
 the minimal x86_64 AOSP `default` system image/emulator, JDK 21, bundletool,
 SOPS and ssh-to-age. The same image is exposed as
@@ -189,9 +214,10 @@ history.
 
 `sdk-core`, `sdk-testing`, `sdk-workspace-ui`, `sdk-session-ui`, and
 `sdk-android-integration` participate in the fast JVM build. `sdk-workspace-ui`
-contains local recursive workspace policy and fixture proof; `sdk-session-ui`
-contains canonical bounded lifecycle-to-Rich projection plus state-driven Rich/TUI/
-tree rendering; and `sdk-android-integration`
+contains local recursive workspace policy plus app-shared adaptive daily-driver
+primitives and fixture proof; `sdk-session-ui` contains canonical bounded
+lifecycle-to-Rich projection plus state-driven Rich/TUI/tree rendering; and
+`sdk-android-integration`
 contains pure notification/background policy plus SDK-event, foreground-service,
 and WorkManager ports. Those ports emit content-safe records and lifecycle plans;
 they do not own Android components, sockets, or commands. `app` and

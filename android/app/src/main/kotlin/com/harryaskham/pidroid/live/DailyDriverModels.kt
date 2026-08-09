@@ -28,6 +28,7 @@ public data class LiveSessionCatalogItem(
   public val managedSession: SessionKey?,
   public val state: String,
   public val unread: Boolean,
+  public val activityAt: String?,
   public val canAdopt: Boolean,
   public val adoptionReasonCode: String?,
 )
