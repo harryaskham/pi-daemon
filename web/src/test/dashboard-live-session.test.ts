@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { DashboardLiveSessionController } from "../dashboard-live-session";
 import { liveComposerPresentation } from "../components/ChatPane";
+import { contextUsageFromSessionStats } from "../session-stats";
 import { LiveFixtureDashboardBackend } from "../live-fixture-backend";
 
 async function waitFor(
@@ -33,9 +34,20 @@ describe("Dashboard live session controller", () => {
     expect(controller.state.role).toBe("controller");
     expect(controller.state.transcript?.records.length).toBeGreaterThan(0);
     expect(controller.state.managedSession?.sessionId).toBe(session.sessionId);
-    expect(controller.state.sessionStats).toMatchObject({ messages: expect.any(Number) });
+    expect(contextUsageFromSessionStats(controller.state.sessionStats)).toMatchObject({
+      tokens: expect.any(Number),
+      contextWindow: 200_000,
+      percent: expect.any(Number),
+    });
     expect(controller.state.availableCommands).toMatchObject({ commands: expect.arrayContaining(["/model", "/compact"]) });
     expect(controller.state.availableModels).toMatchObject({ models: expect.arrayContaining(["gpt-5.6"]) });
+
+    const reconnectStats: Array<unknown> = [];
+    const unsubscribe = controller.subscribe((state) => reconnectStats.push(state.sessionStats));
+    await controller.reconnect();
+    await waitFor(() => contextUsageFromSessionStats(controller.state.sessionStats) !== undefined);
+    expect(reconnectStats).toContain(null);
+    unsubscribe();
     await controller.stop();
   });
 
@@ -80,19 +92,25 @@ describe("Dashboard live session controller", () => {
     const session = backend.sessions[0]!;
     const controller = new DashboardLiveSessionController(backend, session.inventoryId);
     await controller.start();
+    await waitFor(() => contextUsageFromSessionStats(controller.state.sessionStats) !== undefined);
     const before = controller.state.transcript?.records.length ?? 0;
+    const contextBefore = contextUsageFromSessionStats(controller.state.sessionStats)?.percent;
+    expect(contextBefore).toEqual(expect.any(Number));
     const result = await controller.command("prompt", { message: "exercise live merge" }, "prompt-once");
     expect(result.state).toBe("streaming");
     expect(controller.state.phase).toBe("streaming");
     await waitFor(() => controller.state.phase === "live" && controller.state.unread);
+    await waitFor(() => contextUsageFromSessionStats(controller.state.sessionStats)?.percent === Number(contextBefore) + 1);
     const records = controller.state.transcript?.records ?? [];
     expect(records.length).toBe(before + 2);
     expect(records.filter((record) => record.kind === "message" && record.content.some((block) => "text" in block && block.text.includes("Completed fixture response")))).toHaveLength(1);
     controller.markSeen();
     expect(controller.state.unread).toBe(false);
 
+    const contextAfterTurn = contextUsageFromSessionStats(controller.state.sessionStats)?.percent;
     await controller.command("set_model", { provider: "github-copilot", modelId: "gpt-5-mini" });
     expect(controller.state.rpcState.model).toBe("gpt-5-mini");
+    await waitFor(() => contextUsageFromSessionStats(controller.state.sessionStats)?.percent === Number(contextAfterTurn) - 2);
     await controller.stop();
   });
 

@@ -17,7 +17,8 @@ export interface SessionFixture extends SessionInventoryRecord {
   project: string;
   model: string;
   thinking: "off" | "minimal" | "low" | "medium" | "high";
-  contextPercent: number;
+  /** Null means live context usage has not been hydrated or Pi reports it unknown. */
+  contextPercent: number | null;
 }
 
 export type DemoState = "ready" | "streaming" | "skeleton" | "empty" | "error";

@@ -12,6 +12,7 @@ import {
 } from "../icons";
 import type { DashboardLiveSessionController, DashboardLiveSessionState } from "../dashboard-live-session";
 import type { DemoState, SessionFixture, TranscriptRecord } from "../model";
+import { liveContextLabel } from "../session-stats";
 import { LiveSessionControls } from "./LiveSessionControls";
 
 const Composer = lazy(() => import("./Composer"));
@@ -548,7 +549,7 @@ export function ChatPane({
           <section className="extension-widget" key={widget.key} aria-label={`Extension widget ${widget.key}`}>{widget.lines.map((line, index) => <p key={`${widget.key}-${index}`}>{line}</p>)}</section>
         ))}
         <div className="context-chips" aria-label="Session context">
-          <span>{session.cwd}</span><span>{String((liveState.sessionStats as Record<string, unknown> | undefined)?.contextPercent ?? session.contextPercent)}% context</span><span>{modelLabel(liveState.rpcState.model ?? session.model)}</span><span>{String(liveState.rpcState.thinkingLevel ?? session.thinking)} thinking</span><span>{liveState.availableCommands ? "commands ready" : "commands loading"}</span>
+          <span>{session.cwd}</span><span>{liveContextLabel(liveState.sessionStats, session.contextPercent)}</span><span>{modelLabel(liveState.rpcState.model ?? session.model)}</span><span>{String(liveState.rpcState.thinkingLevel ?? session.thinking)} thinking</span><span>{liveState.availableCommands ? "commands ready" : "commands loading"}</span>
         </div>
       </footer>
     </div>

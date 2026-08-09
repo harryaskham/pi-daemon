@@ -113,6 +113,27 @@ export interface DashboardLiveSessionOptions {
 }
 
 type Listener = (state: DashboardLiveSessionState) => void;
+
+const CONTEXT_REFRESH_OPERATIONS = new Set<DashboardCommandOperation>([
+  "compact",
+  "set_model",
+  "navigate_tree",
+  "fork",
+  "clone",
+]);
+const CONTEXT_REFRESH_EVENTS = new Set([
+  "agent_end",
+  "agent_settled",
+  "turn_end",
+  "compaction_end",
+  "session_compact",
+  "session_switched",
+  "session_tree",
+  "model_change",
+  "model_changed",
+  "model_select",
+]);
+
 type StatePatch = Omit<
   Partial<DashboardLiveSessionState>,
   | "error"
@@ -143,6 +164,7 @@ export class DashboardLiveSessionController {
   #commandSequence = 0;
   #liveRecordSequence = 0;
   #activeAssistantMessageId: string | undefined;
+  #sessionStatsRefresh: Promise<void> | undefined;
   #stopped = false;
 
   constructor(
@@ -486,6 +508,10 @@ export class DashboardLiveSessionController {
       } else if (result.state === "completed" && isJsonObject(result.data)) {
         this.#patch({ rpcState: { ...this.#state.rpcState, ...result.data } });
       }
+      if (result.state === "completed" && CONTEXT_REFRESH_OPERATIONS.has(operation)) {
+        this.#patch({ sessionStats: null });
+        this.#scheduleSessionStatsRefresh();
+      }
       return result;
     } catch (error) {
       this.#fail(error, "command_failed", true);
@@ -686,7 +712,7 @@ export class DashboardLiveSessionController {
     cursor?: import("@harryaskham/pi-daemon/dashboard-contract").DashboardCursor,
   ): Promise<void> {
     if (!this.#current(operationGeneration)) return;
-    this.#patch({ phase: "hydrating" });
+    this.#patch({ phase: "hydrating", sessionStats: null });
     const channel = await this.backend.openSessionChannel({
       sessionRef,
       generation,
@@ -703,6 +729,38 @@ export class DashboardLiveSessionController {
     this.#acceptChannelSnapshot(channel);
     this.#patch({ phase: "live", role: channel.role });
     void this.#loadChannelMetadata(channel);
+  }
+
+  #scheduleSessionStatsRefresh(): void {
+    const channel = this.#channel;
+    if (channel === undefined || this.#sessionStatsRefresh !== undefined || this.#stopped) return;
+    const identity = channel.identity;
+    const refresh = (async () => {
+      try {
+        const result = await channel.command({
+          correlationId: `metadata-get_session_stats-${++this.#commandSequence}`,
+          identity,
+          operation: "get_session_stats",
+        });
+        if (
+          channel !== this.#channel ||
+          this.#stopped ||
+          !sameSessionIdentity(identity, channel.identity)
+        ) {
+          return;
+        }
+        this.#patch({
+          sessionStats:
+            result.state === "completed" && result.data !== undefined ? result.data : null,
+        });
+      } catch {
+        if (channel === this.#channel && !this.#stopped) this.#patch({ sessionStats: null });
+      }
+    })();
+    this.#sessionStatsRefresh = refresh;
+    void refresh.finally(() => {
+      if (this.#sessionStatsRefresh === refresh) this.#sessionStatsRefresh = undefined;
+    });
   }
 
   async #loadChannelMetadata(channel: DashboardChannel): Promise<void> {
@@ -779,6 +837,7 @@ export class DashboardLiveSessionController {
       const transcript = this.#state.transcript;
       this.#patch({
         phase: "reconnecting",
+        sessionStats: null,
         ...(transcript === undefined
           ? {}
           : {
@@ -792,6 +851,7 @@ export class DashboardLiveSessionController {
       });
       if (this.#channel) this.#acceptChannelSnapshot(this.#channel);
       this.#patch({ phase: "live" });
+      this.#scheduleSessionStatsRefresh();
       return;
     }
     this.#onSessionEvent(event.event as unknown as Record<string, unknown>, event.identity, event.cursor);
@@ -873,11 +933,22 @@ export class DashboardLiveSessionController {
       this.#patch({ phase: "streaming" });
     } else if (["agent_end", "agent_settled", "tool_execution_end"].includes(type)) {
       this.#patch({ phase: "live", unread: true });
-    } else if (type === "retry_start" || type === "auto_retry_start" || type === "compaction_start") {
-      this.#patch({ phase: "streaming" });
+    } else if (
+      type === "retry_start" ||
+      type === "auto_retry_start" ||
+      type === "compaction_start" ||
+      type === "session_before_compact"
+    ) {
+      this.#patch({
+        phase: "streaming",
+        ...(["compaction_start", "session_before_compact"].includes(type)
+          ? { sessionStats: null }
+          : {}),
+      });
     } else if (type === "error") {
       this.#patch({ phase: "error", error: { code: "session_event_error", message: String(event.message ?? "Session error"), retryable: true } });
     }
+    if (CONTEXT_REFRESH_EVENTS.has(type)) this.#scheduleSessionStatsRefresh();
   }
 
   #recordsForEvent(event: Record<string, unknown>): NormalizedTranscriptRecord[] {
@@ -959,6 +1030,7 @@ export class DashboardLiveSessionController {
     this.#unsubscribeChannel = undefined;
     const channel = this.#channel;
     this.#channel = undefined;
+    this.#sessionStatsRefresh = undefined;
     if (channel) await channel.close();
   }
 
