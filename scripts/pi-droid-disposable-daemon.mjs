@@ -455,7 +455,10 @@ function parseArgs(args) {
     else throw new Error(`unknown option ${key}`);
     index += 2;
   }
-  if (!Number.isInteger(result.port) || result.port < 1024 || result.port > 65535) throw new Error("invalid port");
+  if (
+    !Number.isInteger(result.port) ||
+    (result.port !== 0 && (result.port < 1024 || result.port > 65535))
+  ) throw new Error("invalid port");
   if (![result.tokenFile, result.readyFile, result.stateDir].every((value) => typeof value === "string" && value.length > 0)) {
     throw new Error("token, ready and state paths are required");
   }

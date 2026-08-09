@@ -373,13 +373,13 @@ cleanup_fixture() {
 trap cleanup_fixture EXIT
 stage_external_canary_import \\
   '127.0.0.1:5567' 'com.harryaskham.pidroid.debug' \\
-  "$staging_file" "$artifacts_dir" 1
+  "$staging_file" "$artifacts_dir" "$STAGING_DEADLINE_SECONDS"
 "\${isolated_adb_command[@]}" -s '127.0.0.1:5567' shell am start \\
   -n 'com.harryaskham.pidroid.debug/com.harryaskham.pidroid.MainActivity' >/dev/null
 `;
 
   for (const fixture of [
-    { name: "success", mode: "success", code: 0, receiptCode: "verified", launches: true },
+    { name: "success", mode: "success", code: 0, receiptCode: "verified", launches: true, deadlineSeconds: 5 },
     { name: "mkdir-failure", mode: "mkdir-failure", code: 70, receiptCode: "adb_staging_mkdir_failed", phase: "mkdir", launches: false },
     { name: "mkdir-hang", mode: "mkdir-hang", code: 70, receiptCode: "adb_staging_timeout", phase: "mkdir", launches: false, bounded: true },
     { name: "write-failure", mode: "write-failure", code: 70, receiptCode: "adb_staging_write_failed", phase: "write", launches: false },
@@ -414,6 +414,7 @@ stage_external_canary_import \\
       FAKE_STAGING_CLOCK: stagingClock,
       CLEANUP_MARKER: cleanupMarker,
       FAKE_APP_LAUNCH_MARKER: appLaunchMarker,
+      STAGING_DEADLINE_SECONDS: String(fixture.deadlineSeconds ?? 1),
     };
     const fixtureStartedAt = Date.now();
     if (fixture.code === 0) {
@@ -460,7 +461,11 @@ stage_external_canary_import \\
     }
     assert.match(receipt, new RegExp(`code=${fixture.receiptCode}`), fixture.name);
     if (fixture.phase) assert.match(receipt, new RegExp(`phase=${fixture.phase}`), fixture.name);
-    assert.match(receipt, /deadline_seconds=1 budget=shared transport=adb_shell_v2_no_pty/, fixture.name);
+    assert.match(
+      receipt,
+      new RegExp(`deadline_seconds=${fixture.deadlineSeconds ?? 1} budget=shared transport=adb_shell_v2_no_pty`),
+      fixture.name,
+    );
     assert.equal((await stat(receiptFile)).mode & 0o777, 0o600, fixture.name);
     assert.doesNotMatch(`${receipt}${adbCalls}`, new RegExp(fixtureToken), fixture.name);
     assert.ok(adbCalls.split("\\n").filter(Boolean).every((line) => line.startsWith("-H 127.0.0.1 -P 42001 ")), fixture.name);

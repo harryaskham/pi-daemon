@@ -485,6 +485,10 @@ process appears per wake.
 
 ## Provisional Beads work board
 
+- [x] `bd-d3772c` Remove the Pi Droid SDK lifecycle proof's check-then-bind port
+  race by letting its disposable daemon request a kernel-assigned port.
+- [x] `bd-1b8859` Keep intentional fake-ADB hang fixtures on a one-second shared
+  deadline while giving the valid five-process staging path a realistic bound.
 - [x] `bd-889018` Make the Pi Droid SDK Nix archive derive its version from the
   canonical publication properties and reject mismatched repository provenance,
   so Cacophony cannot consume a checksummed bundle under a stale alpha identity.

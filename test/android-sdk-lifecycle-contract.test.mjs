@@ -1,26 +1,11 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import test from "node:test";
 
 const repositoryRoot = resolve(import.meta.dirname, "..");
-
-async function availablePort() {
-  const server = createServer();
-  await new Promise((resolveListen, reject) => {
-    server.once("error", reject);
-    server.listen(0, "127.0.0.1", resolveListen);
-  });
-  const address = server.address();
-  assert.notEqual(typeof address, "string");
-  const port = address.port;
-  await new Promise((resolveClose, reject) => server.close((error) => error ? reject(error) : resolveClose()));
-  assert.ok(port >= 1024 && port <= 65535);
-  return port;
-}
 
 async function waitForReady(path, child, stderr, timeoutMs = 15_000) {
   const deadline = Date.now() + timeoutMs;
@@ -57,13 +42,12 @@ test("Pi Droid SDK lifecycle proof uses a disposable real API server", async (t)
   const stateDir = join(privateRoot, "state");
   await mkdir(stateDir, { mode: 0o700 });
   await writeFile(tokenFile, `${token}\n`, { mode: 0o600 });
-  const port = await availablePort();
   const stderr = { value: "" };
   const child = spawn(
     process.execPath,
     [
       "scripts/pi-droid-disposable-daemon.mjs",
-      "--port", String(port),
+      "--port", "0",
       "--token-file", tokenFile,
       "--ready-file", readyFile,
       "--state-dir", stateDir,
@@ -80,7 +64,7 @@ test("Pi Droid SDK lifecycle proof uses a disposable real API server", async (t)
   const receipt = await waitForReady(readyFile, child, stderr);
 
   assert.equal(receipt.schemaVersion, 1);
-  assert.equal(receipt.port, port);
+  assert.ok(receipt.port >= 1024 && receipt.port <= 65535);
   assert.equal(receipt.sessionId, "session-fixture-01");
   assert.deepEqual(receipt.selfProbe, {
     capabilities: true,
