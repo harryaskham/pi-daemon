@@ -241,6 +241,24 @@ nix flake check
 The Pi SDK version and npm dependency graph are pinned. Strict TypeScript is the
 source language; built JavaScript and declarations are emitted under `dist/`.
 
+### Caravan policy
+
+The repository-owned [`.caravan/config.yaml`](.caravan/config.yaml) selects the
+reviewed GitHub-native Stack backend. Cacophony owns the external ten-minute
+`cara sync --all` schedule; this repository deliberately defines no second
+loop. Inspect policy without provider mutation with:
+
+```console
+cara config check
+cara --json status
+```
+
+`config check` is offline. `status` performs provider reads only; neither command
+joins, rewrites, labels, or merges a pull request. The configured lifecycle calls
+[`scripts/cara-runtime.sh`](scripts/cara-runtime.sh), which selects a launchable
+system Cara, strips loader-only environment overrides, and emits a bounded,
+secret-redacted runtime receipt before execution.
+
 ## Nix consumer contract
 
 The checked-in flake exposes `packages.default`, `packages.pi-daemon`,

@@ -485,6 +485,9 @@ process appears per wake.
 
 ## Provisional Beads work board
 
+- [x] `bd-64bd2a` Add the repository-owned Caravan policy and reviewed rolling
+  runtime wrapper for GitHub-native Stacks, bounded inside Cacophony's external
+  sync cadence with offline config validation and no second scheduler.
 - [x] Operator-directed Pi Droid preview 6 publication from the exact merged UX
   source to Play internal with signed phone/tablet/wide install smoke, immutable
   AAB/mapping/source/notes hashes, and independent pre/post version receipts.
