@@ -141,9 +141,12 @@ receive the same bounded token; logout, expiry, and daemon restart still revoke
 the session.
 It is `HttpOnly`, `SameSite=Strict`, scoped to `/dash/`, and uses the `__Host-`
 form with `Secure` behind an HTTPS public origin. Restart intentionally revokes
-all ephemeral browser sessions. Plaintext listeners remain loopback-only.
-Remote deployments may terminate TLS at a loopback reverse proxy or use native
-HTTPS/WSS with bounded file/fd certificate sources, exact SNI/Host/Origin,
+all ephemeral browser sessions. Plaintext listeners default to loopback. An
+explicit non-loopback listener requires a non-loopback public origin plus the
+validated insecure-HTTP opt-in and emits a warning without relaxing exact
+Host/Origin/CSRF or login policy. Remote deployments should terminate TLS at a
+loopback reverse proxy or use native HTTPS/WSS with bounded file/fd certificate
+sources, exact SNI/Host/Origin,
 content-free health, HSTS, optional exact loopback proxy-header verification,
 and atomic last-good certificate rotation. See
 [Dashboard transport security](dashboard-transport-security).

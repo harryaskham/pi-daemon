@@ -267,12 +267,14 @@ loopback reverse-proxy deployment. Focused acceptance covers bounded owner-mode
 certificate/key files and inherited descriptors, TLS 1.2 minimum, exact SNI,
 Host and Origin, HSTS, Secure `__Host-` cookies, plaintext downgrade refusal,
 content-free remote health, default-rejected and exact loopback proxy headers,
-non-loopback plaintext refusal, and live atomic certificate rotation that keeps
-the listener available. Dedicated `pi-daemon web` acceptance loads relative
+default non-loopback plaintext refusal, and live atomic certificate rotation
+that keeps the listener available. Dedicated `pi-daemon web` acceptance loads relative
 instance-YAML secret paths and serves the packaged production SPA over HTTPS
 while retaining its server-only service bearer. See
 [Dashboard transport security](dashboard-transport-security) for the full
-configuration and failure contract.
+configuration and failure contract. Follow-on `bd-6f6ae1` preserves that
+default refusal while accepting only typed non-loopback plaintext with an exact
+public origin plus explicit opt-in and a content-free startup advisory.
 
 ## Wall-clock soak
 

@@ -64,10 +64,10 @@ project code or tools.
 - multi-user activation requires an explicit bounded static provider; identity metadata may enter strict YAML/CLI/Home Manager configuration, but credential bytes come only from owner-only files/inherited descriptors and never enter YAML, argv, Nix store values, status, logs, cookies, or browser persistence; absent provider preserves exact `local-owner` compatibility
 - a cookie-authenticated same-origin bootstrap reproduces the session-bound HMAC CSRF token in a no-store response header, so an ordinary browser reload restores mutation authority without putting the owner credential, cookie, or CSRF token in browser storage
 - Dash private routes authenticate before route matching; mutations require exact Host, Origin, and per-session CSRF validation
-- Dash plaintext listeners are loopback-only; remote deployments use an operator-owned loopback TLS proxy or native HTTPS/WSS with bounded file/fd material and TLS 1.2 minimum
+- Dash plaintext listeners default to loopback; an explicit non-loopback bind requires a validated non-loopback public origin plus `allowInsecureHttp: true`, emits a content-free advisory, and retains mandatory authentication/Host/Origin/CSRF enforcement; loopback TLS proxy or native HTTPS/WSS remains preferred
 - native TLS requires an exact HTTPS public origin, rejects mismatched SNI/Host/Origin, atomically rotates only a fully valid certificate/key pair, and retains the last good context on reload failure
 - forwarded authority is never inferred: RFC `Forwarded` is rejected, and exact `X-Forwarded-Host`/`Proto`/`Port` evidence is accepted only from loopback after explicit trust
-- HTTPS public origins emit HSTS and use a `Secure` `__Host-` browser cookie; non-loopback HTTP origins require an explicit development override and still cannot enable a remote plaintext listener
+- HTTPS public origins emit HSTS and use a `Secure` `__Host-` browser cookie; explicit non-loopback plaintext uses no HSTS, keeps the ordinary HttpOnly SameSite cookie, and never relaxes authorization or resource bounds
 - certificate and private-key bytes are bounded, never enter YAML/argv/Nix store/status/logs, and file targets are owner-controlled with owner-only private-key mode
 - content-free `/dash/healthz` and fresh-backend `/dash/readyz` still enforce Host/proxy authority and reveal no session, credential, path, certificate, or backend state; readiness is expressed only as 204/503
 - packaged Dash assets are hash-named and regular/non-writable, with traversal/symlink rejection and a deny-by-default CSP

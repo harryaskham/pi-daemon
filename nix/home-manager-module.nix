@@ -212,7 +212,7 @@
         bind = lib.mkOption {
           type = lib.types.str;
           default = "127.0.0.1";
-          description = "Dedicated Dash loopback bind address.";
+          description = "Dedicated Dash bind address. Non-loopback plaintext requires publicOrigin plus allowInsecurePublicOrigin and emits a runtime advisory.";
         };
         port = lib.mkOption {
           type = lib.types.nullOr lib.types.port;
@@ -229,7 +229,7 @@
         allowInsecurePublicOrigin = lib.mkOption {
           type = lib.types.bool;
           default = false;
-          description = "Explicit development-only opt-in for a non-loopback plaintext browser origin.";
+          description = "Explicit high-trust opt-in for a non-loopback plaintext Dash listener or browser origin. Authentication remains mandatory; native TLS is preferred.";
         };
         trustProxyHeaders = lib.mkOption {
           type = lib.types.bool;
@@ -491,6 +491,11 @@
       then "http"
       else "https";
   in "${scheme}://${renderedHost}:${toString instance.dedicatedWeb.port}/dash/readyz";
+  isLoopbackWebBind = bind:
+    bind
+    == "localhost"
+    || bind == "::1"
+    || lib.hasPrefix "127." bind;
   publicOriginAuthority = instance: let
     match =
       if instance.dedicatedWeb.publicOrigin == null
@@ -663,6 +668,26 @@ in {
               (instance.dedicatedWeb.tls.certFile == null)
               == (instance.dedicatedWeb.tls.keyFile == null);
             message = "services.pi-daemon.instances.${name}: dedicatedWeb native TLS requires both tls.certFile and tls.keyFile";
+          })
+          enabledInstances)
+        ++ (lib.mapAttrsToList (name: instance: {
+            assertion =
+              instance.dedicatedWeb.publicOrigin
+              == null
+              || publicOriginAuthority instance != null;
+            message = "services.pi-daemon.instances.${name}: dedicatedWeb.publicOrigin must be an exact HTTP(S) origin without a path";
+          })
+          enabledInstances)
+        ++ (lib.mapAttrsToList (name: instance: {
+            assertion =
+              !instance.dedicatedWeb.enable
+              || instance.dedicatedWeb.tls.certFile != null
+              || isLoopbackWebBind instance.dedicatedWeb.bind
+              || (
+                instance.dedicatedWeb.allowInsecurePublicOrigin
+                && publicOriginAuthority instance != null
+              );
+            message = "services.pi-daemon.instances.${name}: non-loopback plaintext dedicatedWeb.bind requires allowInsecurePublicOrigin and an exact publicOrigin";
           })
           enabledInstances)
         ++ (lib.mapAttrsToList (name: instance: {

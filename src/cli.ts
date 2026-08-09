@@ -524,6 +524,7 @@ async function runWeb(
     const listenerStage = beginStartupStage(logger, "dashboard_listener");
     const address = await server.start();
     listenerStage();
+    logDashboardTransportAdvisory(logger, server, address);
     logger.write("info", "pi_daemon_web_ready", {
       instance: loadedConfig.instance,
       host: address.host,
@@ -989,6 +990,7 @@ async function runServe(
       const dashboardListenerStage = beginStartupStage(logger, "dashboard_listener");
       dashboardAddress = await dashboardServer.start();
       dashboardListenerStage();
+      logDashboardTransportAdvisory(logger, dashboardServer, dashboardAddress);
     }
   } catch (error) {
     signalLatch?.dispose();
@@ -1154,6 +1156,21 @@ async function waitForIntervalOrSignal(
   } finally {
     if (timer !== undefined) clearTimeout(timer);
   }
+}
+
+function logDashboardTransportAdvisory(
+  logger: JsonLineLogger,
+  server: DashboardServer,
+  address: { host: string; port: number; origin: string },
+): void {
+  if (!server.insecureHttpExposure) return;
+  logger.write("warn", "dashboard_insecure_http_exposure", {
+    host: address.host,
+    port: address.port,
+    origin: address.origin,
+    authenticationRequired: true,
+    operatorOptIn: "allowInsecureHttp",
+  });
 }
 
 function beginStartupStage(
@@ -1507,6 +1524,7 @@ Service configuration:
   An enabled web.mode=embedded block serves the packaged Dash at /dash/ on web.port.
   The web command uses web.mode=dedicated and defaults to API 7463 / Dash 7465.
   Native TLS requires an exact HTTPS public origin plus one cert and key source.
+  Non-loopback plaintext Dash requires an exact public origin plus --web-allow-insecure-http true and emits a warning.
   Reverse proxies stay loopback-only; forwarded authority is verified only when explicitly trusted.
   Secrets are file/fd/environment references, never literal YAML values.
 
