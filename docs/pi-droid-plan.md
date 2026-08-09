@@ -7,7 +7,9 @@ title: Pi Droid Android client plan
 
 Status: staged implementation active; encrypted release material, JVM SDK/UI
 foundations, and Pi Droid preview 5 with daily-driver multi-host and session
-lifecycle support are live on Play internal.
+lifecycle support are live on Play internal. Unreleased source now includes the
+adaptive, accessible daily-driver UX pass; physical UX release proof and a later
+monotonic Play version remain separate work.
 
 Package/application ID: `com.harryaskham.pidroid`  
 Product name: **Pi Droid**  
@@ -769,6 +771,16 @@ SHA-256 is
 release-notes SHA-256 is
 `0c5ac7031968f70cae46300b032e942becdb8b488b05097eb4b6beeeeb1d8d08`.
 
+Unreleased source after preview 5 adds the `bd-8e2c2a` UX pass. The app now has
+deterministic secure endpoint assessment, focused host workflows,
+search/filter/recency inventory, explicit role/freshness/action truth,
+Transcript/Tree/Terminal/Extensions navigation, phone/tablet/wide adaptation,
+dynamic color fallbacks, safe Back/IME behavior, and named TalkBack controls
+with 48 dp targets. The shared fixture and full contract are documented in
+[`pi-droid-ux.md`](pi-droid-ux.md). This is not a release claim for the UX pass:
+no later AAB was signed or uploaded and the external-canary proof path was not
+invoked.
+
 ## 19. Testing and acceptance
 
 ### Deterministic tests
@@ -784,6 +796,8 @@ release-notes SHA-256 is
   evidence-backed reconciliation against an isolated disposable real daemon;
 - process restore with unique connection/correlation identity, stale-attempt
   rejection, replay-gap resync, and permanent no-replay semantics;
+- daily-driver phone/tablet/wide/large-text adaptive policy, endpoint security,
+  search/filter/recency, named Compose semantics, and minimum touch targets;
 - secret/log/crash redaction;
 - notification dedupe/freshness/quiet-hours;
 - QR payload bounds/expiry/replay;
@@ -812,7 +826,10 @@ release-notes SHA-256 is
 ### Visual proof contract
 
 Every major stage supplies screenshot proofs through Cacophony's image/session
-artifact surface, not only Gradle reports. Required sets include:
+artifact surface, not only Gradle reports. The app-shared daily-driver fixture
+writes deterministic phone, tablet, wide, large-text, and generated contact-sheet
+PNGs for source review; release acceptance still uses the exact tested APK/AAB.
+Required sets include:
 
 - phone/tablet/foldable combined inventory;
 - arbitrary tabs-in-splits and splits-in-tabs;

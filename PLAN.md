@@ -556,6 +556,13 @@ process appears per wake.
   exact retained adoption, explicit observer-to-controller interaction, atomic
   content-free process resume, no-replay ticket/command reconciliation, and an
   opt-in bounded metadata-only foreground monitor with content-safe notifications.
+- [x] `bd-8e2c2a` Polish the unreleased Pi Droid daily-driver UX beyond web Dash
+  parity with secure first-run endpoint assessment, complete host recovery,
+  searchable/filterable recency inventory, explicit authority/freshness/action
+  states, Transcript/Tree/Terminal/Extensions navigation, dynamic dark/light
+  adaptive phone/tablet/wide layouts, Back/IME/TalkBack behavior, and shared
+  deterministic semantic/screenshot/contact-sheet proof without transport,
+  canary, signing, token, or Play mutation.
 - [x] `bd-61ac6b` Preserve a bounded owner-private incomplete occurrence when
   app-failure modal evidence capture fails, naming only the fixed failed predicate,
   safe identity class/hash, and retained-component hashes while discarding unsafe

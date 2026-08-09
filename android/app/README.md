@@ -32,11 +32,31 @@ host identity on the first reviewed refresh. Automatic request retry remains
 disabled, active WebSockets are not retired, and an indeterminate mutation is
 never replayed during refresh or the separate interactive reconnect.
 
+The current source also carries the `bd-8e2c2a` daily-driver UX contract. It adds
+secure first-run endpoint assessment, focused host forms, search/filter/recency
+inventory, explicit role/freshness/action state, Transcript/Tree/Terminal/
+Extensions destinations, phone/tablet/wide adaptation, Android dynamic color
+with reviewed Nord fallbacks, safe Back/IME behavior, and named TalkBack controls
+with 48 dp targets. Content-safe session destination/filter state may survive
+recreation. The host-management surface is entirely memory-only because it owns
+credential forms; search queries, session names, and prompt drafts are likewise
+not restored. The dedicated external-canary screen and its fixed proof markers
+are unchanged.
+See [`../../docs/pi-droid-ux.md`](../../docs/pi-droid-ux.md) for the parity audit,
+state matrix, and deterministic screenshot command.
+
 The module is excluded from ordinary Gradle settings and the Android fast lane.
 Enable it only with `-PpiDroidAndroidApp=true` inside the pinned
 `nix develop .#androidRelease` shell. The committed `android/release.properties`
 records the current monotonic Play identity as version code 5 and release name
-`0.3.0-internal.5`; every later AAB must increment the code.
+`0.3.0-internal.5`; every later AAB must increment the code. The narrow source
+smoke for changes to this conditional module is:
+
+```console
+nix develop .#androidRelease --command \
+  ./android/gradlew -p android -PpiDroidAndroidApp=true \
+    :app:compileDebugKotlin :app:testDebugUnitTest
+```
 
 ## Daily-driver host management
 
@@ -69,8 +89,11 @@ navigation are not duplicated into web or TUI presentation code.
 
 ## Daily-driver sessions and bounded monitoring
 
-The session rail/sidebar remains useful for an empty host, one session, or many
-sessions and on phone or wide layouts. Creation first displays the exact
+The session inventory remains useful for an empty host, one session, or many
+sessions: recent horizontal cards on phones, a persistent rail on tablets/wide
+screens, and an additional live-safety pane only when wide space permits.
+Search covers title, project, cwd basename, and state; All/Active/Unread filters
+retain daemon activity ordering and show bounded recency labels. Creation first displays the exact
 host-advertised cwd, persistence, model/thinking, tools and trust policy. The app
 sends only an optional bounded name with those reviewed defaults. Managed rows
 are opened only after exact generation verification; unmanaged rows use the

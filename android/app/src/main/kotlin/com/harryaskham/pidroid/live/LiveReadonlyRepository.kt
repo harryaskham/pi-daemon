@@ -874,6 +874,7 @@ public class LiveReadonlyRepository(
             managedSession = record.managed?.key,
             state = record.managed?.state ?: record.presence.runtime,
             unread = record.presence.unread,
+            activityAt = record.activityAt,
             canAdopt = record.managed != null || (record.activation.eligible && DashboardActivationMode.REUSE in record.activation.modes),
             adoptionReasonCode = record.activation.reasonCode,
           )

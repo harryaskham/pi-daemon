@@ -12,6 +12,8 @@ playwright-report/
 test-results/
 .pi-daemon-state/
 .cacophony/agent/
+# Generated review evidence is session-local, never product source.
+.cacophony/images/
 
 # Pi Droid release secrets: only *.sops.yaml ciphertext belongs in git.
 secrets/*.jks

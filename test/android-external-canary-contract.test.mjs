@@ -210,7 +210,11 @@ test("external canary surface is debug-only, content-free, fenced, and mutation-
   assert.match(screen, /EXTERNAL CANARY · READONLY/);
   assert.match(screen, /READONLY HYDRATION · VERIFIED/);
   assert.match(screen, /MUTATION SURFACE · ABSENT/);
-  assert.doesNotMatch(screen.slice(screen.indexOf("private fun ExternalCanaryScreen"), screen.indexOf("public fun HostRegistrationScreen")), /Button\(|SessionSurface\(|RichInteractiveSessionSurface\(/);
+  const canaryStart = screen.indexOf("private fun ExternalCanaryScreen");
+  const canaryEnd = screen.indexOf("internal fun liveInteractiveStatusLabel", canaryStart);
+  assert.ok(canaryStart >= 0 && canaryEnd > canaryStart, "external canary source boundary must remain explicit");
+  const canarySurface = screen.slice(canaryStart, canaryEnd);
+  assert.doesNotMatch(canarySurface, /Button\(|SessionSurface\(|RichInteractiveSessionSurface\(/);
   assert.match(debugManifest, /ALLOW_EXTERNAL_CANARY_IMPORT/);
   assert.doesNotMatch(mainManifest, /ALLOW_EXTERNAL_CANARY_IMPORT/);
   assert.match(mainManifest, /android:allowBackup="false"/);
