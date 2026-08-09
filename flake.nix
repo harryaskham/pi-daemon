@@ -16,6 +16,16 @@
       "x86_64-linux"
     ];
     forAllSystems = nixpkgs.lib.genAttrs systems;
+    piDroidSdkPublicationVersion = let
+      prefix = "version=";
+      versionLines =
+        builtins.filter
+        (line: nixpkgs.lib.hasPrefix prefix line)
+        (nixpkgs.lib.splitString "\n" (builtins.readFile ./android/sdk-publication.properties));
+    in
+      if builtins.length versionLines == 1
+      then nixpkgs.lib.removePrefix prefix (builtins.head versionLines)
+      else throw "android/sdk-publication.properties must contain exactly one version";
 
     # Single source of truth for the pinned npm dependency cache. Refresh this
     # block with `npm run nix:deps-hash` after any package-lock.json change; the
@@ -90,11 +100,12 @@
     lib.piDroidSdkMavenArchive = {
       pkgs,
       repository,
-      version ? "0.3.0-alpha.1",
+      version ? piDroidSdkPublicationVersion,
     }:
-      import ./nix/pi-droid-sdk-maven-archive.nix {
-        inherit pkgs repository version;
-      };
+      assert version == piDroidSdkPublicationVersion;
+        import ./nix/pi-droid-sdk-maven-archive.nix {
+          inherit pkgs repository version;
+        };
 
     packages = forAllSystems (system: let
       pkgs = import nixpkgs {inherit system;};

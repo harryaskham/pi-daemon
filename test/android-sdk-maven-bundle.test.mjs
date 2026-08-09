@@ -7,7 +7,10 @@ import test from "node:test";
 const root = resolve(import.meta.dirname, "..");
 const android = join(root, "android");
 const group = "com.harryaskham.pidroid.sdk";
-const version = "0.3.0-alpha.2";
+const publicationProperties = readFileSync(join(android, "sdk-publication.properties"), "utf8");
+const publicationVersionMatch = publicationProperties.match(/^version=(.+)$/mu);
+assert.ok(publicationVersionMatch, "sdk-publication.properties version missing");
+const version = publicationVersionMatch[1];
 const apiBaselineRevision = "session-lifecycle-host-registry-v1";
 const artifacts = ["core", "session-ui", "workspace-ui"];
 const expectedSources = {
@@ -79,8 +82,9 @@ test("Pi Droid SDK publication source contract is explicit and credential free",
     assert.ok(existsSync(path), `${basename(path)} missing`);
   }
   const properties = read(versionFile);
+  assert.equal(properties, publicationProperties);
   assert.match(properties, /^group=com\.harryaskham\.pidroid\.sdk$/m);
-  assert.match(properties, /^version=0\.3\.0-alpha\.2$/m);
+  assert.match(version, /^\d+\.\d+\.\d+(?:-[0-9A-Za-z][0-9A-Za-z.-]*)?$/u);
   assert.match(properties, /^artifacts=core,session-ui,workspace-ui$/m);
   assert.match(properties, /^apiBaselineRevision=session-lifecycle-host-registry-v1$/m);
   assert.match(properties, /^previouslyPublished=false$/m);
@@ -115,6 +119,11 @@ test("Pi Droid SDK publication source contract is explicit and credential free",
   assert.doesNotMatch(script, /curl|fetch\(|https?:\/\/|process\.env|authorization|github_token|npm_config/i);
 
   const nixSource = read(nixFunction);
+  assert.match(nixSource, /version,/);
+  assert.doesNotMatch(nixSource, /version\s*\?\s*"/);
+  assert.match(nixSource, /metadata\/provenance\.json/);
+  assert.match(nixSource, /repository_version/);
+  assert.match(nixSource, /pkgs\.jq/);
   assert.match(nixSource, /--sort=name/);
   assert.match(nixSource, /--mtime='@1'/);
   assert.match(nixSource, /--owner=0/);
@@ -123,6 +132,11 @@ test("Pi Droid SDK publication source contract is explicit and credential free",
   assert.doesNotMatch(nixSource, /fetchurl|fetchzip|https?:\/\//i);
 
   const flake = read(join(root, "flake.nix"));
+  assert.match(flake, /piDroidSdkPublicationVersion/);
+  assert.match(flake, /builtins\.readFile \.\/android\/sdk-publication\.properties/);
+  assert.match(flake, /version \? piDroidSdkPublicationVersion/);
+  assert.match(flake, /assert version == piDroidSdkPublicationVersion/);
+  assert.doesNotMatch(flake, /version\s*\?\s*"\d+\.\d+\.\d+-alpha\.\d+"/);
   assert.match(flake, /lib\.piDroidSdkMavenArchive/);
 
   const sample = join(android, "sdk-consumer-sample");
