@@ -1,0 +1,32 @@
+version: 1
+repository: harryaskham/pi-daemon
+
+# Native GitHub Stacks are the reviewed provider representation for this
+# repository. Cacophony owns the external ten-minute sync schedule.
+min_cara_version: "0.0.92"
+force_merge: false
+rebase_on_join: false
+stack_type: github
+max_caravan_length: 8
+stack_rollout:
+  mutations_opt_in: true
+  reviewed_by: "harry/cacophony-config-pr-114"
+github_auth:
+  mode: ambient
+
+# One sync tick must finish inside Cacophony's 540-second command budget and
+# 600-second cadence. Cara remains the only merge actor for native Stack heads.
+command_timeout_secs: 60
+sync:
+  head_merge_actor: caravan
+  max_caravans: 1
+  actions:
+    join_unlabelled_prs: true
+  terminal_red:
+    action: park
+  max_candidates_per_tick: 8
+  max_mutations_per_tick: 64
+  max_github_requests_per_tick: 256
+  max_duration_secs: 480
+
+hooks: {}
