@@ -298,9 +298,9 @@ if [[ "$FAKE_ADB_MODE" == "$phase-hang" ]]; then
 fi
 if [[ "$FAKE_ADB_MODE" == 'cumulative-bound' ]]; then
   case "$phase" in
-    mkdir) sleep 0.35; exit 0 ;;
-    write) cat > "$FAKE_DEVICE_FILE"; sleep 0.35; exit 0 ;;
-    chmod) hang_forever ;;
+    mkdir) exit 0 ;;
+    write) cat > "$FAKE_DEVICE_FILE"; exit 0 ;;
+    chmod) exit 100 ;;
   esac
 fi
 case "$phase" in
@@ -347,6 +347,22 @@ esac
   const driver = `
 set -euo pipefail
 source "$1"
+if [[ "$FAKE_ADB_MODE" == 'cumulative-bound' ]]; then
+  # Drive the shared deadline deterministically. Real sleeps made the expected
+  # phase depend on process-launch latency, especially inside Darwin builders.
+  external_canary_staging_now_millis() {
+    local call_index=0
+    local now_millis=1001000
+    IFS= read -r call_index < "$FAKE_STAGING_CLOCK"
+    case "$call_index" in
+      0) now_millis=1000000 ;;
+      1) now_millis=1000100 ;;
+      2) now_millis=1000400 ;;
+    esac
+    printf '%s\\n' "$((call_index + 1))" > "$FAKE_STAGING_CLOCK"
+    printf '%s\\n' "$now_millis"
+  }
+fi
 staging_file="$2"
 artifacts_dir="$3"
 isolated_adb_command=(adb -H 127.0.0.1 -P 42001)
@@ -384,14 +400,18 @@ stage_external_canary_import \\
     const adbLog = path.join(fixtureRoot, "adb.log");
     const cleanupMarker = path.join(fixtureRoot, "cleanup-invoked");
     const appLaunchMarker = path.join(fixtureRoot, "app-launched");
+    const stagingClock = path.join(fixtureRoot, "staging-clock");
     const payload = `${JSON.stringify({ schemaVersion: 1, pairingEnvelope: `pidroid://pair/v1/${fixtureToken}` })}\n`;
     await writeFile(stagingFile, payload, { mode: 0o600 });
     await chmod(stagingFile, 0o600);
+    await writeFile(stagingClock, "0\n", { mode: 0o600 });
+    await chmod(stagingClock, 0o600);
     const environment = {
       PATH: `${fakeBin}:${process.env.PATH ?? ""}`,
       FAKE_ADB_MODE: fixture.mode,
       FAKE_ADB_LOG: adbLog,
       FAKE_DEVICE_FILE: deviceFile,
+      FAKE_STAGING_CLOCK: stagingClock,
       CLEANUP_MARKER: cleanupMarker,
       FAKE_APP_LAUNCH_MARKER: appLaunchMarker,
     };
@@ -444,6 +464,10 @@ stage_external_canary_import \\
     assert.equal((await stat(receiptFile)).mode & 0o777, 0o600, fixture.name);
     assert.doesNotMatch(`${receipt}${adbCalls}`, new RegExp(fixtureToken), fixture.name);
     assert.ok(adbCalls.split("\\n").filter(Boolean).every((line) => line.startsWith("-H 127.0.0.1 -P 42001 ")), fixture.name);
+    if (fixture.name === "cumulative-bound") {
+      assert.equal(await readFile(stagingClock, "utf8"), "4\n", fixture.name);
+      assert.doesNotMatch(adbCalls, / run-as com\.harryaskham\.pidroid\.debug chmod /, fixture.name);
+    }
     assert.doesNotMatch(adbCalls, /(?:^|[^0-9])5037(?:[^0-9]|$)|kill-server|reconnect/, fixture.name);
     assert.equal(await readFile(cleanupMarker, "utf8"), "", fixture.name);
     await assert.rejects(stat(deviceFile), { code: "ENOENT" });

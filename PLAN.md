@@ -584,6 +584,10 @@ process appears per wake.
   progress without panic, fatal, or stall markers, reusing the isolated
   transport with typed diagnostics and a 480-second hard cap without repeating
   preflight, build, or launch.
+- [x] `bd-1aee6e` Make the shared ADB staging deadline regression deterministic
+  under slower Darwin process startup by advancing a private fake monotonic clock,
+  preserving the exact chmod timeout phase without widening production limits or
+  weakening owner-private staging, redaction, cleanup, or ambient ADB isolation.
 - [ ] `bd-032326` Diagnose transport-connected/offline emulator starts with bounded
   guest kernel and private-console evidence, delay ADB traffic until guest boot,
   and prove isolated x86_64 readiness without invoking either physical proof.
