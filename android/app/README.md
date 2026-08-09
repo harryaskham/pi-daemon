@@ -6,42 +6,37 @@ Android-Keystore AES-GCM ciphertext under `noBackupFilesDir`, and projects
 authenticated capabilities, multi-host inventory, information and transcript
 state into canonical session surfaces.
 
-Google Play internal currently carries version 4 (`0.3.0-internal.4`). Its
+Google Play internal currently carries version 5 (`0.3.0-internal.5`). Its
 exact app source base is commit
-`aab5afb39de8e9e7071320268a56eb703d0f0306`, tree
-`daf8cf9e639da11b6cba4d1fc072e1f6c64c5ac6`; the release checkout added only
-the Play notes, release-harness hardening, and its source contract test. Version
-4 includes resilient reconnect and host recovery, canonical bearer connections,
-retained app-failure modal evidence, the reviewed external-canary contract, a
-clear transcript-unavailable state, and durable editable/forget/re-pair
-crash-safe multi-host management.
+`0e781580a2c76cce11d98ed06c109c385123ae89`, tree
+`dd2c8b1ee6778d1b32ab5314a7e094127d2a0ad8`; the release checkout added only the
+Play notes, monotonic release identity, source contract assertions, and release
+ledger. Version 5 includes durable editable/forget/re-pair crash-safe multi-host
+management plus a persistent adaptive session catalog that creates from the
+daemon's exact configured defaults, opens an exact retained generation, or
+adopts one eligible existing inventory row.
 
-Current source adds the next daily-driver milestone beyond that released build:
-a persistent adaptive session catalog can create from the daemon's exact
-configured defaults, open an exact retained generation, or adopt one eligible
-existing inventory row. Mobile cannot override the configured cwd, inject a
-system prompt, or silently broaden tools. Every live connection attaches as an
-observer, explicit control grant is required before mutation, command identity
-is unique and bounded, and a missing response becomes indeterminate rather than
-being replayed. Rich, bounded tree and canonical server-TUI presentations share
-the exact host/session/generation authority. Content-free ticket and command
-identities survive process recreation in no-backup storage; restoration performs
+Mobile cannot override the configured cwd, inject a system prompt, or silently
+broaden tools. Every live connection attaches as an observer, explicit control
+grant is required before mutation, command identity is unique and bounded, and
+a missing response becomes indeterminate rather than being replayed. Rich,
+bounded tree and canonical server-TUI presentations share the exact
+host/session/generation authority. Content-free ticket and command identities
+survive process recreation in no-backup storage; restoration performs
 lookup/reconnect only and never reposts a create, prompt, wake, or control
-command.
+command. The missing registration accessibility label is restored.
 
 An explicit readonly refresh retires only idle pooled HTTP connections before
 hydration, so a replacement daemon at the same authority can publish its new
 host identity on the first reviewed refresh. Automatic request retry remains
 disabled, active WebSockets are not retired, and an indeterminate mutation is
-never replayed during refresh or the separate interactive reconnect. This source
-must not be signed or uploaded until its disposable physical proof passes and a
-new monotonic Play version is reviewed.
+never replayed during refresh or the separate interactive reconnect.
 
 The module is excluded from ordinary Gradle settings and the Android fast lane.
 Enable it only with `-PpiDroidAndroidApp=true` inside the pinned
 `nix develop .#androidRelease` shell. The committed `android/release.properties`
-records the current monotonic Play identity as version code 4 and release name
-`0.3.0-internal.4`; every later AAB must increment the code.
+records the current monotonic Play identity as version code 5 and release name
+`0.3.0-internal.5`; every later AAB must increment the code.
 
 ## Daily-driver host management
 
@@ -111,16 +106,16 @@ Play mutation:
 PI_DROID_SOPS_SSH_PRIVATE_KEY_FILE="$HOME/.ssh/caco" \
   nix develop .#androidRelease --command \
   android/build-logic/release-internal.sh \
-    --version-code 4 \
-    --version-name 0.3.0-internal.4 \
+    --version-code 5 \
+    --version-name 0.3.0-internal.5 \
     --artifacts "$PWD/pi-droid-release" \
     --prepare-only
 
 PI_DROID_SOPS_SSH_PRIVATE_KEY_FILE="$HOME/.ssh/caco" \
   nix develop .#androidRelease --command \
   android/build-logic/release-internal.sh \
-    --version-code 4 \
-    --version-name 0.3.0-internal.4 \
+    --version-code 5 \
+    --version-name 0.3.0-internal.5 \
     --artifacts "$PWD/pi-droid-release" \
     --upload-prepared
 ```
@@ -214,6 +209,18 @@ mapping SHA-256 is
 `deae7b97e8ba575c9aee40523787d895a30fd8e046b33f1de54b9328fb3dfa21`, and the
 published release-notes SHA-256 is
 `ea638b8eb891399e5a31d88000b9f1f7451a18641fd43139d173c581ca9b0387`.
+
+Version 5 was uploaded on 2026-08-09 only to the completed Play `internal`
+track from exact source commit `0e781580a2c76cce11d98ed06c109c385123ae89`,
+tree `dd2c8b1ee6778d1b32ab5314a7e094127d2a0ad8`. Pre-upload verification edit
+`12484767714633664694` confirmed version 4 as highest; post-upload verification
+edit `13111413071479325735` confirmed version 5 as highest while preserving
+versions 1–4. The exact AAB SHA-256 is
+`ed0cdb20c877cac3a8990cb007b8c47df109e06e7091f90d63817d54a7392994`, the R8
+mapping SHA-256 is
+`84077c0a2ec2c549d45a8e30d8001aec10fa8a36fbea556f79703fd5c0d89fd0`, and the
+published release-notes SHA-256 is
+`0c5ac7031968f70cae46300b032e942becdb8b488b05097eb4b6beeeeb1d8d08`.
 
 Retained evidence is the signed AAB, R8 mapping, exact APK screenshots,
 `sha256sums.txt`, a local build receipt, and a remote Play edit/version receipt.

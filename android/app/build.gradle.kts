@@ -42,8 +42,8 @@ android {
     applicationId = "com.harryaskham.pidroid"
     minSdk = 26
     targetSdk = 36
-    versionCode = providers.gradleProperty("piDroidVersionCode").getOrElse("4").toInt()
-    versionName = providers.gradleProperty("piDroidVersionName").getOrElse("0.3.0-internal.4")
+    versionCode = providers.gradleProperty("piDroidVersionCode").getOrElse("5").toInt()
+    versionName = providers.gradleProperty("piDroidVersionName").getOrElse("0.3.0-internal.5")
   }
 
   sourceSets.named("main") {
