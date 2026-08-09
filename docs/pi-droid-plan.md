@@ -6,14 +6,13 @@ title: Pi Droid Android client plan
 # Pi Droid Android client plan
 
 Status: staged implementation active; encrypted release material, JVM SDK/UI
-foundations, and Pi Droid preview 5 with daily-driver multi-host and session
-lifecycle support are live on Play internal. Unreleased source now includes the
-adaptive, accessible daily-driver UX pass; physical UX release proof and a later
-monotonic Play version remain separate work.
+foundations, and Pi Droid preview 6 with screenshot-tested adaptive UX plus all
+preview 5 daily-driver multi-host and session lifecycle support are live on Play
+internal. External-canary physical proof remains separate work.
 
 Package/application ID: `com.harryaskham.pidroid`  
 Product name: **Pi Droid**  
-Google Play internal-testing app/track: version 5 completed on `internal`
+Google Play internal-testing app/track: version 6 completed on `internal`
 Pre-registered signing certificate SHA-256:
 `FA:58:80:A7:C9:6D:F8:7B:B4:63:7D:18:58:7E:32:F6:CD:F6:95:06:52:34:FE:54:95:E2:4F:ED:12:1E:CE:4C`
 
@@ -771,15 +770,30 @@ SHA-256 is
 release-notes SHA-256 is
 `0c5ac7031968f70cae46300b032e942becdb8b488b05097eb4b6beeeeb1d8d08`.
 
-Unreleased source after preview 5 adds the `bd-8e2c2a` UX pass. The app now has
-deterministic secure endpoint assessment, focused host workflows,
-search/filter/recency inventory, explicit role/freshness/action truth,
-Transcript/Tree/Terminal/Extensions navigation, phone/tablet/wide adaptation,
-dynamic color fallbacks, safe Back/IME behavior, and named TalkBack controls
-with 48 dp targets. The shared fixture and full contract are documented in
-[`pi-droid-ux.md`](pi-droid-ux.md). This is not a release claim for the UX pass:
-no later AAB was signed or uploaded and the external-canary proof path was not
-invoked.
+The sixth internal release was uploaded on 2026-08-09 as version code 6
+(`0.3.0-internal.6`) from exact merged UX source commit
+`4febafe56440eb57e9366dfe2fc591960dd7d78a`, tree
+`595a139e555b53ee4c43100428d4e0b40abd87f2`. It publishes the `bd-8e2c2a` UX
+pass: screenshot-tested phone/tablet/wide adaptation, deterministic secure
+endpoint assessment, focused onboarding and host/session hierarchy,
+search/filter/recency inventory, explicit loading/empty/error/retry/offline,
+role/freshness/action and accessibility truth, Transcript/Tree/Terminal/
+Extensions navigation, dynamic color fallbacks, safe Back/IME behavior, and
+named TalkBack controls with 48 dp targets. Every preview 5 daily-driver
+multi-host, session, observer/control/wake/stream, process-restoration and
+no-replay flow remains present. Immediately before upload, verification edit
+`11448386855268785244` confirmed version 5 as the existing highest internal
+release. After the sole internal-only completed upload, verification edit
+`10109755456501727230` confirmed version 6 as highest on `internal`, preserving
+versions 1–5. The uploaded AAB SHA-256 is
+`792bc5a2e831e6a69d81e377c6ee6c761fbbdf9ab42fcfa7e54f2db33b0395bf`; R8 mapping
+SHA-256 is
+`ce8bc95b5ab24c4b195ade9e2e66aa156c2544561bdc37d94c9500b2627311af`; published
+release-notes SHA-256 is
+`5189d50a08e3386df9d5e0e8c755d9429db89b64f8e3a66548d260dbff7c39bd`.
+The shared fixture and full UX contract are documented in
+[`pi-droid-ux.md`](pi-droid-ux.md). External-canary proof was not invoked by
+this release.
 
 ## 19. Testing and acceptance
 
