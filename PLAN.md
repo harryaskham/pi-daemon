@@ -120,9 +120,9 @@ The completed product adds, without removing the existing NDJSON mode:
   distribution, and staged delivery design is in
   [`docs/pi-droid-plan.md`](docs/pi-droid-plan.md). Staged Android implementation
   is active: encrypted signing readiness, JVM SDK/UI foundations, and Pi Droid
-  preview 5 with daily-driver multi-host and session lifecycle support have
-  landed their Play internal acceptance receipts; later Android surfaces remain
-  separate beads.
+  preview 6 with screenshot-tested adaptive UX plus all daily-driver multi-host
+  and session lifecycle support have landed their Play internal acceptance
+  receipts; later Android surfaces remain separate beads.
 
 ## 5. Runtime architecture
 
@@ -485,6 +485,9 @@ process appears per wake.
 
 ## Provisional Beads work board
 
+- [x] Operator-directed Pi Droid preview 6 publication from the exact merged UX
+  source to Play internal with signed phone/tablet/wide install smoke, immutable
+  AAB/mapping/source/notes hashes, and independent pre/post version receipts.
 - [x] `bd-c42fff` Publish Pi Droid preview 5 from the exact reviewed
   daily-driver source to Play internal with signed install smoke, immutable
   AAB/mapping/source/notes hashes, and independent pre/post version receipts.

@@ -40,8 +40,8 @@ test("Pi Droid app is conditional, fixed-identity, source-gated, and release sig
   assert.match(build, /targetSdk\s*=\s*36/);
   assert.match(build, /versionCode\s*=\s*providers\.gradleProperty\("piDroidVersionCode"\)/);
   assert.match(build, /versionName\s*=\s*providers\.gradleProperty\("piDroidVersionName"\)/);
-  assert.match(build, /piDroidVersionCode"\)\.getOrElse\("5"\)/);
-  assert.match(build, /piDroidVersionName"\)\.getOrElse\("0\.3\.0-internal\.5"\)/);
+  assert.match(build, /piDroidVersionCode"\)\.getOrElse\("6"\)/);
+  assert.match(build, /piDroidVersionName"\)\.getOrElse\("0\.3\.0-internal\.6"\)/);
   assert.match(build, /resolutionStrategy\.set\(ResolutionStrategy\.IGNORE\)/);
   assert.match(build, /track\.set\("internal"\)/);
   assert.match(build, /serviceAccountCredentials\.set\(file\(/);
@@ -58,14 +58,16 @@ test("Pi Droid app is conditional, fixed-identity, source-gated, and release sig
   assert.match(liveScreen, /SessionSurface/);
   assert.match(liveScreen, /HostManagementScreen/);
   assert.match(hostManagement, /HostRegistrationScreen/);
-  assert.match(releaseNotes, /multi-host daily use safer: edit, re-pair, forget, and crash-safe recovery/);
-  assert.match(releaseNotes, /Create or adopt sessions/);
-  assert.match(releaseNotes, /observe, request control, wake, and stream/);
-  assert.match(releaseNotes, /Process-death resume restores accepted work as indeterminate and never replays it/);
-  assert.match(releaseNotes, /accessibility label is restored/);
+  assert.match(releaseNotes, /screenshot-tested phone, tablet, and wide polish/);
+  assert.match(releaseNotes, /onboarding and host\/session hierarchy/);
+  assert.match(releaseNotes, /loading, empty, error, retry, offline, and accessibility states/);
+  assert.match(releaseNotes, /crash-safe multi-host edit, re-pair, and forget/);
+  assert.match(releaseNotes, /create\/adopt sessions/);
+  assert.match(releaseNotes, /observer, control, wake, and stream lifecycle/);
+  assert.match(releaseNotes, /process-death resume that restores accepted work as indeterminate without replay/);
   assert.ok(releaseNotes.length <= 500, "Play internal release notes must remain within the locale limit");
-  assert.match(releaseProperties, /^versionCode=5$/m);
-  assert.match(releaseProperties, /^versionName=0\.3\.0-internal\.5$/m);
+  assert.match(releaseProperties, /^versionCode=6$/m);
+  assert.match(releaseProperties, /^versionName=0\.3\.0-internal\.6$/m);
 });
 
 test("Android shells select the pinned platform-specific Java home", async () => {

@@ -6,13 +6,13 @@ Android-Keystore AES-GCM ciphertext under `noBackupFilesDir`, and projects
 authenticated capabilities, multi-host inventory, information and transcript
 state into canonical session surfaces.
 
-Google Play internal currently carries version 5 (`0.3.0-internal.5`). Its
+Google Play internal currently carries version 6 (`0.3.0-internal.6`). Its
 exact app source base is commit
-`0e781580a2c76cce11d98ed06c109c385123ae89`, tree
-`dd2c8b1ee6778d1b32ab5314a7e094127d2a0ad8`; the release checkout added only the
+`4febafe56440eb57e9366dfe2fc591960dd7d78a`, tree
+`595a139e555b53ee4c43100428d4e0b40abd87f2`; the release checkout added only the
 Play notes, monotonic release identity, source contract assertions, and release
-ledger. Version 5 includes durable editable/forget/re-pair crash-safe multi-host
-management plus a persistent adaptive session catalog that creates from the
+ledger. Version 6 preserves preview 5's durable editable/forget/re-pair
+crash-safe multi-host management plus a persistent adaptive session catalog that creates from the
 daemon's exact configured defaults, opens an exact retained generation, or
 adopts one eligible existing inventory row.
 
@@ -32,7 +32,7 @@ host identity on the first reviewed refresh. Automatic request retry remains
 disabled, active WebSockets are not retired, and an indeterminate mutation is
 never replayed during refresh or the separate interactive reconnect.
 
-The current source also carries the `bd-8e2c2a` daily-driver UX contract. It adds
+Version 6 publishes the `bd-8e2c2a` daily-driver UX contract. It adds
 secure first-run endpoint assessment, focused host forms, search/filter/recency
 inventory, explicit role/freshness/action state, Transcript/Tree/Terminal/
 Extensions destinations, phone/tablet/wide adaptation, Android dynamic color
@@ -48,8 +48,8 @@ state matrix, and deterministic screenshot command.
 The module is excluded from ordinary Gradle settings and the Android fast lane.
 Enable it only with `-PpiDroidAndroidApp=true` inside the pinned
 `nix develop .#androidRelease` shell. The committed `android/release.properties`
-records the current monotonic Play identity as version code 5 and release name
-`0.3.0-internal.5`; every later AAB must increment the code. The narrow source
+records the current monotonic Play identity as version code 6 and release name
+`0.3.0-internal.6`; every later AAB must increment the code. The narrow source
 smoke for changes to this conditional module is:
 
 ```console
@@ -129,19 +129,29 @@ Play mutation:
 PI_DROID_SOPS_SSH_PRIVATE_KEY_FILE="$HOME/.ssh/caco" \
   nix develop .#androidRelease --command \
   android/build-logic/release-internal.sh \
-    --version-code 5 \
-    --version-name 0.3.0-internal.5 \
+    --version-code 6 \
+    --version-name 0.3.0-internal.6 \
     --artifacts "$PWD/pi-droid-release" \
     --prepare-only
 
 PI_DROID_SOPS_SSH_PRIVATE_KEY_FILE="$HOME/.ssh/caco" \
   nix develop .#androidRelease --command \
   android/build-logic/release-internal.sh \
-    --version-code 5 \
-    --version-name 0.3.0-internal.5 \
+    --version-code 6 \
+    --version-name 0.3.0-internal.6 \
     --artifacts "$PWD/pi-droid-release" \
     --upload-prepared
 ```
+
+For preview 6, pre-upload verification edit `11448386855268785244` proved
+version 5 was highest on `internal`; post-upload verification edit
+`10109755456501727230` proved version 6 was highest. The exact uploaded AAB,
+R8 mapping, and published notes SHA-256 values are
+`792bc5a2e831e6a69d81e377c6ee6c761fbbdf9ab42fcfa7e54f2db33b0395bf`,
+`ce8bc95b5ab24c4b195ade9e2e66aa156c2544561bdc37d94c9500b2627311af`, and
+`5189d50a08e3386df9d5e0e8c755d9429db89b64f8e3a66548d260dbff7c39bd`.
+The single completed internal upload preserved versions 1–5 and did not touch
+production, canary, tokens, or live sessions.
 
 Preparation validates bundletool structure, package/version, JAR signature and
 the exact release certificate, then installs a universal APK on a dynamically
