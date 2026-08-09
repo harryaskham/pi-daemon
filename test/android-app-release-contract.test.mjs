@@ -15,13 +15,14 @@ async function source(relativePath) {
 }
 
 test("Pi Droid app is conditional, fixed-identity, source-gated, and release signed", async () => {
-  const [settings, catalog, build, manifest, activity, liveScreen, releaseNotes, releaseProperties] = await Promise.all([
+  const [settings, catalog, build, manifest, activity, liveScreen, hostManagement, releaseNotes, releaseProperties] = await Promise.all([
     source("android/settings.gradle.kts"),
     source("android/gradle/libs.versions.toml"),
     source("android/app/build.gradle.kts"),
     source("android/app/src/main/AndroidManifest.xml"),
     source("android/app/src/main/kotlin/com/harryaskham/pidroid/MainActivity.kt"),
     source("android/app/src/main/kotlin/com/harryaskham/pidroid/live/LiveReadonlyScreen.kt"),
+    source("android/app/src/main/kotlin/com/harryaskham/pidroid/live/HostManagementScreen.kt"),
     source("android/app/src/main/play/release-notes/en-US/internal.txt"),
     source("android/release.properties"),
   ]);
@@ -55,7 +56,8 @@ test("Pi Droid app is conditional, fixed-identity, source-gated, and release sig
   assert.match(activity, /interactiveState/);
   assert.match(activity, /handleInteraction/);
   assert.match(liveScreen, /SessionSurface/);
-  assert.match(liveScreen, /HostRegistrationScreen/);
+  assert.match(liveScreen, /HostManagementScreen/);
+  assert.match(hostManagement, /HostRegistrationScreen/);
   assert.match(releaseNotes, /multi-host daily use safer: edit, re-pair, forget, and crash-safe recovery/);
   assert.match(releaseNotes, /Create or adopt sessions/);
   assert.match(releaseNotes, /observe, request control, wake, and stream/);

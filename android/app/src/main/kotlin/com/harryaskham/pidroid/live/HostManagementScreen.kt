@@ -30,7 +30,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -98,8 +97,8 @@ public fun HostManagementScreen(
   onSelectDefault: (HostId) -> Unit,
   onClearNotice: () -> Unit,
 ) {
-  var mode by rememberSaveable { mutableStateOf(if (state.hosts.isEmpty()) HostManagementMode.ADD else HostManagementMode.LIST) }
-  var selectedHostValue by rememberSaveable { mutableStateOf<String?>(null) }
+  var mode by remember { mutableStateOf(if (state.hosts.isEmpty()) HostManagementMode.ADD else HostManagementMode.LIST) }
+  var selectedHostValue by remember { mutableStateOf<String?>(null) }
   var pendingForget by remember { mutableStateOf<HostId?>(null) }
   val selectedHostId = selectedHostValue?.let(::HostId)
 
@@ -270,8 +269,8 @@ public fun HostRegistrationScreen(
   onRegisterEnvelope: (String, Boolean) -> Unit,
 ) {
   var endpoint by remember { mutableStateOf("https://") }
-  var displayName by rememberSaveable { mutableStateOf("") }
-  var fingerprint by rememberSaveable { mutableStateOf("") }
+  var displayName by remember { mutableStateOf("") }
+  var fingerprint by remember { mutableStateOf("") }
   var bearer by remember { mutableStateOf("") }
   var envelope by remember { mutableStateOf("") }
   var confirmInsecure by remember { mutableStateOf(false) }
@@ -494,8 +493,8 @@ private fun HostEditor(
   onReplaceHostEnvelope: (HostId, String, Boolean) -> Unit,
 ) {
   var endpoint by remember(host.id, replaceCredential) { mutableStateOf(host.baseUri.toASCIIString()) }
-  var displayName by rememberSaveable(host.id.value, replaceCredential) { mutableStateOf(host.displayName) }
-  var fingerprint by rememberSaveable(host.id.value, replaceCredential) { mutableStateOf(host.tlsFingerprint.orEmpty()) }
+  var displayName by remember(host.id.value, replaceCredential) { mutableStateOf(host.displayName) }
+  var fingerprint by remember(host.id.value, replaceCredential) { mutableStateOf(host.tlsFingerprint.orEmpty()) }
   var bearer by remember(host.id, replaceCredential) { mutableStateOf("") }
   var envelope by remember(host.id, replaceCredential) { mutableStateOf("") }
   var confirmInsecure by remember(host.id, replaceCredential) {

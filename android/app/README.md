@@ -37,10 +37,11 @@ secure first-run endpoint assessment, focused host forms, search/filter/recency
 inventory, explicit role/freshness/action state, Transcript/Tree/Terminal/
 Extensions destinations, phone/tablet/wide adaptation, Android dynamic color
 with reviewed Nord fallbacks, safe Back/IME behavior, and named TalkBack controls
-with 48 dp targets. Content-safe navigation/filter state may survive recreation;
-free-form endpoint edits and search queries, bearers, pairing envelopes, session
-names, and prompt drafts do not. The
-dedicated external-canary screen and its fixed proof markers are unchanged.
+with 48 dp targets. Content-safe session destination/filter state may survive
+recreation. The host-management surface is entirely memory-only because it owns
+credential forms; search queries, session names, and prompt drafts are likewise
+not restored. The dedicated external-canary screen and its fixed proof markers
+are unchanged.
 See [`../../docs/pi-droid-ux.md`](../../docs/pi-droid-ux.md) for the parity audit,
 state matrix, and deterministic screenshot command.
 

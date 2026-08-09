@@ -45,9 +45,11 @@ its deterministic Compose fixtures:
 Effective width is physical width divided by font scale when font scale exceeds
 1.0. Every policy retains a 48 dp minimum touch target. The app uses safe drawing
 and IME insets; forms expose Next/Done/Search actions and clear focus on Done.
-Content-safe destination, host-management mode, selected host identity, and
-filter state survive recreation. Free-form endpoint edits and search queries,
-bearers, pairing envelopes, session names, and prompt drafts do not.
+Content-safe session destination and filter state survive recreation. The
+host-management surface is deliberately all memory-only because it also owns
+credential forms: its mode, selected identity, endpoint edits, labels,
+fingerprints, bearers, and pairing envelopes do not survive process death.
+Search queries, session names, and prompt drafts are likewise memory-only.
 
 ## Host and endpoint flow
 
