@@ -1,0 +1,9 @@
+schema_version=1
+status=app_failure_modal
+event_kind=anr
+identity_source=logcat_package
+identity_class=android_system
+identity_sha256=sha256:bc0c3e5347a0272a098d4eefb0b675dd9152d78d268a925a0d88504a0f362f81
+raw_logcat_bytes=662454
+raw_logcat_sha256=sha256:630c857eb91518cf61f4c4e92f4cad776fda231351b338dec6e9dd6873ae03ea
+raw_logcat_retained=false
