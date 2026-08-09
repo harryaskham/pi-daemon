@@ -810,7 +810,7 @@ private fun LiveSessionPresentation(
                 Button(
                   onClick = onConnectInteractive,
                   enabled = interaction !is LiveInteractiveAppState.Connecting,
-                  modifier = Modifier.semantics { contentDescription = "Connect session observer" },
+                  modifier = Modifier.semantics { contentDescription = "Connect interactive observer" },
                 ) {
                   Text(if (interaction is LiveInteractiveAppState.Connecting) "Connecting" else "Connect")
                 }
