@@ -6,11 +6,12 @@ title: Pi Droid Android client plan
 # Pi Droid Android client plan
 
 Status: staged implementation active; encrypted release material, JVM SDK/UI
-foundations, and the first no-network fixture AAB on Play internal are complete.
+foundations, and Pi Droid preview 4 with daily-driver host management are live on
+Play internal. Create/adopt daily-driver polish remains in progress.
 
 Package/application ID: `com.harryaskham.pidroid`  
 Product name: **Pi Droid**  
-Google Play internal-testing app/track: registered and ready for an AAB upload  
+Google Play internal-testing app/track: version 4 completed on `internal`
 Pre-registered signing certificate SHA-256:
 `FA:58:80:A7:C9:6D:F8:7B:B4:63:7D:18:58:7E:32:F6:CD:F6:95:06:52:34:FE:54:95:E2:4F:ED:12:1E:CE:4C`
 
@@ -731,6 +732,24 @@ cache and a different host incarnation after restart with no prompt/controller
 operations or bearer leakage. Fresh Play verification edit
 `02117095949443938631` confirmed completed version 2 on `internal`; uploaded AAB
 SHA-256 is `72adf5bacefac22c1569d2b7579b547d4f48c28881808e4f7036fde6560331aa`.
+
+The fourth internal release was uploaded on 2026-08-09 as version code 4
+(`0.3.0-internal.4`) from exact app source commit
+`aab5afb39de8e9e7071320268a56eb703d0f0306`, tree
+`daf8cf9e639da11b6cba4d1fc072e1f6c64c5ac6`. It includes resilient reconnect
+and host recovery, canonical bearer connections, retained app-failure modal
+evidence, the reviewed external-canary contract, a clear
+transcript-unavailable state, and editable/forget/re-pair crash-safe multi-host
+management. Create/adopt daily-driver polish remains in progress. Immediately
+before upload, verification edit `17487365761742315051` confirmed version 3 as
+the existing highest internal release. After the internal-only completed upload,
+verification edit `08236353605814851857` confirmed version 4 as highest on
+`internal`, preserving versions 1–3. The uploaded AAB SHA-256 is
+`f09a810c501e900011ebaa4c6fb0eb8039abbefabece2a9a1d045843b8029775`; R8 mapping
+SHA-256 is
+`deae7b97e8ba575c9aee40523787d895a30fd8e046b33f1de54b9328fb3dfa21`; published
+release-notes SHA-256 is
+`ea638b8eb891399e5a31d88000b9f1f7451a18641fd43139d173c581ca9b0387`.
 
 ## 19. Testing and acceptance
 

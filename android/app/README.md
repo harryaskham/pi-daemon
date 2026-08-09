@@ -6,24 +6,33 @@ Android-Keystore AES-GCM ciphertext under `noBackupFilesDir`, and projects
 authenticated capabilities, multi-host inventory, information and transcript
 state into canonical session surfaces.
 
-The currently released Play internal version 2 remains readonly. Current source
-adds the next opt-in interactive milestone: every live connection attaches as an
-observer, explicit control grant is required before mutation, command identity is
-unique and bounded, and a missing response becomes indeterminate rather than
-being replayed. Rich, bounded tree and canonical server-TUI presentations share
-the exact host/session/generation authority. An explicit readonly refresh retires
-only idle pooled HTTP connections before hydration, so a replacement daemon at
-the same authority can publish its new host identity on the first reviewed
-refresh. Automatic request retry remains disabled, active WebSockets are not
-retired, and an indeterminate mutation is never replayed during refresh or the
-separate interactive reconnect. This source is not version 3 and must not be
-signed or uploaded until the disposable physical proof passes.
+Google Play internal currently carries version 4 (`0.3.0-internal.4`). Its
+exact app source base is commit
+`aab5afb39de8e9e7071320268a56eb703d0f0306`, tree
+`daf8cf9e639da11b6cba4d1fc072e1f6c64c5ac6`; the release checkout added only
+the Play notes, release-harness hardening, and its source contract test. Version
+4 includes resilient reconnect and host recovery, canonical bearer connections,
+retained app-failure modal evidence, the reviewed external-canary contract, a
+clear transcript-unavailable state, and durable editable/forget/re-pair
+crash-safe multi-host management. Create/adopt daily-driver polish remains in
+progress.
+
+Every live connection attaches as an observer, explicit control grant is
+required before mutation, command identity is unique and bounded, and a missing
+response becomes indeterminate rather than being replayed. Rich, bounded tree
+and canonical server-TUI presentations share the exact
+host/session/generation authority. An explicit readonly refresh retires only
+idle pooled HTTP connections before hydration, so a replacement daemon at the
+same authority can publish its new host identity on the first reviewed refresh.
+Automatic request retry remains disabled, active WebSockets are not retired,
+and an indeterminate mutation is never replayed during refresh or the separate
+interactive reconnect.
 
 The module is excluded from ordinary Gradle settings and the Android fast lane.
 Enable it only with `-PpiDroidAndroidApp=true` inside the pinned
 `nix develop .#androidRelease` shell. The committed `android/release.properties`
-records the current monotonic Play identity as version code 2 and release name
-`0.3.0-internal.2`; every later AAB must increment the code.
+records the current monotonic Play identity as version code 4 and release name
+`0.3.0-internal.4`; every later AAB must increment the code.
 
 ## Daily-driver host management
 
@@ -70,16 +79,16 @@ Play mutation:
 PI_DROID_SOPS_SSH_PRIVATE_KEY_FILE="$HOME/.ssh/caco" \
   nix develop .#androidRelease --command \
   android/build-logic/release-internal.sh \
-    --version-code 2 \
-    --version-name 0.3.0-internal.2 \
+    --version-code 4 \
+    --version-name 0.3.0-internal.4 \
     --artifacts "$PWD/pi-droid-release" \
     --prepare-only
 
 PI_DROID_SOPS_SSH_PRIVATE_KEY_FILE="$HOME/.ssh/caco" \
   nix develop .#androidRelease --command \
   android/build-logic/release-internal.sh \
-    --version-code 2 \
-    --version-name 0.3.0-internal.2 \
+    --version-code 4 \
+    --version-name 0.3.0-internal.4 \
     --artifacts "$PWD/pi-droid-release" \
     --upload-prepared
 ```
@@ -154,6 +163,15 @@ cleanup receipts, scan receipts, and SHA-256s. The harness never starts, stops,
 or restarts the target Pi Daemon. Do not improvise a deep-link, clipboard, shell
 argument, environment variable, or pairing-envelope alternative for production
 canaries.
+
+Version 4 was uploaded on 2026-08-09 only to the completed Play `internal`
+track. Verification edit `08236353605814851857` confirmed it as the highest
+remote version while preserving versions 1–3. The exact AAB SHA-256 is
+`f09a810c501e900011ebaa4c6fb0eb8039abbefabece2a9a1d045843b8029775`, the R8
+mapping SHA-256 is
+`deae7b97e8ba575c9aee40523787d895a30fd8e046b33f1de54b9328fb3dfa21`, and the
+published release-notes SHA-256 is
+`ea638b8eb891399e5a31d88000b9f1f7451a18641fd43139d173c581ca9b0387`.
 
 Retained evidence is the signed AAB, R8 mapping, exact APK screenshots,
 `sha256sums.txt`, a local build receipt, and a remote Play edit/version receipt.
