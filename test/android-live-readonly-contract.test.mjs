@@ -110,7 +110,7 @@ test("host management is multi-host, explicit, transactional, recoverable, and s
   assert.match(extractionRules, /exclude domain="sharedpref" path="\."/);
 });
 
-test("disposable-daemon emulator proof is bounded readonly and release advances to version four", async () => {
+test("disposable-daemon emulator proof is bounded readonly and release advances to version five", async () => {
   const [proof, adbReadiness, uiHealth, server, release] = await Promise.all([
     source("android/build-logic/live-readonly-proof.sh"),
     source("android/build-logic/emulator-adb-readiness.sh"),
@@ -149,6 +149,6 @@ test("disposable-daemon emulator proof is bounded readonly and release advances 
   assert.match(server, /allowInsecureRemote: true/);
   assert.match(server, /hostInstanceId/);
   assert.doesNotMatch(server, /production|api-token|home\/harry/i);
-  assert.match(release, /versionCode=4/);
-  assert.match(release, /versionName=0\.3\.0-internal\.4/);
+  assert.match(release, /versionCode=5/);
+  assert.match(release, /versionName=0\.3\.0-internal\.5/);
 });

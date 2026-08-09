@@ -6,12 +6,12 @@ title: Pi Droid Android client plan
 # Pi Droid Android client plan
 
 Status: staged implementation active; encrypted release material, JVM SDK/UI
-foundations, and Pi Droid preview 4 with daily-driver host management are live on
-Play internal. Create/adopt daily-driver polish remains in progress.
+foundations, and Pi Droid preview 5 with daily-driver multi-host and session
+lifecycle support are live on Play internal.
 
 Package/application ID: `com.harryaskham.pidroid`  
 Product name: **Pi Droid**  
-Google Play internal-testing app/track: version 4 completed on `internal`
+Google Play internal-testing app/track: version 5 completed on `internal`
 Pre-registered signing certificate SHA-256:
 `FA:58:80:A7:C9:6D:F8:7B:B4:63:7D:18:58:7E:32:F6:CD:F6:95:06:52:34:FE:54:95:E2:4F:ED:12:1E:CE:4C`
 
@@ -750,6 +750,24 @@ SHA-256 is
 `deae7b97e8ba575c9aee40523787d895a30fd8e046b33f1de54b9328fb3dfa21`; published
 release-notes SHA-256 is
 `ea638b8eb891399e5a31d88000b9f1f7451a18641fd43139d173c581ca9b0387`.
+
+The fifth internal release was uploaded on 2026-08-09 as version code 5
+(`0.3.0-internal.5`) from exact app source commit
+`0e781580a2c76cce11d98ed06c109c385123ae89`, tree
+`dd2c8b1ee6778d1b32ab5314a7e094127d2a0ad8`. It includes crash-safe editable,
+forget and re-pair multi-host management; create/adopt sessions; observer,
+control, wake and stream lifecycle; process-death restoration that marks
+accepted work indeterminate without replay; and the restored accessibility
+label. Immediately before preparation, verification edit
+`12484767714633664694` confirmed version 4 as the existing highest internal
+release. After the one internal-only completed upload, verification edit
+`13111413071479325735` confirmed version 5 as highest on `internal`, preserving
+versions 1–4. The uploaded AAB SHA-256 is
+`ed0cdb20c877cac3a8990cb007b8c47df109e06e7091f90d63817d54a7392994`; R8 mapping
+SHA-256 is
+`84077c0a2ec2c549d45a8e30d8001aec10fa8a36fbea556f79703fd5c0d89fd0`; published
+release-notes SHA-256 is
+`0c5ac7031968f70cae46300b032e942becdb8b488b05097eb4b6beeeeb1d8d08`.
 
 ## 19. Testing and acceptance
 
