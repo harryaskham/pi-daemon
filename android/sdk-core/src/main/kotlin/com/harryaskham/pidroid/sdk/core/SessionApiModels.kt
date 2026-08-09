@@ -161,7 +161,7 @@ public object SessionApiCodec {
       )
     }
 
-  private fun <T> decodeEnvelope(
+  internal fun <T> decodeEnvelope(
     response: NeutralHttpResponse,
     decodeData: (JsonObject) -> T,
   ): ApiResult<T> {
@@ -218,7 +218,7 @@ public object SessionApiCodec {
       ?: throw ProtocolDecodeException("invalid_shape", "$label must be a JSON object")
   }
 
-  private fun decodeError(element: JsonElement): SafeApiError {
+  internal fun decodeError(element: JsonElement): SafeApiError {
     val error =
       element as? JsonObject
         ?: throw ProtocolDecodeException("invalid_error", "safe error metadata must be an object")

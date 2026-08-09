@@ -331,6 +331,27 @@ view keeps a distinct subscription/command correlation. The transport owns:
 - replay-gap/full-snapshot transition;
 - safe redacted diagnostics.
 
+The reusable Stage C SDK lifecycle foundation keeps those mechanisms separated:
+`PiDaemonClient` consumes exact advertised configured defaults and typed retained/
+Dashboard resources, while `SessionLifecycleCoordinator` is a pure caller-driven
+state machine. Every connection attempt, command correlation, request ID, and
+idempotency key comes from the embedding app. Its process-resume snapshot retains
+only host/session/generation/cursor and bounded operation identities/outcomes—no
+bearer, cwd, prompt, transcript, command, result, or arbitrary error content.
+Disconnect/process restoration makes unacknowledged commands indeterminate;
+replay gaps clear the cursor and require an explicit fresh resync. It returns
+attach/control/command actions for exact-once caller execution and never opens,
+reconnects, or blindly replays on its own.
+
+Configured creation never accepts an app-invented cwd: it maps the daemon's exact
+Dashboard `sessionDefaults` to the durable Session API target. Existing managed
+inventory is adopted only after exact retained-generation verification; external
+inventory reuse is a capability-gated durable activation ticket. Observer attach
+requires the transcript's exact current, available, non-quarantined authority.
+`SessionLifecycleProjection` then maps the decoded inventory/info/transcript set
+into the existing bounded readonly Rich state without reconstructing protocol
+envelopes or gaining transport authority.
+
 The canonical `SessionSurface` Compose component accepts a stable session key,
 repository/transport interfaces, display policy, and optional host chrome. It
 contains no Pi Droid navigation or Cacophony assumptions. It supports:
@@ -722,6 +743,10 @@ SHA-256 is `72adf5bacefac22c1569d2b7579b547d4f48c28881808e4f7036fde6560331aa`.
 - workspace split/tab property tests and migration/corruption recovery;
 - transcript reducer idempotency, tool replacement, and branch identity;
 - controller lease and indeterminate command handling;
+- configured-default creation, retained adoption, durable ticket identity and
+  evidence-backed reconciliation against an isolated disposable real daemon;
+- process restore with unique connection/correlation identity, stale-attempt
+  rejection, replay-gap resync, and permanent no-replay semantics;
 - secret/log/crash redaction;
 - notification dedupe/freshness/quiet-hours;
 - QR payload bounds/expiry/replay;

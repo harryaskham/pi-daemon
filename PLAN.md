@@ -535,6 +535,12 @@ process appears per wake.
 - [x] `bd-4e6f17` Accept a present JSON boolean false observer eligibility in the
   external-canary harness, reject missing and wrong-type values, and continue the
   readonly proof through the explicit observer-not-requested path.
+- [x] `bd-dd353f` Add the Cacophony-neutral Pi Droid SDK session lifecycle for
+  capability-derived configured create, retained list/read/adopt, durable ticket
+  reconciliation, transcript-authorized observer and TUI attach, explicit control,
+  caller-owned correlation, replay-gap resync, and content-free process resume
+  with loss-to-indeterminate and no blind replay; prove it against fake transports
+  and one disposable real daemon without app, signing, Play, or live-host mutation.
 - [x] `bd-61ac6b` Preserve a bounded owner-private incomplete occurrence when
   app-failure modal evidence capture fails, naming only the fixed failed predicate,
   safe identity class/hash, and retained-component hashes while discarding unsafe

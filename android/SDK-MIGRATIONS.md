@@ -1,5 +1,46 @@
 # Pi Droid Android SDK publication and migrations
 
+## `0.3.0-alpha.2`
+
+Additive session-lifecycle and host-registry revision
+(`session-lifecycle-host-registry-v1`). No Maven coordinate or release archive
+from the earlier alpha has been published, but the version is advanced so source
+consumers can pin this exact contract.
+
+Session lifecycle additions in `core`:
+
+- `PiDaemonClient` now discovers configured session defaults, lists and reads
+  retained sessions, creates only from the daemon-advertised canonical cwd/model/
+  resource defaults, reads and explicitly reconciles durable tickets, lists
+  Dashboard inventory, reads info/transcripts, verifies existing managed-session
+  adoption, and requests capability-gated `reuse` activation.
+- configured create and activation require caller-owned request and idempotency
+  identities. The SDK never invents a cwd, exposes bearer bytes, starts/stops a
+  daemon, or automatically retries an accepted or indeterminate mutation.
+- observer attach is authorized by the exact decoded transcript identity and
+  availability/freshness evidence. TUI attach is capability and dimension gated.
+  The original three-argument `attach` descriptor remains available; the new
+  overload makes retained-session hydration explicit.
+- `SessionLifecycleCoordinator` provides content-free process-resume snapshots,
+  unique connection attempts and correlation IDs, explicit control actions,
+  stale-attempt rejection, replay-gap resynchronization, and loss-to-
+  `INDETERMINATE` semantics with `canReplay=false`. `SessionResumeSnapshotCodec`
+  is the strict one-MiB persistence format; it rejects unknown/content-bearing
+  fields, while the embedding app owns atomic storage and deletion.
+- `session-ui` adds `SessionLifecycleProjection`, which maps decoded lifecycle
+  resources into the existing bounded readonly Rich state. Applications still
+  own transport, persistence, navigation, and command execution.
+
+The same alpha intentionally carries the coordinated additive editable-host and
+credential-replacement boundary in `core`; neither feature weakens credential
+lifetime or adds a bearer getter.
+
+Coordinates:
+
+- `com.harryaskham.pidroid.sdk:core:0.3.0-alpha.2`
+- `com.harryaskham.pidroid.sdk:session-ui:0.3.0-alpha.2`
+- `com.harryaskham.pidroid.sdk:workspace-ui:0.3.0-alpha.2`
+
 ## `0.3.0-alpha.1`
 
 Initial Cacophony-neutral Android SDK bundle.

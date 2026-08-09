@@ -1,6 +1,6 @@
 # Pi Droid SDK binary API baseline
 # artifact=core
-# version=0.3.0-alpha.1
+# version=0.3.0-alpha.2
 # Generated with jar+javap -public -constants; update only with migration notes.
 
 public final class com.harryaskham.pidroid.protocol.generated.AdditiveObject {
@@ -265,6 +265,11 @@ public final class com.harryaskham.pidroid.sdk.core.CanonicalResourceIdentity {
   public boolean equals(java.lang.Object);
 }
 
+public final class com.harryaskham.pidroid.sdk.core.CapabilityUnavailableException extends java.lang.IllegalStateException {
+  public com.harryaskham.pidroid.sdk.core.CapabilityUnavailableException(java.lang.String, java.lang.String);
+  public final java.lang.String getCode();
+}
+
 public final class com.harryaskham.pidroid.sdk.core.CommandAdmissionException extends java.lang.IllegalStateException {
   public com.harryaskham.pidroid.sdk.core.CommandAdmissionException(java.lang.String, java.lang.String);
   public final java.lang.String getCode();
@@ -278,6 +283,50 @@ public final class com.harryaskham.pidroid.sdk.core.CommandLifecycle extends jav
   public static com.harryaskham.pidroid.sdk.core.CommandLifecycle[] values();
   public static com.harryaskham.pidroid.sdk.core.CommandLifecycle valueOf(java.lang.String);
   public static kotlin.enums.EnumEntries<com.harryaskham.pidroid.sdk.core.CommandLifecycle> getEntries();
+}
+
+public final class com.harryaskham.pidroid.sdk.core.ConfiguredSessionDefaults {
+  public com.harryaskham.pidroid.sdk.core.ConfiguredSessionDefaults(java.lang.String, com.harryaskham.pidroid.sdk.core.ConfiguredSessionPersistence, kotlinx.serialization.json.JsonObject, kotlinx.serialization.json.JsonObject, kotlinx.serialization.json.JsonObject, kotlinx.serialization.json.JsonObject, java.lang.String, java.lang.String, java.lang.String);
+  public final java.lang.String getCwd();
+  public final com.harryaskham.pidroid.sdk.core.ConfiguredSessionPersistence getPersistence();
+  public final kotlinx.serialization.json.JsonObject getModel();
+  public final kotlinx.serialization.json.JsonObject getTools();
+  public final kotlinx.serialization.json.JsonObject getResources();
+  public final kotlinx.serialization.json.JsonObject getIsolation();
+  public final java.lang.String getCwdSource();
+  public final java.lang.String getModelSource();
+  public final java.lang.String getAuthoritySource();
+  public java.lang.String toString();
+}
+
+public final class com.harryaskham.pidroid.sdk.core.ConfiguredSessionPersistence extends java.lang.Enum<com.harryaskham.pidroid.sdk.core.ConfiguredSessionPersistence> {
+  public static final com.harryaskham.pidroid.sdk.core.ConfiguredSessionPersistence$Companion Companion;
+  public static final com.harryaskham.pidroid.sdk.core.ConfiguredSessionPersistence PERSISTENT;
+  public static final com.harryaskham.pidroid.sdk.core.ConfiguredSessionPersistence MEMORY;
+  public final java.lang.String getWireValue();
+  public final java.lang.String getTargetMode$MODULE();
+  public static com.harryaskham.pidroid.sdk.core.ConfiguredSessionPersistence[] values();
+  public static com.harryaskham.pidroid.sdk.core.ConfiguredSessionPersistence valueOf(java.lang.String);
+  public static kotlin.enums.EnumEntries<com.harryaskham.pidroid.sdk.core.ConfiguredSessionPersistence> getEntries();
+}
+
+public final class com.harryaskham.pidroid.sdk.core.ConfiguredSessionPersistence$Companion {
+  public final com.harryaskham.pidroid.sdk.core.ConfiguredSessionPersistence fromWireValue(java.lang.String);
+  public com.harryaskham.pidroid.sdk.core.ConfiguredSessionPersistence$Companion(kotlin.jvm.internal.DefaultConstructorMarker);
+}
+
+public final class com.harryaskham.pidroid.sdk.core.ConnectionAttemptId {
+  public final java.lang.String getValue();
+  public static java.lang.String toString-impl(java.lang.String);
+  public java.lang.String toString();
+  public static int hashCode-impl(java.lang.String);
+  public int hashCode();
+  public static boolean equals-impl(java.lang.String, java.lang.Object);
+  public boolean equals(java.lang.Object);
+  public static java.lang.String constructor-impl(java.lang.String);
+  public static final com.harryaskham.pidroid.sdk.core.ConnectionAttemptId box-impl(java.lang.String);
+  public final java.lang.String unbox-impl();
+  public static final boolean equals-impl0(java.lang.String, java.lang.String);
 }
 
 public final class com.harryaskham.pidroid.sdk.core.CorrelationId {
@@ -318,6 +367,176 @@ public final class com.harryaskham.pidroid.sdk.core.CredentialStorageClass exten
   public static com.harryaskham.pidroid.sdk.core.CredentialStorageClass[] values();
   public static com.harryaskham.pidroid.sdk.core.CredentialStorageClass valueOf(java.lang.String);
   public static kotlin.enums.EnumEntries<com.harryaskham.pidroid.sdk.core.CredentialStorageClass> getEntries();
+}
+
+public final class com.harryaskham.pidroid.sdk.core.DashboardActivationMode extends java.lang.Enum<com.harryaskham.pidroid.sdk.core.DashboardActivationMode> {
+  public static final com.harryaskham.pidroid.sdk.core.DashboardActivationMode$Companion Companion;
+  public static final com.harryaskham.pidroid.sdk.core.DashboardActivationMode REUSE;
+  public static final com.harryaskham.pidroid.sdk.core.DashboardActivationMode DIRECT;
+  public static final com.harryaskham.pidroid.sdk.core.DashboardActivationMode FORK;
+  public static final com.harryaskham.pidroid.sdk.core.DashboardActivationMode PREVIEW_ONLY;
+  public final java.lang.String getWireValue();
+  public static com.harryaskham.pidroid.sdk.core.DashboardActivationMode[] values();
+  public static com.harryaskham.pidroid.sdk.core.DashboardActivationMode valueOf(java.lang.String);
+  public static kotlin.enums.EnumEntries<com.harryaskham.pidroid.sdk.core.DashboardActivationMode> getEntries();
+}
+
+public final class com.harryaskham.pidroid.sdk.core.DashboardActivationMode$Companion {
+  public final com.harryaskham.pidroid.sdk.core.DashboardActivationMode fromWireValue(java.lang.String);
+  public com.harryaskham.pidroid.sdk.core.DashboardActivationMode$Companion(kotlin.jvm.internal.DefaultConstructorMarker);
+}
+
+public final class com.harryaskham.pidroid.sdk.core.DashboardActivationTicket {
+  public com.harryaskham.pidroid.sdk.core.DashboardActivationTicket(java.lang.String, java.lang.String, java.lang.String, java.lang.String, com.harryaskham.pidroid.sdk.core.DashboardActivationMode, com.harryaskham.pidroid.sdk.core.TicketState, java.lang.String, java.lang.String, com.harryaskham.pidroid.sdk.core.SessionKey, com.harryaskham.pidroid.sdk.core.SafeApiError, kotlinx.serialization.json.JsonObject);
+  public final java.lang.String getTicketId();
+  public final java.lang.String getRequestId();
+  public final java.lang.String getIdempotencyKey();
+  public final java.lang.String getInventoryId();
+  public final com.harryaskham.pidroid.sdk.core.DashboardActivationMode getMode();
+  public final com.harryaskham.pidroid.sdk.core.TicketState getState();
+  public final java.lang.String getSubmittedAt();
+  public final java.lang.String getUpdatedAt();
+  public final com.harryaskham.pidroid.sdk.core.SessionKey getManagedSession();
+  public final com.harryaskham.pidroid.sdk.core.SafeApiError getError();
+  public final kotlinx.serialization.json.JsonObject getAdditionalFields();
+  public java.lang.String toString();
+}
+
+public final class com.harryaskham.pidroid.sdk.core.DashboardCapabilities {
+  public com.harryaskham.pidroid.sdk.core.DashboardCapabilities(java.lang.String, java.lang.String, java.util.Set<java.lang.String>, com.harryaskham.pidroid.sdk.core.DashboardTuiCapability, com.harryaskham.pidroid.sdk.core.ConfiguredSessionDefaults, java.util.Map<java.lang.String, java.lang.Integer>, kotlinx.serialization.json.JsonObject);
+  public final java.lang.String getApiVersion();
+  public final java.lang.String getAuthentication();
+  public final java.util.Set<java.lang.String> getResources();
+  public final com.harryaskham.pidroid.sdk.core.DashboardTuiCapability getTui();
+  public final com.harryaskham.pidroid.sdk.core.ConfiguredSessionDefaults getConfiguredSessionDefaults();
+  public final java.util.Map<java.lang.String, java.lang.Integer> getLimits();
+  public final kotlinx.serialization.json.JsonObject getAdditionalFields();
+  public final void requireResource(java.lang.String);
+  public java.lang.String toString();
+}
+
+public final class com.harryaskham.pidroid.sdk.core.DashboardInventoryActivation {
+  public com.harryaskham.pidroid.sdk.core.DashboardInventoryActivation(boolean, java.util.Set<? extends com.harryaskham.pidroid.sdk.core.DashboardActivationMode>, java.lang.String);
+  public final boolean getEligible();
+  public final java.util.Set<com.harryaskham.pidroid.sdk.core.DashboardActivationMode> getModes();
+  public final java.lang.String getReasonCode();
+  public java.lang.String toString();
+}
+
+public final class com.harryaskham.pidroid.sdk.core.DashboardInventoryIndex {
+  public com.harryaskham.pidroid.sdk.core.DashboardInventoryIndex(int, java.lang.String, java.lang.String, boolean, boolean);
+  public final int getFormatVersion();
+  public final java.lang.String getLoadedAt();
+  public final java.lang.String getReconciledAt();
+  public final boolean getStale();
+  public final boolean getReconciling();
+}
+
+public final class com.harryaskham.pidroid.sdk.core.DashboardInventoryPage {
+  public com.harryaskham.pidroid.sdk.core.DashboardInventoryPage(java.util.List<com.harryaskham.pidroid.sdk.core.DashboardInventoryRecord>, java.lang.String, com.harryaskham.pidroid.sdk.core.DashboardInventoryIndex);
+  public final java.util.List<com.harryaskham.pidroid.sdk.core.DashboardInventoryRecord> getSessions();
+  public final java.lang.String getNextCursor();
+  public final com.harryaskham.pidroid.sdk.core.DashboardInventoryIndex getIndex();
+  public java.lang.String toString();
+}
+
+public final class com.harryaskham.pidroid.sdk.core.DashboardInventoryRecord {
+  public com.harryaskham.pidroid.sdk.core.DashboardInventoryRecord(java.lang.String, java.lang.String, java.lang.String, java.lang.String, java.lang.String, java.lang.String, java.lang.String, java.lang.String, java.lang.String, int, java.lang.Integer, java.lang.Integer, java.lang.String, com.harryaskham.pidroid.sdk.core.DashboardManagedSession, com.harryaskham.pidroid.sdk.core.DashboardInventoryActivation, com.harryaskham.pidroid.sdk.core.DashboardSessionPresence, kotlinx.serialization.json.JsonObject);
+  public final java.lang.String getInventoryId();
+  public final java.lang.String getSourceKind();
+  public final java.lang.String getTitle();
+  public final java.lang.String getCwdBasename();
+  public final java.lang.String getProjectLabel();
+  public final java.lang.String getPiSessionId();
+  public final java.lang.String getCreatedAt();
+  public final java.lang.String getModifiedAt();
+  public final java.lang.String getActivityAt();
+  public final int getMessageCount();
+  public final java.lang.Integer getEntryCount();
+  public final java.lang.Integer getToolCallCount();
+  public final java.lang.String getCurrentLeafId();
+  public final com.harryaskham.pidroid.sdk.core.DashboardManagedSession getManaged();
+  public final com.harryaskham.pidroid.sdk.core.DashboardInventoryActivation getActivation();
+  public final com.harryaskham.pidroid.sdk.core.DashboardSessionPresence getPresence();
+  public final kotlinx.serialization.json.JsonObject getAdditionalFields();
+  public java.lang.String toString();
+}
+
+public final class com.harryaskham.pidroid.sdk.core.DashboardManagedSession {
+  public com.harryaskham.pidroid.sdk.core.DashboardManagedSession(com.harryaskham.pidroid.sdk.core.SessionKey, java.lang.String, int, com.harryaskham.pidroid.sdk.core.ManagedSessionResidency, java.lang.String, kotlinx.serialization.json.JsonObject);
+  public final com.harryaskham.pidroid.sdk.core.SessionKey getKey();
+  public final java.lang.String getName();
+  public final int getRevision();
+  public final com.harryaskham.pidroid.sdk.core.ManagedSessionResidency getResidency();
+  public final java.lang.String getState();
+  public final kotlinx.serialization.json.JsonObject getRecovery();
+  public java.lang.String toString();
+}
+
+public final class com.harryaskham.pidroid.sdk.core.DashboardSessionInfo {
+  public com.harryaskham.pidroid.sdk.core.DashboardSessionInfo(com.harryaskham.pidroid.sdk.core.DashboardInventoryRecord, java.lang.String, java.lang.String, java.lang.String, java.util.List<com.harryaskham.pidroid.sdk.core.SafeApiError>, kotlinx.serialization.json.JsonObject, kotlinx.serialization.json.JsonObject);
+  public final com.harryaskham.pidroid.sdk.core.DashboardInventoryRecord getSession();
+  public final java.lang.String getCwd();
+  public final java.lang.String getSourceFingerprint();
+  public final java.lang.String getOwnershipMode();
+  public final java.util.List<com.harryaskham.pidroid.sdk.core.SafeApiError> getDiagnostics();
+  public final kotlinx.serialization.json.JsonObject getRuntime();
+  public final kotlinx.serialization.json.JsonObject getAdditionalFields();
+  public java.lang.String toString();
+}
+
+public final class com.harryaskham.pidroid.sdk.core.DashboardSessionPresence {
+  public com.harryaskham.pidroid.sdk.core.DashboardSessionPresence(java.lang.String, java.lang.String, int, java.lang.String, java.lang.String, boolean, kotlinx.serialization.json.JsonObject);
+  public final java.lang.String getRuntime();
+  public final java.lang.String getActivation();
+  public final int getFocusedPaneCount();
+  public final java.lang.String getLastSettledCursor();
+  public final java.lang.String getSeenCursor();
+  public final boolean getUnread();
+  public final kotlinx.serialization.json.JsonObject getAdditionalFields();
+  public java.lang.String toString();
+}
+
+public final class com.harryaskham.pidroid.sdk.core.DashboardTranscript {
+  public com.harryaskham.pidroid.sdk.core.DashboardTranscript(java.lang.String, java.lang.String, com.harryaskham.pidroid.sdk.core.SessionKey, java.lang.String, java.lang.String, kotlinx.serialization.json.JsonArray, java.lang.String, java.lang.String, com.harryaskham.pidroid.sdk.core.TranscriptAvailabilityState, java.lang.String, boolean, boolean, com.harryaskham.pidroid.sdk.core.TranscriptFreshnessState, kotlinx.serialization.json.JsonObject, kotlinx.serialization.json.JsonObject);
+  public final java.lang.String getInventoryId();
+  public final java.lang.String getPiSessionId();
+  public final com.harryaskham.pidroid.sdk.core.SessionKey getManagedSession();
+  public final java.lang.String getCurrentLeafId();
+  public final java.lang.String getSourceFingerprint();
+  public final kotlinx.serialization.json.JsonArray getRecords();
+  public final java.lang.String getOlderCursor();
+  public final java.lang.String getNewerCursor();
+  public final com.harryaskham.pidroid.sdk.core.TranscriptAvailabilityState getAvailability();
+  public final java.lang.String getAvailabilityReasonCode();
+  public final boolean getAvailabilityRetryable();
+  public final boolean getObserverAttachAllowed();
+  public final com.harryaskham.pidroid.sdk.core.TranscriptFreshnessState getFreshness();
+  public final kotlinx.serialization.json.JsonObject getQuarantine();
+  public final kotlinx.serialization.json.JsonObject getAdditionalFields();
+  public final com.harryaskham.pidroid.sdk.core.SessionKey getObserverSession();
+  public java.lang.String toString();
+}
+
+public final class com.harryaskham.pidroid.sdk.core.DashboardTuiCapability {
+  public com.harryaskham.pidroid.sdk.core.DashboardTuiCapability(boolean, java.lang.String, java.lang.String);
+  public final boolean getAvailable();
+  public final java.lang.String getSubprotocol();
+  public final java.lang.String getUnavailableReason();
+  public java.lang.String toString();
+}
+
+public final class com.harryaskham.pidroid.sdk.core.DurableRequestIdentity {
+  public com.harryaskham.pidroid.sdk.core.DurableRequestIdentity(java.lang.String, java.lang.String);
+  public final java.lang.String getRequestId();
+  public final java.lang.String getIdempotencyKey();
+  public java.lang.String toString();
+  public final java.lang.String component1();
+  public final java.lang.String component2();
+  public final com.harryaskham.pidroid.sdk.core.DurableRequestIdentity copy(java.lang.String, java.lang.String);
+  public static com.harryaskham.pidroid.sdk.core.DurableRequestIdentity copy$default(com.harryaskham.pidroid.sdk.core.DurableRequestIdentity, java.lang.String, java.lang.String, int, java.lang.Object);
+  public int hashCode();
+  public boolean equals(java.lang.Object);
 }
 
 public final class com.harryaskham.pidroid.sdk.core.DurableTicket {
@@ -465,10 +684,15 @@ public final class com.harryaskham.pidroid.sdk.core.HostRegistry {
   public final java.lang.Object list(kotlin.coroutines.Continuation<? super java.util.List<com.harryaskham.pidroid.sdk.core.RegisteredHost>>);
   public final java.lang.Object register(com.harryaskham.pidroid.sdk.core.PairingPayload, boolean, kotlin.coroutines.Continuation<? super com.harryaskham.pidroid.sdk.core.RegisteredHost>);
   public static java.lang.Object register$default(com.harryaskham.pidroid.sdk.core.HostRegistry, com.harryaskham.pidroid.sdk.core.PairingPayload, boolean, kotlin.coroutines.Continuation, int, java.lang.Object);
+  public final java.lang.Object updateMetadata-O1EFQQs(java.lang.String, java.net.URI, java.lang.String, java.lang.String, boolean, kotlin.coroutines.Continuation<? super com.harryaskham.pidroid.sdk.core.RegisteredHost>);
+  public static java.lang.Object updateMetadata-O1EFQQs$default(com.harryaskham.pidroid.sdk.core.HostRegistry, java.lang.String, java.net.URI, java.lang.String, java.lang.String, boolean, kotlin.coroutines.Continuation, int, java.lang.Object);
+  public final java.lang.Object replace-71i_XnE(java.lang.String, com.harryaskham.pidroid.sdk.core.PairingPayload, boolean, kotlin.coroutines.Continuation<? super com.harryaskham.pidroid.sdk.core.RegisteredHost>);
+  public static java.lang.Object replace-71i_XnE$default(com.harryaskham.pidroid.sdk.core.HostRegistry, java.lang.String, com.harryaskham.pidroid.sdk.core.PairingPayload, boolean, kotlin.coroutines.Continuation, int, java.lang.Object);
   public final java.lang.Object rotateBearer-qNvC9KY(java.lang.String, char[], kotlin.coroutines.Continuation<? super com.harryaskham.pidroid.sdk.core.RegisteredHost>);
   public final java.lang.Object remove-MvNcRg0(java.lang.String, kotlin.coroutines.Continuation<? super kotlin.Unit>);
   public java.lang.String toString();
   public static final com.harryaskham.pidroid.sdk.core.HostCredentialVault access$getCredentials$p(com.harryaskham.pidroid.sdk.core.HostRegistry);
+  public static final java.lang.Object access$replaceLocked-71i_XnE(com.harryaskham.pidroid.sdk.core.HostRegistry, java.lang.String, com.harryaskham.pidroid.sdk.core.PairingPayload, boolean, kotlin.coroutines.Continuation);
 }
 
 final class com.harryaskham.pidroid.sdk.core.HostRegistry$list$1 extends kotlin.coroutines.jvm.internal.ContinuationImpl {
@@ -495,7 +719,26 @@ final class com.harryaskham.pidroid.sdk.core.HostRegistry$remove$1 extends kotli
   public final java.lang.Object invokeSuspend(java.lang.Object);
 }
 
+final class com.harryaskham.pidroid.sdk.core.HostRegistry$replace$1 extends kotlin.coroutines.jvm.internal.ContinuationImpl {
+  public final java.lang.Object invokeSuspend(java.lang.Object);
+}
+
+final class com.harryaskham.pidroid.sdk.core.HostRegistry$replaceLocked$1 extends kotlin.coroutines.jvm.internal.ContinuationImpl {
+  public final java.lang.Object invokeSuspend(java.lang.Object);
+}
+
+final class com.harryaskham.pidroid.sdk.core.HostRegistry$replaceLocked$6 extends kotlin.coroutines.jvm.internal.SuspendLambda implements kotlin.jvm.functions.Function2<char[], kotlin.coroutines.Continuation<? super kotlin.Unit>, java.lang.Object> {
+  public final java.lang.Object invokeSuspend(java.lang.Object);
+  public final kotlin.coroutines.Continuation<kotlin.Unit> create(java.lang.Object, kotlin.coroutines.Continuation<?>);
+  public final java.lang.Object invoke(char[], kotlin.coroutines.Continuation<? super kotlin.Unit>);
+  public java.lang.Object invoke(java.lang.Object, java.lang.Object);
+}
+
 final class com.harryaskham.pidroid.sdk.core.HostRegistry$rotateBearer$1 extends kotlin.coroutines.jvm.internal.ContinuationImpl {
+  public final java.lang.Object invokeSuspend(java.lang.Object);
+}
+
+final class com.harryaskham.pidroid.sdk.core.HostRegistry$updateMetadata$1 extends kotlin.coroutines.jvm.internal.ContinuationImpl {
   public final java.lang.Object invokeSuspend(java.lang.Object);
 }
 
@@ -514,6 +757,15 @@ public final class com.harryaskham.pidroid.sdk.core.HttpMethod extends java.lang
   public static com.harryaskham.pidroid.sdk.core.HttpMethod[] values();
   public static com.harryaskham.pidroid.sdk.core.HttpMethod valueOf(java.lang.String);
   public static kotlin.enums.EnumEntries<com.harryaskham.pidroid.sdk.core.HttpMethod> getEntries();
+}
+
+public final class com.harryaskham.pidroid.sdk.core.IncomingFrameDisposition extends java.lang.Enum<com.harryaskham.pidroid.sdk.core.IncomingFrameDisposition> {
+  public static final com.harryaskham.pidroid.sdk.core.IncomingFrameDisposition APPLIED;
+  public static final com.harryaskham.pidroid.sdk.core.IncomingFrameDisposition STALE_ATTEMPT_IGNORED;
+  public static final com.harryaskham.pidroid.sdk.core.IncomingFrameDisposition RESYNC_REQUIRED;
+  public static com.harryaskham.pidroid.sdk.core.IncomingFrameDisposition[] values();
+  public static com.harryaskham.pidroid.sdk.core.IncomingFrameDisposition valueOf(java.lang.String);
+  public static kotlin.enums.EnumEntries<com.harryaskham.pidroid.sdk.core.IncomingFrameDisposition> getEntries();
 }
 
 public final class com.harryaskham.pidroid.sdk.core.InteractiveCapabilities {
@@ -608,6 +860,46 @@ public final class com.harryaskham.pidroid.sdk.core.LazySessionDraft$Companion {
   public com.harryaskham.pidroid.sdk.core.LazySessionDraft$Companion(kotlin.jvm.internal.DefaultConstructorMarker);
 }
 
+public final class com.harryaskham.pidroid.sdk.core.ManagedSessionPage {
+  public com.harryaskham.pidroid.sdk.core.ManagedSessionPage(java.util.List<com.harryaskham.pidroid.sdk.core.ManagedSessionResource>, java.lang.String);
+  public final java.util.List<com.harryaskham.pidroid.sdk.core.ManagedSessionResource> getSessions();
+  public final java.lang.String getNextCursor();
+  public java.lang.String toString();
+}
+
+public final class com.harryaskham.pidroid.sdk.core.ManagedSessionResidency extends java.lang.Enum<com.harryaskham.pidroid.sdk.core.ManagedSessionResidency> {
+  public static final com.harryaskham.pidroid.sdk.core.ManagedSessionResidency$Companion Companion;
+  public static final com.harryaskham.pidroid.sdk.core.ManagedSessionResidency RESIDENT;
+  public static final com.harryaskham.pidroid.sdk.core.ManagedSessionResidency DORMANT;
+  public final java.lang.String getWireValue();
+  public static com.harryaskham.pidroid.sdk.core.ManagedSessionResidency[] values();
+  public static com.harryaskham.pidroid.sdk.core.ManagedSessionResidency valueOf(java.lang.String);
+  public static kotlin.enums.EnumEntries<com.harryaskham.pidroid.sdk.core.ManagedSessionResidency> getEntries();
+}
+
+public final class com.harryaskham.pidroid.sdk.core.ManagedSessionResidency$Companion {
+  public final com.harryaskham.pidroid.sdk.core.ManagedSessionResidency fromWireValue(java.lang.String);
+  public com.harryaskham.pidroid.sdk.core.ManagedSessionResidency$Companion(kotlin.jvm.internal.DefaultConstructorMarker);
+}
+
+public final class com.harryaskham.pidroid.sdk.core.ManagedSessionResource {
+  public com.harryaskham.pidroid.sdk.core.ManagedSessionResource(com.harryaskham.pidroid.sdk.core.SessionKey, java.lang.String, int, com.harryaskham.pidroid.sdk.core.ManagedSessionResidency, java.lang.String, java.lang.String, java.lang.String, java.lang.String, kotlinx.serialization.json.JsonObject, kotlinx.serialization.json.JsonObject, kotlinx.serialization.json.JsonObject, java.util.Map<java.lang.String, java.lang.String>, kotlinx.serialization.json.JsonObject);
+  public final com.harryaskham.pidroid.sdk.core.SessionKey getKey();
+  public final java.lang.String getName();
+  public final int getRevision();
+  public final com.harryaskham.pidroid.sdk.core.ManagedSessionResidency getResidency();
+  public final java.lang.String getState();
+  public final java.lang.String getCreatedAt();
+  public final java.lang.String getUpdatedAt();
+  public final java.lang.String getLastUsedAt();
+  public final kotlinx.serialization.json.JsonObject getSpec();
+  public final kotlinx.serialization.json.JsonObject getEnvironment();
+  public final kotlinx.serialization.json.JsonObject getRecovery();
+  public final java.util.Map<java.lang.String, java.lang.String> getLinks();
+  public final kotlinx.serialization.json.JsonObject getAdditionalFields();
+  public java.lang.String toString();
+}
+
 public final class com.harryaskham.pidroid.sdk.core.MultiHostCursor {
   public com.harryaskham.pidroid.sdk.core.MultiHostCursor(java.lang.String, java.util.Map<com.harryaskham.pidroid.sdk.core.HostId, com.harryaskham.pidroid.sdk.core.HostCursorState>);
   public final java.lang.String getQueryDigest();
@@ -698,6 +990,10 @@ public final class com.harryaskham.pidroid.sdk.core.OutboundControl {
   public java.lang.String toString();
 }
 
+public final class com.harryaskham.pidroid.sdk.core.PairingKt {
+  public static final com.harryaskham.pidroid.sdk.core.ValidatedHostMetadata validateHostMetadata(java.net.URI, java.lang.String, java.lang.String);
+}
+
 public final class com.harryaskham.pidroid.sdk.core.PairingPayload implements java.lang.AutoCloseable {
   public static final com.harryaskham.pidroid.sdk.core.PairingPayload$Companion Companion;
   public final java.net.URI getApiUri();
@@ -708,8 +1004,6 @@ public final class com.harryaskham.pidroid.sdk.core.PairingPayload implements ja
   public final <T> java.lang.Object useBearerSuspending(kotlin.jvm.functions.Function2<? super char[], ? super kotlin.coroutines.Continuation<? super T>, ? extends java.lang.Object>, kotlin.coroutines.Continuation<? super T>);
   public synchronized void close();
   public java.lang.String toString();
-  public static final kotlin.text.Regex access$getDISPLAY_NAME$cp();
-  public static final kotlin.text.Regex access$getTLS_FINGERPRINT$cp();
   public com.harryaskham.pidroid.sdk.core.PairingPayload(java.net.URI, java.lang.String, java.lang.String, com.harryaskham.pidroid.sdk.core.TransportSecurity, char[], kotlin.jvm.internal.DefaultConstructorMarker);
 }
 
@@ -738,12 +1032,82 @@ public final class com.harryaskham.pidroid.sdk.core.PiDaemonClient {
   public com.harryaskham.pidroid.sdk.core.PiDaemonClient(com.harryaskham.pidroid.sdk.core.PiDaemonHostDescriptor, com.harryaskham.pidroid.sdk.core.ServiceBearerRequestFactory, com.harryaskham.pidroid.sdk.core.PiDaemonTransport);
   public final com.harryaskham.pidroid.sdk.core.PiDaemonHostDescriptor getHost();
   public final java.lang.Object capabilities(kotlin.coroutines.Continuation<? super com.harryaskham.pidroid.sdk.core.ApiResult<com.harryaskham.pidroid.sdk.core.HostCapabilities>>);
+  public final java.lang.Object dashboardCapabilities(kotlin.coroutines.Continuation<? super com.harryaskham.pidroid.sdk.core.ApiResult<com.harryaskham.pidroid.sdk.core.DashboardCapabilities>>);
+  public final java.lang.Object listSessions(int, java.lang.String, kotlin.coroutines.Continuation<? super com.harryaskham.pidroid.sdk.core.ApiResult<com.harryaskham.pidroid.sdk.core.ManagedSessionPage>>);
+  public static java.lang.Object listSessions$default(com.harryaskham.pidroid.sdk.core.PiDaemonClient, int, java.lang.String, kotlin.coroutines.Continuation, int, java.lang.Object);
+  public final java.lang.Object session(java.lang.String, kotlin.coroutines.Continuation<? super com.harryaskham.pidroid.sdk.core.ApiResult<com.harryaskham.pidroid.sdk.core.ManagedSessionResource>>);
+  public final java.lang.Object createConfiguredSession(com.harryaskham.pidroid.sdk.core.DashboardCapabilities, com.harryaskham.pidroid.sdk.core.DurableRequestIdentity, java.lang.String, java.lang.String, kotlin.coroutines.Continuation<? super com.harryaskham.pidroid.sdk.core.ApiResult<com.harryaskham.pidroid.sdk.core.DurableTicket>>);
+  public static java.lang.Object createConfiguredSession$default(com.harryaskham.pidroid.sdk.core.PiDaemonClient, com.harryaskham.pidroid.sdk.core.DashboardCapabilities, com.harryaskham.pidroid.sdk.core.DurableRequestIdentity, java.lang.String, java.lang.String, kotlin.coroutines.Continuation, int, java.lang.Object);
+  public final java.lang.Object ticket(java.lang.String, kotlin.coroutines.Continuation<? super com.harryaskham.pidroid.sdk.core.ApiResult<com.harryaskham.pidroid.sdk.core.DurableTicket>>);
+  public final java.lang.Object reconcileTicket(java.lang.String, com.harryaskham.pidroid.sdk.core.TicketReconciliation, kotlin.coroutines.Continuation<? super com.harryaskham.pidroid.sdk.core.ApiResult<com.harryaskham.pidroid.sdk.core.DurableTicket>>);
+  public final java.lang.Object listInventory(int, java.lang.String, java.lang.String, kotlin.coroutines.Continuation<? super com.harryaskham.pidroid.sdk.core.ApiResult<com.harryaskham.pidroid.sdk.core.DashboardInventoryPage>>);
+  public static java.lang.Object listInventory$default(com.harryaskham.pidroid.sdk.core.PiDaemonClient, int, java.lang.String, java.lang.String, kotlin.coroutines.Continuation, int, java.lang.Object);
+  public final java.lang.Object inventoryInfo(java.lang.String, kotlin.coroutines.Continuation<? super com.harryaskham.pidroid.sdk.core.ApiResult<com.harryaskham.pidroid.sdk.core.DashboardSessionInfo>>);
+  public final java.lang.Object transcript(java.lang.String, int, java.lang.String, java.lang.String, kotlin.coroutines.Continuation<? super com.harryaskham.pidroid.sdk.core.ApiResult<com.harryaskham.pidroid.sdk.core.DashboardTranscript>>);
+  public static java.lang.Object transcript$default(com.harryaskham.pidroid.sdk.core.PiDaemonClient, java.lang.String, int, java.lang.String, java.lang.String, kotlin.coroutines.Continuation, int, java.lang.Object);
+  public final java.lang.Object adoptExisting(com.harryaskham.pidroid.sdk.core.DashboardInventoryRecord, kotlin.coroutines.Continuation<? super com.harryaskham.pidroid.sdk.core.ApiResult<com.harryaskham.pidroid.sdk.core.SessionAdoption$Existing>>);
+  public final java.lang.Object activateForReuse(com.harryaskham.pidroid.sdk.core.DashboardInventoryRecord, com.harryaskham.pidroid.sdk.core.DurableRequestIdentity, java.lang.String, kotlin.coroutines.Continuation<? super com.harryaskham.pidroid.sdk.core.ApiResult<com.harryaskham.pidroid.sdk.core.DashboardActivationTicket>>);
+  public static java.lang.Object activateForReuse$default(com.harryaskham.pidroid.sdk.core.PiDaemonClient, com.harryaskham.pidroid.sdk.core.DashboardInventoryRecord, com.harryaskham.pidroid.sdk.core.DurableRequestIdentity, java.lang.String, kotlin.coroutines.Continuation, int, java.lang.Object);
+  public final java.lang.Object activation(java.lang.String, kotlin.coroutines.Continuation<? super com.harryaskham.pidroid.sdk.core.ApiResult<com.harryaskham.pidroid.sdk.core.DashboardActivationTicket>>);
   public final com.harryaskham.pidroid.sdk.core.PiDaemonSocket attach(com.harryaskham.pidroid.sdk.core.SessionKey, com.harryaskham.pidroid.sdk.core.SessionRole, java.lang.String);
   public static com.harryaskham.pidroid.sdk.core.PiDaemonSocket attach$default(com.harryaskham.pidroid.sdk.core.PiDaemonClient, com.harryaskham.pidroid.sdk.core.SessionKey, com.harryaskham.pidroid.sdk.core.SessionRole, java.lang.String, int, java.lang.Object);
+  public final com.harryaskham.pidroid.sdk.core.PiDaemonSocket attach(com.harryaskham.pidroid.sdk.core.SessionKey, com.harryaskham.pidroid.sdk.core.SessionRole, java.lang.String, boolean);
+  public final com.harryaskham.pidroid.sdk.core.PiDaemonSocket attachObserver(com.harryaskham.pidroid.sdk.core.DashboardTranscript, java.lang.String, boolean);
+  public static com.harryaskham.pidroid.sdk.core.PiDaemonSocket attachObserver$default(com.harryaskham.pidroid.sdk.core.PiDaemonClient, com.harryaskham.pidroid.sdk.core.DashboardTranscript, java.lang.String, boolean, int, java.lang.Object);
+  public final com.harryaskham.pidroid.sdk.core.PiDaemonSocket attachTui(com.harryaskham.pidroid.sdk.core.DashboardCapabilities, com.harryaskham.pidroid.sdk.core.SessionKey, com.harryaskham.pidroid.sdk.core.SessionRole, int, int, java.lang.String);
+  public static com.harryaskham.pidroid.sdk.core.PiDaemonSocket attachTui$default(com.harryaskham.pidroid.sdk.core.PiDaemonClient, com.harryaskham.pidroid.sdk.core.DashboardCapabilities, com.harryaskham.pidroid.sdk.core.SessionKey, com.harryaskham.pidroid.sdk.core.SessionRole, int, int, java.lang.String, int, java.lang.Object);
   public java.lang.String toString();
 }
 
+final class com.harryaskham.pidroid.sdk.core.PiDaemonClient$activateForReuse$1 extends kotlin.coroutines.jvm.internal.ContinuationImpl {
+  public final java.lang.Object invokeSuspend(java.lang.Object);
+}
+
+final class com.harryaskham.pidroid.sdk.core.PiDaemonClient$activation$1 extends kotlin.coroutines.jvm.internal.ContinuationImpl {
+  public final java.lang.Object invokeSuspend(java.lang.Object);
+}
+
+final class com.harryaskham.pidroid.sdk.core.PiDaemonClient$adoptExisting$1 extends kotlin.coroutines.jvm.internal.ContinuationImpl {
+  public final java.lang.Object invokeSuspend(java.lang.Object);
+}
+
 final class com.harryaskham.pidroid.sdk.core.PiDaemonClient$capabilities$1 extends kotlin.coroutines.jvm.internal.ContinuationImpl {
+  public final java.lang.Object invokeSuspend(java.lang.Object);
+}
+
+final class com.harryaskham.pidroid.sdk.core.PiDaemonClient$createConfiguredSession$1 extends kotlin.coroutines.jvm.internal.ContinuationImpl {
+  public final java.lang.Object invokeSuspend(java.lang.Object);
+}
+
+final class com.harryaskham.pidroid.sdk.core.PiDaemonClient$dashboardCapabilities$1 extends kotlin.coroutines.jvm.internal.ContinuationImpl {
+  public final java.lang.Object invokeSuspend(java.lang.Object);
+}
+
+final class com.harryaskham.pidroid.sdk.core.PiDaemonClient$inventoryInfo$1 extends kotlin.coroutines.jvm.internal.ContinuationImpl {
+  public final java.lang.Object invokeSuspend(java.lang.Object);
+}
+
+final class com.harryaskham.pidroid.sdk.core.PiDaemonClient$listInventory$1 extends kotlin.coroutines.jvm.internal.ContinuationImpl {
+  public final java.lang.Object invokeSuspend(java.lang.Object);
+}
+
+final class com.harryaskham.pidroid.sdk.core.PiDaemonClient$listSessions$1 extends kotlin.coroutines.jvm.internal.ContinuationImpl {
+  public final java.lang.Object invokeSuspend(java.lang.Object);
+}
+
+final class com.harryaskham.pidroid.sdk.core.PiDaemonClient$reconcileTicket$1 extends kotlin.coroutines.jvm.internal.ContinuationImpl {
+  public final java.lang.Object invokeSuspend(java.lang.Object);
+}
+
+final class com.harryaskham.pidroid.sdk.core.PiDaemonClient$session$1 extends kotlin.coroutines.jvm.internal.ContinuationImpl {
+  public final java.lang.Object invokeSuspend(java.lang.Object);
+}
+
+final class com.harryaskham.pidroid.sdk.core.PiDaemonClient$ticket$1 extends kotlin.coroutines.jvm.internal.ContinuationImpl {
+  public final java.lang.Object invokeSuspend(java.lang.Object);
+}
+
+final class com.harryaskham.pidroid.sdk.core.PiDaemonClient$transcript$1 extends kotlin.coroutines.jvm.internal.ContinuationImpl {
   public final java.lang.Object invokeSuspend(java.lang.Object);
 }
 
@@ -819,6 +1183,24 @@ public final class com.harryaskham.pidroid.sdk.core.RegisteredHost {
   public com.harryaskham.pidroid.sdk.core.RegisteredHost(java.lang.String, java.lang.String, java.net.URI, java.lang.String, com.harryaskham.pidroid.sdk.core.TransportSecurity, int, com.harryaskham.pidroid.sdk.core.CredentialHandle, kotlin.jvm.internal.DefaultConstructorMarker);
 }
 
+public final class com.harryaskham.pidroid.sdk.core.ResumableCommand {
+  public final java.lang.String getCorrelationId-b8bcX2I();
+  public final com.harryaskham.pidroid.protocol.generated.PiRpcCommandType getKind();
+  public final com.harryaskham.pidroid.sdk.core.CommandLifecycle getLifecycle();
+  public final void setLifecycle$MODULE(com.harryaskham.pidroid.sdk.core.CommandLifecycle);
+  public java.lang.String toString();
+  public com.harryaskham.pidroid.sdk.core.ResumableCommand(java.lang.String, com.harryaskham.pidroid.protocol.generated.PiRpcCommandType, com.harryaskham.pidroid.sdk.core.CommandLifecycle, kotlin.jvm.internal.DefaultConstructorMarker);
+}
+
+public final class com.harryaskham.pidroid.sdk.core.ResumableTicket {
+  public com.harryaskham.pidroid.sdk.core.ResumableTicket(java.lang.String, com.harryaskham.pidroid.sdk.core.DurableRequestIdentity, com.harryaskham.pidroid.sdk.core.TicketState, com.harryaskham.pidroid.sdk.core.SessionKey);
+  public final java.lang.String getTicketId();
+  public final com.harryaskham.pidroid.sdk.core.DurableRequestIdentity getRequest();
+  public final com.harryaskham.pidroid.sdk.core.TicketState getState();
+  public final com.harryaskham.pidroid.sdk.core.SessionKey getSession();
+  public java.lang.String toString();
+}
+
 public final class com.harryaskham.pidroid.sdk.core.SafeApiError {
   public com.harryaskham.pidroid.sdk.core.SafeApiError(java.lang.String, java.lang.String, boolean, kotlinx.serialization.json.JsonObject);
   public final java.lang.String getCode();
@@ -847,11 +1229,29 @@ public final class com.harryaskham.pidroid.sdk.core.ServiceBearerRequestFactory$
   public com.harryaskham.pidroid.sdk.core.ServiceBearerRequestFactory$Companion(kotlin.jvm.internal.DefaultConstructorMarker);
 }
 
+public interface com.harryaskham.pidroid.sdk.core.SessionAdoption {
+}
+
+public final class com.harryaskham.pidroid.sdk.core.SessionAdoption$Activating implements com.harryaskham.pidroid.sdk.core.SessionAdoption {
+  public com.harryaskham.pidroid.sdk.core.SessionAdoption$Activating(com.harryaskham.pidroid.sdk.core.DashboardActivationTicket);
+  public final com.harryaskham.pidroid.sdk.core.DashboardActivationTicket getTicket();
+  public java.lang.String toString();
+}
+
+public final class com.harryaskham.pidroid.sdk.core.SessionAdoption$Existing implements com.harryaskham.pidroid.sdk.core.SessionAdoption {
+  public com.harryaskham.pidroid.sdk.core.SessionAdoption$Existing(java.lang.String, com.harryaskham.pidroid.sdk.core.ManagedSessionResource);
+  public final java.lang.String getInventoryId();
+  public final com.harryaskham.pidroid.sdk.core.ManagedSessionResource getSession();
+  public java.lang.String toString();
+}
+
 public final class com.harryaskham.pidroid.sdk.core.SessionApiCodec {
   public static final com.harryaskham.pidroid.sdk.core.SessionApiCodec INSTANCE;
   public final com.harryaskham.pidroid.sdk.core.ApiResult<com.harryaskham.pidroid.sdk.core.HostCapabilities> decodeCapabilities(com.harryaskham.pidroid.sdk.core.NeutralHttpResponse);
   public final com.harryaskham.pidroid.sdk.core.ApiResult<com.harryaskham.pidroid.sdk.core.DurableTicket> decodeTicket(com.harryaskham.pidroid.sdk.core.NeutralHttpResponse);
+  public final <T> com.harryaskham.pidroid.sdk.core.ApiResult<T> decodeEnvelope$MODULE(com.harryaskham.pidroid.sdk.core.NeutralHttpResponse, kotlin.jvm.functions.Function1<? super kotlinx.serialization.json.JsonObject, ? extends T>);
   public final kotlinx.serialization.json.JsonObject decodeObject$MODULE(byte[], int, java.lang.String);
+  public final com.harryaskham.pidroid.sdk.core.SafeApiError decodeError$MODULE(kotlinx.serialization.json.JsonElement);
 }
 
 public final class com.harryaskham.pidroid.sdk.core.SessionApiModelsKt {
@@ -864,17 +1264,21 @@ public final class com.harryaskham.pidroid.sdk.core.SessionApiModelsKt {
   public static final kotlinx.serialization.json.JsonObject without(kotlinx.serialization.json.JsonObject, java.util.Set<java.lang.String>);
 }
 
+public final class com.harryaskham.pidroid.sdk.core.SessionAttachDirective {
+  public final java.lang.String getAttemptId-28NCOq8();
+  public final com.harryaskham.pidroid.sdk.core.SessionKey getSession();
+  public final com.harryaskham.pidroid.sdk.core.SessionRole getRole();
+  public final java.lang.String getCursor();
+  public java.lang.String toString();
+  public com.harryaskham.pidroid.sdk.core.SessionAttachDirective(java.lang.String, com.harryaskham.pidroid.sdk.core.SessionKey, com.harryaskham.pidroid.sdk.core.SessionRole, java.lang.String, kotlin.jvm.internal.DefaultConstructorMarker);
+}
+
 public abstract class com.harryaskham.pidroid.sdk.core.SessionCommandIntent {
   public static final com.harryaskham.pidroid.sdk.core.SessionCommandIntent$Companion Companion;
   public final com.harryaskham.pidroid.protocol.generated.PiRpcCommandType getKind();
   public abstract java.util.Map<java.lang.String, kotlinx.serialization.json.JsonElement> fields$MODULE();
   public java.lang.String toString();
   public com.harryaskham.pidroid.sdk.core.SessionCommandIntent(com.harryaskham.pidroid.protocol.generated.PiRpcCommandType, kotlin.jvm.internal.DefaultConstructorMarker);
-}
-
-final class com.harryaskham.pidroid.sdk.core.SessionCommandIntent$AbortIntent extends com.harryaskham.pidroid.sdk.core.SessionCommandIntent {
-  public com.harryaskham.pidroid.sdk.core.SessionCommandIntent$AbortIntent();
-  public java.util.Map<java.lang.String, kotlinx.serialization.json.JsonElement> fields$MODULE();
 }
 
 final class com.harryaskham.pidroid.sdk.core.SessionCommandIntent$CompactIntent extends com.harryaskham.pidroid.sdk.core.SessionCommandIntent {
@@ -887,10 +1291,16 @@ public final class com.harryaskham.pidroid.sdk.core.SessionCommandIntent$Compani
   public final com.harryaskham.pidroid.sdk.core.SessionCommandIntent steer(java.lang.String);
   public final com.harryaskham.pidroid.sdk.core.SessionCommandIntent followUp(java.lang.String);
   public final com.harryaskham.pidroid.sdk.core.SessionCommandIntent abort();
+  public final com.harryaskham.pidroid.sdk.core.SessionCommandIntent getTree();
   public final com.harryaskham.pidroid.sdk.core.SessionCommandIntent setModel(java.lang.String, java.lang.String);
   public final com.harryaskham.pidroid.sdk.core.SessionCommandIntent setThinkingLevel(java.lang.String);
   public final com.harryaskham.pidroid.sdk.core.SessionCommandIntent compact(java.lang.String);
   public com.harryaskham.pidroid.sdk.core.SessionCommandIntent$Companion(kotlin.jvm.internal.DefaultConstructorMarker);
+}
+
+final class com.harryaskham.pidroid.sdk.core.SessionCommandIntent$EmptyIntent extends com.harryaskham.pidroid.sdk.core.SessionCommandIntent {
+  public com.harryaskham.pidroid.sdk.core.SessionCommandIntent$EmptyIntent(com.harryaskham.pidroid.protocol.generated.PiRpcCommandType);
+  public java.util.Map<java.lang.String, kotlinx.serialization.json.JsonElement> fields$MODULE();
 }
 
 final class com.harryaskham.pidroid.sdk.core.SessionCommandIntent$MessageIntent extends com.harryaskham.pidroid.sdk.core.SessionCommandIntent {
@@ -919,6 +1329,113 @@ public final class com.harryaskham.pidroid.sdk.core.SessionKey {
   public java.lang.String toString();
   public int hashCode();
   public boolean equals(java.lang.Object);
+}
+
+public final class com.harryaskham.pidroid.sdk.core.SessionLifecycleCodec {
+  public static final com.harryaskham.pidroid.sdk.core.SessionLifecycleCodec INSTANCE;
+  public final com.harryaskham.pidroid.sdk.core.ApiResult<com.harryaskham.pidroid.sdk.core.DashboardCapabilities> decodeDashboardCapabilities(com.harryaskham.pidroid.sdk.core.NeutralHttpResponse);
+  public final com.harryaskham.pidroid.sdk.core.ApiResult<com.harryaskham.pidroid.sdk.core.ManagedSessionResource> decodeSession(com.harryaskham.pidroid.sdk.core.NeutralHttpResponse);
+  public final com.harryaskham.pidroid.sdk.core.ApiResult<com.harryaskham.pidroid.sdk.core.ManagedSessionPage> decodeSessionPage(com.harryaskham.pidroid.sdk.core.NeutralHttpResponse);
+  public final com.harryaskham.pidroid.sdk.core.ApiResult<com.harryaskham.pidroid.sdk.core.DashboardInventoryPage> decodeInventory(com.harryaskham.pidroid.sdk.core.NeutralHttpResponse);
+  public final com.harryaskham.pidroid.sdk.core.ApiResult<com.harryaskham.pidroid.sdk.core.DashboardSessionInfo> decodeSessionInfo(com.harryaskham.pidroid.sdk.core.NeutralHttpResponse);
+  public final com.harryaskham.pidroid.sdk.core.ApiResult<com.harryaskham.pidroid.sdk.core.DashboardTranscript> decodeTranscript(com.harryaskham.pidroid.sdk.core.NeutralHttpResponse);
+  public final com.harryaskham.pidroid.sdk.core.ApiResult<com.harryaskham.pidroid.sdk.core.DashboardActivationTicket> decodeActivationTicket(com.harryaskham.pidroid.sdk.core.NeutralHttpResponse);
+  public final byte[] configuredCreateBody(com.harryaskham.pidroid.sdk.core.ConfiguredSessionDefaults, com.harryaskham.pidroid.sdk.core.DurableRequestIdentity, java.lang.String, java.lang.String);
+  public static byte[] configuredCreateBody$default(com.harryaskham.pidroid.sdk.core.SessionLifecycleCodec, com.harryaskham.pidroid.sdk.core.ConfiguredSessionDefaults, com.harryaskham.pidroid.sdk.core.DurableRequestIdentity, java.lang.String, java.lang.String, int, java.lang.Object);
+  public final byte[] activationBody(com.harryaskham.pidroid.sdk.core.DurableRequestIdentity, java.lang.String);
+  public static byte[] activationBody$default(com.harryaskham.pidroid.sdk.core.SessionLifecycleCodec, com.harryaskham.pidroid.sdk.core.DurableRequestIdentity, java.lang.String, int, java.lang.Object);
+  public final byte[] reconciliationBody(com.harryaskham.pidroid.sdk.core.TicketReconciliation);
+  public static final com.harryaskham.pidroid.sdk.core.ManagedSessionResource access$decodeSessionData(com.harryaskham.pidroid.sdk.core.SessionLifecycleCodec, kotlinx.serialization.json.JsonObject);
+}
+
+final class com.harryaskham.pidroid.sdk.core.SessionLifecycleCodec$decodeSession$1 extends kotlin.jvm.internal.FunctionReferenceImpl implements kotlin.jvm.functions.Function1<kotlinx.serialization.json.JsonObject, com.harryaskham.pidroid.sdk.core.ManagedSessionResource> {
+  public final com.harryaskham.pidroid.sdk.core.ManagedSessionResource invoke(kotlinx.serialization.json.JsonObject);
+  public java.lang.Object invoke(java.lang.Object);
+}
+
+public final class com.harryaskham.pidroid.sdk.core.SessionLifecycleCoordinator {
+  public static final com.harryaskham.pidroid.sdk.core.SessionLifecycleCoordinator$Companion Companion;
+  public final synchronized com.harryaskham.pidroid.sdk.core.SessionLifecycleState getState();
+  public final synchronized com.harryaskham.pidroid.sdk.core.SessionAttachDirective beginConnection-lc16riE(java.lang.String);
+  public final synchronized com.harryaskham.pidroid.sdk.core.IncomingFrameDisposition onFrame-qWbl5Oc(java.lang.String, com.harryaskham.pidroid.sdk.core.SessionRpcFrame);
+  public final synchronized boolean onDisconnect-lc16riE(java.lang.String);
+  public final synchronized com.harryaskham.pidroid.sdk.core.OutboundControl requestControl-lc16riE(java.lang.String);
+  public final synchronized com.harryaskham.pidroid.sdk.core.OutboundControl releaseControl-lc16riE(java.lang.String);
+  public final synchronized com.harryaskham.pidroid.sdk.core.OutboundCommand submit-OjGFeHY(java.lang.String, com.harryaskham.pidroid.sdk.core.SessionCommandIntent, java.lang.String);
+  public final synchronized void rememberRequest(com.harryaskham.pidroid.sdk.core.DurableRequestIdentity);
+  public final synchronized void rememberTicket(com.harryaskham.pidroid.sdk.core.DurableTicket);
+  public final synchronized void rememberTicket(com.harryaskham.pidroid.sdk.core.DashboardActivationTicket);
+  public final synchronized com.harryaskham.pidroid.sdk.core.ResumableCommand command(java.lang.String);
+  public final boolean canReplay(java.lang.String);
+  public final synchronized com.harryaskham.pidroid.sdk.core.SessionResumeSnapshot snapshot();
+  public java.lang.String toString();
+  public com.harryaskham.pidroid.sdk.core.SessionLifecycleCoordinator(java.lang.String, java.lang.String, com.harryaskham.pidroid.sdk.core.SessionKey, java.util.Set, int, boolean, com.harryaskham.pidroid.sdk.core.SessionResumeSnapshot, int, kotlin.jvm.internal.DefaultConstructorMarker);
+}
+
+public final class com.harryaskham.pidroid.sdk.core.SessionLifecycleCoordinator$Companion {
+  public final com.harryaskham.pidroid.sdk.core.SessionLifecycleCoordinator create-O1EFQQs(java.lang.String, com.harryaskham.pidroid.sdk.core.SessionKey, java.util.Set<? extends com.harryaskham.pidroid.protocol.generated.PiRpcCommandType>, java.lang.String, int, int);
+  public static com.harryaskham.pidroid.sdk.core.SessionLifecycleCoordinator create-O1EFQQs$default(com.harryaskham.pidroid.sdk.core.SessionLifecycleCoordinator$Companion, java.lang.String, com.harryaskham.pidroid.sdk.core.SessionKey, java.util.Set, java.lang.String, int, int, int, java.lang.Object);
+  public final com.harryaskham.pidroid.sdk.core.SessionLifecycleCoordinator restore(com.harryaskham.pidroid.sdk.core.SessionResumeSnapshot, java.util.Set<? extends com.harryaskham.pidroid.protocol.generated.PiRpcCommandType>, int, int);
+  public static com.harryaskham.pidroid.sdk.core.SessionLifecycleCoordinator restore$default(com.harryaskham.pidroid.sdk.core.SessionLifecycleCoordinator$Companion, com.harryaskham.pidroid.sdk.core.SessionResumeSnapshot, java.util.Set, int, int, int, java.lang.Object);
+  public com.harryaskham.pidroid.sdk.core.SessionLifecycleCoordinator$Companion(kotlin.jvm.internal.DefaultConstructorMarker);
+}
+
+public final class com.harryaskham.pidroid.sdk.core.SessionLifecycleModelsKt {
+  public static final void access$requireBoundedIdentity(java.lang.String, java.lang.String, int);
+  public static final kotlinx.serialization.json.JsonObject access$lifecycleRequiredObject(kotlinx.serialization.json.JsonObject, java.lang.String);
+  public static final kotlinx.serialization.json.JsonObject access$lifecycleOptionalObject(kotlinx.serialization.json.JsonElement, java.lang.String);
+  public static final java.lang.String access$lifecycleRequiredString(kotlinx.serialization.json.JsonObject, java.lang.String, int);
+  public static final int access$lifecycleRequiredNonNegativeInt(kotlinx.serialization.json.JsonObject, java.lang.String);
+  public static final java.lang.String access$lifecycleOptionalString(kotlinx.serialization.json.JsonObject, java.lang.String, int);
+  public static final kotlinx.serialization.json.JsonArray access$lifecycleRequiredArray(kotlinx.serialization.json.JsonObject, java.lang.String, int);
+  public static final kotlinx.serialization.json.JsonObject access$lifecycleObject(kotlinx.serialization.json.JsonElement, java.lang.String);
+}
+
+public final class com.harryaskham.pidroid.sdk.core.SessionLifecycleState {
+  public final java.lang.String getHostId-fjOQVoQ();
+  public final java.lang.String getHostInstanceId();
+  public final com.harryaskham.pidroid.sdk.core.SessionKey getSession();
+  public final java.lang.String getActiveAttempt-e-t7PZs();
+  public final com.harryaskham.pidroid.sdk.core.InteractiveConnectionState getConnection();
+  public final com.harryaskham.pidroid.sdk.core.InteractiveControllerRole getRole();
+  public final java.lang.String getReplayCursor();
+  public final boolean getProcessResumed();
+  public java.lang.String toString();
+  public com.harryaskham.pidroid.sdk.core.SessionLifecycleState(java.lang.String, java.lang.String, com.harryaskham.pidroid.sdk.core.SessionKey, java.lang.String, com.harryaskham.pidroid.sdk.core.InteractiveConnectionState, com.harryaskham.pidroid.sdk.core.InteractiveControllerRole, java.lang.String, boolean, kotlin.jvm.internal.DefaultConstructorMarker);
+}
+
+public final class com.harryaskham.pidroid.sdk.core.SessionResumeSnapshot {
+  public final int getFormatVersion();
+  public final java.lang.String getHostId-fjOQVoQ();
+  public final java.lang.String getHostInstanceId();
+  public final com.harryaskham.pidroid.sdk.core.SessionKey getSession();
+  public final java.lang.String getReplayCursor();
+  public final java.util.Set<com.harryaskham.pidroid.sdk.core.ConnectionAttemptId> getUsedConnectionAttempts();
+  public final java.util.Set<com.harryaskham.pidroid.sdk.core.DurableRequestIdentity> getIssuedRequests();
+  public final java.util.List<com.harryaskham.pidroid.sdk.core.ResumableCommand> getCommands();
+  public final java.util.List<com.harryaskham.pidroid.sdk.core.ResumableTicket> getTickets();
+  public java.lang.String toString();
+  public com.harryaskham.pidroid.sdk.core.SessionResumeSnapshot(int, java.lang.String, java.lang.String, com.harryaskham.pidroid.sdk.core.SessionKey, java.lang.String, java.util.Set, java.util.Set, java.util.List, java.util.List, kotlin.jvm.internal.DefaultConstructorMarker);
+}
+
+public final class com.harryaskham.pidroid.sdk.core.SessionResumeSnapshotCodec {
+  public static final com.harryaskham.pidroid.sdk.core.SessionResumeSnapshotCodec INSTANCE;
+  public final byte[] encode(com.harryaskham.pidroid.sdk.core.SessionResumeSnapshot);
+  public final com.harryaskham.pidroid.sdk.core.SessionResumeSnapshot decode(byte[]);
+}
+
+public final class com.harryaskham.pidroid.sdk.core.SessionResumeSnapshotCodecKt {
+  public static final kotlinx.serialization.json.JsonElement access$jsonStringOrNull(java.lang.String);
+  public static final kotlinx.serialization.json.JsonObject access$toJson(com.harryaskham.pidroid.sdk.core.SessionKey);
+  public static final kotlinx.serialization.json.JsonObject access$toJson(com.harryaskham.pidroid.sdk.core.DurableRequestIdentity);
+  public static final kotlinx.serialization.json.JsonObject access$toJson(com.harryaskham.pidroid.sdk.core.ResumableCommand);
+  public static final kotlinx.serialization.json.JsonObject access$toJson(com.harryaskham.pidroid.sdk.core.ResumableTicket);
+  public static final kotlinx.serialization.json.JsonObject access$snapshotObject(kotlinx.serialization.json.JsonElement, java.lang.String);
+  public static final void access$requireOnly(kotlinx.serialization.json.JsonObject, java.util.Set, java.lang.String);
+  public static final int access$snapshotRequiredInt(kotlinx.serialization.json.JsonObject, java.lang.String);
+  public static final java.lang.String access$snapshotString(kotlinx.serialization.json.JsonElement, java.lang.String, int);
+  public static final java.lang.String access$snapshotRequiredString(kotlinx.serialization.json.JsonObject, java.lang.String, int);
+  public static final java.lang.String access$snapshotOptionalString(kotlinx.serialization.json.JsonObject, java.lang.String, int);
 }
 
 public final class com.harryaskham.pidroid.sdk.core.SessionRole extends java.lang.Enum<com.harryaskham.pidroid.sdk.core.SessionRole> {
@@ -1048,6 +1565,25 @@ public final class com.harryaskham.pidroid.sdk.core.SessionRpcFramesKt {
   public static final java.lang.String access$requiredIdentifier(kotlinx.serialization.json.JsonObject, java.lang.String);
 }
 
+public interface com.harryaskham.pidroid.sdk.core.TicketReconciliation {
+  public abstract java.lang.String getRequestId();
+  public abstract java.util.List<java.lang.String> getPiEntryIds();
+}
+
+public final class com.harryaskham.pidroid.sdk.core.TicketReconciliation$Failed implements com.harryaskham.pidroid.sdk.core.TicketReconciliation {
+  public com.harryaskham.pidroid.sdk.core.TicketReconciliation$Failed(java.lang.String, java.util.List<java.lang.String>, java.lang.String, boolean);
+  public java.lang.String getRequestId();
+  public java.util.List<java.lang.String> getPiEntryIds();
+  public final java.lang.String getCode();
+  public final boolean getRetryable();
+}
+
+public final class com.harryaskham.pidroid.sdk.core.TicketReconciliation$Succeeded implements com.harryaskham.pidroid.sdk.core.TicketReconciliation {
+  public com.harryaskham.pidroid.sdk.core.TicketReconciliation$Succeeded(java.lang.String, java.util.List<java.lang.String>);
+  public java.lang.String getRequestId();
+  public java.util.List<java.lang.String> getPiEntryIds();
+}
+
 public final class com.harryaskham.pidroid.sdk.core.TicketState extends java.lang.Enum<com.harryaskham.pidroid.sdk.core.TicketState> {
   public static final com.harryaskham.pidroid.sdk.core.TicketState$Companion Companion;
   public static final com.harryaskham.pidroid.sdk.core.TicketState QUEUED;
@@ -1075,6 +1611,36 @@ public final class com.harryaskham.pidroid.sdk.core.TrackedCommand {
   public com.harryaskham.pidroid.sdk.core.TrackedCommand(java.lang.String, com.harryaskham.pidroid.protocol.generated.PiRpcCommandType, com.harryaskham.pidroid.sdk.core.CommandLifecycle, kotlin.jvm.internal.DefaultConstructorMarker);
 }
 
+public final class com.harryaskham.pidroid.sdk.core.TranscriptAvailabilityState extends java.lang.Enum<com.harryaskham.pidroid.sdk.core.TranscriptAvailabilityState> {
+  public static final com.harryaskham.pidroid.sdk.core.TranscriptAvailabilityState$Companion Companion;
+  public static final com.harryaskham.pidroid.sdk.core.TranscriptAvailabilityState AVAILABLE;
+  public static final com.harryaskham.pidroid.sdk.core.TranscriptAvailabilityState UNAVAILABLE;
+  public final java.lang.String getWireValue();
+  public static com.harryaskham.pidroid.sdk.core.TranscriptAvailabilityState[] values();
+  public static com.harryaskham.pidroid.sdk.core.TranscriptAvailabilityState valueOf(java.lang.String);
+  public static kotlin.enums.EnumEntries<com.harryaskham.pidroid.sdk.core.TranscriptAvailabilityState> getEntries();
+}
+
+public final class com.harryaskham.pidroid.sdk.core.TranscriptAvailabilityState$Companion {
+  public final com.harryaskham.pidroid.sdk.core.TranscriptAvailabilityState fromWireValue(java.lang.String);
+  public com.harryaskham.pidroid.sdk.core.TranscriptAvailabilityState$Companion(kotlin.jvm.internal.DefaultConstructorMarker);
+}
+
+public final class com.harryaskham.pidroid.sdk.core.TranscriptFreshnessState extends java.lang.Enum<com.harryaskham.pidroid.sdk.core.TranscriptFreshnessState> {
+  public static final com.harryaskham.pidroid.sdk.core.TranscriptFreshnessState$Companion Companion;
+  public static final com.harryaskham.pidroid.sdk.core.TranscriptFreshnessState CURRENT;
+  public static final com.harryaskham.pidroid.sdk.core.TranscriptFreshnessState UNAVAILABLE;
+  public final java.lang.String getWireValue();
+  public static com.harryaskham.pidroid.sdk.core.TranscriptFreshnessState[] values();
+  public static com.harryaskham.pidroid.sdk.core.TranscriptFreshnessState valueOf(java.lang.String);
+  public static kotlin.enums.EnumEntries<com.harryaskham.pidroid.sdk.core.TranscriptFreshnessState> getEntries();
+}
+
+public final class com.harryaskham.pidroid.sdk.core.TranscriptFreshnessState$Companion {
+  public final com.harryaskham.pidroid.sdk.core.TranscriptFreshnessState fromWireValue(java.lang.String);
+  public com.harryaskham.pidroid.sdk.core.TranscriptFreshnessState$Companion(kotlin.jvm.internal.DefaultConstructorMarker);
+}
+
 public final class com.harryaskham.pidroid.sdk.core.TransportSecurity extends java.lang.Enum<com.harryaskham.pidroid.sdk.core.TransportSecurity> {
   public static final com.harryaskham.pidroid.sdk.core.TransportSecurity HTTPS;
   public static final com.harryaskham.pidroid.sdk.core.TransportSecurity LOOPBACK_PLAINTEXT;
@@ -1082,4 +1648,21 @@ public final class com.harryaskham.pidroid.sdk.core.TransportSecurity extends ja
   public static com.harryaskham.pidroid.sdk.core.TransportSecurity[] values();
   public static com.harryaskham.pidroid.sdk.core.TransportSecurity valueOf(java.lang.String);
   public static kotlin.enums.EnumEntries<com.harryaskham.pidroid.sdk.core.TransportSecurity> getEntries();
+}
+
+public final class com.harryaskham.pidroid.sdk.core.ValidatedHostMetadata {
+  public com.harryaskham.pidroid.sdk.core.ValidatedHostMetadata(java.net.URI, java.lang.String, java.lang.String, com.harryaskham.pidroid.sdk.core.TransportSecurity);
+  public final java.net.URI getApiUri();
+  public final java.lang.String getDisplayName();
+  public final java.lang.String getTlsFingerprint();
+  public final com.harryaskham.pidroid.sdk.core.TransportSecurity getTransportSecurity();
+  public final java.net.URI component1();
+  public final java.lang.String component2();
+  public final java.lang.String component3();
+  public final com.harryaskham.pidroid.sdk.core.TransportSecurity component4();
+  public final com.harryaskham.pidroid.sdk.core.ValidatedHostMetadata copy(java.net.URI, java.lang.String, java.lang.String, com.harryaskham.pidroid.sdk.core.TransportSecurity);
+  public static com.harryaskham.pidroid.sdk.core.ValidatedHostMetadata copy$default(com.harryaskham.pidroid.sdk.core.ValidatedHostMetadata, java.net.URI, java.lang.String, java.lang.String, com.harryaskham.pidroid.sdk.core.TransportSecurity, int, java.lang.Object);
+  public java.lang.String toString();
+  public int hashCode();
+  public boolean equals(java.lang.Object);
 }
