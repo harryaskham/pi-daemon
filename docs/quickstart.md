@@ -278,8 +278,13 @@ adapter needs a WebSocket transport integration; Pi Daemon intentionally does
 not launch `pi-acp` or `pi --mode rpc`. See the [ACP adapter](acp-adapter) for
 the supported messages, bounds, and permission routing.
 
-For a non-loopback endpoint, terminate TLS and use `https://`/`wss://`. Never
-send the bearer over remote plaintext HTTP.
+For a non-loopback API/RPC endpoint, terminate TLS and use
+`https://`/`wss://`; never send the service bearer over remote plaintext HTTP.
+Dash separately supports a reviewed trusted-network exception with an exact
+non-loopback `web.publicOrigin`, wildcard or explicit `web.bind`, and
+`web.allowInsecureHttp: true`. It emits a startup warning and still requires the
+browser credential plus exact Host/Origin/CSRF evidence. Prefer TLS and see
+[Dashboard transport security](dashboard-transport-security).
 
 ## 6. Delete the session
 

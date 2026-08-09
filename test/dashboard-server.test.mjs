@@ -1550,12 +1550,32 @@ test("slow partial HTTP bodies are terminated by the whole-request deadline", as
 test("HTTP bodies, static output, WebSocket origin/protocol and frame bytes are bounded", async (t) => {
   await assert.rejects(
     fixture(t, { host: "0.0.0.0" }),
-    /plaintext Dashboard listener is loopback-only/,
+    /web\.allowInsecureHttp must be true/,
+  );
+  await assert.rejects(
+    fixture(t, { host: "0.0.0.0", allowInsecureHttp: true }),
+    /web\.publicOrigin is required/,
   );
   await assert.rejects(
     fixture(t, { publicOrigin: "http://dash.example.test" }),
-    /non-loopback Dashboard publicOrigin requires HTTPS/,
+    /web\.allowInsecureHttp must be true for a non-loopback HTTP web\.publicOrigin/,
   );
+  const ipv4Wildcard = await fixture(t, {
+    host: "0.0.0.0",
+    publicOrigin: "http://dash.example.test",
+    allowInsecureHttp: true,
+  });
+  assert.equal(ipv4Wildcard.host, "0.0.0.0");
+  assert.equal(ipv4Wildcard.origin, "http://dash.example.test");
+  assert.equal(ipv4Wildcard.server.insecureHttpExposure, true);
+  const ipv6Wildcard = await fixture(t, {
+    host: "::",
+    publicOrigin: "http://dash-v6.example.test",
+    allowInsecureHttp: true,
+  });
+  assert.equal(ipv6Wildcard.host, "::");
+  assert.equal(ipv6Wildcard.origin, "http://dash-v6.example.test");
+  assert.equal(ipv6Wildcard.server.insecureHttpExposure, true);
   await assert.rejects(
     fixture(t, { limits: { maxWebSocketFrameBytes: 2048, maxOutboundBytesPerConnection: 1024 } }),
     /cannot exceed/,

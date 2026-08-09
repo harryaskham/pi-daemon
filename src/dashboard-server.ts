@@ -90,6 +90,7 @@ import {
 } from "./dashboard-store.js";
 import {
   DEFAULT_PI_DAEMON_WEB_CONFIG,
+  validatePiDaemonWebTransportPolicy,
   type LoadedPiDaemonConfig,
   type PiDaemonWebConfig,
 } from "./config.js";
@@ -232,6 +233,7 @@ export class DashboardServer {
   readonly serverInstanceId: string;
   readonly limits: DashboardServerLimits;
   readonly metrics: HostMetrics;
+  readonly insecureHttpExposure: boolean;
   readonly #configuredPublicOrigin: string | undefined;
   readonly #securePublicOrigin: boolean;
   readonly #trustForwardedHeaders: boolean;
@@ -261,37 +263,28 @@ export class DashboardServer {
     this.settingsStore = options.settingsStore;
     this.assetsDir = options.assetsDir ?? fileURLToPath(new URL("./dashboard", import.meta.url));
     if (this.assetsDir.length === 0) throw new Error("dashboard assetsDir must not be empty");
-    this.host = options.host ?? "127.0.0.1";
+    this.#tls = options.tls;
+    const transport = validatePiDaemonWebTransportPolicy({
+      ...(options.host === undefined ? {} : { bind: options.host }),
+      ...(options.publicOrigin === undefined ? {} : { publicOrigin: options.publicOrigin }),
+      ...(options.allowInsecureHttp === undefined
+        ? {}
+        : { allowInsecureHttp: options.allowInsecureHttp }),
+      tlsEnabled: this.#tls !== undefined,
+    });
+    this.host = transport.bind;
+    this.insecureHttpExposure = transport.insecureHttpExposure;
     this.port = portNumber(options.port ?? DEFAULT_PI_DAEMON_WEB_CONFIG.port);
     this.serverInstanceId = safeId(options.serverInstanceId ?? `dash-${randomUUID()}`, "serverInstanceId");
-    this.#configuredPublicOrigin =
-      options.publicOrigin === undefined ? undefined : validatePublicOrigin(options.publicOrigin);
+    this.#configuredPublicOrigin = transport.publicOrigin;
     this.#securePublicOrigin = this.#configuredPublicOrigin?.startsWith("https://") ?? false;
     this.#trustForwardedHeaders = options.trustForwardedHeaders ?? false;
-    this.#tls = options.tls;
     if (this.#tls !== undefined) {
-      if (!this.#securePublicOrigin || this.#configuredPublicOrigin === undefined) {
-        throw new Error("native Dashboard TLS requires an exact HTTPS publicOrigin");
-      }
       this.#tlsContext = createSecureContext({
         cert: this.#tls.cert,
         key: this.#tls.key,
         minVersion: "TLSv1.2",
       });
-    } else if (!isLoopbackBind(this.host)) {
-      throw new Error(
-        "plaintext Dashboard listener is loopback-only; configure native TLS or a loopback reverse proxy",
-      );
-    }
-    if (
-      this.#configuredPublicOrigin !== undefined &&
-      !this.#securePublicOrigin &&
-      !isLoopbackOrigin(this.#configuredPublicOrigin) &&
-      options.allowInsecureHttp !== true
-    ) {
-      throw new Error(
-        "non-loopback Dashboard publicOrigin requires HTTPS unless allowInsecureHttp is explicitly enabled",
-      );
     }
     if (this.auth.secureCookies !== this.#securePublicOrigin) {
       throw new Error(
@@ -1741,13 +1734,22 @@ export async function createDashboardServerFromConfig(
           web.auth.identityProvider,
           options.loadedConfig.resolvePath,
         );
+  const requestedPublicOrigin = options.publicOrigin ?? web.publicOrigin;
+  const transport = validatePiDaemonWebTransportPolicy({
+    bind: web.bind,
+    ...(requestedPublicOrigin === undefined ? {} : { publicOrigin: requestedPublicOrigin }),
+    allowInsecureHttp: web.allowInsecureHttp,
+    tlsEnabled: [web.tls.certFile, web.tls.certFd, web.tls.keyFile, web.tls.keyFd].some(
+      (source) => source !== undefined,
+    ),
+  });
   const tokenPath = provider !== undefined
     ? undefined
     : web.auth.tokenFile === undefined
       ? join(options.stateDir, "web-token")
       : options.loadedConfig.resolvePath(web.auth.tokenFile);
   if (tokenPath !== undefined) await ensureDashboardCredentialFile(tokenPath);
-  const publicOrigin = options.publicOrigin ?? web.publicOrigin;
+  const publicOrigin = transport.publicOrigin;
   const tlsSource: DashboardTlsSourceConfig = {
     ...(web.tls.certFile === undefined
       ? {}
@@ -1821,7 +1823,7 @@ export async function createDashboardServerFromConfig(
     authorization,
     controllerCoordinator,
     ...(options.assetsDir === undefined ? {} : { assetsDir: options.assetsDir }),
-    host: web.bind,
+    host: transport.bind,
     port: web.port,
     ...(publicOrigin === undefined ? {} : { publicOrigin }),
     allowInsecureHttp: web.allowInsecureHttp,
@@ -2774,21 +2776,6 @@ function contentType(path: string): string {
   }
 }
 
-function validatePublicOrigin(value: string): string {
-  const url = new URL(value);
-  if (
-    (url.protocol !== "http:" && url.protocol !== "https:") ||
-    url.username !== "" ||
-    url.password !== "" ||
-    url.pathname !== "/" ||
-    url.search !== "" ||
-    url.hash !== ""
-  ) {
-    throw new Error("publicOrigin must be an HTTP(S) origin without path, credentials, query, or hash");
-  }
-  return url.origin;
-}
-
 function singleHeader(value: string | string[]): string {
   if (
     typeof value !== "string" ||
@@ -2806,10 +2793,6 @@ function sniMatchesOrigin(servername: string, publicOrigin: string): boolean {
   const expected = new URL(publicOrigin).hostname.toLowerCase().replace(/\.$/u, "");
   const actual = servername.toLowerCase().replace(/\.$/u, "");
   return actual === expected;
-}
-
-function isLoopbackOrigin(origin: string): boolean {
-  return isLoopbackBind(new URL(origin).hostname);
 }
 
 function isLoopbackAddress(address: string | undefined): boolean {

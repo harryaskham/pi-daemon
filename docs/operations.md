@@ -301,10 +301,14 @@ YAML requests `web.mode: dedicated`; dedicated mode remains the separate
 
 Bind, port, public-origin, proxy and TLS overrides pass through the same
 Dashboard validation as YAML and `pi-daemon web`, before the owner socket or any
-HTTP listener is published. Plaintext web remains loopback-only. API bearer
-sources and mutual exclusion are unchanged: bearer bytes are never accepted on
-argv, generated API and browser tokens remain owner-only regular files, and
-startup/status output reports only listener addresses and safe lifecycle state.
+HTTP listener is published. Plaintext web defaults to loopback. Explicit
+non-loopback plaintext requires `--web-allow-insecure-http true` plus an exact
+non-loopback `--public-origin`; valid startup emits
+`dashboard_insecure_http_exposure` and reports the exact bound address without
+weakening authentication or Host/Origin checks. API bearer sources and mutual
+exclusion are unchanged: bearer bytes are never accepted on argv, generated API
+and browser tokens remain owner-only regular files, and startup/status output
+reports only listener addresses and safe lifecycle state.
 
 Consumers should capability-gate these flags by pinning a Pi Daemon source
 revision that contains `bd-b05086`, or a release whose notes advertise embedded
@@ -596,9 +600,29 @@ web:
 Home Manager exposes the same paths at
 `dedicatedWeb.tls.certFile`/`keyFile`; use runtime secret-manager paths such as
 SOPS outputs, never PEM literals. Valid file-backed pairs rotate atomically and
-a failed/partial rotation retains the last working context. The content-free
-`GET|HEAD /dash/healthz` probe returns 204 only after exact Host and configured
-proxy-authority checks and proves only the browser listener. `/dash/readyz`
+a failed/partial rotation retains the last working context.
+
+When a trusted-network deployment deliberately cannot terminate TLS, the
+high-trust plaintext exception is explicit and validated before bind:
+
+```yaml
+web:
+  mode: dedicated
+  bind: 0.0.0.0       # or `::`
+  port: 7465
+  publicOrigin: http://dash.tailnet.example:7465
+  allowInsecureHttp: true
+```
+
+Home Manager uses `dedicatedWeb.bind`, `dedicatedWeb.publicOrigin`, and
+`dedicatedWeb.allowInsecurePublicOrigin = true`. Omitting either public origin or
+opt-in fails evaluation/startup. This mode emits a warning and preserves exact
+Host/Origin/CSRF and browser-login enforcement; it should never face an
+untrusted network.
+
+The content-free `GET|HEAD /dash/healthz` probe returns 204 only after exact
+Host and configured proxy-authority checks and proves only the browser listener.
+`/dash/readyz`
 performs the same authority checks and additionally returns 204 only after a
 fresh dedicated API capability request; it returns an empty 503 while the API is
 unavailable. Reverse proxies may set

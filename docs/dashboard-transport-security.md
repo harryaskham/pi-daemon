@@ -5,18 +5,21 @@ title: Dashboard transport security
 
 # Dashboard transport security
 
-Pi Daemon Dash supports two production deployment shapes:
+Pi Daemon Dash supports two preferred production deployment shapes:
 
 1. **Loopback HTTP behind an operator-owned HTTPS reverse proxy** (recommended
    when a proxy already owns certificates and policy).
 2. **Native HTTPS/WSS** in the embedded `serve` process or dedicated
    `pi-daemon web` process.
 
-A plaintext listener is always loopback-only. Native TLS is required before
-`web.bind` may name a non-loopback address. A browser-visible non-loopback HTTP
-origin is rejected unless the explicit development-only
-`web.allowInsecureHttp`/`--web-allow-insecure-http true` escape hatch is set.
-That escape hatch does not permit a non-loopback plaintext listener.
+Loopback remains the plaintext default. A reviewed high-trust exception may bind
+plaintext Dash to a non-loopback address, including `0.0.0.0` or `::`, only when
+an exact non-loopback `web.publicOrigin` and the explicit
+`web.allowInsecureHttp`/`--web-allow-insecure-http true` opt-in are both present.
+Invalid combinations fail during typed configuration before any listener is
+published. Valid exposure emits a content-free
+`dashboard_insecure_http_exposure` warning; browser authentication and exact
+Host/Origin/CSRF enforcement remain unchanged. Native TLS is still preferred.
 
 ## Exact public authority
 
@@ -32,12 +35,45 @@ query, or fragment.
 - Browser code uses same-origin URLs, so an HTTPS page upgrades only to WSS and
   cannot silently downgrade to a mixed-content HTTP/WS endpoint.
 
-The server never derives authority from `Forwarded` or `X-Forwarded-*` headers.
+A wildcard listener is never its own browser authority: configure the exact
+hostname or address clients use as `publicOrigin`. The server never derives
+authority from `Forwarded` or `X-Forwarded-*` headers.
 RFC `Forwarded` is rejected. `X-Forwarded-Host`, `X-Forwarded-Proto`, and
 `X-Forwarded-Port` are rejected by default; with
 `web.proxy.trustForwardedHeaders: true` they are accepted only from a loopback
 peer and only when each supplied value exactly matches `publicOrigin`. They are
 verification evidence, not routing input.
+
+## Explicit non-loopback plaintext
+
+This posture is for an operator-controlled trusted network where TLS termination
+is deliberately unavailable. It is not a default and does not weaken login,
+session, authorization, request-size, or stream limits.
+
+```yaml
+web:
+  enabled: true
+  mode: dedicated
+  bind: 0.0.0.0       # `::` is also supported
+  port: 7465
+  publicOrigin: http://dash.tailnet.example:7465
+  allowInsecureHttp: true
+```
+
+Equivalent CLI flags are:
+
+```console
+pi-daemon web --config ~/.config/pi/daemon/work/config.yaml --instance work \
+  --web-bind 0.0.0.0 --web-port 7465 \
+  --public-origin http://dash.tailnet.example:7465 \
+  --web-allow-insecure-http true
+```
+
+Omitting the opt-in or public origin, pairing a remote bind with a loopback
+origin, or supplying an origin with credentials/path/query/fragment is a typed
+configuration error. The ready event reports the exact bound address and public
+origin. Plaintext mode emits no HSTS and uses the ordinary non-`__Host-` browser
+cookie. Never use it on an untrusted network.
 
 ## Native TLS sources and rotation
 
@@ -121,7 +157,8 @@ non-`__Host-` cookie and emits no HSTS.
 `services.pi-daemon.instances.<name>.dedicatedWeb` exposes:
 
 - `publicOrigin`
-- `allowInsecurePublicOrigin`
+- `allowInsecurePublicOrigin` (covers the explicit non-loopback plaintext
+  listener and public-origin opt-in)
 - `trustProxyHeaders`
 - `tls.certFile`
 - `tls.keyFile`

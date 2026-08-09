@@ -485,6 +485,9 @@ process appears per wake.
 
 ## Provisional Beads work board
 
+- [x] `bd-6f6ae1` Move explicit non-loopback plaintext Dashboard binding into
+  typed transport policy with exact public authority, advisory logging, reload
+  coverage, and unchanged authentication/resource bounds.
 - [x] `bd-64bd2a` Add the repository-owned Caravan policy and reviewed rolling
   runtime wrapper for GitHub-native Stacks, bounded inside Cacophony's external
   sync cadence with offline config validation and no second scheduler.

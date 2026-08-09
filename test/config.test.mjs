@@ -42,6 +42,99 @@ test("web and session storage defaults are explicit typed inputs", () => {
   assert.equal(DEFAULT_PI_DAEMON_WEB_CONFIG.inventory.maxSessions, 10_000);
 });
 
+test("web transport posture keeps loopback default and validates explicit wildcard plaintext", async (t) => {
+  const root = await fixture(t);
+  for (const [name, bind] of [["ipv4", "0.0.0.0"], ["ipv6", "::"]]) {
+    const directory = join(root, name);
+    await mkdir(directory);
+    const path = await writeConfig(directory, `instance: work
+web:
+  enabled: true
+  bind: "${bind}"
+  port: 7464
+  publicOrigin: "http://dash.example.test:7464"
+  allowInsecureHttp: true
+`);
+    const loaded = await loadPiDaemonConfig({
+      cliConfigPath: path,
+      cliInstance: "work",
+      environment: {},
+    });
+    assert.equal(loaded.config.web.bind, bind);
+    assert.equal(loaded.config.web.publicOrigin, "http://dash.example.test:7464");
+    assert.equal(loaded.config.web.allowInsecureHttp, true);
+  }
+
+  const tlsDirectory = join(root, "native-tls");
+  await mkdir(tlsDirectory);
+  const tlsPath = await writeConfig(tlsDirectory, `instance: work
+web:
+  bind: 0.0.0.0
+  publicOrigin: https://dash.example.test
+  tls:
+    certFile: ./cert.pem
+    keyFile: ./key.pem
+`);
+  const nativeTls = await loadPiDaemonConfig({
+    cliConfigPath: tlsPath,
+    cliInstance: "work",
+    environment: {},
+  });
+  assert.equal(nativeTls.config.web.bind, "0.0.0.0");
+  assert.equal(nativeTls.config.web.allowInsecureHttp, undefined);
+
+  const cases = [
+    [
+      "missing-opt-in",
+      "web:\n  bind: 0.0.0.0\n  publicOrigin: http://dash.example.test:7464\n",
+      /web\.allowInsecureHttp must be true for a non-loopback plaintext web\.bind/,
+    ],
+    [
+      "missing-origin",
+      "web:\n  bind: 0.0.0.0\n  allowInsecureHttp: true\n",
+      /web\.publicOrigin is required for a non-loopback plaintext web\.bind/,
+    ],
+    [
+      "loopback-origin",
+      "web:\n  bind: \"::\"\n  publicOrigin: \"http://[::1]:7464\"\n  allowInsecureHttp: true\n",
+      /web\.publicOrigin must be non-loopback/,
+    ],
+    [
+      "malformed-origin",
+      "web:\n  publicOrigin: https://dash.example.test/path\n",
+      /web\.publicOrigin must be an HTTP\(S\) origin/,
+    ],
+    [
+      "tls-missing-origin",
+      "web:\n  bind: 0.0.0.0\n  tls:\n    certFile: ./cert.pem\n    keyFile: ./key.pem\n",
+      /web\.publicOrigin must be an exact HTTPS origin when web\.tls is configured/,
+    ],
+    [
+      "remote-origin-missing-opt-in",
+      "web:\n  publicOrigin: http://dash.example.test:7464\n",
+      /web\.allowInsecureHttp must be true for a non-loopback HTTP web\.publicOrigin/,
+    ],
+    [
+      "malformed-bind",
+      "web:\n  bind: \"http://0.0.0.0\"\n  allowInsecureHttp: true\n",
+      /web\.bind must be a bounded host name or unbracketed IP address/,
+    ],
+  ];
+  for (const [name, web, message] of cases) {
+    const directory = join(root, name);
+    await mkdir(directory);
+    const path = await writeConfig(directory, `instance: work\n${web}`);
+    await assert.rejects(
+      loadPiDaemonConfig({ cliConfigPath: path, cliInstance: "work", environment: {} }),
+      (error) =>
+        error instanceof PiDaemonConfigError &&
+        error.code === "config_invalid" &&
+        message.test(error.message),
+      name,
+    );
+  }
+});
+
 test("missing implicit instance config preserves CLI compatibility", async (t) => {
   const root = await fixture(t);
   const loaded = await loadPiDaemonConfig({

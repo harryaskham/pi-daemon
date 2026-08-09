@@ -177,6 +177,7 @@ test("flake publishes the collision-safe multi-instance Home Manager service mod
   assert.match(module, /dedicatedWeb\.port is required/);
   assert.match(module, /native TLS requires both tls\.certFile and tls\.keyFile/);
   assert.match(module, /native TLS requires an HTTPS publicOrigin/);
+  assert.match(module, /non-loopback plaintext dedicatedWeb\.bind requires allowInsecurePublicOrigin/);
   assert.match(module, /--tls-cert-file/);
   assert.match(module, /--tls-key-file/);
   assert.match(module, /stateDir\/api-token on first launch/);
