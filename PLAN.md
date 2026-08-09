@@ -573,10 +573,12 @@ process appears per wake.
 - [x] `bd-3804d2` Accept the canonical generated base64url service bearer and
   bounded legacy HTTP Bearer-safe tokens in both external-canary readers while
   retaining owner-only no-follow reads and exact plus structured leak scans.
-- [x] `bd-325025` Bound owner-private external-canary ADB stdin staging to a
-  30-second shell-v2 no-PTY command, require exact remote mode, size, and digest
-  verification before app launch, and retain typed redacted failure evidence
-  while cleanup terminates only proof-owned processes; after the first
+- [x] `bd-325025` Bound owner-private external-canary ADB stdin staging to one
+  shared 30-second budget across literal shell-v2 no-PTY `mkdir`, stdin-only
+  `tee`, `chmod`, `stat`, and `sha256sum` primitives, require exact remote mode,
+  size, and digest verification before app launch, and retain primitive-specific
+  typed redacted failures while cleanup terminates only proof-owned processes;
+  after the first
   240-second readiness timeout, grant exactly one additional wait only when the
   same live emulator's private guest console proves adbd compressed-APEX
   progress without panic, fatal, or stall markers, reusing the isolated
