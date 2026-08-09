@@ -185,10 +185,21 @@ history.
 `sdk-core`, `sdk-testing`, `sdk-workspace-ui`, `sdk-session-ui`, and
 `sdk-android-integration` participate in the fast JVM build. `sdk-workspace-ui`
 contains local recursive workspace policy and fixture proof; `sdk-session-ui`
-contains canonical session projection/rendering; and `sdk-android-integration`
+contains canonical bounded lifecycle-to-Rich projection plus state-driven Rich/TUI/
+tree rendering; and `sdk-android-integration`
 contains pure notification/background policy plus SDK-event, foreground-service,
 and WorkManager ports. Those ports emit content-safe records and lifecycle plans;
 they do not own Android components, sockets, or commands. `app` and
 `play-receipt` are conditional manual-release modules. Real Android lifecycle
 bindings and monitoring transport, widgets/floats/share, and real network/storage
 implementations remain reserved for separate release slices.
+
+`sdk-core` exposes the reusable lifecycle boundary without owning an Android
+process: capability-derived configured create, retained-session list/read/adopt,
+durable ticket lookup and evidence-backed reconciliation, Dashboard inventory/
+info/transcript/activation, observer and TUI attachment, and a pure process-resume
+coordinator. The coordinator persists identities and outcomes only—never bearer,
+prompt, transcript, result, cwd, or error content—and never replays a command or
+accepted mutation after disconnect/process death. Embedding apps inject transport,
+identity generation, durable snapshot storage, and the exact-once execution of
+returned wire actions.

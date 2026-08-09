@@ -1,6 +1,6 @@
 # Pi Droid SDK binary API baseline
 # artifact=workspace-ui
-# version=0.3.0-alpha.1
+# version=0.3.0-alpha.2
 # Generated with jar+javap -public -constants; update only with migration notes.
 
 public final class com.harryaskham.pidroid.workspace.ComposableSingletons$WorkspaceComposeShellKt {

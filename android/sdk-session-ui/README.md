@@ -1,15 +1,23 @@
-# Pi Droid readonly session UI
+# Pi Droid session UI
 
-`sdk-session-ui` is the reusable, Cacophony-neutral Stage B inventory,
-information, and transcript surface. It consumes neutral fixture/cache state
-from `sdk-core`; no service bearer, credential handle, transport, Room schema,
-or app navigation enters this module.
+`sdk-session-ui` is the reusable, Cacophony-neutral session projection and
+rendering module. It consumes decoded lifecycle and externally reduced session
+state from `sdk-core`; no service bearer, credential handle, transport, Room
+schema, process persistence, or app navigation enters this module.
 
-The surface is intentionally readonly. It contains no composer, prompt,
-controller, wake, TUI, tree, extension action, or other Stage C command. Stable
-record IDs key a bounded `LazyColumn`, duplicate snapshots replace in place,
-and reconnecting/stale/resyncing/offline labels remain explicit. Phone and
-tablet layouts share the Nord theme, accessible density, and semantics contract.
+`SessionLifecycleProjection` maps an identity-matched inventory/info/transcript
+triple into the existing bounded readonly `SessionSurfaceState`. It rejects
+cross-resource identity drift and unavailable transcripts carrying content,
+keeps stable deduplicated record keys, and never makes cached data authoritative.
+Stable record IDs key a bounded `LazyColumn`, duplicate snapshots replace in
+place, and reconnecting/stale/resyncing/offline labels remain explicit.
+
+The module also contains state-driven Rich interactive, TUI, and tree surfaces.
+Those composables expose caller-injected intents; they do not open sockets,
+request control, send prompts, retry commands, or persist lifecycle state.
+Embedding applications connect them to `SessionLifecycleCoordinator` and execute
+each returned wire action exactly once. Phone and tablet layouts share the Nord
+theme, accessible density, and semantics contract.
 
 Run its tests from the repository root through the collision-free virtual
 display wrapper:

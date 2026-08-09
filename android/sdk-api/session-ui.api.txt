@@ -1,6 +1,6 @@
 # Pi Droid SDK binary API baseline
 # artifact=session-ui
-# version=0.3.0-alpha.1
+# version=0.3.0-alpha.2
 # Generated with jar+javap -public -constants; update only with migration notes.
 
 public final class com.harryaskham.pidroid.sessionui.ComposableSingletons$RichInteractiveSessionSurfaceKt {
@@ -432,6 +432,10 @@ public final class com.harryaskham.pidroid.sessionui.RichInteractiveSessionSurfa
   public static final long access$getInteractiveMuted$p();
 }
 
+public final class com.harryaskham.pidroid.sessionui.RichInteractiveSessionSurfaceKt$WhenMappings {
+  public static final int[] $EnumSwitchMapping$0;
+}
+
 public final class com.harryaskham.pidroid.sessionui.RichInteractiveState {
   public static final com.harryaskham.pidroid.sessionui.RichInteractiveState$Companion Companion;
   public static final int $stable;
@@ -449,6 +453,8 @@ public final class com.harryaskham.pidroid.sessionui.RichInteractiveState {
 public final class com.harryaskham.pidroid.sessionui.RichInteractiveState$Companion {
   public final com.harryaskham.pidroid.sessionui.RichInteractiveState controller(java.lang.String, java.lang.String, java.lang.String, boolean);
   public final com.harryaskham.pidroid.sessionui.RichInteractiveState observer(java.lang.String, java.lang.String);
+  public final com.harryaskham.pidroid.sessionui.RichInteractiveState requesting(java.lang.String, java.lang.String);
+  public final com.harryaskham.pidroid.sessionui.RichInteractiveState lost(java.lang.String, java.lang.String);
   public com.harryaskham.pidroid.sessionui.RichInteractiveState$Companion(kotlin.jvm.internal.DefaultConstructorMarker);
 }
 
@@ -548,6 +554,18 @@ public final class com.harryaskham.pidroid.sessionui.SessionInventoryItem {
   public java.lang.String toString();
   public int hashCode();
   public boolean equals(java.lang.Object);
+}
+
+public final class com.harryaskham.pidroid.sessionui.SessionLifecycleProjection {
+  public static final com.harryaskham.pidroid.sessionui.SessionLifecycleProjection INSTANCE;
+  public static final int $stable;
+  public final com.harryaskham.pidroid.sessionui.SessionSurfaceState project(com.harryaskham.pidroid.sessionui.SessionHostContext, com.harryaskham.pidroid.sdk.core.DashboardInventoryPage, com.harryaskham.pidroid.sdk.core.DashboardSessionInfo, com.harryaskham.pidroid.sdk.core.DashboardTranscript, int, int);
+  public static com.harryaskham.pidroid.sessionui.SessionSurfaceState project$default(com.harryaskham.pidroid.sessionui.SessionLifecycleProjection, com.harryaskham.pidroid.sessionui.SessionHostContext, com.harryaskham.pidroid.sdk.core.DashboardInventoryPage, com.harryaskham.pidroid.sdk.core.DashboardSessionInfo, com.harryaskham.pidroid.sdk.core.DashboardTranscript, int, int, int, java.lang.Object);
+}
+
+public final class com.harryaskham.pidroid.sessionui.SessionLifecycleProjectionKt {
+  public static final java.lang.String access$boundedOptionalString(kotlinx.serialization.json.JsonObject, java.lang.String, int);
+  public static final java.lang.String access$boundedRequiredString(kotlinx.serialization.json.JsonObject, java.lang.String, int);
 }
 
 public final class com.harryaskham.pidroid.sessionui.SessionScreenshotProfile {

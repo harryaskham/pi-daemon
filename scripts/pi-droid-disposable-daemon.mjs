@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { chmod, readFile, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
+import { join } from "node:path";
 import WebSocket from "ws";
 
 import { ServiceBearerAuthenticator } from "../dist/api-auth.js";
@@ -10,6 +11,7 @@ import { createDashboardContractFixtures } from "../dist/dashboard-fixtures.js";
 import { Multiplexer } from "../dist/multiplexer.js";
 import { FileSessionCatalog } from "../dist/session-catalog.js";
 import { ShadowTuiAttachmentManager } from "../dist/shadow-tui-attachments.js";
+import { FileMutationTicketStore, MutationTicketController } from "../dist/tickets.js";
 
 const options = parseArgs(process.argv.slice(2));
 const token = (await readFile(options.tokenFile, "utf8")).trim();
@@ -107,13 +109,14 @@ class FixtureRpcController {
 }
 
 class FixtureAdapter {
-  constructor(sessionId, controller) {
+  constructor(sessionId, controller, conversationIdentity) {
     this.sessionId = sessionId;
     this.controller = controller;
+    this.conversationIdentity = conversationIdentity;
   }
 
   identity() {
-    return { sessionId: "pi-session-fixture-01" };
+    return this.conversationIdentity;
   }
 
   async prompt() {
@@ -133,7 +136,15 @@ class FixtureFactory {
   }
 
   async open(request) {
-    return new FixtureAdapter(request.sessionId, this.controller);
+    const memoryOnly = request.session?.mode === "memory";
+    return new FixtureAdapter(
+      request.sessionId,
+      this.controller,
+      {
+        sessionId: request.sessionId === "session-fixture-01" ? "pi-session-fixture-01" : `pi-${request.sessionId}`,
+        ...(memoryOnly ? {} : { sessionFile: join(options.stateDir, `${request.sessionId}.jsonl`) }),
+      },
+    );
   }
 }
 
@@ -179,6 +190,7 @@ const dashboardApi =
         return fixture.transcript;
       },
     },
+    sessionDefaults: fixture.serviceCapabilities.sessionDefaults,
     ownership: {
       async activateSession() {
         throw new Error("readonly fixture");
@@ -240,10 +252,12 @@ const dashboardTuiAttachments = options.interactive
     })
   : undefined;
 
+const tickets = new MutationTicketController(new FileMutationTicketStore({ stateDir: options.stateDir }));
 const server =
   new ApiServer({
     multiplexer,
     authenticator: new ServiceBearerAuthenticator(token),
+    tickets,
     dashboardApi,
     dashboardTuiAttachments,
     host: "0.0.0.0",
@@ -284,8 +298,12 @@ process.on("SIGINT", () => void stop("SIGINT"));
 async function verifyDisposableApi(port, bearer, requireControlGrant) {
   const headers = { Authorization: `Bearer ${bearer}` };
   const origin = `http://127.0.0.1:${port}`;
+  let configuredDefaults;
   for (const path of [
     "/v1/capabilities",
+    "/v1/dashboard/capabilities",
+    "/v1/session?limit=50",
+    "/v1/session/session-fixture-01",
     "/v1/dashboard/inventory?limit=50",
     "/v1/dashboard/inventory/inventory-fixture-01",
     "/v1/dashboard/inventory/inventory-fixture-01/transcript?limit=50",
@@ -295,6 +313,64 @@ async function verifyDisposableApi(port, bearer, requireControlGrant) {
     const envelope = await response.json();
     if (envelope.ok !== true || envelope.hostInstanceId !== hostInstanceId) {
       throw new Error(`disposable API self-probe envelope failed: ${path}`);
+    }
+    if (path === "/v1/dashboard/capabilities") configuredDefaults = envelope.data.sessionDefaults;
+  }
+  if (
+    configuredDefaults?.sources?.cwd !== "configured" ||
+    !configuredDefaults.spec?.cwd ||
+    !["persistent", "memory"].includes(configuredDefaults.spec.persistence)
+  ) {
+    throw new Error("disposable configured defaults self-probe failed");
+  }
+  const createIdentity = { requestId: "pidroid-create-proof", idempotencyKey: "pidroid-create-proof-once" };
+  const defaultSpec = configuredDefaults.spec;
+  const createResponse = await fetch(`${origin}/v1/session?waitForTerminal=true`, {
+    method: "POST",
+    headers: {
+      ...headers,
+      "Content-Type": "application/json",
+      "X-Request-Id": createIdentity.requestId,
+      "Idempotency-Key": createIdentity.idempotencyKey,
+    },
+    body: JSON.stringify({
+      requestId: createIdentity.requestId,
+      sessionId: "session-pidroid-create-proof",
+      spec: {
+        cwd: defaultSpec.cwd,
+        name: "Pi Droid create proof",
+        target: { mode: defaultSpec.persistence === "memory" ? "memory" : "new" },
+        ...(defaultSpec.model === undefined ? {} : { model: defaultSpec.model }),
+        tools: defaultSpec.tools,
+        resources: defaultSpec.resources,
+        isolation: defaultSpec.isolation,
+      },
+    }),
+  });
+  const createEnvelope = await createResponse.json();
+  if (
+    createResponse.status !== 202 || createEnvelope.ok !== true ||
+    createEnvelope.hostInstanceId !== hostInstanceId || createEnvelope.data.state !== "succeeded" ||
+    createEnvelope.data.requestId !== createIdentity.requestId ||
+    createEnvelope.data.idempotencyKey !== createIdentity.idempotencyKey
+  ) {
+    throw new Error(
+      `disposable configured create self-probe failed: ${JSON.stringify({
+        status: createResponse.status,
+        ok: createEnvelope.ok,
+        state: createEnvelope.data?.state,
+        errorCode: createEnvelope.data?.error?.code ?? createEnvelope.error?.code,
+      })}`,
+    );
+  }
+  for (const path of [
+    `/v1/ticket/${encodeURIComponent(createEnvelope.data.ticketId)}`,
+    "/v1/session/session-pidroid-create-proof",
+  ]) {
+    const response = await fetch(`${origin}${path}`, { headers });
+    const envelope = await response.json();
+    if (!response.ok || envelope.ok !== true || envelope.hostInstanceId !== hostInstanceId) {
+      throw new Error(`disposable created resource self-probe failed: ${path}`);
     }
   }
   const rpcProbe = await new Promise((resolve, reject) => {
@@ -348,6 +424,11 @@ async function verifyDisposableApi(port, bearer, requireControlGrant) {
   });
   return {
     capabilities: true,
+    configuredDefaults: true,
+    sessionList: true,
+    sessionInformation: true,
+    configuredCreate: true,
+    ticketReconciliationIdentity: true,
     inventory: true,
     information: true,
     transcript: true,

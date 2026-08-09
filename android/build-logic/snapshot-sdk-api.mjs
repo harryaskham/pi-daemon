@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { execFileSync } from "node:child_process";
-import { writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -40,13 +40,20 @@ function normalizedJavap(jar, className) {
     );
 }
 
-export function snapshotSdkApi({ artifact, jar, excludePrefixes = [] }) {
+function publicationVersion() {
+  const propertiesPath = fileURLToPath(new URL("../sdk-publication.properties", import.meta.url));
+  const match = /^version=(.+)$/mu.exec(readFileSync(propertiesPath, "utf8"));
+  if (!match) throw new Error("sdk-publication.properties version is required");
+  return match[1];
+}
+
+export function snapshotSdkApi({ artifact, jar, excludePrefixes = [], version = publicationVersion() }) {
   const classes = jarClasses(jar).filter((className) => !excludePrefixes.some((prefix) => className.startsWith(prefix)));
   const signatures = classes.map((className) => normalizedJavap(jar, className));
   return [
     "# Pi Droid SDK binary API baseline",
     `# artifact=${artifact}`,
-    "# version=0.3.0-alpha.1",
+    `# version=${version}`,
     "# Generated with jar+javap -public -constants; update only with migration notes.",
     "",
     ...signatures.flatMap((signature) => [signature, ""]),

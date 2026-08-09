@@ -24,7 +24,7 @@ android {
 }
 
 dependencies {
-  implementation("com.harryaskham.pidroid.sdk:core:0.3.0-alpha.1")
-  implementation("com.harryaskham.pidroid.sdk:session-ui:0.3.0-alpha.1")
-  implementation("com.harryaskham.pidroid.sdk:workspace-ui:0.3.0-alpha.1")
+  implementation("com.harryaskham.pidroid.sdk:core:0.3.0-alpha.2")
+  implementation("com.harryaskham.pidroid.sdk:session-ui:0.3.0-alpha.2")
+  implementation("com.harryaskham.pidroid.sdk:workspace-ui:0.3.0-alpha.2")
 }

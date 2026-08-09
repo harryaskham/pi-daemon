@@ -7,7 +7,8 @@ import test from "node:test";
 const root = resolve(import.meta.dirname, "..");
 const android = join(root, "android");
 const group = "com.harryaskham.pidroid.sdk";
-const version = "0.3.0-alpha.1";
+const version = "0.3.0-alpha.2";
+const apiBaselineRevision = "session-lifecycle-host-registry-v1";
 const artifacts = ["core", "session-ui", "workspace-ui"];
 const expectedSources = {
   core: "com/harryaskham/pidroid/sdk/core/Transport.kt",
@@ -48,7 +49,10 @@ function assertPublishedArtifact(repository, artifact) {
   if (artifact === "session-ui") {
     assert.match(
       pom,
-      /<groupId>com\.harryaskham\.pidroid\.sdk<\/groupId>\s*<artifactId>core<\/artifactId>\s*<version>0\.3\.0-alpha\.1<\/version>/u,
+      new RegExp(
+        `<groupId>${group.replaceAll(".", "\\.")}</groupId>\\s*<artifactId>core</artifactId>\\s*<version>${version.replaceAll(".", "\\.")}</version>`,
+        "u",
+      ),
     );
     assert.doesNotMatch(pom, /sdk-core-android/);
   }
@@ -76,15 +80,18 @@ test("Pi Droid SDK publication source contract is explicit and credential free",
   }
   const properties = read(versionFile);
   assert.match(properties, /^group=com\.harryaskham\.pidroid\.sdk$/m);
-  assert.match(properties, /^version=0\.3\.0-alpha\.1$/m);
+  assert.match(properties, /^version=0\.3\.0-alpha\.2$/m);
   assert.match(properties, /^artifacts=core,session-ui,workspace-ui$/m);
-  assert.match(properties, /^apiBaselineRevision=live-readonly-v2$/m);
+  assert.match(properties, /^apiBaselineRevision=session-lifecycle-host-registry-v1$/m);
   assert.match(properties, /^previouslyPublished=false$/m);
 
   const coreBaseline = read(join(android, "sdk-api", "core.api.txt"));
   assert.match(coreBaseline, /withBearerSuspending/);
   assert.match(coreBaseline, /NeutralHttpRequest http\([^\n]+java\.util\.List<kotlin\.Pair/);
+  assert.match(coreBaseline, /SessionLifecycleCoordinator/);
+  assert.match(coreBaseline, /createConfiguredSession/);
   const migrationText = read(migrations);
+  assert.match(migrationText, /session-lifecycle-host-registry-v1/);
   assert.match(migrationText, /live-readonly-v2/);
   assert.match(migrationText, /HostCredentialVault\.withBearerSuspending/);
   assert.match(migrationText, /ServiceBearerRequestFactory\.http/);
@@ -127,7 +134,7 @@ test("Pi Droid SDK publication source contract is explicit and credential free",
   assert.match(sampleSettings, /piDroidSdkRepositoryDir/);
   assert.doesNotMatch(sampleSettings, /mavenLocal\(\)|credentials\s*\{|https?:\/\//i);
   for (const artifact of artifacts) {
-    assert.match(sampleBuild, new RegExp(`com\\.harryaskham\\.pidroid\\.sdk:${artifact}:0\\.3\\.0-alpha\\.1`));
+    assert.match(sampleBuild, new RegExp(`com\\.harryaskham\\.pidroid\\.sdk:${artifact}:${version.replaceAll(".", "\\.")}`));
   }
   assert.match(sampleSource, /PiDaemonTransport/);
   assert.match(sampleSource, /SessionSurface/);
@@ -156,7 +163,7 @@ test("materialized local Maven repository has exact immutable artifacts and meta
   assert.equal(provenance.version, version);
   assert.deepEqual(provenance.artifacts, artifacts);
   assert.equal(provenance.credentialsRequired, false);
-  assert.equal(provenance.apiBaselineRevision, "live-readonly-v2");
+  assert.equal(provenance.apiBaselineRevision, apiBaselineRevision);
   assert.equal(provenance.previouslyPublished, false);
   assert.equal(provenance.records.length, artifacts.length);
   assert.ok(provenance.records.every((record) => /^[0-9a-f]{64}$/u.test(record.apiBaselineSha256)));
