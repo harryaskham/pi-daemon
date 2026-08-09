@@ -60,8 +60,12 @@ test("live app preserves bounded transport protected credentials and readonly hy
   assert.match(registry, /HostRegistryStore/);
   assert.match(registry, /PairingPayloadCodec/);
   assert.match(repository, /client\.capabilities\(\)/);
-  assert.match(repository, /\/v1\/dashboard\/inventory/);
-  assert.match(repository, /SessionFixtureDecoder/);
+  assert.match(repository, /client\.dashboardCapabilities\(\)/);
+  assert.match(repository, /client\.listInventory\(/);
+  assert.match(repository, /client\.inventoryInfo\(/);
+  assert.match(repository, /\.transcript\(/);
+  assert.match(repository, /SessionLifecycleProjection/);
+  assert.doesNotMatch(repository, /SessionFixtureDecoder/);
   assert.match(repository, /CacheFreshness\.(?:RECONNECTING|RESYNCING|OFFLINE_CACHED)/);
   assert.match(activity, /LiveReadonlyScreen/);
   assert.match(screen, /SessionSurface/);
