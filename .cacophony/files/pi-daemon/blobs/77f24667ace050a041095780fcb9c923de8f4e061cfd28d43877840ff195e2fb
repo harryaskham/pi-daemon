@@ -1,0 +1,77 @@
+{
+  "archives": {
+    "byteIdentical": true,
+    "bytes": 1141226,
+    "checksumSidecarsIdentical": true,
+    "entryCount": 82,
+    "name": "pi-droid-sdk-maven-0.3.0-alpha.2.tar.gz",
+    "nixStoreOutputs": [
+      "/nix/store/q774sjy9vi70rzq43g2fsp50q614a9ny-pi-droid-sdk-maven-0.3.0-alpha.2-archive",
+      "/nix/store/q774sjy9vi70rzq43g2fsp50q614a9ny-pi-droid-sdk-maven-0.3.0-alpha.2-archive"
+    ],
+    "sha256": "fa22c0d6ec54476e99b82c935a7510a3ec90e2dc2f2e6e1c95567b22b9a4033b",
+    "sourceMtimeEpochs": [
+      946684800,
+      1893456000
+    ]
+  },
+  "checks": {
+    "apiBaselines": {
+      "core": "byte-identical",
+      "session-ui": "byte-identical",
+      "workspace-ui": "byte-identical"
+    },
+    "consumerAssembleDebug": "pass",
+    "consumerLintDebug": "pass",
+    "forbiddenStaleDynamicCredentialNativeCacophonyEndpoint": "absent",
+    "repositoryInspector": "pass"
+  },
+  "publication": {
+    "artifacts": [
+      "core",
+      "session-ui",
+      "workspace-ui"
+    ],
+    "group": "com.harryaskham.pidroid.sdk",
+    "previouslyPublished": false,
+    "version": "0.3.0-alpha.2"
+  },
+  "publishedFiles": {
+    "com/harryaskham/pidroid/sdk/core/0.3.0-alpha.2/core-0.3.0-alpha.2-sources.jar": {
+      "entries": 24,
+      "sha256": "0fbca5e24aa14930c16a20d2aadf6e1791fcc8038272050629c9066a43b8d99e"
+    },
+    "com/harryaskham/pidroid/sdk/core/0.3.0-alpha.2/core-0.3.0-alpha.2.aar": {
+      "entries": 5,
+      "sha256": "f568d3ba2e6f819481d78d23e642cddc4aed6aa03521c6cfbf4a69439fe66de3"
+    },
+    "com/harryaskham/pidroid/sdk/session-ui/0.3.0-alpha.2/session-ui-0.3.0-alpha.2-sources.jar": {
+      "entries": 22,
+      "sha256": "a7ff6e07a94d757cdd52120a4b72b6fa87e81714a3ad4569a605a35bf8aa382b"
+    },
+    "com/harryaskham/pidroid/sdk/session-ui/0.3.0-alpha.2/session-ui-0.3.0-alpha.2.aar": {
+      "entries": 5,
+      "sha256": "42e174cf360a8c8d64a3204a7260112703a03adee1ad31e094ba549596190507"
+    },
+    "com/harryaskham/pidroid/sdk/workspace-ui/0.3.0-alpha.2/workspace-ui-0.3.0-alpha.2-sources.jar": {
+      "entries": 14,
+      "sha256": "c97a71e95dae1e5ca27fba4d104e3c84af3fabf90f4307c27d6cc15f0f48f635"
+    },
+    "com/harryaskham/pidroid/sdk/workspace-ui/0.3.0-alpha.2/workspace-ui-0.3.0-alpha.2.aar": {
+      "entries": 5,
+      "sha256": "1729a211f621530fe25fa0ab9d5df05a4718a9a8f7675d6685bcb0f59d31e2c3"
+    }
+  },
+  "repository": {
+    "fileCount": 69,
+    "manifestEntryCount": 68,
+    "provenanceSha256": "80c33af052b21b50d7b34db3379a9bbdd4dd8da318c87753c69a434fb9d963c3",
+    "sbomSha256": "d36498e136768cb378a9927f73feff28e3e8b0a03fc26795a64ad06c8f1bff47",
+    "sha256SumsSha256": "d9a2f00d7f53742492a4c40dab8c0025b1af01acee86ba6ad55b741c95b69795"
+  },
+  "schemaVersion": 1,
+  "source": {
+    "commit": "c663a9796ae78eee51957526daa250bc3e2d8b6f",
+    "tree": "4b66ef64dce066807e7a3b91360fa0e3a161de04"
+  }
+}
