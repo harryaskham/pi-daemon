@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "status": "verified",
+  "packageName": "com.harryaskham.pidroid",
+  "track": "internal",
+  "versionCode": 4,
+  "versionName": "0.3.0-internal.4",
+  "certificateSha256": "FA:58:80:A7:C9:6D:F8:7B:B4:63:7D:18:58:7E:32:F6:CD:F6:95:06:52:34:FE:54:95:E2:4F:ED:12:1E:CE:4C",
+  "internetPermission": true,
+  "aab": "pi-droid-release.aab",
+  "mapping": "mapping.txt"
+}
