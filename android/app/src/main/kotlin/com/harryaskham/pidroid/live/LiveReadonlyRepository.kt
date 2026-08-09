@@ -4,11 +4,19 @@ import com.harryaskham.pidroid.protocol.generated.PiRpcCommandType
 import com.harryaskham.pidroid.sdk.core.ApiResult
 import com.harryaskham.pidroid.sdk.core.CacheFreshness
 import com.harryaskham.pidroid.sdk.core.CommandAdmissionException
+import com.harryaskham.pidroid.sdk.core.ConfiguredSessionDefaults
+import com.harryaskham.pidroid.sdk.core.ConnectionAttemptId
+import com.harryaskham.pidroid.sdk.core.DashboardActivationMode
+import com.harryaskham.pidroid.sdk.core.DashboardCapabilities
+import com.harryaskham.pidroid.sdk.core.DashboardInventoryPage
+import com.harryaskham.pidroid.sdk.core.DashboardInventoryRecord
+import com.harryaskham.pidroid.sdk.core.DurableRequestIdentity
 import com.harryaskham.pidroid.sdk.core.HostAuthority
 import com.harryaskham.pidroid.sdk.core.HostCredentialVault
 import com.harryaskham.pidroid.sdk.core.HostId
 import com.harryaskham.pidroid.sdk.core.HostRegistry
 import com.harryaskham.pidroid.sdk.core.HttpMethod
+import com.harryaskham.pidroid.sdk.core.IncomingFrameDisposition
 import com.harryaskham.pidroid.sdk.core.InteractiveCapabilities
 import com.harryaskham.pidroid.sdk.core.InteractiveConnectionState
 import com.harryaskham.pidroid.sdk.core.InteractiveControllerRole
@@ -18,15 +26,19 @@ import com.harryaskham.pidroid.sdk.core.PiDaemonClient
 import com.harryaskham.pidroid.sdk.core.PiDaemonHostDescriptor
 import com.harryaskham.pidroid.sdk.core.ProtocolDecodeException
 import com.harryaskham.pidroid.sdk.core.RegisteredHost
+import com.harryaskham.pidroid.sdk.core.ResumableCommand
 import com.harryaskham.pidroid.sdk.core.ServiceBearerRequestFactory
 import com.harryaskham.pidroid.sdk.core.SessionKey
+import com.harryaskham.pidroid.sdk.core.SessionLifecycleCoordinator
+import com.harryaskham.pidroid.sdk.core.SessionResumeSnapshotCodec
 import com.harryaskham.pidroid.sdk.core.SessionRole
 import com.harryaskham.pidroid.sdk.core.SessionRpcFrame
 import com.harryaskham.pidroid.sdk.core.SessionRpcFrameCodec
+import com.harryaskham.pidroid.sdk.core.TicketState
 import com.harryaskham.pidroid.sdk.core.TransportSecurity
 import com.harryaskham.pidroid.sessionui.RichInteractionAction
-import com.harryaskham.pidroid.sessionui.SessionFixtureDecoder
 import com.harryaskham.pidroid.sessionui.SessionHostContext
+import com.harryaskham.pidroid.sessionui.SessionLifecycleProjection
 import com.harryaskham.pidroid.sessionui.SessionSurfaceReducer
 import com.harryaskham.pidroid.sessionui.SessionSurfaceState
 import com.harryaskham.pidroid.sessionui.TuiFrameState
@@ -79,7 +91,8 @@ public sealed interface LiveReadonlyState {
 
 public data class LiveHostSession(
   public val host: RegisteredHost,
-  public val session: SessionSurfaceState,
+  public val session: SessionSurfaceState?,
+  public val catalog: LiveSessionCatalog,
   public val rpcObserverConnected: Boolean,
   public val rpcObserverEligible: Boolean,
   public val interactiveCommands: Set<PiRpcCommandType>,
@@ -177,20 +190,24 @@ public class LiveReadonlyRepository(
   private val credentials: HostCredentialVault,
   private val transport: LiveHostTransport,
   private val defaultHostStore: DefaultHostStore = EphemeralDefaultHostStore(),
+  private val dailyDriverStore: DailyDriverStore = EphemeralDailyDriverStore(),
 ) : AutoCloseable {
   private val mutableState = MutableStateFlow<LiveReadonlyState>(LiveReadonlyState.Unconfigured)
   private val mutableInteractiveState = MutableStateFlow<LiveInteractiveAppState>(LiveInteractiveAppState.Inactive)
   private val mutableHostManagementState = MutableStateFlow(HostManagementState())
+  private val mutableSessionActionState = MutableStateFlow<LiveSessionActionState>(LiveSessionActionState.Idle)
   private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
   private val interactiveConnectMutex = Mutex()
   private val json = Json
   private var activeInteractive: ActiveInteractive? = null
   private var externalCanaryExpectation: ExternalCanaryExpectation? = null
   private var defaultHostId: HostId? = null
+  private val lifecycleByHost = linkedMapOf<HostId, HostLifecycleData>()
 
   public val state: StateFlow<LiveReadonlyState> = mutableState.asStateFlow()
   public val interactiveState: StateFlow<LiveInteractiveAppState> = mutableInteractiveState.asStateFlow()
   public val hostManagementState: StateFlow<HostManagementState> = mutableHostManagementState.asStateFlow()
+  public val sessionActionState: StateFlow<LiveSessionActionState> = mutableSessionActionState.asStateFlow()
 
   public suspend fun initialize() {
     val hosts = registry.list()
@@ -203,6 +220,8 @@ public class LiveReadonlyRepository(
       mutableState.value = LiveReadonlyState.Unconfigured
     } else {
       refresh()
+      restoreInteractiveResume()
+      restoreSessionAction()
     }
   }
 
@@ -316,7 +335,7 @@ public class LiveReadonlyRepository(
           hosts =
             previous.map { snapshot ->
               snapshot.copy(
-                session = SessionSurfaceReducer.withFreshness(snapshot.session, CacheFreshness.RECONNECTING, 0),
+                session = snapshot.session?.let { SessionSurfaceReducer.withFreshness(it, CacheFreshness.RECONNECTING, 0) },
                 rpcObserverConnected = false,
               )
             },
@@ -339,7 +358,7 @@ public class LiveReadonlyRepository(
         previous.firstOrNull { it.host.id == host.id }?.let { cached ->
           snapshots +=
             cached.copy(
-              session = SessionSurfaceReducer.withFreshness(cached.session, CacheFreshness.OFFLINE_CACHED, 0),
+              session = cached.session?.let { SessionSurfaceReducer.withFreshness(it, CacheFreshness.OFFLINE_CACHED, 0) },
               rpcObserverConnected = false,
             )
         }
@@ -395,6 +414,191 @@ public class LiveReadonlyRepository(
     defaultHostId = hostId
     publishRegisteredHosts(hosts)
     selectHost(hostId)
+  }
+
+  public suspend fun selectSession(inventoryId: String) {
+    val ready = mutableState.value as? LiveReadonlyState.Ready ?: throw LiveReadonlyFailure("session_catalog_unavailable")
+    val selectedHost = ready.selected
+    if (selectedHost.catalog.items.none { it.inventoryId == inventoryId }) {
+      throw LiveReadonlyFailure("inventory_session_unavailable")
+    }
+    dailyDriverStore.writeSelectedInventory(selectedHost.host.id, inventoryId)
+    if (activeInteractive?.hostId == selectedHost.host.id) closeActiveInteractive()
+    refresh()
+  }
+
+  public suspend fun createConfiguredSession(name: String?) {
+    requireNoPendingSessionAction()
+    val (host, lifecycle) = selectedLifecycle()
+    val normalizedName = name?.trim()?.takeIf(String::isNotEmpty)
+    val request = DurableRequestIdentity("android-create-${UUID.randomUUID()}", "android-create-once-${UUID.randomUUID()}")
+    val prepared =
+      LiveSessionActionBookmark(
+        hostId = host.id,
+        kind = LiveSessionActionKind.CREATE,
+        endpoint = LiveSessionActionEndpoint.SESSION_TICKET,
+        requestId = request.requestId,
+        idempotencyKey = request.idempotencyKey,
+        inventoryId = null,
+        ticketId = null,
+      )
+    dailyDriverStore.writeActionBookmark(prepared)
+    mutableSessionActionState.value = LiveSessionActionState.Working(LiveSessionActionKind.CREATE)
+    try {
+      withClient(host) { client ->
+        when (val result = client.createConfiguredSession(lifecycle.capabilities, request, name = normalizedName)) {
+          is ApiResult.Failure -> {
+            dailyDriverStore.writeActionBookmark(null)
+            mutableSessionActionState.value =
+              LiveSessionActionState.Failure(LiveSessionActionKind.CREATE, safeActionCode(result.error.code), result.error.retryable)
+          }
+
+          is ApiResult.Success -> {
+            val accepted = prepared.copy(ticketId = result.value.ticketId)
+            dailyDriverStore.writeActionBookmark(accepted)
+            publishSessionTicket(accepted, result.value.state, result.value.sessionId, result.value.generation, result.value.error?.code)
+          }
+        }
+      }
+    } catch (_: CancellationException) {
+      throw CancellationException()
+    } catch (_: Throwable) {
+      mutableSessionActionState.value = LiveSessionActionState.Indeterminate(prepared)
+    }
+  }
+
+  public suspend fun adoptSession(inventoryId: String) {
+    requireNoPendingSessionAction()
+    val (host, lifecycle) = selectedLifecycle()
+    val record = lifecycle.records[inventoryId] ?: throw LiveReadonlyFailure("inventory_session_unavailable")
+    if (record.managed != null) {
+      mutableSessionActionState.value = LiveSessionActionState.Working(LiveSessionActionKind.ADOPT)
+      withClient(host) { client ->
+        when (val result = client.adoptExisting(record)) {
+          is ApiResult.Failure -> {
+            mutableSessionActionState.value =
+              LiveSessionActionState.Failure(LiveSessionActionKind.ADOPT, safeActionCode(result.error.code), result.error.retryable)
+          }
+
+          is ApiResult.Success -> {
+            val adopted = result.value
+            dailyDriverStore.writeSelectedInventory(host.id, adopted.inventoryId)
+            refresh()
+            mutableSessionActionState.value = LiveSessionActionState.Completed(LiveSessionActionKind.ADOPT, adopted.session.key)
+          }
+        }
+      }
+      return
+    }
+    if (!record.activation.eligible || DashboardActivationMode.REUSE !in record.activation.modes) {
+      throw LiveReadonlyFailure(record.activation.reasonCode?.let(::safeActionCode) ?: "reuse_activation_unavailable")
+    }
+    val request = DurableRequestIdentity("android-adopt-${UUID.randomUUID()}", "android-adopt-once-${UUID.randomUUID()}")
+    val prepared =
+      LiveSessionActionBookmark(
+        hostId = host.id,
+        kind = LiveSessionActionKind.ADOPT,
+        endpoint = LiveSessionActionEndpoint.ACTIVATION_TICKET,
+        requestId = request.requestId,
+        idempotencyKey = request.idempotencyKey,
+        inventoryId = inventoryId,
+        ticketId = null,
+      )
+    val info = withClient(host) { client -> client.inventoryInfo(inventoryId).successOrThrow().value }
+    dailyDriverStore.writeActionBookmark(prepared)
+    mutableSessionActionState.value = LiveSessionActionState.Working(LiveSessionActionKind.ADOPT)
+    try {
+      withClient(host) { client ->
+        when (val result = client.activateForReuse(record, request, info.sourceFingerprint)) {
+          is ApiResult.Failure -> {
+            dailyDriverStore.writeActionBookmark(null)
+            mutableSessionActionState.value =
+              LiveSessionActionState.Failure(LiveSessionActionKind.ADOPT, safeActionCode(result.error.code), result.error.retryable)
+          }
+
+          is ApiResult.Success -> {
+            val accepted = prepared.copy(ticketId = result.value.ticketId)
+            dailyDriverStore.writeActionBookmark(accepted)
+            publishActivationTicket(accepted, result.value.state, result.value.managedSession, result.value.error?.code)
+          }
+        }
+      }
+    } catch (_: CancellationException) {
+      throw CancellationException()
+    } catch (_: Throwable) {
+      mutableSessionActionState.value = LiveSessionActionState.Indeterminate(prepared)
+    }
+  }
+
+  public suspend fun refreshSessionAction() {
+    val bookmark =
+      dailyDriverStore.readActionBookmark() ?: run {
+        mutableSessionActionState.value = LiveSessionActionState.Idle
+        return
+      }
+    val ticketId =
+      bookmark.ticketId ?: run {
+        mutableSessionActionState.value = LiveSessionActionState.Indeterminate(bookmark)
+        return
+      }
+    val host =
+      registry.list().firstOrNull { it.id == bookmark.hostId } ?: run {
+        mutableSessionActionState.value = LiveSessionActionState.Indeterminate(bookmark)
+        return
+      }
+    try {
+      withClient(host) { client ->
+        when (bookmark.endpoint) {
+          LiveSessionActionEndpoint.SESSION_TICKET -> {
+            when (val result = client.ticket(ticketId)) {
+              is ApiResult.Failure -> {
+                mutableSessionActionState.value = LiveSessionActionState.Indeterminate(bookmark)
+              }
+
+              is ApiResult.Success -> {
+                publishSessionTicket(
+                  bookmark,
+                  result.value.state,
+                  result.value.sessionId,
+                  result.value.generation,
+                  result.value.error?.code,
+                )
+              }
+            }
+          }
+
+          LiveSessionActionEndpoint.ACTIVATION_TICKET -> {
+            when (val result = client.activation(ticketId)) {
+              is ApiResult.Failure -> {
+                mutableSessionActionState.value = LiveSessionActionState.Indeterminate(bookmark)
+              }
+
+              is ApiResult.Success -> {
+                publishActivationTicket(bookmark, result.value.state, result.value.managedSession, result.value.error?.code)
+              }
+            }
+          }
+        }
+      }
+    } catch (_: CancellationException) {
+      throw CancellationException()
+    } catch (_: Throwable) {
+      mutableSessionActionState.value = LiveSessionActionState.Indeterminate(bookmark)
+    }
+  }
+
+  public suspend fun clearSessionAction() {
+    when (mutableSessionActionState.value) {
+      LiveSessionActionState.Idle,
+      is LiveSessionActionState.Completed,
+      is LiveSessionActionState.Failure,
+      -> {
+        dailyDriverStore.writeActionBookmark(null)
+        mutableSessionActionState.value = LiveSessionActionState.Idle
+      }
+
+      else -> {}
+    }
   }
 
   public suspend fun removeHost(hostId: HostId) {
@@ -463,6 +667,224 @@ public class LiveReadonlyRepository(
       )
   }
 
+  private suspend fun restoreInteractiveResume() {
+    val encoded = dailyDriverStore.readInteractiveResume() ?: return
+    val resumed =
+      runCatching { SessionResumeSnapshotCodec.decode(encoded) }
+        .getOrElse {
+          dailyDriverStore.writeInteractiveResume(null)
+          return
+        }
+    val ready = mutableState.value as? LiveReadonlyState.Ready ?: return
+    val host =
+      ready.hosts.firstOrNull { it.host.id == resumed.hostId } ?: run {
+        dailyDriverStore.writeInteractiveResume(null)
+        return
+      }
+    val surface = host.session ?: return
+    if (
+      surface.session.sessionId != resumed.session.sessionId ||
+      surface.session.generation != resumed.session.generation ||
+      surface.host.authority.hostInstanceId != resumed.hostInstanceId
+    ) {
+      return
+    }
+    val lifecycle =
+      runCatching { SessionLifecycleCoordinator.restore(resumed, host.interactiveCommands) }
+        .getOrElse {
+          dailyDriverStore.writeInteractiveResume(null)
+          return
+        }
+    val machine =
+      LiveInteractiveSessionMachine(
+        session = resumed.session,
+        supportedCommands = host.interactiveCommands,
+        authority = surface.host.authority,
+        modelLabel = surface.session.modelLabel ?: "default model",
+        thinkingLevel = surface.session.thinkingLevel ?: "default",
+        restoredReceipts = lifecycle.snapshot().commands.map(::liveReceipt),
+      )
+    mutableInteractiveState.value =
+      LiveInteractiveAppState.Failure(
+        hostId = resumed.hostId,
+        sessionId = resumed.session.sessionId,
+        generation = resumed.session.generation,
+        code = "process_restored_reconnect_required",
+        lastSnapshot = machine.snapshot,
+      )
+  }
+
+  private suspend fun restoreSessionAction() {
+    if (dailyDriverStore.readActionBookmark() != null) refreshSessionAction()
+  }
+
+  private suspend fun requireNoPendingSessionAction() {
+    val bookmark = dailyDriverStore.readActionBookmark() ?: return
+    mutableSessionActionState.value = LiveSessionActionState.Indeterminate(bookmark)
+    throw CommandAdmissionException("pending_session_action", "an earlier session mutation still requires reconciliation")
+  }
+
+  private suspend fun publishSessionTicket(
+    bookmark: LiveSessionActionBookmark,
+    state: TicketState,
+    sessionId: String?,
+    generation: Int?,
+    errorCode: String?,
+  ) {
+    val session = sessionId?.let { id -> generation?.let { SessionKey(id, it) } }
+    when (state) {
+      TicketState.QUEUED,
+      TicketState.RUNNING,
+      -> {
+        mutableSessionActionState.value = LiveSessionActionState.Accepted(bookmark, state, session)
+      }
+
+      TicketState.INDETERMINATE -> {
+        mutableSessionActionState.value = LiveSessionActionState.Indeterminate(bookmark)
+      }
+
+      TicketState.FAILED -> {
+        dailyDriverStore.writeActionBookmark(null)
+        mutableSessionActionState.value =
+          LiveSessionActionState.Failure(bookmark.kind, errorCode?.let(::safeActionCode) ?: "session_create_failed", false)
+      }
+
+      TicketState.SUCCEEDED -> {
+        finishSessionAction(bookmark, session)
+      }
+    }
+  }
+
+  private suspend fun publishActivationTicket(
+    bookmark: LiveSessionActionBookmark,
+    state: TicketState,
+    session: SessionKey?,
+    errorCode: String?,
+  ) {
+    when (state) {
+      TicketState.QUEUED,
+      TicketState.RUNNING,
+      -> {
+        mutableSessionActionState.value = LiveSessionActionState.Accepted(bookmark, state, session)
+      }
+
+      TicketState.INDETERMINATE -> {
+        mutableSessionActionState.value = LiveSessionActionState.Indeterminate(bookmark)
+      }
+
+      TicketState.FAILED -> {
+        dailyDriverStore.writeActionBookmark(null)
+        mutableSessionActionState.value =
+          LiveSessionActionState.Failure(bookmark.kind, errorCode?.let(::safeActionCode) ?: "session_adoption_failed", false)
+      }
+
+      TicketState.SUCCEEDED -> {
+        finishSessionAction(bookmark, session)
+      }
+    }
+  }
+
+  private suspend fun finishSessionAction(
+    bookmark: LiveSessionActionBookmark,
+    session: SessionKey?,
+  ) {
+    if (session == null) {
+      mutableSessionActionState.value = LiveSessionActionState.Indeterminate(bookmark)
+      return
+    }
+    dailyDriverStore.writeActionBookmark(null)
+    refresh()
+    val host = (mutableState.value as? LiveReadonlyState.Ready)?.hosts?.firstOrNull { it.host.id == bookmark.hostId }
+    val matching = host?.catalog?.items?.firstOrNull { it.managedSession == session }
+    if (matching != null) {
+      dailyDriverStore.writeSelectedInventory(bookmark.hostId, matching.inventoryId)
+      refresh()
+    }
+    mutableSessionActionState.value = LiveSessionActionState.Completed(bookmark.kind, session)
+  }
+
+  private fun selectedLifecycle(): Pair<RegisteredHost, HostLifecycleData> {
+    val ready = mutableState.value as? LiveReadonlyState.Ready ?: throw LiveReadonlyFailure("session_catalog_unavailable")
+    val selectedHost = ready.selected.host
+    return selectedHost to (lifecycleByHost[selectedHost.id] ?: throw LiveReadonlyFailure("session_catalog_unavailable"))
+  }
+
+  private suspend fun loadLifecycleCoordinator(
+    hostId: HostId,
+    hostInstanceId: String?,
+    session: SessionKey,
+    supportedCommands: Set<PiRpcCommandType>,
+  ): SessionLifecycleCoordinator {
+    val restored =
+      dailyDriverStore.readInteractiveResume()?.let { encoded ->
+        runCatching { SessionResumeSnapshotCodec.decode(encoded) }
+          .getOrElse {
+            dailyDriverStore.writeInteractiveResume(null)
+            null
+          }
+      }
+    if (
+      restored != null &&
+      restored.hostId == hostId &&
+      restored.hostInstanceId == hostInstanceId &&
+      restored.session == session
+    ) {
+      return runCatching { SessionLifecycleCoordinator.restore(restored, supportedCommands) }
+        .getOrElse {
+          dailyDriverStore.writeInteractiveResume(null)
+          SessionLifecycleCoordinator.create(hostId, session, supportedCommands, hostInstanceId)
+        }
+    }
+    if (restored != null) dailyDriverStore.writeInteractiveResume(null)
+    return SessionLifecycleCoordinator.create(hostId, session, supportedCommands, hostInstanceId)
+  }
+
+  private suspend fun persistLifecycle(lifecycle: SessionLifecycleCoordinator) {
+    dailyDriverStore.writeInteractiveResume(SessionResumeSnapshotCodec.encode(lifecycle.snapshot()))
+  }
+
+  private suspend fun <T> withClient(
+    host: RegisteredHost,
+    block: suspend (PiDaemonClient) -> T,
+  ): T =
+    credentials.withBearerSuspending(host.credential) { bearer ->
+      val descriptor = PiDaemonHostDescriptor(host.id, host.displayName, host.baseUri)
+      ServiceBearerRequestFactory
+        .create(
+          host = descriptor,
+          bearer = bearer,
+          allowInsecureHttp = host.transportSecurity != TransportSecurity.HTTPS,
+        ).use { factory -> block(PiDaemonClient(descriptor, factory, transport)) }
+    }
+
+  private fun catalogOf(
+    inventory: DashboardInventoryPage,
+    retainedSessionCount: Int,
+    selectedInventoryId: String?,
+    capabilities: DashboardCapabilities,
+  ): LiveSessionCatalog =
+    LiveSessionCatalog(
+      items =
+        inventory.sessions.map { record ->
+          LiveSessionCatalogItem(
+            inventoryId = record.inventoryId,
+            title = record.title,
+            projectLabel = record.projectLabel,
+            cwdBasename = record.cwdBasename,
+            managedSession = record.managed?.key,
+            state = record.managed?.state ?: record.presence.runtime,
+            unread = record.presence.unread,
+            canAdopt = record.managed != null || (record.activation.eligible && DashboardActivationMode.REUSE in record.activation.modes),
+            adoptionReasonCode = record.activation.reasonCode,
+          )
+        },
+      selectedInventoryId = selectedInventoryId,
+      createDefaults = capabilities.configuredSessionDefaults?.toLiveDefaults(),
+      inventoryStale = inventory.index.stale,
+      inventoryReconciling = inventory.index.reconciling,
+      retainedSessionCount = retainedSessionCount,
+    )
+
   public suspend fun handleInteraction(action: RichInteractionAction) {
     when (action) {
       RichInteractionAction.RequestControl -> {
@@ -494,8 +916,7 @@ public class LiveReadonlyRepository(
             RichInteractionAction.ReleaseControl -> "control"
           }
         val correlationId = "$prefix-${UUID.randomUUID()}"
-        val outbound = active.machine.submit(action, correlationId)
-        sendOnce(active, outbound)
+        submitInteractive(active, active.machine.prepare(action, correlationId))
       }
     }
   }
@@ -523,12 +944,18 @@ public class LiveReadonlyRepository(
     if (active.machine.snapshot.connection != InteractiveConnectionState.READY) {
       throw LiveReadonlyFailure("interactive_session_not_ready")
     }
-    sendOnce(active, active.machine.requestControl())
+    val lifecycleText = active.lifecycle.requestControl(active.attemptId).text
+    val machineText = active.machine.requestControl()
+    requireMatchingOutbound(lifecycleText, machineText)
+    sendOnce(active, machineText)
   }
 
   public suspend fun releaseControl() {
     val active = requireActiveInteractive()
-    sendOnce(active, active.machine.releaseControl())
+    val lifecycleText = active.lifecycle.releaseControl(active.attemptId).text
+    val machineText = active.machine.releaseControl()
+    requireMatchingOutbound(lifecycleText, machineText)
+    sendOnce(active, machineText)
   }
 
   public suspend fun reconnectInteractive() {
@@ -549,15 +976,16 @@ public class LiveReadonlyRepository(
   private suspend fun ensureInteractiveLocked(): ActiveInteractive {
     val ready = mutableState.value as? LiveReadonlyState.Ready ?: throw LiveReadonlyFailure("interactive_host_not_ready")
     val selected = ready.selected
-    if (selected.session.host.freshness != CacheFreshness.FRESH) {
+    val selectedSession = selected.session ?: throw LiveReadonlyFailure("interactive_session_unavailable")
+    if (selectedSession.host.freshness != CacheFreshness.FRESH) {
       throw LiveReadonlyFailure("interactive_freshness_required")
     }
-    val sessionId = selected.session.session.sessionId ?: throw LiveReadonlyFailure("interactive_session_unavailable")
-    val generation = selected.session.session.generation ?: throw LiveReadonlyFailure("interactive_session_unavailable")
+    val sessionId = selectedSession.session.sessionId ?: throw LiveReadonlyFailure("interactive_session_unavailable")
+    val generation = selectedSession.session.generation ?: throw LiveReadonlyFailure("interactive_session_unavailable")
     activeInteractive
       ?.takeIf {
         it.hostId == selected.host.id &&
-          it.authority == selected.session.host.authority &&
+          it.authority == selectedSession.host.authority &&
           it.session == SessionKey(sessionId, generation) &&
           it.machine.snapshot.connection == InteractiveConnectionState.READY
       }?.let { return it }
@@ -581,23 +1009,40 @@ public class LiveReadonlyRepository(
               ) {
                 throw LiveReadonlyFailure("interactive_capabilities_failed")
               }
+              val session = SessionKey(sessionId, generation)
+              val lifecycle =
+                loadLifecycleCoordinator(
+                  hostId = selected.host.id,
+                  hostInstanceId = selectedSession.host.authority.hostInstanceId,
+                  session = session,
+                  supportedCommands = selected.interactiveCommands,
+                )
               val machine =
                 LiveInteractiveSessionMachine(
-                  session = SessionKey(sessionId, generation),
+                  session = session,
                   supportedCommands = selected.interactiveCommands,
-                  authority = selected.session.host.authority,
-                  modelLabel = selected.session.session.modelLabel ?: "default model",
-                  thinkingLevel = selected.session.session.thinkingLevel ?: "default",
+                  authority = selectedSession.host.authority,
+                  modelLabel = selectedSession.session.modelLabel ?: "default model",
+                  thinkingLevel = selectedSession.session.thinkingLevel ?: "default",
+                  restoredReceipts = lifecycle.snapshot().commands.map(::liveReceipt),
                 )
+              val attemptId = ConnectionAttemptId("android-${UUID.randomUUID()}")
+              val directive = lifecycle.beginConnection(attemptId)
+              persistLifecycle(lifecycle)
               val rpcSocket =
                 attachStage("observer_connect_failed") {
-                  client.attach(SessionKey(sessionId, generation), SessionRole.OBSERVER)
+                  client.attach(directive.session, directive.role, directive.cursor)
                 }
               try {
                 val first =
                   attachStage("observer_connect_failed") {
                     withTimeout(10_000) { rpcSocket.incomingText.first() }
                   }
+                val disposition = lifecycle.onFrame(attemptId, SessionRpcFrameCodec.decode(first))
+                persistLifecycle(lifecycle)
+                if (disposition != IncomingFrameDisposition.APPLIED) {
+                  throw LiveReadonlyFailure("interactive_resync_required")
+                }
                 machine.accept(first)
                 if (
                   machine.snapshot.connection != InteractiveConnectionState.READY ||
@@ -624,8 +1069,10 @@ public class LiveReadonlyRepository(
                       ),
                     )
                   }
-                OpenedInteractive(machine, rpcSocket, tuiMachine, tuiSocket)
+                OpenedInteractive(machine, lifecycle, attemptId, rpcSocket, tuiMachine, tuiSocket)
               } catch (error: Throwable) {
+                lifecycle.onDisconnect(attemptId)
+                persistLifecycle(lifecycle)
                 rpcSocket.close()
                 throw error
               }
@@ -636,8 +1083,10 @@ public class LiveReadonlyRepository(
       ActiveInteractive(
         hostId = selected.host.id,
         session = SessionKey(sessionId, generation),
-        authority = selected.session.host.authority,
+        authority = selectedSession.host.authority,
         machine = opened.machine,
+        lifecycle = opened.lifecycle,
+        attemptId = opened.attemptId,
         rpcSocket = opened.rpcSocket,
         tuiMachine = opened.tuiMachine,
         tuiSocket = opened.tuiSocket,
@@ -648,18 +1097,25 @@ public class LiveReadonlyRepository(
       scope.launch {
         try {
           active.rpcSocket.incomingText.collect { text ->
+            val disposition = active.lifecycle.onFrame(active.attemptId, SessionRpcFrameCodec.decode(text))
+            persistLifecycle(active.lifecycle)
+            if (disposition != IncomingFrameDisposition.APPLIED) {
+              throw LiveReadonlyFailure("interactive_resync_required")
+            }
             val wasController = active.machine.snapshot.role == InteractiveControllerRole.CONTROLLER
             active.machine.accept(text)
             publishInteractive(active)
             if (!wasController && active.machine.snapshot.role == InteractiveControllerRole.CONTROLLER &&
               active.machine.snapshot.tree == null
             ) {
-              sendOnce(active, active.machine.requestTree("tree-${UUID.randomUUID()}"))
+              submitInteractive(active, active.machine.prepareTree("tree-${UUID.randomUUID()}"))
             }
           }
         } catch (_: Throwable) {
           // The finally block converts every missing acknowledgement to indeterminate.
         } finally {
+          active.lifecycle.onDisconnect(active.attemptId)
+          persistLifecycle(active.lifecycle)
           active.machine.disconnected()
           publishInteractive(active, "transport_lost")
         }
@@ -682,18 +1138,33 @@ public class LiveReadonlyRepository(
     val active = activeInteractive ?: throw LiveReadonlyFailure("interactive_session_not_attached")
     val ready = mutableState.value as? LiveReadonlyState.Ready ?: throw LiveReadonlyFailure("interactive_host_not_ready")
     val selected = ready.selected
+    val selectedSession = selected.session
     if (
       selected.host.id != active.hostId ||
-      selected.session.host.authority != active.authority ||
-      selected.session.host.freshness != CacheFreshness.FRESH ||
-      selected.session.session.sessionId != active.session.sessionId ||
-      selected.session.session.generation != active.session.generation
+      selectedSession == null ||
+      selectedSession.host.authority != active.authority ||
+      selectedSession.host.freshness != CacheFreshness.FRESH ||
+      selectedSession.session.sessionId != active.session.sessionId ||
+      selectedSession.session.generation != active.session.generation
     ) {
       active.machine.disconnected()
       publishInteractive(active, "interactive_freshness_required")
       throw LiveReadonlyFailure("interactive_freshness_required")
     }
     return active
+  }
+
+  private suspend fun submitInteractive(
+    active: ActiveInteractive,
+    prepared: PreparedLiveCommand,
+  ) {
+    val lifecycleText =
+      active.lifecycle
+        .submit(active.attemptId, prepared.intent, prepared.correlationId)
+        .text
+    requireMatchingOutbound(lifecycleText, prepared.text)
+    persistLifecycle(active.lifecycle)
+    sendOnce(active, prepared.text)
   }
 
   private suspend fun sendOnce(
@@ -703,11 +1174,22 @@ public class LiveReadonlyRepository(
     try {
       active.rpcSocket.sendText(text)
       publishInteractive(active)
+    } catch (error: CancellationException) {
+      throw error
     } catch (_: Throwable) {
+      active.lifecycle.onDisconnect(active.attemptId)
+      persistLifecycle(active.lifecycle)
       active.machine.disconnected()
       publishInteractive(active, "interactive_send_indeterminate")
       throw LiveReadonlyFailure("interactive_send_indeterminate")
     }
+  }
+
+  private fun requireMatchingOutbound(
+    lifecycleText: String,
+    machineText: String,
+  ) {
+    if (lifecycleText != machineText) throw LiveReadonlyFailure("interactive_lifecycle_mismatch")
   }
 
   private fun publishInteractive(
@@ -740,6 +1222,8 @@ public class LiveReadonlyRepository(
     activeInteractive = null
     active.rpcJob?.cancel()
     active.tuiJob?.cancel()
+    active.lifecycle.onDisconnect(active.attemptId)
+    persistLifecycle(active.lifecycle)
     runCatching { active.rpcSocket.close() }
     runCatching { active.tuiSocket.close() }
     mutableInteractiveState.value = LiveInteractiveAppState.Inactive
@@ -749,92 +1233,122 @@ public class LiveReadonlyRepository(
     host: RegisteredHost,
     previous: LiveHostSession?,
   ): LiveHostSession =
-    credentials.withBearerSuspending(host.credential) { bearer ->
-      val descriptor = PiDaemonHostDescriptor(host.id, host.displayName, host.baseUri)
-      ServiceBearerRequestFactory
-        .create(
-          host = descriptor,
-          bearer = bearer,
-          allowInsecureHttp = host.transportSecurity != TransportSecurity.HTTPS,
-        ).use { factory ->
-          val client = PiDaemonClient(descriptor, factory, transport)
-          val capabilities = client.capabilities()
-          val capabilitySuccess =
-            capabilities as? ApiResult.Success
-              ?: throw LiveReadonlyFailure((capabilities as ApiResult.Failure).error.code)
-          val hostInstanceId = capabilitySuccess.hostInstanceId
-          if (previous != null && previous.session.host.authority.hostInstanceId != hostInstanceId) {
-            mutableState.value =
-              LiveReadonlyState.Ready(
-                hosts =
-                  listOf(
-                    previous.copy(
-                      session = SessionSurfaceReducer.withFreshness(previous.session, CacheFreshness.RESYNCING, 0),
-                      rpcObserverConnected = false,
-                    ),
+    withClient(host) { client ->
+      val hostCapabilities = client.capabilities().successOrThrow()
+      val dashboardCapabilities = client.dashboardCapabilities().successOrThrow()
+      if (hostCapabilities.hostInstanceId != dashboardCapabilities.hostInstanceId) {
+        throw LiveReadonlyFailure("host_identity_changed")
+      }
+      val hostInstanceId = hostCapabilities.hostInstanceId
+      previous?.session?.let { previousSession ->
+        if (previousSession.host.authority.hostInstanceId != hostInstanceId) {
+          mutableState.value =
+            LiveReadonlyState.Ready(
+              hosts =
+                listOf(
+                  previous.copy(
+                    session = SessionSurfaceReducer.withFreshness(previousSession, CacheFreshness.RESYNCING, 0),
+                    rpcObserverConnected = false,
                   ),
-                selectedHostId = host.id,
-              )
-          }
-
-          val expectation = externalCanaryExpectation
-          if (expectation != null && hostInstanceId != expectation.hostInstanceId) {
-            throw LiveReadonlyFailure("external_canary_host_changed")
-          }
-          val inventoryEnvelope = get(factory, "/v1/dashboard/inventory?limit=50")
-          val inventorySelection = selectInventory(inventoryEnvelope, expectation?.inventoryId)
-          val encodedId =
-            URLEncoder.encode(inventorySelection.inventoryId, StandardCharsets.UTF_8.name()).replace("+", "%20")
-          val infoEnvelope = get(factory, "/v1/dashboard/inventory/$encodedId")
-          val transcriptEnvelope = get(factory, "/v1/dashboard/inventory/$encodedId/transcript?limit=50")
-          val observerSafe =
-            observerAttachIsSafe(inventorySelection, infoEnvelope) &&
-              transcriptAllowsObserver(inventorySelection.inventoryId, transcriptEnvelope)
-          if (expectation?.observerAttachAllowed == true && !observerSafe) {
-            throw LiveReadonlyFailure("external_canary_session_unsafe")
-          }
-          val observerEligible = observerSafe && expectation?.observerAttachAllowed != false
-          val authority = HostAuthority(host.id, host.bearerGeneration, hostInstanceId)
-          val session =
-            SessionFixtureDecoder.decode(
-              host = SessionHostContext(host.id, host.displayName, authority, CacheFreshness.FRESH, 0),
-              inventoryEnvelope = inventoryEnvelope,
-              infoEnvelope = infoEnvelope,
-              transcriptEnvelope = transcriptEnvelope,
+                ),
+              selectedHostId = host.id,
             )
-          val rpcConnected =
-            if (
-              observerEligible && session.session.sessionId != null && session.session.generation != null &&
-              capabilitySuccess.value.rpcSubprotocols.contains("pi-daemon-rpc.v1")
-            ) {
-              runCatching {
-                val socket =
-                  client.attach(
-                    SessionKey(session.session.sessionId, session.session.generation),
-                    SessionRole.OBSERVER,
-                  )
-                try {
-                  val ready = withTimeout(10_000) { SessionRpcFrameCodec.decode(socket.incomingText.first()) }
-                  ready is SessionRpcFrame.AttachReady &&
-                    ready.role == SessionRole.OBSERVER &&
-                    ready.hostInstanceId == hostInstanceId &&
-                    ready.sessionId == session.session.sessionId &&
-                    ready.generation == session.session.generation
-                } finally {
-                  socket.close()
-                }
-              }.getOrDefault(false)
-            } else {
-              false
-            }
-          LiveHostSession(
-            host = host,
-            session = session,
-            rpcObserverConnected = rpcConnected,
-            rpcObserverEligible = observerEligible,
-            interactiveCommands = InteractiveCapabilities.from(capabilitySuccess.value).commands,
-          )
         }
+      }
+
+      val expectation = externalCanaryExpectation
+      if (expectation != null && hostInstanceId != expectation.hostInstanceId) {
+        throw LiveReadonlyFailure("external_canary_host_changed")
+      }
+      val retained = client.listSessions(limit = 50).successOrThrow()
+      val inventory = client.listInventory(limit = 50).successOrThrow()
+      val requestedInventoryId =
+        expectation?.inventoryId
+          ?: dailyDriverStore.readSelectedInventory(host.id)
+          ?: previous?.catalog?.selectedInventoryId
+      val selected =
+        requestedInventoryId?.let { id -> inventory.value.sessions.firstOrNull { it.inventoryId == id } }
+          ?: if (expectation == null) inventory.value.sessions.firstOrNull() else null
+      if (expectation != null && selected == null) {
+        throw LiveReadonlyFailure("external_canary_session_changed")
+      }
+      if (selected?.inventoryId != requestedInventoryId) {
+        dailyDriverStore.writeSelectedInventory(host.id, selected?.inventoryId)
+      }
+
+      val catalog = catalogOf(inventory.value, retained.value.sessions.size, selected?.inventoryId, dashboardCapabilities.value)
+      val lifecycle =
+        HostLifecycleData(
+          host = host,
+          capabilities = dashboardCapabilities.value,
+          inventory = inventory.value,
+          records = inventory.value.sessions.associateBy(DashboardInventoryRecord::inventoryId),
+        )
+      lifecycleByHost[host.id] = lifecycle
+      if (selected == null) {
+        return@withClient LiveHostSession(
+          host = host,
+          session = null,
+          catalog = catalog,
+          rpcObserverConnected = false,
+          rpcObserverEligible = false,
+          interactiveCommands = InteractiveCapabilities.from(hostCapabilities.value).commands,
+        )
+      }
+
+      val info = client.inventoryInfo(selected.inventoryId).successOrThrow()
+      val transcript =
+        client
+          .transcript(selected.inventoryId, limit = 50, expectedFingerprint = info.value.sourceFingerprint)
+          .successOrThrow()
+      if (info.hostInstanceId != hostInstanceId || transcript.hostInstanceId != hostInstanceId) {
+        throw LiveReadonlyFailure("host_identity_changed")
+      }
+      val managed = selected.managed
+      val observerSafe =
+        managed != null &&
+          managed.state == "idle" &&
+          managed.recovery == null &&
+          selected.presence.runtime == "resident-idle" &&
+          transcript.value.observerSession == managed.key
+      if (expectation?.observerAttachAllowed == true && !observerSafe) {
+        throw LiveReadonlyFailure("external_canary_session_unsafe")
+      }
+      val observerEligible = observerSafe && expectation?.observerAttachAllowed != false
+      val authority = HostAuthority(host.id, host.bearerGeneration, hostInstanceId)
+      val session =
+        SessionLifecycleProjection.project(
+          host = SessionHostContext(host.id, host.displayName, authority, CacheFreshness.FRESH, 0),
+          inventory = inventory.value,
+          info = info.value,
+          transcript = transcript.value,
+        )
+      val rpcConnected =
+        if (observerEligible && hostCapabilities.value.rpcSubprotocols.contains("pi-daemon-rpc.v1")) {
+          runCatching {
+            val socket = client.attachObserver(transcript.value)
+            try {
+              val ready = withTimeout(10_000) { SessionRpcFrameCodec.decode(socket.incomingText.first()) }
+              ready is SessionRpcFrame.AttachReady &&
+                ready.role == SessionRole.OBSERVER &&
+                ready.hostInstanceId == hostInstanceId &&
+                ready.sessionId == transcript.value.observerSession?.sessionId &&
+                ready.generation == transcript.value.observerSession?.generation
+            } finally {
+              socket.close()
+            }
+          }.getOrDefault(false)
+        } else {
+          false
+        }
+      LiveHostSession(
+        host = host,
+        session = session,
+        catalog = catalog,
+        rpcObserverConnected = rpcConnected,
+        rpcObserverEligible = observerEligible,
+        interactiveCommands = InteractiveCapabilities.from(hostCapabilities.value).commands,
+      )
     }
 
   private suspend fun get(
@@ -935,6 +1449,41 @@ public class LiveReadonlyRepository(
     }
 }
 
+private data class HostLifecycleData(
+  val host: RegisteredHost,
+  val capabilities: DashboardCapabilities,
+  val inventory: DashboardInventoryPage,
+  val records: Map<String, DashboardInventoryRecord>,
+)
+
+private fun ConfiguredSessionDefaults.toLiveDefaults(): LiveCreateSessionDefaults {
+  val provider = (model?.get("provider") as? JsonPrimitive)?.contentOrNull
+  val modelId = (model?.get("id") as? JsonPrimitive)?.contentOrNull
+  val thinkingLevel = (model?.get("thinkingLevel") as? JsonPrimitive)?.contentOrNull
+  val toolMode = (tools["mode"] as? JsonPrimitive)?.contentOrNull ?: "restricted"
+  val projectTrust = (resources["projectTrust"] as? JsonPrimitive)?.contentOrNull ?: "default"
+  return LiveCreateSessionDefaults(
+    cwd = cwd,
+    persistence = persistence,
+    provider = provider,
+    modelId = modelId,
+    thinkingLevel = thinkingLevel,
+    toolMode = toolMode,
+    projectTrust = projectTrust,
+    authoritySource = authoritySource,
+  )
+}
+
+private fun <T> ApiResult<T>.successOrThrow(): ApiResult.Success<T> =
+  when (this) {
+    is ApiResult.Success -> this
+    is ApiResult.Failure -> throw LiveReadonlyFailure(safeActionCode(error.code))
+  }
+
+private val SESSION_ACTION_CODE = Regex("^[a-z][a-z0-9_]{0,127}$")
+
+private fun safeActionCode(value: String): String = value.takeIf(SESSION_ACTION_CODE::matches) ?: "session_action_failed"
+
 private data class InventorySelection(
   val inventoryId: String,
   val idleManagedIdentity: ManagedIdentity?,
@@ -947,6 +1496,8 @@ private data class ManagedIdentity(
 
 private data class OpenedInteractive(
   val machine: LiveInteractiveSessionMachine,
+  val lifecycle: SessionLifecycleCoordinator,
+  val attemptId: ConnectionAttemptId,
   val rpcSocket: com.harryaskham.pidroid.sdk.core.PiDaemonSocket,
   val tuiMachine: LiveTuiSessionMachine,
   val tuiSocket: com.harryaskham.pidroid.sdk.core.PiDaemonSocket,
@@ -957,12 +1508,17 @@ private data class ActiveInteractive(
   val session: SessionKey,
   val authority: HostAuthority,
   val machine: LiveInteractiveSessionMachine,
+  val lifecycle: SessionLifecycleCoordinator,
+  val attemptId: ConnectionAttemptId,
   val rpcSocket: com.harryaskham.pidroid.sdk.core.PiDaemonSocket,
   val tuiMachine: LiveTuiSessionMachine,
   val tuiSocket: com.harryaskham.pidroid.sdk.core.PiDaemonSocket,
   var rpcJob: Job? = null,
   var tuiJob: Job? = null,
 )
+
+private fun liveReceipt(command: ResumableCommand): LiveCommandReceipt =
+  LiveCommandReceipt(command.correlationId.value, command.kind, command.lifecycle)
 
 private suspend fun <T> attachStage(
   fallbackCode: String,

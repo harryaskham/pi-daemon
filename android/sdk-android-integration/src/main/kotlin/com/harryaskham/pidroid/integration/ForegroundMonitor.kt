@@ -26,6 +26,7 @@ public enum class MonitorFailure {
 public enum class MonitorStopReason {
   USER_STOP,
   PERMISSION_REVOKED,
+  AUTHORITY_LOST,
   SIX_HOUR_TIMEOUT,
 }
 

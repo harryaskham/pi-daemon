@@ -51,6 +51,7 @@ android {
     kotlin.directories += "../sdk-core/src/main/kotlin"
     kotlin.directories += "../sdk-session-ui/src/main/kotlin"
     kotlin.directories += "../sdk-workspace-ui/src/main/kotlin"
+    kotlin.directories += "../sdk-android-integration/src/main/kotlin"
   }
 
   if (releaseTasks) {

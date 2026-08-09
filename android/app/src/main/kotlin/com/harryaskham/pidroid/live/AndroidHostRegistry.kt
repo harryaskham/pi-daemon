@@ -111,6 +111,7 @@ public class AndroidHostRegistry(
     HostCredentialVault(AndroidKeystoreCredentialProtector(), FileNoBackupCredentialStore(context))
   private val store = PreferencesHostRegistryStore(context)
   public val defaultHostStore: DefaultHostStore = PreferencesDefaultHostStore(context)
+  public val dailyDriverStore: DailyDriverStore = PreferencesDailyDriverStore(context)
   public val registry: HostRegistry =
     HostRegistry(
       store = store,
