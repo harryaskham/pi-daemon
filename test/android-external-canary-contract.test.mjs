@@ -145,6 +145,8 @@ test("external canary surface is debug-only, content-free, fenced, and mutation-
   const [
     harness,
     stagingHelper,
+    readinessGraceHelper,
+    readinessGraceClassifier,
     receiptParser,
     preflight,
     scanner,
@@ -157,6 +159,8 @@ test("external canary surface is debug-only, content-free, fenced, and mutation-
   ] = await Promise.all([
     source("android/build-logic/external-canary-proof.sh"),
     source("android/build-logic/external-canary-adb-staging.sh"),
+    source("android/build-logic/external-canary-adb-readiness-grace.sh"),
+    source("android/build-logic/external-canary-readiness-grace.py"),
     source("android/build-logic/external-canary-receipt.sh"),
     source("android/build-logic/external-canary-preflight.py"),
     source("android/build-logic/external-canary-secret-scan.py"),
@@ -186,6 +190,26 @@ test("external canary surface is debug-only, content-free, fenced, and mutation-
   assert.match(stagingHelper, /stat -c "\\%a:\\%s"|stat -c "%a:%s"/);
   assert.match(stagingHelper, /sha256sum no_backup\/external-canary-import\.json/);
   assert.match(stagingHelper, /adb_staging_timeout/);
+  assert.match(harness, /adb_readiness_started_seconds="\$SECONDS"[\s\S]*wait_for_emulator_adb[\s\S]*"\$emulator_diagnostics" 240[\s\S]*maybe_grant_external_canary_adb_readiness_grace[\s\S]*"\$initial_adb_readiness_status" "\$adb_readiness_started_seconds" 240 480/);
+  assert.ok(harness.indexOf("wait_for_emulator_adb") < harness.indexOf("maybe_grant_external_canary_adb_readiness_grace"));
+  assert.ok(harness.indexOf("maybe_grant_external_canary_adb_readiness_grace") < harness.indexOf("install -r"));
+  assert.equal(harness.match(/external-canary-preflight\.py/g)?.length, 1);
+  assert.equal(harness.match(/npm run build:src/g)?.length, 1);
+  assert.equal(harness.match(/:app:assembleDebug/g)?.length, 1);
+  assert.equal(harness.match(/emulator -avd pi-droid-external-canary/g)?.length, 1);
+  assert.equal(harness.match(/maybe_grant_external_canary_adb_readiness_grace/g)?.length, 1);
+  assert.match(harness, /"adbReadinessGraceUsed": \$external_canary_adb_readiness_grace_used/);
+  assert.match(harness, /"adbReadinessHardDeadlineSeconds": 480/);
+  assert.match(readinessGraceHelper, /external_canary_adb_readiness_grace_used/);
+  assert.match(readinessGraceHelper, /hard_deadline_seconds > 480/);
+  assert.match(readinessGraceHelper, /hard_deadline_seconds - initial_deadline_seconds > 240/);
+  assert.match(readinessGraceHelper, /status=%s reason=%s initial_deadline_seconds=%s grace_deadline_seconds=%s hard_deadline_seconds=%s/);
+  assert.match(readinessGraceHelper, /wait_for_emulator_adb[\s\S]*"\$emulator_pid" "\$device_serial" "\$adb_server_port" "\$diagnostics_file"/);
+  assert.match(readinessGraceClassifier, /com\\\.android\\\.adbd\\\.capex/);
+  assert.match(readinessGraceClassifier, /panic_or_fatal_marker/);
+  assert.match(readinessGraceClassifier, /stall_marker/);
+  assert.match(readinessGraceClassifier, /raw_console_truncated/);
+  assert.doesNotMatch(`${readinessGraceHelper}\n${readinessGraceClassifier}`, /npm\s|gradlew|curl\s|emulator -avd|start_isolated_adb_server|create_bounded_api36_test_avd/);
   assert.doesNotMatch(`${harness}\n${stagingHelper}`, /am start[^\n]*-d|pidroid:\/\/pair\/v1\/|cat "\$token_file"/);
   assert.doesNotMatch(harness, /start_daemon|stop_daemon|pi-droid-disposable-daemon|prompt|request_control/i);
   assert.match(harness, /run_external_canary_device_scan[\s\S]*stop_physical_proof_owned_processes[\s\S]*verify_external_canary_cleanup[\s\S]*run_external_canary_evidence_scan/);

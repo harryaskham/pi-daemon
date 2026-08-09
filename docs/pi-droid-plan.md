@@ -821,7 +821,14 @@ invoked.
   host/session fencing, bounded shell-v2 no-PTY ADB stdin staging whose remote
   mode, size, and digest are verified before app launch, idle-only observer
   attach, no target-daemon lifecycle or mutation, and zero run-owned
-  emulator/ADB/process/port residue.
+  emulator/ADB/process/port residue. Its first 240-second ADB readiness timeout
+  keeps the existing failure path unless the same live emulator's bounded,
+  owner-private guest console proves `com.android.adbd.capex` processing or
+  decompression with no panic, fatal, or stall marker. That evidence grants at
+  most one remaining-budget wait on the same isolated ADB server and emulator;
+  readiness remains hard-capped at 480 seconds with typed granted, refused, and
+  expired diagnostics, and the grace never repeats API preflight, builds, or
+  emulator launch.
 
 ### Visual proof contract
 

@@ -74,14 +74,11 @@ test("serve bootstraps an empty standalone instance before constructing the Pi f
     child.once("error", reject);
     child.once("exit", (code, signal) => resolve({ code, signal }));
   });
-  // Repeated stop signals must not bypass cleanup (the 0.2.2 fix). Deliver the
-  // second one in the same tick as the first, so both land while the handlers
-  // are installed. Waiting first and re-signalling only if the child had not
-  // exited yet raced the product's own guarantee: once bounded shutdown
-  // completes the handlers are released, so a late second SIGTERM terminates
-  // the process by default disposition and the assertion below saw
-  // {code: null, signal: 'SIGTERM'} on a loaded runner even though shutdown
-  // had run correctly.
+  // Repeated stop signals must not bypass cleanup (the 0.2.2 fix). Issue both
+  // from the same parent tick, but do not assume they are delivered together:
+  // a loaded scheduler may let the child complete its drain between these two
+  // syscalls. The child must retain its settled handlers through natural exit
+  // so neither signal can reopen the platform-default termination window.
   child.kill("SIGTERM");
   child.kill("SIGTERM");
   assert.deepEqual(await exit, { code: 0, signal: null });

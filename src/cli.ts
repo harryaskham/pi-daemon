@@ -1356,10 +1356,30 @@ function latchShutdownSignal(): {
 } {
   let resolveSignal!: (signal: "SIGTERM" | "SIGINT") => void;
   let settled = false;
+  let exitCleanupInstalled = false;
   const signal = new Promise<"SIGTERM" | "SIGINT">((resolve) => { resolveSignal = resolve; });
-  const dispose = (): void => {
+  const removeHandlers = (): void => {
     process.off("SIGTERM", onSigterm);
     process.off("SIGINT", onSigint);
+    if (exitCleanupInstalled) {
+      process.off("exit", removeHandlers);
+      exitCleanupInstalled = false;
+    }
+  };
+  const dispose = (): void => {
+    if (!settled) {
+      removeHandlers();
+      return;
+    }
+    // A latched process signal makes this command terminal. Keep absorbing
+    // repeated supervisor signals after the drain until natural process exit;
+    // otherwise a scheduler can deliver a repeated SIGTERM in the narrow gap
+    // between cleanup completing and Node exiting under its own status. The
+    // exit listener does not retain the event loop.
+    if (!exitCleanupInstalled) {
+      exitCleanupInstalled = true;
+      process.once("exit", removeHandlers);
+    }
   };
   const settle = (received: "SIGTERM" | "SIGINT"): void => {
     if (settled) return;
