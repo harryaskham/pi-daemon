@@ -15,7 +15,7 @@ async function source(relativePath) {
 }
 
 test("Pi Droid app is conditional, fixed-identity, source-gated, and release signed", async () => {
-  const [settings, catalog, build, manifest, activity, liveScreen, releaseNotes] = await Promise.all([
+  const [settings, catalog, build, manifest, activity, liveScreen, releaseNotes, releaseProperties] = await Promise.all([
     source("android/settings.gradle.kts"),
     source("android/gradle/libs.versions.toml"),
     source("android/app/build.gradle.kts"),
@@ -23,6 +23,7 @@ test("Pi Droid app is conditional, fixed-identity, source-gated, and release sig
     source("android/app/src/main/kotlin/com/harryaskham/pidroid/MainActivity.kt"),
     source("android/app/src/main/kotlin/com/harryaskham/pidroid/live/LiveReadonlyScreen.kt"),
     source("android/app/src/main/play/release-notes/en-US/internal.txt"),
+    source("android/release.properties"),
   ]);
 
   assert.match(settings, /piDroidAndroidApp/);
@@ -38,6 +39,8 @@ test("Pi Droid app is conditional, fixed-identity, source-gated, and release sig
   assert.match(build, /targetSdk\s*=\s*36/);
   assert.match(build, /versionCode\s*=\s*providers\.gradleProperty\("piDroidVersionCode"\)/);
   assert.match(build, /versionName\s*=\s*providers\.gradleProperty\("piDroidVersionName"\)/);
+  assert.match(build, /piDroidVersionCode"\)\.getOrElse\("4"\)/);
+  assert.match(build, /piDroidVersionName"\)\.getOrElse\("0\.3\.0-internal\.4"\)/);
   assert.match(build, /resolutionStrategy\.set\(ResolutionStrategy\.IGNORE\)/);
   assert.match(build, /track\.set\("internal"\)/);
   assert.match(build, /serviceAccountCredentials\.set\(file\(/);
@@ -59,6 +62,8 @@ test("Pi Droid app is conditional, fixed-identity, source-gated, and release sig
   assert.match(releaseNotes, /editable, forget, re-pair, crash-safe multi-host management/);
   assert.match(releaseNotes, /Create\/adopt daily-driver polish is still in progress/);
   assert.ok(releaseNotes.length <= 500, "Play internal release notes must remain within the locale limit");
+  assert.match(releaseProperties, /^versionCode=4$/m);
+  assert.match(releaseProperties, /^versionName=0\.3\.0-internal\.4$/m);
 });
 
 test("Android shells select the pinned platform-specific Java home", async () => {
