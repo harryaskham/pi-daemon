@@ -485,6 +485,8 @@ process appears per wake.
 
 ## Provisional Beads work board
 
+- [x] `bd-6b9b42` Synchronize the unpublished alpha.2 workspace-ui API baseline
+  with PR #57's additive public daily-driver surface before artifact creation.
 - [x] `bd-d3772c` Remove the Pi Droid SDK lifecycle proof's check-then-bind port
   race by letting its disposable daemon request a kernel-assigned port.
 - [x] `bd-1b8859` Keep intentional fake-ADB hang fixtures on a one-second shared
