@@ -41,6 +41,12 @@ Coordinates:
 - `com.harryaskham.pidroid.sdk:session-ui:0.3.0-alpha.2`
 - `com.harryaskham.pidroid.sdk:workspace-ui:0.3.0-alpha.2`
 
+The Nix archive helper reads this version from `sdk-publication.properties`,
+requires any explicit caller override to match it, and verifies the materialized
+repository's bounded `metadata/provenance.json` version before naming or archiving
+the bundle. A stale helper default therefore cannot mislabel a different Maven
+repository version for downstream consumers.
+
 ## `0.3.0-alpha.1`
 
 Initial Cacophony-neutral Android SDK bundle.

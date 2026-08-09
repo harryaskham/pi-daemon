@@ -485,6 +485,9 @@ process appears per wake.
 
 ## Provisional Beads work board
 
+- [x] `bd-889018` Make the Pi Droid SDK Nix archive derive its version from the
+  canonical publication properties and reject mismatched repository provenance,
+  so Cacophony cannot consume a checksummed bundle under a stale alpha identity.
 - [x] Operator-directed Pi Droid preview 6 publication from the exact merged UX
   source to Play internal with signed phone/tablet/wide install smoke, immutable
   AAB/mapping/source/notes hashes, and independent pre/post version receipts.
