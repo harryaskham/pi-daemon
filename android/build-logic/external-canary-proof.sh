@@ -4,6 +4,7 @@ umask 077
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "$repo_root/android/build-logic/emulator-adb-readiness.sh"
+source "$repo_root/android/build-logic/external-canary-adb-readiness-grace.sh"
 source "$repo_root/android/build-logic/emulator-avd-boot-profile.sh"
 source "$repo_root/android/build-logic/external-canary-adb-staging.sh"
 source "$repo_root/android/build-logic/emulator-ui-health.sh"
@@ -341,6 +342,7 @@ emulator -avd pi-droid-external-canary -port "$emulator_port" -no-window -noaudi
   > "$emulator_raw_log" 2>&1 &
 emulator_pid="$!"
 owned_emulator_pid="$emulator_pid"
+adb_readiness_started_seconds="$SECONDS"
 adb_readiness_status=0
 wait_for_emulator_adb \
   "$emulator_pid" "$emulator_device_serial" "$adb_server_port" "$emulator_diagnostics" 240 || \
@@ -352,8 +354,18 @@ if (( adb_readiness_status != 0 )); then
     "$emulator_readiness_evidence" "$adb_public_key_payload_sha256"; then
     printf '%s\n' 'phase=adb_readiness_evidence status=capture_failed' >> "$emulator_diagnostics"
   fi
-  printf '%s\n' 'Android emulator ADB readiness failed' >&2
-  exit 70
+  initial_adb_readiness_status="$adb_readiness_status"
+  adb_readiness_status=0
+  maybe_grant_external_canary_adb_readiness_grace \
+    "$initial_adb_readiness_status" "$adb_readiness_started_seconds" 240 480 \
+    "$emulator_pid" "$emulator_device_serial" "$adb_server_port" "$emulator_diagnostics" \
+    "$emulator_guest_console_state" "$emulator_guest_console_log" \
+    "$repo_root/android/build-logic/external-canary-readiness-grace.py" || \
+    adb_readiness_status="$?"
+  if (( adb_readiness_status != 0 )); then
+    printf '%s\n' 'Android emulator ADB readiness failed' >&2
+    exit 70
+  fi
 fi
 booted=''
 for _ in $(seq 1 240); do
@@ -470,6 +482,9 @@ cat > "$artifacts_dir/external-canary-receipt.json" <<EOF
   "adbVendorKeysExactFile": true,
   "adbPublicKeyPayloadSha256": "$adb_public_key_payload_sha256",
   "adbTransportExplicitlyConnected": true,
+  "adbReadinessInitialDeadlineSeconds": 240,
+  "adbReadinessGraceUsed": $external_canary_adb_readiness_grace_used,
+  "adbReadinessHardDeadlineSeconds": 480,
   "hostListing": true,
   "hostReadiness": true,
   "readonlyHydration": true,
