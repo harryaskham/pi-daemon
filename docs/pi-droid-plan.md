@@ -832,9 +832,13 @@ this release.
 - Play internal install/update and encrypted credential persistence;
 - reviewed external-canary debug install using a canonical API origin and an
   owner-only token file, with a readiness-first GET-only preflight, exact
-  host/session fencing, bounded shell-v2 no-PTY ADB stdin staging whose remote
-  mode, size, and digest are verified before app launch, idle-only observer
-  attach, no target-daemon lifecycle or mutation, and zero run-owned
+  host/session fencing, bounded shell-v2 no-PTY ADB staging using literal
+  `run-as` `mkdir`, stdin-only `tee`, `chmod`, `stat`, and `sha256sum` argv with
+  no nested remote shell. Every primitive consumes the remaining portion of one
+  shared 30-second deadline, reports a fixed redacted phase on failure or
+  timeout, and gates app launch on exact remote mode, size, and digest. The proof
+  retains idle-only observer attach, no target-daemon lifecycle or mutation, and
+  zero run-owned
   emulator/ADB/process/port residue. Its first 240-second ADB readiness timeout
   keeps the existing failure path unless the same live emulator's bounded,
   owner-private guest console proves `com.android.adbd.capex` processing or
