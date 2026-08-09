@@ -144,6 +144,7 @@ async function withFixtureServer(expectedToken, block) {
 test("external canary surface is debug-only, content-free, fenced, and mutation-free", async () => {
   const [
     harness,
+    stagingHelper,
     receiptParser,
     preflight,
     scanner,
@@ -155,6 +156,7 @@ test("external canary surface is debug-only, content-free, fenced, and mutation-
     mainManifest,
   ] = await Promise.all([
     source("android/build-logic/external-canary-proof.sh"),
+    source("android/build-logic/external-canary-adb-staging.sh"),
     source("android/build-logic/external-canary-receipt.sh"),
     source("android/build-logic/external-canary-preflight.py"),
     source("android/build-logic/external-canary-secret-scan.py"),
@@ -175,9 +177,16 @@ test("external canary surface is debug-only, content-free, fenced, and mutation-
   assert.match(receiptParser, /EXTERNAL_CANARY_PYTHON_BIN:-python3/);
   assert.match(receiptParser, /type\(observer_attach_allowed\) is not bool/);
   assert.match(harness, /case "\$observer_attach_allowed" in[\s\S]*true\)[\s\S]*OBSERVER · ATTACHED TO IDLE SESSION[\s\S]*false\)[\s\S]*OBSERVER · NOT REQUESTED/);
-  assert.match(harness, /run-as "\$package_name" sh -c[\s\S]*cat > no_backup\/external-canary-import\.json/);
-  assert.match(harness, /< "\$staging_file" > \/dev\/null/);
-  assert.doesNotMatch(harness, /am start[^\n]*-d|pidroid:\/\/pair\/v1\/|cat "\$token_file"/);
+  assert.match(harness, /stage_external_canary_import[\s\S]*"\$artifacts_dir" 30/);
+  assert.ok(harness.indexOf("stage_external_canary_import") < harness.indexOf("shell am start -W"));
+  assert.match(stagingHelper, /shell -T[\s\S]*run-as "\$package_name" sh -c/);
+  assert.match(stagingHelper, /timeout --signal=TERM --kill-after=2s "\$\{deadline_seconds\}s"/);
+  assert.match(stagingHelper, /cat > no_backup\/external-canary-import\.json/);
+  assert.match(stagingHelper, /< "\$staging_file" > \/dev\/null[\s\S]*\} 2> \/dev\/null/);
+  assert.match(stagingHelper, /stat -c "\\%a:\\%s"|stat -c "%a:%s"/);
+  assert.match(stagingHelper, /sha256sum no_backup\/external-canary-import\.json/);
+  assert.match(stagingHelper, /adb_staging_timeout/);
+  assert.doesNotMatch(`${harness}\n${stagingHelper}`, /am start[^\n]*-d|pidroid:\/\/pair\/v1\/|cat "\$token_file"/);
   assert.doesNotMatch(harness, /start_daemon|stop_daemon|pi-droid-disposable-daemon|prompt|request_control/i);
   assert.match(harness, /run_external_canary_device_scan[\s\S]*stop_physical_proof_owned_processes[\s\S]*verify_external_canary_cleanup[\s\S]*run_external_canary_evidence_scan/);
   assert.match(harness, /residual_processes=0 residual_ports=0/);
@@ -206,6 +215,164 @@ test("external canary surface is debug-only, content-free, fenced, and mutation-
   assert.doesNotMatch(mainManifest, /ALLOW_EXTERNAL_CANARY_IMPORT/);
   assert.match(mainManifest, /android:allowBackup="false"/);
   assert.match(mainManifest, /android:fullBackupContent="false"/);
+});
+
+test("owner-private ADB staging is exact, bounded, redacted, and leaves ambient ADB authority alone", async (t) => {
+  const sandbox = await mkdtemp(path.join(tmpdir(), "pi-droid-external-staging-test-"));
+  t.after(() => rm(sandbox, { recursive: true, force: true }));
+  await chmod(sandbox, 0o700);
+  const bash = await resolveBash();
+  const fakeBin = await privateDirectory(sandbox, "bin");
+  const fakeAdb = path.join(fakeBin, "adb");
+  await writeFile(fakeAdb, `#!${bash}
+set -euo pipefail
+printf '%s\\n' "$*" >> "$FAKE_ADB_LOG"
+if [[ "$1" != '-H' || "$2" != '127.0.0.1' || "$3" != '-P' || "$4" != '42001' ]]; then
+  exit 92
+fi
+if [[ " $* " == *' shell am start '* ]]; then
+  : > "$FAKE_APP_LAUNCH_MARKER"
+  exit 0
+fi
+if [[ " $* " == *'cat > no_backup/external-canary-import.json'* ]]; then
+  case "$FAKE_ADB_MODE" in
+    success|verification-mismatch)
+      cat > "$FAKE_DEVICE_FILE"
+      chmod 600 "$FAKE_DEVICE_FILE"
+      exit 0
+      ;;
+    hang-after-eof)
+      cat > "$FAKE_DEVICE_FILE"
+      chmod 600 "$FAKE_DEVICE_FILE"
+      trap '' TERM
+      while :; do sleep 60; done
+      ;;
+    early-failure)
+      exit 23
+      ;;
+  esac
+fi
+if [[ " $* " == *' sha256sum no_backup/external-canary-import.json '* ]]; then
+  if [[ "$FAKE_ADB_MODE" == 'verification-mismatch' ]]; then
+    printf '644:%s\\n' "$(stat -c '%s' "$FAKE_DEVICE_FILE")"
+  else
+    stat -c '%a:%s' "$FAKE_DEVICE_FILE"
+  fi
+  digest="$(sha256sum "$FAKE_DEVICE_FILE")"
+  printf '%s\\n' "$digest"
+  exit 0
+fi
+exit 93
+`, { mode: 0o700 });
+  await chmod(fakeAdb, 0o700);
+
+  const ambient = spawn(process.execPath, ["-e", "setInterval(() => {}, 1_000)"], {
+    stdio: "ignore",
+  });
+  await new Promise((resolve, reject) => {
+    ambient.once("spawn", resolve);
+    ambient.once("error", reject);
+  });
+  t.after(() => {
+    if (ambient.pid !== undefined) {
+      try { process.kill(ambient.pid, "SIGKILL"); } catch {}
+    }
+  });
+
+  const driver = `
+set -euo pipefail
+source "$1"
+staging_file="$2"
+artifacts_dir="$3"
+isolated_adb_command=(adb -H 127.0.0.1 -P 42001)
+cleanup_fixture() {
+  rm -f "$FAKE_DEVICE_FILE"
+  : > "$CLEANUP_MARKER"
+}
+trap cleanup_fixture EXIT
+stage_external_canary_import \\
+  '127.0.0.1:5567' 'com.harryaskham.pidroid.debug' \\
+  "$staging_file" "$artifacts_dir" 1
+"\${isolated_adb_command[@]}" -s '127.0.0.1:5567' shell am start \\
+  -n 'com.harryaskham.pidroid.debug/com.harryaskham.pidroid.MainActivity' >/dev/null
+`;
+
+  for (const fixture of [
+    { name: "success", mode: "success", code: 0, receiptCode: "verified", launches: true },
+    { name: "hanging-stdin-eof", mode: "hang-after-eof", code: 70, receiptCode: "adb_staging_timeout", launches: false },
+    { name: "early-adb-failure", mode: "early-failure", code: 70, receiptCode: "adb_staging_failed", launches: false },
+    { name: "verification-mismatch", mode: "verification-mismatch", code: 70, receiptCode: "adb_staging_verification_failed", launches: false },
+  ]) {
+    const fixtureRoot = await privateDirectory(sandbox, fixture.name);
+    const artifacts = await privateDirectory(fixtureRoot, "artifacts");
+    const stagingFile = path.join(fixtureRoot, "external-canary-import.json");
+    const deviceFile = path.join(fixtureRoot, "device-import.json");
+    const adbLog = path.join(fixtureRoot, "adb.log");
+    const cleanupMarker = path.join(fixtureRoot, "cleanup-invoked");
+    const appLaunchMarker = path.join(fixtureRoot, "app-launched");
+    const payload = `${JSON.stringify({ schemaVersion: 1, pairingEnvelope: `pidroid://pair/v1/${fixtureToken}` })}\n`;
+    await writeFile(stagingFile, payload, { mode: 0o600 });
+    await chmod(stagingFile, 0o600);
+    const environment = {
+      PATH: `${fakeBin}:${process.env.PATH ?? ""}`,
+      FAKE_ADB_MODE: fixture.mode,
+      FAKE_ADB_LOG: adbLog,
+      FAKE_DEVICE_FILE: deviceFile,
+      CLEANUP_MARKER: cleanupMarker,
+      FAKE_APP_LAUNCH_MARKER: appLaunchMarker,
+    };
+    if (fixture.code === 0) {
+      const result = await runProcess(bash, [
+        "-c", driver, "external-canary-staging-fixture",
+        path.join(root, "android/build-logic/external-canary-adb-staging.sh"),
+        stagingFile,
+        artifacts,
+      ], { env: environment });
+      assert.equal(result.stdout, "", fixture.name);
+      assert.equal(result.stderr, "", fixture.name);
+    } else {
+      await assert.rejects(
+        runProcess(bash, [
+          "-c", driver, "external-canary-staging-fixture",
+          path.join(root, "android/build-logic/external-canary-adb-staging.sh"),
+          stagingFile,
+          artifacts,
+        ], { env: environment }),
+        (error) => {
+          assert.equal(error.code, fixture.code, fixture.name);
+          assert.equal(error.stdout, "", fixture.name);
+          assert.equal(
+            error.stderr,
+            `external_canary_staging_failed code=${fixture.receiptCode}\n`,
+            fixture.name,
+          );
+          return true;
+        },
+      );
+    }
+
+    const receiptFile = path.join(artifacts, "external-canary-staging.log");
+    const receipt = await readFile(receiptFile, "utf8");
+    const adbCalls = await readFile(adbLog, "utf8");
+    assert.match(receipt, new RegExp(`code=${fixture.receiptCode}`), fixture.name);
+    assert.match(receipt, /deadline_seconds=1 transport=adb_shell_v2_no_pty/, fixture.name);
+    assert.equal((await stat(receiptFile)).mode & 0o777, 0o600, fixture.name);
+    assert.doesNotMatch(`${receipt}${adbCalls}`, new RegExp(fixtureToken), fixture.name);
+    assert.ok(adbCalls.split("\\n").filter(Boolean).every((line) => line.startsWith("-H 127.0.0.1 -P 42001 ")), fixture.name);
+    assert.doesNotMatch(adbCalls, /(?:^|[^0-9])5037(?:[^0-9]|$)|kill-server|reconnect/, fixture.name);
+    assert.equal(await readFile(cleanupMarker, "utf8"), "", fixture.name);
+    await assert.rejects(stat(deviceFile), { code: "ENOENT" });
+    if (fixture.launches) {
+      assert.equal(await readFile(appLaunchMarker, "utf8"), "", fixture.name);
+      assert.match(adbCalls, /shell -T run-as com\.harryaskham\.pidroid\.debug sh -c/);
+      assert.match(receipt, /status=staged code=verified mode=600 bytes=[1-9][0-9]* exact_bytes=true/);
+    } else {
+      await assert.rejects(stat(appLaunchMarker), { code: "ENOENT" });
+      assert.match(receipt, /status=failed .*app_launch=false/);
+    }
+    assert.ok(ambient.pid !== undefined);
+    assert.doesNotThrow(() => process.kill(ambient.pid, 0), `${fixture.name} must not terminate an ambient process`);
+  }
 });
 
 test("external canary receipt parser accepts only present JSON booleans", async (t) => {

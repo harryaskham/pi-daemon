@@ -555,6 +555,10 @@ process appears per wake.
 - [x] `bd-3804d2` Accept the canonical generated base64url service bearer and
   bounded legacy HTTP Bearer-safe tokens in both external-canary readers while
   retaining owner-only no-follow reads and exact plus structured leak scans.
+- [x] `bd-325025` Bound owner-private external-canary ADB stdin staging to a
+  30-second shell-v2 no-PTY command, require exact remote mode, size, and digest
+  verification before app launch, and retain typed redacted failure evidence
+  while cleanup terminates only proof-owned processes.
 - [ ] `bd-032326` Diagnose transport-connected/offline emulator starts with bounded
   guest kernel and private-console evidence, delay ADB traffic until guest boot,
   and prove isolated x86_64 readiness without invoking either physical proof.

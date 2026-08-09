@@ -149,7 +149,8 @@ stop_isolated_adb_server() {
     kill -0 "$adb_server_pid" 2>/dev/null &&
     [[ "${adb_server_port:-}" =~ ^[0-9]+$ ]] &&
     (( adb_server_port >= ADB_SERVER_PORT_MIN && adb_server_port <= ADB_SERVER_PORT_MAX && adb_server_port != 5037 )); then
-    adb -H 127.0.0.1 -P "$adb_server_port" kill-server >/dev/null 2>&1 || true
+    timeout --signal=TERM --kill-after=2s 5s \
+      adb -H 127.0.0.1 -P "$adb_server_port" kill-server >/dev/null 2>&1 || true
   fi
   if [[ "${adb_server_pid:-}" =~ ^[1-9][0-9]*$ ]] && kill -0 "$adb_server_pid" 2>/dev/null; then
     kill "$adb_server_pid" 2>/dev/null || true

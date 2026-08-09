@@ -786,8 +786,10 @@ release-notes SHA-256 is
 - Play internal install/update and encrypted credential persistence;
 - reviewed external-canary debug install using a canonical API origin and an
   owner-only token file, with a readiness-first GET-only preflight, exact
-  host/session fencing, idle-only observer attach, no target-daemon lifecycle or
-  mutation, and zero run-owned emulator/ADB/process/port residue.
+  host/session fencing, bounded shell-v2 no-PTY ADB stdin staging whose remote
+  mode, size, and digest are verified before app launch, idle-only observer
+  attach, no target-daemon lifecycle or mutation, and zero run-owned
+  emulator/ADB/process/port residue.
 
 ### Visual proof contract
 
