@@ -185,6 +185,70 @@ ${webYaml}`, { mode: 0o600 });
   await attempt(["--web-enabled", "true"]);
 });
 
+test("serve reload preserves validated wildcard binds and emits a content-free advisory", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "pd-web-wildcard-"));
+  t.after(async () => rm(root, { recursive: true, force: true }));
+  const work = join(root, "work");
+  const configDir = join(root, "config");
+  await Promise.all([
+    mkdir(work, { recursive: true, mode: 0o700 }),
+    mkdir(configDir, { recursive: true, mode: 0o700 }),
+  ]);
+  await writeFile(join(configDir, "auth.json"), "{}\n", { mode: 0o600 });
+  const configPath = join(configDir, "config.yaml");
+
+  const run = async (bind, publicOrigin) => {
+    await writeFile(configPath, `instance: wildcard-reload-test
+stateDir: ../state
+socketPath: ../run/pi-daemon.sock
+agentDir: ../agent
+authSeedFile: ./auth.json
+allowedRoots: [../work]
+web:
+  enabled: true
+  mode: embedded
+  bind: "${bind}"
+  port: 0
+  publicOrigin: "${publicOrigin}"
+  allowInsecureHttp: true
+`, { mode: 0o600 });
+    const logs = [];
+    const code = await runCli(
+      ["serve", "--config", configPath, "--instance", "wildcard-reload-test"],
+      { stdout: () => {}, stderr: (line) => logs.push(line) },
+      {
+        factory: new EmptyFactory(),
+        waitForShutdown: async (shutdown) => shutdown(500),
+      },
+    );
+    assertCliExitCode(code, 0, logs, `serve wildcard ${bind}`);
+    const events = logs.map((line) => JSON.parse(line));
+    const advisory = events.find((entry) => entry.event === "dashboard_insecure_http_exposure");
+    assert.deepEqual(
+      {
+        level: advisory?.level,
+        host: advisory?.host,
+        origin: advisory?.origin,
+        authenticationRequired: advisory?.authenticationRequired,
+        operatorOptIn: advisory?.operatorOptIn,
+      },
+      {
+        level: "warn",
+        host: bind,
+        origin: publicOrigin,
+        authenticationRequired: true,
+        operatorOptIn: "allowInsecureHttp",
+      },
+    );
+    const ready = events.find((entry) => entry.event === "pi_daemon_ready");
+    assert.equal(ready?.dashboard.host, bind);
+    assert.equal(ready?.dashboard.origin, publicOrigin);
+  };
+
+  await run("0.0.0.0", "http://dash-v4.example.test");
+  await run("::", "http://dash-v6.example.test");
+});
+
 test("serve starts and drains the packaged embedded Dashboard without exposing credentials", async (t) => {
   const root = await mkdtemp(join(tmpdir(), "pi-daemon-embedded-dash-"));
   t.after(async () => rm(root, { recursive: true, force: true }));

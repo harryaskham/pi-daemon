@@ -1,4 +1,5 @@
 import { lstat, readFile, stat } from "node:fs/promises";
+import { isIP } from "node:net";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 
@@ -148,7 +149,7 @@ export interface PiDaemonWebConfig {
   port?: number;
   /** Exact browser-visible origin. Required for native TLS and remote exposure. */
   publicOrigin?: string;
-  /** Explicit development escape hatch for a non-loopback HTTP public origin. */
+  /** High-trust opt-in for a non-loopback plaintext listener or HTTP public origin. */
   allowInsecureHttp?: boolean;
   tls?: PiDaemonWebTlsConfig;
   proxy?: PiDaemonWebProxyConfig;
@@ -168,6 +169,120 @@ export interface PiDaemonWebConfig {
 }
 
 export const DEFAULT_SESSION_STORAGE_MODE: SessionStorageMode = "pi-session-root";
+export interface ValidatedPiDaemonWebTransportPolicy {
+  bind: string;
+  publicOrigin?: string;
+  insecureHttpExposure: boolean;
+}
+
+/**
+ * Validate listener and browser-authority posture before any listener or
+ * credential side effect. Native TLS remains the preferred remote transport;
+ * explicit plaintext exposure is a high-trust operator choice.
+ */
+export function validatePiDaemonWebTransportPolicy(options: {
+  bind?: string;
+  publicOrigin?: string;
+  allowInsecureHttp?: boolean;
+  tlsEnabled: boolean;
+}): ValidatedPiDaemonWebTransportPolicy {
+  const bind = options.bind ?? "127.0.0.1";
+  const bindIpVersion = isIP(bind);
+  const bindIsHostname = /^(?=.{1,253}$)(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)*[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$/u.test(
+    bind,
+  );
+  if (
+    bind.length === 0 ||
+    Buffer.byteLength(bind, "utf8") > 255 ||
+    bind.trim() !== bind ||
+    bind.includes("[") ||
+    bind.includes("]") ||
+    bind.includes("://") ||
+    (bindIpVersion === 0 && !bindIsHostname)
+  ) {
+    throw new PiDaemonConfigError(
+      "config_invalid",
+      "web.bind must be a bounded host name or unbracketed IP address",
+    );
+  }
+
+  let publicOrigin: string | undefined;
+  let publicOriginUrl: URL | undefined;
+  if (options.publicOrigin !== undefined) {
+    try {
+      publicOriginUrl = new URL(options.publicOrigin);
+    } catch {
+      throw new PiDaemonConfigError(
+        "config_invalid",
+        "web.publicOrigin must be an HTTP(S) origin without path, credentials, query, or hash",
+      );
+    }
+    if (
+      (publicOriginUrl.protocol !== "http:" && publicOriginUrl.protocol !== "https:") ||
+      publicOriginUrl.username !== "" ||
+      publicOriginUrl.password !== "" ||
+      publicOriginUrl.pathname !== "/" ||
+      publicOriginUrl.search !== "" ||
+      publicOriginUrl.hash !== ""
+    ) {
+      throw new PiDaemonConfigError(
+        "config_invalid",
+        "web.publicOrigin must be an HTTP(S) origin without path, credentials, query, or hash",
+      );
+    }
+    publicOrigin = publicOriginUrl.origin;
+  }
+
+  if (options.tlsEnabled) {
+    if (publicOriginUrl?.protocol !== "https:") {
+      throw new PiDaemonConfigError(
+        "config_invalid",
+        "web.publicOrigin must be an exact HTTPS origin when web.tls is configured",
+      );
+    }
+  }
+
+  const insecureHttpExposure = !options.tlsEnabled && !isWebLoopbackHost(bind);
+  if (insecureHttpExposure && options.allowInsecureHttp !== true) {
+    throw new PiDaemonConfigError(
+      "config_invalid",
+      "web.allowInsecureHttp must be true for a non-loopback plaintext web.bind",
+    );
+  }
+  if (insecureHttpExposure && publicOriginUrl === undefined) {
+    throw new PiDaemonConfigError(
+      "config_invalid",
+      "web.publicOrigin is required for a non-loopback plaintext web.bind",
+    );
+  }
+  if (
+    insecureHttpExposure &&
+    publicOriginUrl !== undefined &&
+    isWebLoopbackHost(publicOriginUrl.hostname)
+  ) {
+    throw new PiDaemonConfigError(
+      "config_invalid",
+      "web.publicOrigin must be non-loopback when web.bind exposes plaintext remotely",
+    );
+  }
+  if (
+    publicOriginUrl?.protocol === "http:" &&
+    !isWebLoopbackHost(publicOriginUrl.hostname) &&
+    options.allowInsecureHttp !== true
+  ) {
+    throw new PiDaemonConfigError(
+      "config_invalid",
+      "web.allowInsecureHttp must be true for a non-loopback HTTP web.publicOrigin",
+    );
+  }
+
+  return {
+    bind,
+    ...(publicOrigin === undefined ? {} : { publicOrigin }),
+    insecureHttpExposure,
+  };
+}
+
 export const DEFAULT_PI_DAEMON_WEB_CONFIG = {
   enabled: true,
   mode: "embedded",
@@ -486,6 +601,22 @@ function parseWeb(value: unknown): PiDaemonWebConfig {
     rejectSecretLikeKeys(ui, "web.ui");
     result.ui = structuredClone(ui) as { [key: string]: ConfigJson };
   }
+  const transport = validatePiDaemonWebTransportPolicy({
+    ...(result.bind === undefined ? {} : { bind: result.bind }),
+    ...(result.publicOrigin === undefined ? {} : { publicOrigin: result.publicOrigin }),
+    ...(result.allowInsecureHttp === undefined
+      ? {}
+      : { allowInsecureHttp: result.allowInsecureHttp }),
+    tlsEnabled:
+      result.tls !== undefined &&
+      [result.tls.certFile, result.tls.certFd, result.tls.keyFile, result.tls.keyFd].some(
+        (source) => source !== undefined,
+      ),
+  });
+  if (result.bind !== undefined) result.bind = transport.bind;
+  if (result.publicOrigin !== undefined && transport.publicOrigin !== undefined) {
+    result.publicOrigin = transport.publicOrigin;
+  }
   return result;
 }
 
@@ -731,6 +862,15 @@ function objectValue(value: unknown, name: string): Record<string, unknown> {
     throw new PiDaemonConfigError("config_invalid", `${name} must be a plain object`);
   }
   return value as Record<string, unknown>;
+}
+
+function isWebLoopbackHost(value: string): boolean {
+  const unbracketed = value.startsWith("[") && value.endsWith("]")
+    ? value.slice(1, -1)
+    : value;
+  const host = unbracketed.toLowerCase().replace(/\.$/u, "");
+  if (host === "localhost" || host === "::1") return true;
+  return isIP(host) === 4 && host.startsWith("127.");
 }
 
 function assertKnownKeys(object: Record<string, unknown>, allowed: readonly string[]): void {

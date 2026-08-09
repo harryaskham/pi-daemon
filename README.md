@@ -120,13 +120,16 @@ served by `pi-daemon web`, which
 uses the service API on 7463 and defaults its independent browser listener to
 7465. Never put either service or web credentials in the URL.
 
-Remote browser deployments may keep the listener on loopback behind an HTTPS
-reverse proxy (recommended), or configure native HTTPS/WSS with an exact
-`web.publicOrigin` plus bounded certificate/private-key file or inherited-fd
-sources. Native TLS is required for a non-loopback bind, enforces matching SNI,
-Host, Origin and optional loopback proxy evidence, emits HSTS with Secure
-`__Host-` cookies, and atomically reloads valid file-backed pairs while retaining
-the last good context on failure. `GET|HEAD /dash/healthz` is a content-free
+Remote browser deployments should keep the listener on loopback behind an HTTPS
+reverse proxy or configure native HTTPS/WSS with an exact `web.publicOrigin`
+plus bounded certificate/private-key file or inherited-fd sources. Native TLS
+enforces matching SNI, Host, Origin and optional loopback proxy evidence, emits
+HSTS with Secure `__Host-` cookies, and atomically reloads valid file-backed pairs
+while retaining the last good context on failure. A reviewed high-trust exception
+may bind plaintext Dash to `0.0.0.0` or `::` only when an exact non-loopback
+`web.publicOrigin` and `web.allowInsecureHttp: true` are both explicit; startup
+emits `dashboard_insecure_http_exposure`, while authentication and exact
+Host/Origin checks remain mandatory. `GET|HEAD /dash/healthz` is a content-free
 no-store transport probe; `/dash/readyz` additionally performs one fresh,
 bounded dedicated-backend check while revealing no backend data. Certificate/key
 bytes never enter YAML, argv, Nix store values, status, or logs. See
@@ -240,6 +243,24 @@ nix flake check
 
 The Pi SDK version and npm dependency graph are pinned. Strict TypeScript is the
 source language; built JavaScript and declarations are emitted under `dist/`.
+
+### Caravan policy
+
+The repository-owned [`.caravan/config.yaml`](.caravan/config.yaml) selects the
+reviewed GitHub-native Stack backend. Cacophony owns the external ten-minute
+`cara sync --all` schedule; this repository deliberately defines no second
+loop. Inspect policy without provider mutation with:
+
+```console
+cara config check
+cara --json status
+```
+
+`config check` is offline. `status` performs provider reads only; neither command
+joins, rewrites, labels, or merges a pull request. The configured lifecycle calls
+[`scripts/cara-runtime.sh`](scripts/cara-runtime.sh), which selects a launchable
+system Cara, strips loader-only environment overrides, and emits a bounded,
+secret-redacted runtime receipt before execution.
 
 ## Nix consumer contract
 
