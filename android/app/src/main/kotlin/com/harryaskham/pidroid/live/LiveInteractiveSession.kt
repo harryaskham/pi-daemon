@@ -39,6 +39,12 @@ public data class LiveCommandReceipt(
   public val lifecycle: CommandLifecycle,
 )
 
+public class PreparedLiveCommand internal constructor(
+  public val text: String,
+  public val intent: SessionCommandIntent,
+  public val correlationId: CorrelationId,
+)
+
 public class LiveInteractiveSnapshot internal constructor(
   public val connection: InteractiveConnectionState,
   public val role: InteractiveControllerRole,
@@ -64,6 +70,7 @@ public class LiveInteractiveSessionMachine(
   authority: HostAuthority,
   private val modelLabel: String,
   private val thinkingLevel: String,
+  restoredReceipts: List<LiveCommandReceipt> = emptyList(),
 ) {
   private val controller =
     InteractiveSessionController(
@@ -72,10 +79,24 @@ public class LiveInteractiveSessionMachine(
       expectedHostInstanceId = authority.hostInstanceId,
     )
   private val issued = linkedMapOf<String, PiRpcCommandType>()
+  private val restored = linkedMapOf<String, LiveCommandReceipt>()
   private val identity = InteractiveSessionIdentity(authority, session.sessionId, session.generation)
   private var draft = ""
   private var streaming = false
   private var tree: SessionTreeSnapshot? = null
+
+  init {
+    restoredReceipts.forEach { receipt ->
+      CorrelationId(receipt.correlationId)
+      require(receipt.correlationId !in restored) { "restored command identities are duplicated" }
+      restored[receipt.correlationId] =
+        if (receipt.lifecycle == CommandLifecycle.IN_FLIGHT) {
+          receipt.copy(lifecycle = CommandLifecycle.INDETERMINATE)
+        } else {
+          receipt
+        }
+    }
+  }
 
   public val snapshot: LiveInteractiveSnapshot
     @Synchronized get() = current()
@@ -130,62 +151,37 @@ public class LiveInteractiveSessionMachine(
   }
 
   @Synchronized
-  public fun submit(
+  public fun prepare(
     action: RichInteractionAction,
     idempotencyKey: String,
-  ): String {
-    val intent =
-      when (action) {
-        is RichInteractionAction.SubmitPrompt -> {
-          SessionCommandIntent.prompt(action.text)
-        }
-
-        is RichInteractionAction.SubmitFollowUp -> {
-          SessionCommandIntent.followUp(action.text)
-        }
-
-        is RichInteractionAction.Steer -> {
-          SessionCommandIntent.steer(action.text)
-        }
-
-        is RichInteractionAction.SetModel -> {
-          SessionCommandIntent.setModel(action.provider, action.modelId)
-        }
-
-        is RichInteractionAction.SetThinkingLevel -> {
-          SessionCommandIntent.setThinkingLevel(action.level)
-        }
-
-        RichInteractionAction.Abort -> {
-          SessionCommandIntent.abort()
-        }
-
-        is RichInteractionAction.DraftChanged -> {
-          changeDraft(action.text)
-          return ""
-        }
-
-        RichInteractionAction.RequestControl,
-        RichInteractionAction.ReleaseControl,
-        -> {
-          throw IllegalArgumentException("control actions use the explicit control methods")
-        }
-      }
+  ): PreparedLiveCommand {
+    val intent = intentFor(action)
     val correlation = CorrelationId(idempotencyKey)
+    require(idempotencyKey !in restored) { "restored command identity cannot be reused" }
     val outbound = controller.submit(intent, correlation)
     issued[idempotencyKey] = intent.kind
     if (action is RichInteractionAction.SubmitPrompt || action is RichInteractionAction.SubmitFollowUp) draft = ""
-    return outbound.text
+    return PreparedLiveCommand(outbound.text, intent, correlation)
   }
 
   @Synchronized
-  public fun requestTree(idempotencyKey: String): String {
+  public fun submit(
+    action: RichInteractionAction,
+    idempotencyKey: String,
+  ): String = prepare(action, idempotencyKey).text
+
+  @Synchronized
+  public fun prepareTree(idempotencyKey: String): PreparedLiveCommand {
     val intent = SessionCommandIntent.getTree()
     val correlation = CorrelationId(idempotencyKey)
+    require(idempotencyKey !in restored) { "restored command identity cannot be reused" }
     val outbound = controller.submit(intent, correlation)
     issued[idempotencyKey] = intent.kind
-    return outbound.text
+    return PreparedLiveCommand(outbound.text, intent, correlation)
   }
+
+  @Synchronized
+  public fun requestTree(idempotencyKey: String): String = prepareTree(idempotencyKey).text
 
   @Synchronized
   public fun disconnected() {
@@ -194,6 +190,27 @@ public class LiveInteractiveSessionMachine(
   }
 
   override fun toString(): String = "LiveInteractiveSessionMachine(snapshot=$snapshot, content=[REDACTED])"
+
+  private fun intentFor(action: RichInteractionAction): SessionCommandIntent =
+    when (action) {
+      is RichInteractionAction.SubmitPrompt -> SessionCommandIntent.prompt(action.text)
+
+      is RichInteractionAction.SubmitFollowUp -> SessionCommandIntent.followUp(action.text)
+
+      is RichInteractionAction.Steer -> SessionCommandIntent.steer(action.text)
+
+      is RichInteractionAction.SetModel -> SessionCommandIntent.setModel(action.provider, action.modelId)
+
+      is RichInteractionAction.SetThinkingLevel -> SessionCommandIntent.setThinkingLevel(action.level)
+
+      RichInteractionAction.Abort -> SessionCommandIntent.abort()
+
+      is RichInteractionAction.DraftChanged -> throw IllegalArgumentException("draft changes are local-only")
+
+      RichInteractionAction.RequestControl,
+      RichInteractionAction.ReleaseControl,
+      -> throw IllegalArgumentException("control actions use the explicit control methods")
+    }
 
   private fun current(): LiveInteractiveSnapshot {
     val state = controller.state
@@ -210,9 +227,10 @@ public class LiveInteractiveSessionMachine(
         InteractiveControllerRole.OBSERVER -> RichInteractiveState.observer(modelLabel, thinkingLevel)
       }
     val receipts =
-      issued.map { (id, kind) ->
-        LiveCommandReceipt(id, kind, requireNotNull(controller.command(id)).lifecycle)
-      }
+      restored.values +
+        issued.map { (id, kind) ->
+          LiveCommandReceipt(id, kind, requireNotNull(controller.command(id)).lifecycle)
+        }
     return LiveInteractiveSnapshot(
       connection = state.connection,
       role = state.role,

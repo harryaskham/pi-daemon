@@ -14,19 +14,28 @@ the Play notes, release-harness hardening, and its source contract test. Version
 4 includes resilient reconnect and host recovery, canonical bearer connections,
 retained app-failure modal evidence, the reviewed external-canary contract, a
 clear transcript-unavailable state, and durable editable/forget/re-pair
-crash-safe multi-host management. Create/adopt daily-driver polish remains in
-progress.
+crash-safe multi-host management.
 
-Every live connection attaches as an observer, explicit control grant is
-required before mutation, command identity is unique and bounded, and a missing
-response becomes indeterminate rather than being replayed. Rich, bounded tree
-and canonical server-TUI presentations share the exact
-host/session/generation authority. An explicit readonly refresh retires only
-idle pooled HTTP connections before hydration, so a replacement daemon at the
-same authority can publish its new host identity on the first reviewed refresh.
-Automatic request retry remains disabled, active WebSockets are not retired,
-and an indeterminate mutation is never replayed during refresh or the separate
-interactive reconnect.
+Current source adds the next daily-driver milestone beyond that released build:
+a persistent adaptive session catalog can create from the daemon's exact
+configured defaults, open an exact retained generation, or adopt one eligible
+existing inventory row. Mobile cannot override the configured cwd, inject a
+system prompt, or silently broaden tools. Every live connection attaches as an
+observer, explicit control grant is required before mutation, command identity
+is unique and bounded, and a missing response becomes indeterminate rather than
+being replayed. Rich, bounded tree and canonical server-TUI presentations share
+the exact host/session/generation authority. Content-free ticket and command
+identities survive process recreation in no-backup storage; restoration performs
+lookup/reconnect only and never reposts a create, prompt, wake, or control
+command.
+
+An explicit readonly refresh retires only idle pooled HTTP connections before
+hydration, so a replacement daemon at the same authority can publish its new
+host identity on the first reviewed refresh. Automatic request retry remains
+disabled, active WebSockets are not retired, and an indeterminate mutation is
+never replayed during refresh or the separate interactive reconnect. This source
+must not be signed or uploaded until its disposable physical proof passes and a
+new monotonic Play version is reviewed.
 
 The module is excluded from ordinary Gradle settings and the Android fast lane.
 Enable it only with `-PpiDroidAndroidApp=true` inside the pinned
@@ -62,6 +71,29 @@ serving daemon's authenticated same-origin authority and the terminal client
 uses its explicitly selected local/remote process. The neutral host descriptor
 and transport contracts remain shared; Android credential storage and host
 navigation are not duplicated into web or TUI presentation code.
+
+## Daily-driver sessions and bounded monitoring
+
+The session rail/sidebar remains useful for an empty host, one session, or many
+sessions and on phone or wide layouts. Creation first displays the exact
+host-advertised cwd, persistence, model/thinking, tools and trust policy. The app
+sends only an optional bounded name with those reviewed defaults. Managed rows
+are opened only after exact generation verification; unmanaged rows use the
+server's durable reuse ticket. A request identity is stored before either
+mutation. A lost response is shown as indeterminate and disables blind retry;
+known tickets are reconciled only by their existing ticket ID.
+
+**Monitor** is an explicit user action for the selected exact generation. On
+Android 13+ it requests notification permission before starting a `dataSync`
+foreground service with a persistent, content-safe indicator. The service reads
+only capabilities and bounded retained-session metadata—never transcript, RPC,
+TUI, prompt, result, or tool content—uses fixed notification copy, pauses in
+Doze, backs network failures off from 15 seconds to five minutes, and stops after
+six hours unless the user stops it sooner. It is `START_NOT_STICKY`, has no boot
+receiver, and never silently resumes after process death. Completion signals are
+best effort because the current daemon has no durable change feed; notification
+actions open the app for current-authority revalidation and never mutate from
+cached state.
 
 ## Secret-safe internal release
 

@@ -12,6 +12,7 @@ import com.harryaskham.pidroid.sdk.core.HostCredentialVault
 import com.harryaskham.pidroid.sdk.core.HostId
 import com.harryaskham.pidroid.sdk.core.HostRegistry
 import com.harryaskham.pidroid.sdk.core.HostRegistryStore
+import com.harryaskham.pidroid.sdk.core.HttpMethod
 import com.harryaskham.pidroid.sdk.core.InteractiveConnectionState
 import com.harryaskham.pidroid.sdk.core.InteractiveControllerRole
 import com.harryaskham.pidroid.sdk.core.NeutralHeaders
@@ -24,6 +25,7 @@ import com.harryaskham.pidroid.sdk.core.PiDaemonHostDescriptor
 import com.harryaskham.pidroid.sdk.core.PiDaemonSocket
 import com.harryaskham.pidroid.sdk.core.ProtectedCredential
 import com.harryaskham.pidroid.sdk.core.RegisteredHost
+import com.harryaskham.pidroid.sdk.core.TicketState
 import com.harryaskham.pidroid.sessionui.RichInteractionAction
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
@@ -40,6 +42,7 @@ import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonObject
@@ -68,10 +71,11 @@ class LiveReadonlyRepositoryTest {
 
       assertTrue(bearer.all { it == '\u0000' })
       val ready = harness.repository.state.value as LiveReadonlyState.Ready
-      assertEquals(CacheFreshness.FRESH, ready.selected.session.host.freshness)
-      assertEquals("Contract fixture", ready.selected.session.session.title)
-      assertEquals(1, ready.selected.session.inventory.size)
-      assertEquals(3, ready.selected.session.records.size)
+      val session = requireNotNull(ready.selected.session)
+      assertEquals(CacheFreshness.FRESH, session.host.freshness)
+      assertEquals("Contract fixture", session.session.title)
+      assertEquals(1, session.inventory.size)
+      assertEquals(3, session.records.size)
       assertTrue(ready.selected.rpcObserverConnected)
       assertTrue(harness.transport.paths.contains("/v1/capabilities"))
       assertTrue(harness.transport.paths.contains("/v1/dashboard/inventory"))
@@ -248,6 +252,7 @@ class LiveReadonlyRepositoryTest {
           credentials = harness.vault,
           transport = recreatedTransport,
           defaultHostStore = harness.defaultHostStore,
+          dailyDriverStore = harness.dailyDriverStore,
         )
       recreated.initialize()
 
@@ -305,7 +310,7 @@ class LiveReadonlyRepositoryTest {
       )
 
       val ready = harness.repository.state.value as LiveReadonlyState.Ready
-      assertEquals(CacheFreshness.FRESH, ready.selected.session.host.freshness)
+      assertEquals(CacheFreshness.FRESH, requireNotNull(ready.selected.session).host.freshness)
       assertFalse(ready.selected.rpcObserverEligible)
       assertFalse(ready.selected.rpcObserverConnected)
       assertEquals(0, harness.transport.rpcOpenCount)
@@ -325,8 +330,9 @@ class LiveReadonlyRepositoryTest {
       )
 
       val ready = harness.repository.state.value as LiveReadonlyState.Ready
-      assertEquals("Contract fixture", ready.selected.session.session.title)
-      assertEquals(0, ready.selected.session.records.size)
+      val session = requireNotNull(ready.selected.session)
+      assertEquals("Contract fixture", session.session.title)
+      assertEquals(0, session.records.size)
       assertFalse(ready.selected.rpcObserverEligible)
       assertFalse(ready.selected.rpcObserverConnected)
       assertEquals(0, harness.transport.rpcOpenCount)
@@ -392,18 +398,24 @@ class LiveReadonlyRepositoryTest {
       assertTrue(
         emissions
           .filterIsInstance<LiveReadonlyState.Ready>()
-          .any { it.selected.session.host.freshness == CacheFreshness.RESYNCING },
+          .any {
+            it.selected.session
+              ?.host
+              ?.freshness == CacheFreshness.RESYNCING
+          },
       )
       var ready = harness.repository.state.value as LiveReadonlyState.Ready
-      assertEquals("host-fixture-02", ready.selected.session.host.authority.hostInstanceId)
-      assertEquals(CacheFreshness.FRESH, ready.selected.session.host.freshness)
+      var session = requireNotNull(ready.selected.session)
+      assertEquals("host-fixture-02", session.host.authority.hostInstanceId)
+      assertEquals(CacheFreshness.FRESH, session.host.freshness)
       assertTrue(PiRpcCommandType.PROMPT in ready.selected.interactiveCommands)
       assertEquals(1, harness.transport.retiredStaleReadonlyConnections)
 
       harness.transport.fail = true
       harness.repository.refresh()
       ready = harness.repository.state.value as LiveReadonlyState.Ready
-      assertEquals(CacheFreshness.OFFLINE_CACHED, ready.selected.session.host.freshness)
+      session = requireNotNull(ready.selected.session)
+      assertEquals(CacheFreshness.OFFLINE_CACHED, session.host.freshness)
       assertFalse(ready.selected.rpcObserverConnected)
       collector.cancel()
     }
@@ -445,8 +457,9 @@ class LiveReadonlyRepositoryTest {
       harness.repository.refresh()
 
       val refreshed = harness.repository.state.value as LiveReadonlyState.Ready
-      assertEquals("host-fixture-02", refreshed.selected.session.host.authority.hostInstanceId)
-      assertEquals(CacheFreshness.FRESH, refreshed.selected.session.host.freshness)
+      val refreshedSession = requireNotNull(refreshed.selected.session)
+      assertEquals("host-fixture-02", refreshedSession.host.authority.hostInstanceId)
+      assertEquals(CacheFreshness.FRESH, refreshedSession.host.freshness)
       assertEquals(1, harness.transport.retiredStaleReadonlyConnections)
       assertEquals(rpcOpensBeforeRefresh + 1, harness.transport.rpcOpenCount)
       assertEquals(1, originalSocket.promptSendAttempts)
@@ -656,6 +669,75 @@ class LiveReadonlyRepositoryTest {
     }
 
   @Test
+  fun `process recreation restores command identity as indeterminate and reconnects without replay`() =
+    runBlocking {
+      val harness = harness()
+      harness.repository.registerManual(
+        URI("http://10.0.2.2:48123"),
+        "Disposable daemon",
+        "bearer".toCharArray(),
+        null,
+        true,
+      )
+      harness.repository.connectInteractiveObserver()
+      harness.repository.requestControl()
+      val firstSocket = requireNotNull(harness.transport.interactiveRpcSocket)
+      firstSocket.push(controlGranted())
+      withTimeout(5_000) {
+        harness.repository.interactiveState
+          .filterIsInstance<LiveInteractiveAppState.Ready>()
+          .first { it.snapshot.role == InteractiveControllerRole.CONTROLLER }
+      }
+      harness.repository.handleInteraction(RichInteractionAction.SubmitPrompt("process-private prompt content"))
+      val command =
+        Json
+          .parseToJsonElement(firstSocket.sent.last())
+          .jsonObject
+          .getValue("command")
+          .jsonObject
+      val correlationId = (command["id"] as JsonPrimitive).content
+      val persisted = requireNotNull(harness.dailyDriverStore.readInteractiveResume())
+      assertFalse(persisted.decodeToString().contains("process-private prompt content"))
+      assertEquals(1, harness.transport.rpcSockets.sumOf { it.promptSendAttempts })
+
+      harness.repository.close()
+      val registry = HostRegistry(harness.registryStore, harness.vault, SequenceHostIds())
+      val recreated =
+        LiveReadonlyRepository(
+          registry,
+          harness.vault,
+          harness.transport,
+          harness.defaultHostStore,
+          harness.dailyDriverStore,
+        )
+      recreated.initialize()
+
+      val restored = recreated.interactiveState.value as LiveInteractiveAppState.Failure
+      assertEquals("process_restored_reconnect_required", restored.code)
+      assertEquals(
+        CommandLifecycle.INDETERMINATE,
+        requireNotNull(restored.lastSnapshot)
+          .receipts
+          .single { it.correlationId == correlationId }
+          .lifecycle,
+      )
+      assertEquals(1, harness.transport.rpcSockets.sumOf { it.promptSendAttempts }, "process restore must not replay")
+
+      recreated.reconnectInteractive()
+      val replacementSocket = requireNotNull(harness.transport.interactiveRpcSocket)
+      assertFalse(replacementSocket === firstSocket)
+      assertEquals(0, replacementSocket.promptSendAttempts)
+      assertTrue(replacementSocket.sent.none { it.contains("\"type\":\"prompt\"") })
+      assertTrue(
+        requireNotNull(
+          harness.transport.rpcRequests
+            .last()
+            .uri.rawQuery,
+        ).contains("cursor="),
+      )
+    }
+
+  @Test
   fun `interactive repository requests control sends one unique prompt and marks lost response indeterminate`() =
     runBlocking {
       val harness = harness()
@@ -775,6 +857,113 @@ class LiveReadonlyRepositoryTest {
       assertEquals(1, replacementSocket.promptSendAttempts)
     }
 
+  @Test
+  fun `empty host exposes exact configured defaults and accepted create survives process recreation without repost`() =
+    runTest {
+      val harness = harness()
+      harness.transport.emptyInventory = true
+      harness.repository.registerManual(
+        URI("http://10.0.2.2:48123"),
+        "Empty workstation",
+        "bearer".toCharArray(),
+        null,
+        true,
+      )
+
+      val ready = harness.repository.state.value as LiveReadonlyState.Ready
+      assertNull(ready.selected.session)
+      assertTrue(
+        ready.selected.catalog.items
+          .isEmpty(),
+      )
+      val defaults = requireNotNull(ready.selected.catalog.createDefaults)
+      assertEquals("/home/fixture", defaults.cwd)
+      assertEquals("gpt-5.6-sol", defaults.modelId)
+      assertEquals("default", defaults.toolMode)
+
+      harness.repository.createConfiguredSession("Daily driver")
+      val accepted = harness.repository.sessionActionState.value as LiveSessionActionState.Accepted
+      assertEquals(TicketState.QUEUED, accepted.state)
+      assertEquals(1, harness.transport.createAttempts)
+      val create = harness.transport.requests.single { it.uri.path == "/v1/session" && it.method == HttpMethod.POST }
+      val createBody = Json.parseToJsonElement(requireNotNull(create.bodyBytes()).decodeToString()).jsonObject
+      val spec = createBody.getValue("spec").jsonObject
+      assertEquals("/home/fixture", (spec["cwd"] as JsonPrimitive).content)
+      assertEquals("Daily driver", (spec["name"] as JsonPrimitive).content)
+      assertFalse(spec.toString().contains("systemPrompt"))
+      assertFalse(accepted.toString().contains("/home/fixture"))
+
+      val recreatedTransport = FakeLiveTransport().apply { emptyInventory = true }
+      val recreated =
+        LiveReadonlyRepository(
+          registry = HostRegistry(harness.registryStore, harness.vault, SequenceHostIds()),
+          credentials = harness.vault,
+          transport = recreatedTransport,
+          defaultHostStore = harness.defaultHostStore,
+          dailyDriverStore = harness.dailyDriverStore,
+        )
+      recreated.initialize()
+
+      val restored = recreated.sessionActionState.value as LiveSessionActionState.Accepted
+      assertEquals(accepted.bookmark.ticketId, restored.bookmark.ticketId)
+      assertEquals(0, recreatedTransport.createAttempts)
+      assertTrue(recreatedTransport.requests.any { it.uri.path == "/v1/ticket/ticket-create-agent-a" })
+      assertFalse(recreatedTransport.requests.any { it.uri.path == "/v1/session" && it.method == HttpMethod.POST })
+    }
+
+  @Test
+  fun `lost create response remains indeterminate and blocks a second mutation`() =
+    runTest {
+      val harness = harness()
+      harness.repository.registerManual(
+        URI("http://10.0.2.2:48123"),
+        "Workstation",
+        "bearer".toCharArray(),
+        null,
+        true,
+      )
+      harness.transport.failCreateResponse = true
+
+      harness.repository.createConfiguredSession("Never replay")
+      val indeterminate = harness.repository.sessionActionState.value as LiveSessionActionState.Indeterminate
+      assertNull(indeterminate.bookmark.ticketId)
+      assertEquals(1, harness.transport.createAttempts)
+      assertFalse(indeterminate.toString().contains("Never replay"))
+
+      val blocked = runCatching { harness.repository.createConfiguredSession("Duplicate") }.exceptionOrNull()
+      assertEquals("pending_session_action", (blocked as CommandAdmissionException).code)
+      assertEquals(1, harness.transport.createAttempts)
+      assertFalse(
+        harness.dailyDriverStore.bookmark
+          .toString()
+          .contains("Duplicate"),
+      )
+    }
+
+  @Test
+  fun `managed inventory open verifies exact retained generation without activation mutation`() =
+    runTest {
+      val harness = harness()
+      harness.repository.registerManual(
+        URI("http://10.0.2.2:48123"),
+        "Workstation",
+        "bearer".toCharArray(),
+        null,
+        true,
+      )
+      val ready = harness.repository.state.value as LiveReadonlyState.Ready
+      val item =
+        ready.selected.catalog.items
+          .single()
+
+      harness.repository.adoptSession(item.inventoryId)
+
+      val completed = harness.repository.sessionActionState.value as LiveSessionActionState.Completed
+      assertEquals(item.managedSession, completed.session)
+      assertTrue(harness.transport.requests.any { it.uri.path == "/v1/session/session-fixture-01" })
+      assertFalse(harness.transport.requests.any { it.uri.path.endsWith("/activate") })
+    }
+
   private fun externalCanaryEnvelope(): String {
     val bearer = "fixture-bearer".toCharArray()
     return try {
@@ -825,8 +1014,9 @@ class LiveReadonlyRepositoryTest {
     val registry = HostRegistry(registryStore, vault, SequenceHostIds())
     val transport = FakeLiveTransport()
     val defaultHostStore = FakeDefaultHostStore()
-    val repository = LiveReadonlyRepository(registry, vault, transport, defaultHostStore)
-    return Harness(repository, transport, protector, credentialStore, vault, registryStore, defaultHostStore)
+    val dailyDriverStore = FakeDailyDriverStore()
+    val repository = LiveReadonlyRepository(registry, vault, transport, defaultHostStore, dailyDriverStore)
+    return Harness(repository, transport, protector, credentialStore, vault, registryStore, defaultHostStore, dailyDriverStore)
   }
 
   private data class Harness(
@@ -837,6 +1027,7 @@ class LiveReadonlyRepositoryTest {
     val vault: HostCredentialVault,
     val registryStore: FakeHostStore,
     val defaultHostStore: FakeDefaultHostStore,
+    val dailyDriverStore: FakeDailyDriverStore,
   )
 
   private class SequenceHostIds : com.harryaskham.pidroid.sdk.core.HostIdGenerator {
@@ -852,6 +1043,34 @@ class LiveReadonlyRepositoryTest {
 
     override suspend fun write(hostId: HostId?) {
       value = hostId
+    }
+  }
+
+  private class FakeDailyDriverStore : DailyDriverStore {
+    private val selected = linkedMapOf<HostId, String>()
+    private var interactiveResume: ByteArray? = null
+    var bookmark: LiveSessionActionBookmark? = null
+      private set
+
+    override suspend fun readSelectedInventory(hostId: HostId): String? = selected[hostId]
+
+    override suspend fun writeSelectedInventory(
+      hostId: HostId,
+      inventoryId: String?,
+    ) {
+      if (inventoryId == null) selected.remove(hostId) else selected[hostId] = inventoryId
+    }
+
+    override suspend fun readActionBookmark(): LiveSessionActionBookmark? = bookmark
+
+    override suspend fun writeActionBookmark(bookmark: LiveSessionActionBookmark?) {
+      this.bookmark = bookmark
+    }
+
+    override suspend fun readInteractiveResume(): ByteArray? = interactiveResume?.copyOf()
+
+    override suspend fun writeInteractiveResume(encoded: ByteArray?) {
+      interactiveResume = encoded?.copyOf()
     }
   }
 
@@ -921,6 +1140,9 @@ class LiveReadonlyRepositoryTest {
     var fail: Boolean = false
     var unexpectedExecuteFailure: Boolean = false
     var capabilitiesWithoutInteractive: Boolean = false
+    var emptyInventory: Boolean = false
+    var failCreateResponse: Boolean = false
+    var createAttempts: Int = 0
     var runningSession: Boolean = false
     var unavailableTranscript: Boolean = false
     var authorizationObserved: Boolean = false
@@ -931,7 +1153,9 @@ class LiveReadonlyRepositoryTest {
     var failRpcReady: Boolean = false
     var failTuiOpen: Boolean = false
     val paths = mutableListOf<String>()
+    val requests = mutableListOf<NeutralHttpRequest>()
     val rpcSockets = mutableListOf<FakeSocket>()
+    val rpcRequests = mutableListOf<NeutralWebSocketRequest>()
     val invalidatedHosts = mutableListOf<HostId>()
     val events = mutableListOf<String>()
 
@@ -965,11 +1189,42 @@ class LiveReadonlyRepositoryTest {
       if (fail) throw TransportFailure("disposable_offline")
       authorizationObserved = request.headers["Authorization"]?.startsWith("Bearer ") == true
       paths += request.uri.path
+      requests += request
       events += "execute:${host.value}:${request.uri.path}"
+      if (request.uri.path == "/v1/session" && request.method == HttpMethod.POST) {
+        createAttempts += 1
+        if (failCreateResponse) throw TransportFailure("create_response_lost")
+      }
       val fixture =
         when (request.uri.path) {
           "/v1/capabilities" -> {
             "fixtures/session-api/capabilities.response.json"
+          }
+
+          "/v1/dashboard/capabilities" -> {
+            "fixtures/session-api/dashboard.capabilities.response.json"
+          }
+
+          "/v1/session" -> {
+            if (request.method == HttpMethod.POST) {
+              "fixtures/session-api/ticket.response.json"
+            } else {
+              "fixtures/session-api/list.response.json"
+            }
+          }
+
+          "/v1/session/session-fixture-01" -> {
+            "fixtures/session-api/session.response.json"
+          }
+
+          "/v1/ticket/ticket-create-agent-a" -> {
+            "fixtures/session-api/ticket.response.json"
+          }
+
+          "/v1/dashboard/activation/activation-fixture-01",
+          "/v1/dashboard/inventory/inventory-fixture-01/activate",
+          -> {
+            "fixtures/session-api/dashboard.activation.response.json"
           }
 
           "/v1/dashboard/inventory" -> {
@@ -994,6 +1249,14 @@ class LiveReadonlyRepositoryTest {
         }
       var body = repositoryRoot.resolve(fixture).toFile().readText()
       body = body.replace("host-01", hostInstanceId).replace("host-fixture-01", hostInstanceId)
+      if (request.uri.path == "/v1/session/session-fixture-01") {
+        body = body.replace("agent-a", "session-fixture-01")
+      }
+      if (request.uri.path == "/v1/dashboard/inventory" && emptyInventory) {
+        val root = Json.parseToJsonElement(body).jsonObject
+        val data = root.getValue("data").jsonObject
+        body = JsonObject(root + ("data" to JsonObject(data + ("sessions" to JsonArray(emptyList()))))).toString()
+      }
       if (request.uri.path == "/v1/capabilities" && capabilitiesWithoutInteractive) {
         body = body.replace("          \"prompt\",\n", "").replace("          \"get_tree\",\n", "")
       }
@@ -1019,6 +1282,7 @@ class LiveReadonlyRepositoryTest {
         )
       } else {
         rpcOpenCount += 1
+        rpcRequests += request
         rpcSockets += socket
         if (failRpcOpen) throw IllegalStateException("https://secret.example/private rpc open")
         var frame = repositoryRoot.resolve("fixtures/session-api/rpc.ready.frame.json").toFile().readText()

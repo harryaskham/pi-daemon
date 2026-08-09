@@ -195,9 +195,11 @@ tree rendering; and `sdk-android-integration`
 contains pure notification/background policy plus SDK-event, foreground-service,
 and WorkManager ports. Those ports emit content-safe records and lifecycle plans;
 they do not own Android components, sockets, or commands. `app` and
-`play-receipt` are conditional manual-release modules. Real Android lifecycle
-bindings and monitoring transport, widgets/floats/share, and real network/storage
-implementations remain reserved for separate release slices.
+`play-receipt` are conditional manual-release modules. The app now binds the
+foreground plan to an explicit, non-sticky `dataSync` service whose bounded
+poller reads capabilities and retained-session metadata only; widget, floating,
+share, and periodic WorkManager lifecycle bindings remain separate release
+slices.
 
 `sdk-core` exposes the reusable lifecycle boundary without owning an Android
 process: capability-derived configured create, retained-session list/read/adopt,

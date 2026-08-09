@@ -1,5 +1,8 @@
 package com.harryaskham.pidroid.live
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -11,10 +14,13 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -64,7 +70,9 @@ public fun LiveReadonlyScreen(
   state: LiveReadonlyState,
   interaction: LiveInteractiveAppState,
   hostManagement: HostManagementState,
+  sessionAction: LiveSessionActionState,
   externalCanaryMode: Boolean,
+  backgroundMonitoring: Boolean,
   onRegisterManual: (String, String, CharArray, String?, Boolean) -> Unit,
   onRegisterEnvelope: (String, Boolean) -> Unit,
   onRefresh: () -> Unit,
@@ -74,6 +82,13 @@ public fun LiveReadonlyScreen(
   onForgetHost: (HostId) -> Unit,
   onClearHostManagementNotice: () -> Unit,
   onSelectHost: (HostId) -> Unit,
+  onSelectSession: (String) -> Unit,
+  onCreateSession: (String?) -> Unit,
+  onAdoptSession: (String) -> Unit,
+  onRefreshSessionAction: () -> Unit,
+  onClearSessionAction: () -> Unit,
+  onStartBackgroundMonitoring: () -> Unit,
+  onStopBackgroundMonitoring: () -> Unit,
   onConnectInteractive: () -> Unit,
   onInteractiveAction: (RichInteractionAction) -> Unit,
   onReconnectInteractive: () -> Unit,
@@ -126,6 +141,15 @@ public fun LiveReadonlyScreen(
             onRefresh,
             { showHostManagement = true },
             onSelectHost,
+            onSelectSession,
+            onCreateSession,
+            onAdoptSession,
+            sessionAction,
+            onRefreshSessionAction,
+            onClearSessionAction,
+            backgroundMonitoring,
+            onStartBackgroundMonitoring,
+            onStopBackgroundMonitoring,
             onConnectInteractive,
             onInteractiveAction,
             onReconnectInteractive,
@@ -163,7 +187,7 @@ private fun ExternalCanaryScreen(state: LiveReadonlyState) {
 
       is LiveReadonlyState.Ready -> {
         val selected = state.selected
-        val fresh = selected.session.host.freshness == CacheFreshness.FRESH
+        val fresh = selected.session?.host?.freshness == CacheFreshness.FRESH
         Text("HOST LISTING · VERIFIED", color = LiveGreen, fontWeight = FontWeight.Bold)
         Text(
           if (fresh) "READINESS · READY" else "READINESS · NOT FRESH",
@@ -346,6 +370,15 @@ private fun LiveSessionScreen(
   onRefresh: () -> Unit,
   onManageHosts: () -> Unit,
   onSelectHost: (HostId) -> Unit,
+  onSelectSession: (String) -> Unit,
+  onCreateSession: (String?) -> Unit,
+  onAdoptSession: (String) -> Unit,
+  sessionAction: LiveSessionActionState,
+  onRefreshSessionAction: () -> Unit,
+  onClearSessionAction: () -> Unit,
+  backgroundMonitoring: Boolean,
+  onStartBackgroundMonitoring: () -> Unit,
+  onStopBackgroundMonitoring: () -> Unit,
   onConnectInteractive: () -> Unit,
   onInteractiveAction: (RichInteractionAction) -> Unit,
   onReconnectInteractive: () -> Unit,
@@ -360,159 +393,476 @@ private fun LiveSessionScreen(
       is LiveInteractiveAppState.Failure -> interaction.lastSnapshot?.takeIf { interaction.hostId == ready.selectedHostId }
       else -> null
     }
-  Column(Modifier.fillMaxSize()) {
-    Row(
-      modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
-      horizontalArrangement = Arrangement.spacedBy(8.dp),
-      verticalAlignment = Alignment.CenterVertically,
-    ) {
-      OutlinedButton(
-        onClick = onRefresh,
-        modifier = Modifier.semantics { contentDescription = "Refresh readonly hosts" },
-      ) {
-        Text("Refresh")
-      }
-      OutlinedButton(
-        onClick = onManageHosts,
-        modifier = Modifier.semantics { contentDescription = "Manage registered hosts" },
-      ) {
-        Text("Hosts")
-      }
-      ready.hosts.forEach { snapshot ->
-        val selected = snapshot.host.id == ready.selectedHostId
-        OutlinedButton(onClick = { onSelectHost(snapshot.host.id) }) {
-          Text(snapshot.host.displayName, color = if (selected) LiveAccent else LiveMuted)
+  BoxWithConstraints(Modifier.fillMaxSize()) {
+    val wide = maxWidth >= 840.dp
+    Row(Modifier.fillMaxSize()) {
+      if (wide) {
+        Surface(modifier = Modifier.width(320.dp).fillMaxSize(), color = LiveSurface) {
+          DailyDriverSessionCatalog(
+            host = ready.selected,
+            action = sessionAction,
+            vertical = true,
+            onSelect = onSelectSession,
+            onAdopt = onAdoptSession,
+            onCreate = onCreateSession,
+            onRefreshAction = onRefreshSessionAction,
+            onClearAction = onClearSessionAction,
+          )
         }
       }
-      Spacer(Modifier.weight(1f))
+      Column(Modifier.weight(1f).fillMaxSize()) {
+        Row(
+          modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 8.dp),
+          horizontalArrangement = Arrangement.spacedBy(8.dp),
+          verticalAlignment = Alignment.CenterVertically,
+        ) {
+          OutlinedButton(
+            onClick = onRefresh,
+            modifier = Modifier.semantics { contentDescription = "Refresh hosts and session inventory" },
+          ) {
+            Text("Refresh")
+          }
+          OutlinedButton(
+            onClick = onManageHosts,
+            modifier = Modifier.semantics { contentDescription = "Manage registered hosts" },
+          ) {
+            Text("Hosts")
+          }
+          OutlinedButton(
+            onClick = if (backgroundMonitoring) onStopBackgroundMonitoring else onStartBackgroundMonitoring,
+            enabled = backgroundMonitoring || ready.selected.session != null,
+            modifier =
+              Modifier.semantics {
+                contentDescription =
+                  if (backgroundMonitoring) {
+                    "Stop bounded background session monitoring"
+                  } else {
+                    "Start bounded background session monitoring"
+                  }
+              },
+          ) {
+            Text(if (backgroundMonitoring) "Stop monitor" else "Monitor")
+          }
+          ready.hosts.forEach { snapshot ->
+            val selected = snapshot.host.id == ready.selectedHostId
+            OutlinedButton(onClick = { onSelectHost(snapshot.host.id) }) {
+              Text(snapshot.host.displayName, color = if (selected) LiveAccent else LiveMuted)
+            }
+          }
+          Text(
+            liveInteractiveStatusLabel(interaction, ready.selectedHostId, ready.selected.rpcObserverConnected),
+            color = if (interactiveSnapshot?.role == InteractiveControllerRole.CONTROLLER) LiveGreen else LiveWarning,
+            fontWeight = FontWeight.Bold,
+          )
+        }
+        if (!wide) {
+          DailyDriverSessionCatalog(
+            host = ready.selected,
+            action = sessionAction,
+            vertical = false,
+            onSelect = onSelectSession,
+            onAdopt = onAdoptSession,
+            onCreate = onCreateSession,
+            onRefreshAction = onRefreshSessionAction,
+            onClearAction = onClearSessionAction,
+          )
+        }
+        Row(
+          modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 4.dp),
+          horizontalArrangement = Arrangement.spacedBy(8.dp),
+          verticalAlignment = Alignment.CenterVertically,
+        ) {
+          LivePresentation.entries.forEach { item ->
+            OutlinedButton(
+              onClick = { presentation = item },
+              modifier = Modifier.semantics { contentDescription = "Show ${item.name.lowercase()} presentation" },
+            ) {
+              Text(item.name, color = if (presentation == item) LiveAccent else LiveMuted)
+            }
+          }
+          interactiveSnapshot?.receipts?.lastOrNull()?.let { receipt ->
+            Text(
+              "${receipt.kind.wireValue.uppercase()} ${receipt.lifecycle.name}",
+              modifier =
+                Modifier.semantics {
+                  contentDescription = "Command ${receipt.kind.wireValue} ${receipt.lifecycle.name.lowercase()}"
+                },
+              color = if (receipt.lifecycle.name == "SUCCEEDED") LiveGreen else LiveWarning,
+              fontWeight = FontWeight.Bold,
+            )
+          }
+          if (interaction is LiveInteractiveAppState.Failure) {
+            OutlinedButton(
+              onClick = onReconnectInteractive,
+              modifier = Modifier.semantics { contentDescription = "Reconnect interactive session without replaying commands" },
+            ) {
+              Text("Reconnect")
+            }
+          }
+        }
+        val selectedSession = ready.selected.session
+        if (selectedSession == null) {
+          InteractiveStatus(
+            "No session selected",
+            if (ready.selected.catalog.items
+                .isEmpty()
+            ) {
+              "Create a session from the daemon's reviewed defaults."
+            } else {
+              "Choose or adopt an inventory session."
+            },
+          )
+        } else {
+          LiveSessionPresentation(
+            session = selectedSession,
+            interaction = interaction,
+            interactiveSnapshot = interactiveSnapshot,
+            active = active,
+            presentation = presentation,
+            onConnectInteractive = onConnectInteractive,
+            onInteractiveAction = onInteractiveAction,
+          )
+        }
+      }
+    }
+  }
+}
+
+@Composable
+private fun DailyDriverSessionCatalog(
+  host: LiveHostSession,
+  action: LiveSessionActionState,
+  vertical: Boolean,
+  onSelect: (String) -> Unit,
+  onAdopt: (String) -> Unit,
+  onCreate: (String?) -> Unit,
+  onRefreshAction: () -> Unit,
+  onClearAction: () -> Unit,
+) {
+  var showCreate by remember(host.host.id) { mutableStateOf(false) }
+  var name by remember(host.host.id) { mutableStateOf("") }
+  val mayStartAction =
+    action == LiveSessionActionState.Idle ||
+      action is LiveSessionActionState.Completed ||
+      action is LiveSessionActionState.Failure
+  val base =
+    if (vertical) {
+      Modifier.fillMaxSize().padding(14.dp)
+    } else {
+      Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp)
+    }
+  Column(base, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+      Column(Modifier.weight(1f)) {
+        Text("Sessions", color = LivePrimary, fontWeight = FontWeight.Bold)
+        Text(
+          "${host.catalog.items.size} inventory · ${host.catalog.retainedSessionCount} retained",
+          color = LiveMuted,
+          style = MaterialTheme.typography.labelSmall,
+        )
+      }
+      Button(
+        onClick = { showCreate = !showCreate },
+        enabled = host.catalog.createDefaults != null && mayStartAction,
+        modifier = Modifier.semantics { contentDescription = "Create a session from host defaults" },
+      ) {
+        Text(if (showCreate) "Close" else "New")
+      }
+    }
+    if (host.catalog.inventoryStale || host.catalog.inventoryReconciling) {
       Text(
-        liveInteractiveStatusLabel(interaction, ready.selectedHostId, ready.selected.rpcObserverConnected),
-        color = if (interactiveSnapshot?.role == InteractiveControllerRole.CONTROLLER) LiveGreen else LiveWarning,
+        if (host.catalog.inventoryReconciling) "Inventory reconciling" else "Inventory is stale",
+        color = LiveWarning,
         fontWeight = FontWeight.Bold,
       )
     }
-    Row(
-      modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
-      horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-      LivePresentation.entries.forEach { item ->
-        OutlinedButton(
-          onClick = { presentation = item },
-          modifier = Modifier.semantics { contentDescription = "Show ${item.name.lowercase()} presentation" },
-        ) {
-          Text(item.name)
+    SessionActionBanner(action, onRefreshAction, onClearAction)
+    if (showCreate) {
+      CreateSessionForm(
+        defaults = host.catalog.createDefaults,
+        name = name,
+        onNameChange = { name = it.take(128) },
+        onCreate = {
+          onCreate(name.trim().takeIf(String::isNotEmpty))
+          name = ""
+          showCreate = false
+        },
+      )
+    }
+    if (host.catalog.items.isEmpty()) {
+      Text("No sessions on this host yet.", color = LiveMuted)
+    } else if (vertical) {
+      LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.weight(1f)) {
+        items(host.catalog.items, key = LiveSessionCatalogItem::inventoryId) { item ->
+          SessionCatalogCard(item, item.inventoryId == host.catalog.selectedInventoryId, true, mayStartAction, onSelect, onAdopt)
         }
       }
-      interactiveSnapshot?.receipts?.lastOrNull()?.let { receipt ->
-        Text(
-          "${receipt.kind.wireValue.uppercase()} ${receipt.lifecycle.name}",
-          modifier = Modifier.semantics { contentDescription = "Command ${receipt.kind.wireValue} ${receipt.lifecycle.name.lowercase()}" },
-          color = if (receipt.lifecycle.name == "SUCCEEDED") LiveGreen else LiveWarning,
-          fontWeight = FontWeight.Bold,
-        )
-      }
-      if (interaction is LiveInteractiveAppState.Failure) {
-        OutlinedButton(
-          onClick = onReconnectInteractive,
-          modifier = Modifier.semantics { contentDescription = "Reconnect interactive session" },
-        ) {
-          Text("Reconnect")
+    } else {
+      Row(
+        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+      ) {
+        host.catalog.items.forEach { item ->
+          SessionCatalogCard(item, item.inventoryId == host.catalog.selectedInventoryId, false, mayStartAction, onSelect, onAdopt)
         }
       }
     }
-    BoxWithConstraints(Modifier.fillMaxSize()) {
-      val fontScale = LocalDensity.current.fontScale
-      val layout =
-        if (maxWidth < 720.dp) {
-          SessionSurfaceLayout.phone(fontScale)
-        } else {
-          SessionSurfaceLayout.tablet(fontScale)
+  }
+}
+
+@Composable
+private fun SessionCatalogCard(
+  item: LiveSessionCatalogItem,
+  selected: Boolean,
+  vertical: Boolean,
+  mayStartAction: Boolean,
+  onSelect: (String) -> Unit,
+  onAdopt: (String) -> Unit,
+) {
+  val modifier =
+    (if (vertical) Modifier.fillMaxWidth() else Modifier.width(260.dp))
+      .border(1.dp, if (selected) LiveAccent else LiveMuted.copy(alpha = 0.35f), MaterialTheme.shapes.medium)
+      .background(LiveCanvas, MaterialTheme.shapes.medium)
+      .padding(10.dp)
+      .semantics {
+        contentDescription =
+          "Session ${item.title}, ${item.state}, ${if (item.managedSession != null) "managed" else "inventory only"}${if (item.unread) ", unread" else ""}"
+      }
+  Column(modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    Text(item.title, color = LivePrimary, fontWeight = FontWeight.Bold, maxLines = 2)
+    Text(
+      listOfNotNull(item.projectLabel, item.cwdBasename, item.state).joinToString(" · "),
+      color = LiveMuted,
+      style = MaterialTheme.typography.labelSmall,
+      maxLines = 2,
+    )
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+      OutlinedButton(onClick = { onSelect(item.inventoryId) }) { Text(if (selected) "Selected" else "Preview") }
+      if (item.canAdopt) {
+        Button(
+          onClick = { onAdopt(item.inventoryId) },
+          enabled = mayStartAction,
+          modifier =
+            Modifier.semantics {
+              contentDescription = if (item.managedSession == null) "Adopt ${item.title}" else "Open exact retained ${item.title}"
+            },
+        ) {
+          Text(if (item.managedSession == null) "Adopt" else "Open")
         }
-      when (presentation) {
-        LivePresentation.RICH -> {
-          if (interactiveSnapshot == null) {
-            Box(Modifier.fillMaxSize()) {
-              SessionSurface(
-                state = ready.selected.session,
-                layout = layout,
-                chrome = SessionSurfaceChrome.READONLY,
-                modifier = Modifier.fillMaxSize().padding(bottom = 88.dp),
-              )
-              Surface(
-                modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(10.dp),
-                color = LiveSurface,
+      }
+    }
+  }
+}
+
+@Composable
+private fun CreateSessionForm(
+  defaults: LiveCreateSessionDefaults?,
+  name: String,
+  onNameChange: (String) -> Unit,
+  onCreate: () -> Unit,
+) {
+  Surface(color = LiveCanvas, shape = MaterialTheme.shapes.medium) {
+    Column(
+      Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(12.dp),
+      verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+      Text("Create from reviewed host profile", color = LivePrimary, fontWeight = FontWeight.Bold)
+      Text(
+        "Pi Droid sends the exact daemon-advertised root, model, tool and resource policy. Mobile cannot invent filesystem roots or inject a system prompt.",
+        color = LiveMuted,
+        style = MaterialTheme.typography.bodySmall,
+      )
+      OutlinedTextField(
+        value = name,
+        onValueChange = onNameChange,
+        modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Optional new session name" },
+        label = { Text("Session name (optional)") },
+        singleLine = true,
+      )
+      if (defaults == null) {
+        Text("Configured session creation is unavailable on this host.", color = LiveWarning)
+      } else {
+        CreatePolicyRow("Working directory", defaults.cwd)
+        CreatePolicyRow("Persistence", defaults.persistence.wireValue)
+        CreatePolicyRow(
+          "Model",
+          listOfNotNull(defaults.provider, defaults.modelId, defaults.thinkingLevel).joinToString(" · ").ifBlank {
+            "Host default"
+          },
+        )
+        CreatePolicyRow("Tools", defaults.toolMode)
+        CreatePolicyRow("Project trust", defaults.projectTrust)
+        CreatePolicyRow("System prompt", "Host-managed · no mobile override")
+        Button(
+          onClick = onCreate,
+          modifier = Modifier.semantics { contentDescription = "Create session once using displayed host policy" },
+        ) {
+          Text("Create once")
+        }
+      }
+    }
+  }
+}
+
+@Composable
+private fun CreatePolicyRow(
+  label: String,
+  value: String,
+) {
+  Column(Modifier.fillMaxWidth()) {
+    Text(label, color = LiveMuted, style = MaterialTheme.typography.labelSmall)
+    Text(value, color = LivePrimary, style = MaterialTheme.typography.bodyMedium)
+  }
+}
+
+@Composable
+private fun SessionActionBanner(
+  action: LiveSessionActionState,
+  onRefresh: () -> Unit,
+  onClear: () -> Unit,
+) {
+  when (action) {
+    LiveSessionActionState.Idle -> {}
+
+    is LiveSessionActionState.Working -> {
+      Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        CircularProgressIndicator(modifier = Modifier.width(18.dp).height(18.dp))
+        Text("${action.kind.name.lowercase().replaceFirstChar(Char::uppercase)} request in progress", color = LiveAccent)
+      }
+    }
+
+    is LiveSessionActionState.Accepted -> {
+      Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text("Request accepted · ${action.state.wireValue}", color = LiveAccent, fontWeight = FontWeight.Bold)
+        Text("The original identity is retained. Refresh checks that ticket; it never sends again.", color = LiveMuted)
+        OutlinedButton(onClick = onRefresh) { Text("Check receipt") }
+      }
+    }
+
+    is LiveSessionActionState.Indeterminate -> {
+      Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text("Outcome indeterminate · do not retry", color = LiveWarning, fontWeight = FontWeight.Bold)
+        Text(
+          if (action.bookmark.ticketId == null) {
+            "The response was lost before a ticket identity was known. Reconcile on the host before another request."
+          } else {
+            "The accepted ticket identity is retained and can be checked without replay."
+          },
+          color = LiveMuted,
+        )
+        if (action.bookmark.ticketId != null) OutlinedButton(onClick = onRefresh) { Text("Check existing ticket") }
+      }
+    }
+
+    is LiveSessionActionState.Failure -> {
+      Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text("Request failed · ${action.code}", color = LiveWarning, fontWeight = FontWeight.Bold)
+        Text(if (action.retryable) "The host reported this failure as retryable." else "No side effect was accepted.", color = LiveMuted)
+        OutlinedButton(onClick = onClear) { Text("Dismiss") }
+      }
+    }
+
+    is LiveSessionActionState.Completed -> {
+      Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("Session ready · generation ${action.session.generation}", color = LiveGreen, fontWeight = FontWeight.Bold)
+        OutlinedButton(onClick = onClear) { Text("Dismiss") }
+      }
+    }
+  }
+}
+
+@Composable
+private fun LiveSessionPresentation(
+  session: com.harryaskham.pidroid.sessionui.SessionSurfaceState,
+  interaction: LiveInteractiveAppState,
+  interactiveSnapshot: LiveInteractiveSnapshot?,
+  active: LiveInteractiveAppState.Ready?,
+  presentation: LivePresentation,
+  onConnectInteractive: () -> Unit,
+  onInteractiveAction: (RichInteractionAction) -> Unit,
+) {
+  BoxWithConstraints(Modifier.fillMaxSize()) {
+    val fontScale = LocalDensity.current.fontScale
+    val layout = if (maxWidth < 720.dp) SessionSurfaceLayout.phone(fontScale) else SessionSurfaceLayout.tablet(fontScale)
+    when (presentation) {
+      LivePresentation.RICH -> {
+        if (interactiveSnapshot == null) {
+          Box(Modifier.fillMaxSize()) {
+            SessionSurface(
+              state = session,
+              layout = layout,
+              chrome = SessionSurfaceChrome.READONLY,
+              modifier = Modifier.fillMaxSize().padding(bottom = 88.dp),
+            )
+            Surface(
+              modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(10.dp),
+              color = LiveSurface,
+            ) {
+              Row(
+                modifier = Modifier.fillMaxWidth().padding(14.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
               ) {
-                Row(
-                  modifier = Modifier.fillMaxWidth().padding(14.dp),
-                  horizontalArrangement = Arrangement.spacedBy(12.dp),
-                  verticalAlignment = Alignment.CenterVertically,
+                Column(Modifier.weight(1f)) {
+                  Text("Observer not connected", color = LivePrimary, fontWeight = FontWeight.Bold)
+                  Text("Observe first; request controller authority separately.", color = LiveMuted)
+                }
+                Button(
+                  onClick = onConnectInteractive,
+                  enabled = interaction !is LiveInteractiveAppState.Connecting,
+                  modifier = Modifier.semantics { contentDescription = "Connect session observer" },
                 ) {
-                  Column(Modifier.weight(1f)) {
-                    Text("Interactive observer not connected", color = LivePrimary, fontWeight = FontWeight.Bold)
-                    Text("Connect readonly first; request controller authority separately.", color = LiveMuted)
-                  }
-                  Button(
-                    onClick = onConnectInteractive,
-                    enabled = interaction !is LiveInteractiveAppState.Connecting,
-                    modifier = Modifier.semantics { contentDescription = "Connect interactive observer" },
-                  ) {
-                    Text(if (interaction is LiveInteractiveAppState.Connecting) "Connecting" else "Connect observer")
-                  }
+                  Text(if (interaction is LiveInteractiveAppState.Connecting) "Connecting" else "Connect")
                 }
               }
             }
-          } else {
-            RichInteractiveSessionSurface(
-              session = ready.selected.session,
-              interactive = interactiveSnapshot.rich,
-              layout = layout,
-              modifier = Modifier.fillMaxSize(),
-              onAction = onInteractiveAction,
-            )
           }
+        } else {
+          RichInteractiveSessionSurface(
+            session = session,
+            interactive = interactiveSnapshot.rich,
+            layout = layout,
+            modifier = Modifier.fillMaxSize(),
+            onAction = onInteractiveAction,
+          )
         }
+      }
 
-        LivePresentation.TREE -> {
-          val tree = interactiveSnapshot?.tree
-          if (tree == null) {
-            InteractiveStatus("Branch tree unavailable", "Request control to load the exact active tree")
-          } else {
-            SessionTreeSurface(
-              snapshot = tree,
-              context =
-                InteractionContext(
-                  identity = tree.identity,
-                  role =
-                    if (interactiveSnapshot.role ==
-                      InteractiveControllerRole.CONTROLLER
-                    ) {
-                      SessionRole.CONTROLLER
-                    } else {
-                      SessionRole.OBSERVER
-                    },
-                  freshness = ready.selected.session.host.freshness,
-                ),
-              modifier = Modifier.fillMaxSize(),
-            )
-          }
+      LivePresentation.TREE -> {
+        val tree = interactiveSnapshot?.tree
+        if (tree == null) {
+          InteractiveStatus("Branch tree unavailable", "Request control to load the exact active tree")
+        } else {
+          SessionTreeSurface(
+            snapshot = tree,
+            context =
+              InteractionContext(
+                identity = tree.identity,
+                role =
+                  if (interactiveSnapshot.role ==
+                    InteractiveControllerRole.CONTROLLER
+                  ) {
+                    SessionRole.CONTROLLER
+                  } else {
+                    SessionRole.OBSERVER
+                  },
+                freshness = session.host.freshness,
+              ),
+            modifier = Modifier.fillMaxSize(),
+          )
         }
+      }
 
-        LivePresentation.TUI -> {
-          val tui = active?.tui
-          if (tui == null) {
-            InteractiveStatus("TUI unavailable", "Waiting for a canonical server-side TUI snapshot")
-          } else {
-            TuiSurface(
-              state = tui,
-              layout =
-                if (maxWidth < 720.dp) {
-                  TuiSurfaceLayout.phone(fontScale)
-                } else {
-                  TuiSurfaceLayout.tablet(fontScale)
-                },
-              modifier = Modifier.fillMaxSize(),
-            )
-          }
+      LivePresentation.TUI -> {
+        val tui = active?.tui
+        if (tui == null) {
+          InteractiveStatus("TUI unavailable", "Waiting for a canonical server-side TUI snapshot")
+        } else {
+          TuiSurface(
+            state = tui,
+            layout = if (maxWidth < 720.dp) TuiSurfaceLayout.phone(fontScale) else TuiSurfaceLayout.tablet(fontScale),
+            modifier = Modifier.fillMaxSize(),
+          )
         }
       }
     }

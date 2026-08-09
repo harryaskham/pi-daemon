@@ -1,19 +1,25 @@
 package com.harryaskham.pidroid
 
+import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.lifecycleScope
 import com.harryaskham.pidroid.live.AndroidHostRegistry
+import com.harryaskham.pidroid.live.BackgroundMonitorControl
+import com.harryaskham.pidroid.live.BackgroundMonitorIdentity
 import com.harryaskham.pidroid.live.LiveReadonlyRepository
 import com.harryaskham.pidroid.live.LiveReadonlyScreen
+import com.harryaskham.pidroid.live.LiveReadonlyState
 import com.harryaskham.pidroid.live.OkHttpPiDaemonTransport
 import com.harryaskham.pidroid.sdk.core.CommandAdmissionException
 import com.harryaskham.pidroid.sdk.core.PairingPayloadCodec
@@ -23,6 +29,19 @@ import java.net.URI
 class MainActivity : ComponentActivity() {
   private lateinit var repository: LiveReadonlyRepository
   private var externalCanaryMode: Boolean by mutableStateOf(false)
+  private var backgroundMonitoring: Boolean by mutableStateOf(false)
+  private var pendingMonitorIdentity: BackgroundMonitorIdentity? = null
+  private val notificationPermission =
+    registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+      val pending = pendingMonitorIdentity
+      pendingMonitorIdentity = null
+      if (granted && pending != null) {
+        BackgroundMonitorControl.start(this, pending)
+        backgroundMonitoring = true
+      } else {
+        backgroundMonitoring = false
+      }
+    }
 
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
@@ -34,9 +53,11 @@ class MainActivity : ComponentActivity() {
         credentials = hosts.credentialVault,
         transport = OkHttpPiDaemonTransport(),
         defaultHostStore = hosts.defaultHostStore,
+        dailyDriverStore = hosts.dailyDriverStore,
       )
 
     externalCanaryMode = isExternalCanaryIntent(intent)
+    backgroundMonitoring = BackgroundMonitorControl.isEnabled(this)
     lifecycleScope.launch {
       repository.initialize()
       if (externalCanaryMode) {
@@ -50,11 +71,14 @@ class MainActivity : ComponentActivity() {
       val state by repository.state.collectAsState()
       val interaction by repository.interactiveState.collectAsState()
       val hostManagement by repository.hostManagementState.collectAsState()
+      val sessionAction by repository.sessionActionState.collectAsState()
       LiveReadonlyScreen(
         state = state,
         interaction = interaction,
         hostManagement = hostManagement,
+        sessionAction = sessionAction,
         externalCanaryMode = externalCanaryMode,
+        backgroundMonitoring = backgroundMonitoring,
         onRegisterManual = { endpoint, displayName, bearer, fingerprint, confirmInsecure ->
           lifecycleScope.launch {
             runCatching {
@@ -126,6 +150,35 @@ class MainActivity : ComponentActivity() {
               .onFailure { repository.reportHostManagementFailure(safeCode(it)) }
           }
         },
+        onSelectSession = { inventoryId ->
+          lifecycleScope.launch {
+            runCatching { repository.selectSession(inventoryId) }
+              .onFailure { repository.reportFailure(safeCode(it)) }
+          }
+        },
+        onCreateSession = { name ->
+          lifecycleScope.launch {
+            runCatching { repository.createConfiguredSession(name) }
+              .onFailure { repository.reportFailure(safeCode(it)) }
+          }
+        },
+        onAdoptSession = { inventoryId ->
+          lifecycleScope.launch {
+            runCatching { repository.adoptSession(inventoryId) }
+              .onFailure { repository.reportFailure(safeCode(it)) }
+          }
+        },
+        onRefreshSessionAction = {
+          lifecycleScope.launch { repository.refreshSessionAction() }
+        },
+        onClearSessionAction = {
+          lifecycleScope.launch { repository.clearSessionAction() }
+        },
+        onStartBackgroundMonitoring = ::startBackgroundMonitoring,
+        onStopBackgroundMonitoring = {
+          BackgroundMonitorControl.stop(this)
+          backgroundMonitoring = false
+        },
         onConnectInteractive = {
           lifecycleScope.launch {
             runCatching { repository.connectInteractiveObserver() }
@@ -148,6 +201,11 @@ class MainActivity : ComponentActivity() {
     }
   }
 
+  override fun onResume() {
+    super.onResume()
+    backgroundMonitoring = BackgroundMonitorControl.isEnabled(this)
+  }
+
   override fun onNewIntent(intent: Intent) {
     super.onNewIntent(intent)
     setIntent(intent)
@@ -159,6 +217,32 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch { registerEnvelope(envelope) }
       }
     }
+  }
+
+  private fun startBackgroundMonitoring() {
+    val ready = repository.state.value as? LiveReadonlyState.Ready ?: return
+    val selected = ready.selected
+    val surface = selected.session ?: return
+    val sessionId = surface.session.sessionId ?: return
+    val generation = surface.session.generation ?: return
+    val identity =
+      BackgroundMonitorIdentity(
+        hostId = selected.host.id,
+        hostInstanceId = surface.host.authority.hostInstanceId,
+        bearerGeneration = selected.host.credential.bearerGeneration,
+        sessionId = sessionId,
+        generation = generation,
+      )
+    if (
+      Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+      checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+    ) {
+      pendingMonitorIdentity = identity
+      notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+      return
+    }
+    BackgroundMonitorControl.start(this, identity)
+    backgroundMonitoring = true
   }
 
   override fun onDestroy() {

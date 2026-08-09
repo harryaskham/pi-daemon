@@ -548,6 +548,11 @@ process appears per wake.
   caller-owned correlation, replay-gap resync, and content-free process resume
   with loss-to-indeterminate and no blind replay; prove it against fake transports
   and one disposable real daemon without app, signing, Play, or live-host mutation.
+- [x] `bd-0ce0fd` Adopt that lifecycle in the Pi Droid application with an
+  adaptive persistent session catalog, daemon-authoritative configured creation,
+  exact retained adoption, explicit observer-to-controller interaction, atomic
+  content-free process resume, no-replay ticket/command reconciliation, and an
+  opt-in bounded metadata-only foreground monitor with content-safe notifications.
 - [x] `bd-61ac6b` Preserve a bounded owner-private incomplete occurrence when
   app-failure modal evidence capture fails, naming only the fixed failed predicate,
   safe identity class/hash, and retained-component hashes while discarding unsafe
