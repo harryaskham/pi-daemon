@@ -3,6 +3,17 @@
 # version=0.3.0-alpha.2
 # Generated with jar+javap -public -constants; update only with migration notes.
 
+public final class com.harryaskham.pidroid.workspace.ComposableSingletons$DailyDriverUxShowcaseKt {
+  public static final com.harryaskham.pidroid.workspace.ComposableSingletons$DailyDriverUxShowcaseKt INSTANCE;
+  public com.harryaskham.pidroid.workspace.ComposableSingletons$DailyDriverUxShowcaseKt();
+  public final kotlin.jvm.functions.Function2<androidx.compose.runtime.Composer, java.lang.Integer, kotlin.Unit> getLambda$-1440165841$MODULE();
+  public final kotlin.jvm.functions.Function2<androidx.compose.runtime.Composer, java.lang.Integer, kotlin.Unit> getLambda$-1595726178$MODULE();
+  public final kotlin.jvm.functions.Function2<androidx.compose.runtime.Composer, java.lang.Integer, kotlin.Unit> getLambda$-804244658$MODULE();
+  public final kotlin.jvm.functions.Function2<androidx.compose.runtime.Composer, java.lang.Integer, kotlin.Unit> getLambda$-649928403$MODULE();
+  public final kotlin.jvm.functions.Function2<androidx.compose.runtime.Composer, java.lang.Integer, kotlin.Unit> getLambda$-247901846$MODULE();
+  public final kotlin.jvm.functions.Function2<androidx.compose.runtime.Composer, java.lang.Integer, kotlin.Unit> getLambda$-659513895$MODULE();
+}
+
 public final class com.harryaskham.pidroid.workspace.ComposableSingletons$WorkspaceComposeShellKt {
   public static final com.harryaskham.pidroid.workspace.ComposableSingletons$WorkspaceComposeShellKt INSTANCE;
   public com.harryaskham.pidroid.workspace.ComposableSingletons$WorkspaceComposeShellKt();
@@ -10,6 +21,233 @@ public final class com.harryaskham.pidroid.workspace.ComposableSingletons$Worksp
   public final kotlin.jvm.functions.Function2<androidx.compose.runtime.Composer, java.lang.Integer, kotlin.Unit> getLambda$-312385193$MODULE();
   public final kotlin.jvm.functions.Function2<androidx.compose.runtime.Composer, java.lang.Integer, kotlin.Unit> getLambda$2143285629$MODULE();
   public final kotlin.jvm.functions.Function2<androidx.compose.runtime.Composer, java.lang.Integer, kotlin.Unit> getLambda$137951938$MODULE();
+}
+
+public final class com.harryaskham.pidroid.workspace.DailyDriverUxPrimitivesKt {
+  public static final void PiDroidUxTheme(androidx.compose.material3.ColorScheme, kotlin.jvm.functions.Function2<? super androidx.compose.runtime.Composer, ? super java.lang.Integer, kotlin.Unit>, androidx.compose.runtime.Composer, int, int);
+  public static final void PiDroidStatusChip(java.lang.String, com.harryaskham.pidroid.workspace.PiDroidStatusTone, androidx.compose.ui.Modifier, androidx.compose.runtime.Composer, int, int);
+  public static final void PiDroidSectionTitle(java.lang.String, java.lang.String, androidx.compose.ui.Modifier, java.lang.String, androidx.compose.runtime.Composer, int, int);
+  public static final void PiDroidDestinationBar(com.harryaskham.pidroid.workspace.PiDroidDestination, kotlin.jvm.functions.Function1<? super com.harryaskham.pidroid.workspace.PiDroidDestination, kotlin.Unit>, androidx.compose.ui.Modifier, androidx.compose.runtime.Composer, int, int);
+  public static final void PiDroidLoadingState(java.lang.String, androidx.compose.ui.Modifier, androidx.compose.runtime.Composer, int, int);
+  public static final void PiDroidEmptyState(java.lang.String, java.lang.String, androidx.compose.ui.Modifier, java.lang.String, kotlin.jvm.functions.Function0<kotlin.Unit>, androidx.compose.runtime.Composer, int, int);
+  public static final void PiDroidErrorState(java.lang.String, java.lang.String, java.lang.String, kotlin.jvm.functions.Function0<kotlin.Unit>, androidx.compose.ui.Modifier, androidx.compose.runtime.Composer, int, int);
+  public static final void PiDroidEndpointSecurityCard(com.harryaskham.pidroid.workspace.PiDroidEndpointAssessment, boolean, kotlin.jvm.functions.Function1<? super java.lang.Boolean, kotlin.Unit>, androidx.compose.ui.Modifier, androidx.compose.runtime.Composer, int, int);
+}
+
+public final class com.harryaskham.pidroid.workspace.DailyDriverUxPrimitivesKt$WhenMappings {
+  public static final int[] $EnumSwitchMapping$0;
+  public static final int[] $EnumSwitchMapping$1;
+}
+
+public final class com.harryaskham.pidroid.workspace.DailyDriverUxShowcaseKt {
+  public static final void PiDroidDailyDriverShowcase(com.harryaskham.pidroid.workspace.PiDroidDailyDriverScreenshotProfile, androidx.compose.ui.Modifier, androidx.compose.runtime.Composer, int, int);
+  public static final void access$ContextMetric(java.lang.String, java.lang.String, androidx.compose.runtime.Composer, int);
+}
+
+public final class com.harryaskham.pidroid.workspace.PiDroidColorSchemes {
+  public static final com.harryaskham.pidroid.workspace.PiDroidColorSchemes INSTANCE;
+  public static final int $stable;
+  public final androidx.compose.material3.ColorScheme getDark();
+  public final androidx.compose.material3.ColorScheme getLight();
+}
+
+public final class com.harryaskham.pidroid.workspace.PiDroidDailyDriverAdaptivePolicy {
+  public static final com.harryaskham.pidroid.workspace.PiDroidDailyDriverAdaptivePolicy INSTANCE;
+  public static final int $stable;
+  public final com.harryaskham.pidroid.workspace.PiDroidDailyDriverLayout resolve(int, float);
+  public static com.harryaskham.pidroid.workspace.PiDroidDailyDriverLayout resolve$default(com.harryaskham.pidroid.workspace.PiDroidDailyDriverAdaptivePolicy, int, float, int, java.lang.Object);
+}
+
+public final class com.harryaskham.pidroid.workspace.PiDroidDailyDriverAdaptivePolicy$WhenMappings {
+  public static final int[] $EnumSwitchMapping$0;
+}
+
+public final class com.harryaskham.pidroid.workspace.PiDroidDailyDriverLayout {
+  public static final int $stable;
+  public com.harryaskham.pidroid.workspace.PiDroidDailyDriverLayout(com.harryaskham.pidroid.workspace.PiDroidWindowClass, float, float, float, boolean, boolean);
+  public final com.harryaskham.pidroid.workspace.PiDroidWindowClass getWindowClass();
+  public final float getMinimumTouchTargetDp();
+  public final float getContentGutterDp();
+  public final float getSessionRailWidthDp();
+  public final boolean getShowPersistentSessionRail();
+  public final boolean getShowContextPane();
+  public final com.harryaskham.pidroid.workspace.PiDroidWindowClass component1();
+  public final float component2();
+  public final float component3();
+  public final float component4();
+  public final boolean component5();
+  public final boolean component6();
+  public final com.harryaskham.pidroid.workspace.PiDroidDailyDriverLayout copy(com.harryaskham.pidroid.workspace.PiDroidWindowClass, float, float, float, boolean, boolean);
+  public static com.harryaskham.pidroid.workspace.PiDroidDailyDriverLayout copy$default(com.harryaskham.pidroid.workspace.PiDroidDailyDriverLayout, com.harryaskham.pidroid.workspace.PiDroidWindowClass, float, float, float, boolean, boolean, int, java.lang.Object);
+  public java.lang.String toString();
+  public int hashCode();
+  public boolean equals(java.lang.Object);
+}
+
+public final class com.harryaskham.pidroid.workspace.PiDroidDailyDriverScreenshotFixtures {
+  public static final com.harryaskham.pidroid.workspace.PiDroidDailyDriverScreenshotFixtures INSTANCE;
+  public static final int $stable;
+  public final java.util.List<com.harryaskham.pidroid.workspace.PiDroidDailyDriverScreenshotProfile> getAll();
+  public final com.harryaskham.pidroid.workspace.PiDroidDailyDriverScreenshotProfile profile(java.lang.String);
+}
+
+public final class com.harryaskham.pidroid.workspace.PiDroidDailyDriverScreenshotProfile {
+  public static final int $stable;
+  public com.harryaskham.pidroid.workspace.PiDroidDailyDriverScreenshotProfile(java.lang.String, java.lang.String, int, int, int, int, float);
+  public com.harryaskham.pidroid.workspace.PiDroidDailyDriverScreenshotProfile(java.lang.String, java.lang.String, int, int, int, int, float, int, kotlin.jvm.internal.DefaultConstructorMarker);
+  public final java.lang.String getId();
+  public final java.lang.String getTitle();
+  public final int getWidthDp();
+  public final int getHeightDp();
+  public final int getWindowWidthPx();
+  public final int getWindowHeightPx();
+  public final float getFontScale();
+  public final java.lang.String component1();
+  public final java.lang.String component2();
+  public final int component3();
+  public final int component4();
+  public final int component5();
+  public final int component6();
+  public final float component7();
+  public final com.harryaskham.pidroid.workspace.PiDroidDailyDriverScreenshotProfile copy(java.lang.String, java.lang.String, int, int, int, int, float);
+  public static com.harryaskham.pidroid.workspace.PiDroidDailyDriverScreenshotProfile copy$default(com.harryaskham.pidroid.workspace.PiDroidDailyDriverScreenshotProfile, java.lang.String, java.lang.String, int, int, int, int, float, int, java.lang.Object);
+  public java.lang.String toString();
+  public int hashCode();
+  public boolean equals(java.lang.Object);
+}
+
+public final class com.harryaskham.pidroid.workspace.PiDroidDestination extends java.lang.Enum<com.harryaskham.pidroid.workspace.PiDroidDestination> {
+  public static final com.harryaskham.pidroid.workspace.PiDroidDestination TRANSCRIPT;
+  public static final com.harryaskham.pidroid.workspace.PiDroidDestination TREE;
+  public static final com.harryaskham.pidroid.workspace.PiDroidDestination TERMINAL;
+  public static final com.harryaskham.pidroid.workspace.PiDroidDestination EXTENSIONS;
+  public final java.lang.String getLabel();
+  public static com.harryaskham.pidroid.workspace.PiDroidDestination[] values();
+  public static com.harryaskham.pidroid.workspace.PiDroidDestination valueOf(java.lang.String);
+  public static kotlin.enums.EnumEntries<com.harryaskham.pidroid.workspace.PiDroidDestination> getEntries();
+}
+
+public final class com.harryaskham.pidroid.workspace.PiDroidEndpointAssessment {
+  public static final int $stable;
+  public com.harryaskham.pidroid.workspace.PiDroidEndpointAssessment(com.harryaskham.pidroid.workspace.PiDroidEndpointSecurity, java.lang.String, java.lang.String, boolean, boolean);
+  public final com.harryaskham.pidroid.workspace.PiDroidEndpointSecurity getSecurity();
+  public final java.lang.String getHeadline();
+  public final java.lang.String getGuidance();
+  public final boolean getCanConnect();
+  public final boolean getRequiresCleartextAcknowledgement();
+  public final com.harryaskham.pidroid.workspace.PiDroidEndpointSecurity component1();
+  public final java.lang.String component2();
+  public final java.lang.String component3();
+  public final boolean component4();
+  public final boolean component5();
+  public final com.harryaskham.pidroid.workspace.PiDroidEndpointAssessment copy(com.harryaskham.pidroid.workspace.PiDroidEndpointSecurity, java.lang.String, java.lang.String, boolean, boolean);
+  public static com.harryaskham.pidroid.workspace.PiDroidEndpointAssessment copy$default(com.harryaskham.pidroid.workspace.PiDroidEndpointAssessment, com.harryaskham.pidroid.workspace.PiDroidEndpointSecurity, java.lang.String, java.lang.String, boolean, boolean, int, java.lang.Object);
+  public java.lang.String toString();
+  public int hashCode();
+  public boolean equals(java.lang.Object);
+}
+
+public final class com.harryaskham.pidroid.workspace.PiDroidEndpointPolicy {
+  public static final com.harryaskham.pidroid.workspace.PiDroidEndpointPolicy INSTANCE;
+  public static final int $stable;
+  public final com.harryaskham.pidroid.workspace.PiDroidEndpointAssessment assess(java.lang.String);
+}
+
+public final class com.harryaskham.pidroid.workspace.PiDroidEndpointSecurity extends java.lang.Enum<com.harryaskham.pidroid.workspace.PiDroidEndpointSecurity> {
+  public static final com.harryaskham.pidroid.workspace.PiDroidEndpointSecurity SECURE;
+  public static final com.harryaskham.pidroid.workspace.PiDroidEndpointSecurity LOOPBACK_HTTP;
+  public static final com.harryaskham.pidroid.workspace.PiDroidEndpointSecurity REMOTE_HTTP_REQUIRES_ACKNOWLEDGEMENT;
+  public static final com.harryaskham.pidroid.workspace.PiDroidEndpointSecurity INVALID;
+  public static final com.harryaskham.pidroid.workspace.PiDroidEndpointSecurity UNSUPPORTED_SCHEME;
+  public static com.harryaskham.pidroid.workspace.PiDroidEndpointSecurity[] values();
+  public static com.harryaskham.pidroid.workspace.PiDroidEndpointSecurity valueOf(java.lang.String);
+  public static kotlin.enums.EnumEntries<com.harryaskham.pidroid.workspace.PiDroidEndpointSecurity> getEntries();
+}
+
+public final class com.harryaskham.pidroid.workspace.PiDroidRelativeActivity {
+  public static final com.harryaskham.pidroid.workspace.PiDroidRelativeActivity INSTANCE;
+  public static final int $stable;
+  public final java.lang.String label(java.lang.String, java.time.Instant);
+}
+
+public final class com.harryaskham.pidroid.workspace.PiDroidSessionFilter extends java.lang.Enum<com.harryaskham.pidroid.workspace.PiDroidSessionFilter> {
+  public static final com.harryaskham.pidroid.workspace.PiDroidSessionFilter ALL;
+  public static final com.harryaskham.pidroid.workspace.PiDroidSessionFilter ACTIVE;
+  public static final com.harryaskham.pidroid.workspace.PiDroidSessionFilter UNREAD;
+  public final java.lang.String getLabel();
+  public static com.harryaskham.pidroid.workspace.PiDroidSessionFilter[] values();
+  public static com.harryaskham.pidroid.workspace.PiDroidSessionFilter valueOf(java.lang.String);
+  public static kotlin.enums.EnumEntries<com.harryaskham.pidroid.workspace.PiDroidSessionFilter> getEntries();
+}
+
+public final class com.harryaskham.pidroid.workspace.PiDroidSessionInventory {
+  public static final com.harryaskham.pidroid.workspace.PiDroidSessionInventory INSTANCE;
+  public static final int $stable;
+  public final java.util.List<com.harryaskham.pidroid.workspace.PiDroidSessionSummary> filter(java.util.List<com.harryaskham.pidroid.workspace.PiDroidSessionSummary>, java.lang.String, com.harryaskham.pidroid.workspace.PiDroidSessionFilter);
+  public static final java.time.Instant access$parseInstantOrMinimum(com.harryaskham.pidroid.workspace.PiDroidSessionInventory, java.lang.String);
+}
+
+public final class com.harryaskham.pidroid.workspace.PiDroidSessionInventory$WhenMappings {
+  public static final int[] $EnumSwitchMapping$0;
+}
+
+public final class com.harryaskham.pidroid.workspace.PiDroidSessionInventory$filter$$inlined$compareByDescending$1<T> implements java.util.Comparator {
+  public com.harryaskham.pidroid.workspace.PiDroidSessionInventory$filter$$inlined$compareByDescending$1();
+  public final int compare(T, T);
+}
+
+public final class com.harryaskham.pidroid.workspace.PiDroidSessionInventory$filter$$inlined$thenBy$1<T> implements java.util.Comparator {
+  public com.harryaskham.pidroid.workspace.PiDroidSessionInventory$filter$$inlined$thenBy$1(java.util.Comparator);
+  public final int compare(T, T);
+}
+
+public final class com.harryaskham.pidroid.workspace.PiDroidSessionInventory$filter$$inlined$thenBy$2<T> implements java.util.Comparator {
+  public com.harryaskham.pidroid.workspace.PiDroidSessionInventory$filter$$inlined$thenBy$2(java.util.Comparator);
+  public final int compare(T, T);
+}
+
+public final class com.harryaskham.pidroid.workspace.PiDroidSessionSummary {
+  public static final int $stable;
+  public com.harryaskham.pidroid.workspace.PiDroidSessionSummary(java.lang.String, java.lang.String, java.lang.String, java.lang.String, java.lang.String, boolean, java.lang.String);
+  public final java.lang.String getId();
+  public final java.lang.String getTitle();
+  public final java.lang.String getProject();
+  public final java.lang.String getCwd();
+  public final java.lang.String getState();
+  public final boolean getUnread();
+  public final java.lang.String getActivityAt();
+  public final java.lang.String component1();
+  public final java.lang.String component2();
+  public final java.lang.String component3();
+  public final java.lang.String component4();
+  public final java.lang.String component5();
+  public final boolean component6();
+  public final java.lang.String component7();
+  public final com.harryaskham.pidroid.workspace.PiDroidSessionSummary copy(java.lang.String, java.lang.String, java.lang.String, java.lang.String, java.lang.String, boolean, java.lang.String);
+  public static com.harryaskham.pidroid.workspace.PiDroidSessionSummary copy$default(com.harryaskham.pidroid.workspace.PiDroidSessionSummary, java.lang.String, java.lang.String, java.lang.String, java.lang.String, java.lang.String, boolean, java.lang.String, int, java.lang.Object);
+  public java.lang.String toString();
+  public int hashCode();
+  public boolean equals(java.lang.Object);
+}
+
+public final class com.harryaskham.pidroid.workspace.PiDroidStatusTone extends java.lang.Enum<com.harryaskham.pidroid.workspace.PiDroidStatusTone> {
+  public static final com.harryaskham.pidroid.workspace.PiDroidStatusTone INFO;
+  public static final com.harryaskham.pidroid.workspace.PiDroidStatusTone POSITIVE;
+  public static final com.harryaskham.pidroid.workspace.PiDroidStatusTone WARNING;
+  public static final com.harryaskham.pidroid.workspace.PiDroidStatusTone ERROR;
+  public static final com.harryaskham.pidroid.workspace.PiDroidStatusTone MUTED;
+  public static com.harryaskham.pidroid.workspace.PiDroidStatusTone[] values();
+  public static com.harryaskham.pidroid.workspace.PiDroidStatusTone valueOf(java.lang.String);
+  public static kotlin.enums.EnumEntries<com.harryaskham.pidroid.workspace.PiDroidStatusTone> getEntries();
+}
+
+public final class com.harryaskham.pidroid.workspace.PiDroidWindowClass extends java.lang.Enum<com.harryaskham.pidroid.workspace.PiDroidWindowClass> {
+  public static final com.harryaskham.pidroid.workspace.PiDroidWindowClass PHONE;
+  public static final com.harryaskham.pidroid.workspace.PiDroidWindowClass TABLET;
+  public static final com.harryaskham.pidroid.workspace.PiDroidWindowClass WIDE;
+  public static com.harryaskham.pidroid.workspace.PiDroidWindowClass[] values();
+  public static com.harryaskham.pidroid.workspace.PiDroidWindowClass valueOf(java.lang.String);
+  public static kotlin.enums.EnumEntries<com.harryaskham.pidroid.workspace.PiDroidWindowClass> getEntries();
 }
 
 public final class com.harryaskham.pidroid.workspace.SplitAxis extends java.lang.Enum<com.harryaskham.pidroid.workspace.SplitAxis> {

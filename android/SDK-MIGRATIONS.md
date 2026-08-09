@@ -35,6 +35,16 @@ The same alpha intentionally carries the coordinated additive editable-host and
 credential-replacement boundary in `core`; neither feature weakens credential
 lifetime or adds a bearer getter.
 
+Pre-publication `workspace-ui` baseline sync:
+
+- PR #57 added the public daily-driver adaptive layout, destination/session
+  inventory models, endpoint policy, theme/status/navigation primitives, and
+  deterministic screenshot showcase used by the Pi Droid app.
+- These additive classes are part of the alpha.2 AAR and its authoritative
+  `javap` baseline. No alpha.2 Maven repository or release archive existed before
+  this sync (`previouslyPublished=false`), so no shipped consumer contract is
+  being changed or retroactively relabeled.
+
 Coordinates:
 
 - `com.harryaskham.pidroid.sdk:core:0.3.0-alpha.2`

@@ -94,11 +94,18 @@ test("Pi Droid SDK publication source contract is explicit and credential free",
   assert.match(coreBaseline, /NeutralHttpRequest http\([^\n]+java\.util\.List<kotlin\.Pair/);
   assert.match(coreBaseline, /SessionLifecycleCoordinator/);
   assert.match(coreBaseline, /createConfiguredSession/);
+  const workspaceBaseline = read(join(android, "sdk-api", "workspace-ui.api.txt"));
+  assert.match(workspaceBaseline, /PiDroidDailyDriverAdaptivePolicy/);
+  assert.match(workspaceBaseline, /PiDroidDestinationBar/);
+  assert.match(workspaceBaseline, /PiDroidEndpointPolicy/);
+  assert.match(workspaceBaseline, /PiDroidDailyDriverShowcase/);
   const migrationText = read(migrations);
   assert.match(migrationText, /session-lifecycle-host-registry-v1/);
   assert.match(migrationText, /live-readonly-v2/);
   assert.match(migrationText, /HostCredentialVault\.withBearerSuspending/);
   assert.match(migrationText, /ServiceBearerRequestFactory\.http/);
+  assert.match(migrationText, /Pre-publication `workspace-ui` baseline sync/);
+  assert.match(migrationText, /previouslyPublished=false/);
 
   const settings = read(join(android, "settings.gradle.kts"));
   assert.match(settings, /piDroidAndroidSdk/);
