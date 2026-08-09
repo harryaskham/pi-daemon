@@ -47,6 +47,47 @@ if [[ -e "$artifacts_dir" && ( ! -d "$artifacts_dir" || -n "$(find "$artifacts_d
   printf '%s\n' 'external canary artifacts directory must be absent or empty' >&2
   exit 64
 fi
+
+preflight_external_canary_node_dependencies() {
+  local root="$1"
+  local dependencies_valid='true'
+  local node_status=0
+  command -v node >/dev/null 2>&1 || dependencies_valid='false'
+  command -v npm >/dev/null 2>&1 || dependencies_valid='false'
+  [[ -d "$root/node_modules" ]] || dependencies_valid='false'
+  [[ -x "$root/node_modules/.bin/tsc" ]] || dependencies_valid='false'
+  [[ -f "$root/node_modules/typescript/bin/tsc" ]] || dependencies_valid='false'
+  [[ -f "$root/node_modules/typescript/package.json" ]] || dependencies_valid='false'
+  if [[ "$dependencies_valid" == 'true' ]]; then
+    node - "$root" >/dev/null 2>&1 <<'NODE' || node_status=$?
+const fs = require("node:fs");
+const path = require("node:path");
+const root = process.argv[2];
+const manifest = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
+const lock = JSON.parse(fs.readFileSync(path.join(root, "package-lock.json"), "utf8"));
+const installed = JSON.parse(fs.readFileSync(path.join(root, "node_modules/typescript/package.json"), "utf8"));
+const expected = manifest.devDependencies?.typescript;
+const locked = lock.packages?.["node_modules/typescript"]?.version;
+if (typeof expected !== "string" || expected !== locked || expected !== installed.version) process.exit(1);
+NODE
+    (( node_status == 0 )) || dependencies_valid='false'
+  fi
+  if [[ "$dependencies_valid" == 'true' ]] && ! (
+    cd "$root" && npm ls --all --ignore-scripts --offline >/dev/null 2>&1
+  ); then
+    dependencies_valid='false'
+  fi
+  if [[ "$dependencies_valid" != 'true' ]]; then
+    printf '%s\n' \
+      'external_canary_local_preflight_failed code=node_dependencies_unavailable remedy=npm_ci_ignore_scripts' >&2
+    return 70
+  fi
+}
+
+# This must precede artifact creation, token readers, authenticated requests,
+# Gradle, ADB, and emulator startup. It never installs or repairs dependencies.
+preflight_external_canary_node_dependencies "$repo_root"
+
 artifacts_dir="$(mkdir -p "$artifacts_dir" && cd "$artifacts_dir" && pwd)"
 chmod 700 "$artifacts_dir"
 mkdir -p "$artifacts_dir/screenshots"

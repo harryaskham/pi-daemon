@@ -137,9 +137,14 @@ argv or environment. It accepts only a canonical API origin, an owner-only
 regular token file, and an empty private artifact directory. Remote plaintext
 HTTP is refused unless `--allow-insecure-http` is present.
 
-Before emulator work, its host preflight uses authenticated bounded GETs to
-capabilities, inventory, the selected information resource, and its transcript.
-The capabilities response must report `host.ready: true` and
+Before reading the token file or spending any authenticated request budget, the
+harness proves that the checkout has the exact locked TypeScript compiler and a
+complete offline `npm ls` dependency graph required by `npm run build:src`.
+This gate never installs or repairs packages: prepare a clean reviewed checkout
+with `npm ci --ignore-scripts`. Only after that local gate passes does the host
+preflight use authenticated bounded GETs to capabilities, inventory, the
+selected information resource, and its transcript. The capabilities response
+must report `host.ready: true` and
 `host.draining: false`; otherwise the helper stops after that first GET, before
 inventory/transcript selection, staging, build, emulator, ADB, install, or app
 launch. The resulting debug-only one-shot import fences `hostInstanceId` and
