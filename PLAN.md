@@ -539,6 +539,9 @@ process appears per wake.
 - [x] `bd-4e6f17` Accept a present JSON boolean false observer eligibility in the
   external-canary harness, reject missing and wrong-type values, and continue the
   readonly proof through the explicit observer-not-requested path.
+- [x] `bd-335987` Prove the exact locked Node and TypeScript dependency graph
+  before the external-canary harness reads its token or spends authenticated GET
+  budget, with typed local failure and zero Gradle, ADB, or emulator startup.
 - [x] `bd-dd353f` Add the Cacophony-neutral Pi Droid SDK session lifecycle for
   capability-derived configured create, retained list/read/adopt, durable ticket
   reconciliation, transcript-authorized observer and TUI attach, explicit control,

@@ -126,15 +126,25 @@ app against an already-running Pi Daemon canary. It accepts a canonical base API
 URL and the path to an owner-owned regular token file; plain remote HTTP also
 requires the explicit `--allow-insecure-http` acknowledgement.
 
+From the same reviewed checkout, first materialize the exact lock without
+running package lifecycle scripts, then use a new absent artifact path for every
+attempt. Never reuse an artifact directory or receipt from an exhausted request
+budget.
+
 ```console
+nix develop .#androidRelease --command npm ci --ignore-scripts
 nix develop .#androidRelease --command \
   android/build-logic/external-canary-proof.sh \
     --api-url https://pi.example.test \
     --token-file "$HOME/.local/state/pi-daemon/instance/api-token" \
-    --artifacts "$PWD/artifacts/pi-droid-external-canary"
+    --artifacts "$PWD/artifacts/pi-droid-external-canary-fresh"
 ```
 
-The harness performs four authenticated, bounded `GET` requests only:
+The harness first proves the locked local Node dependency graph, including the
+exact `node_modules/.bin/tsc` used by `build:src`. A missing or stale install
+fails with a typed local-preflight error before artifact creation, token-file
+reading, authenticated requests, Gradle, ADB, or emulator startup. After that
+gate, the harness performs four authenticated, bounded `GET` requests only:
 capabilities, inventory, information, and transcript. The capabilities GET is a
 hard readiness gate: unless it reports `host.ready: true` and
 `host.draining: false`, no inventory/transcript selection or later device work

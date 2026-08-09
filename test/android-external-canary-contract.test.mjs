@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, cp, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -344,6 +344,81 @@ test("preflight uses only bounded authenticated GETs and emits a content-free fe
   });
 });
 
+test("missing local Node dependencies consume no authenticated or device budget", async (t) => {
+  const sandbox = await mkdtemp(path.join(tmpdir(), "pi-droid-external-dependency-test-"));
+  t.after(() => rm(sandbox, { recursive: true, force: true }));
+  await chmod(sandbox, 0o700);
+  const bash = await resolveBash();
+
+  await withFixtureServer(fixtureToken, async ({ origin, requests }) => {
+    for (const fixture of [
+      { name: "missing-node-modules", validToken: true },
+      { name: "missing-tsc", validToken: false },
+    ]) {
+      const fixtureRoot = await privateDirectory(sandbox, fixture.name);
+      const repository = await privateDirectory(fixtureRoot, "repository");
+      await mkdir(path.join(repository, "android"), { mode: 0o700 });
+      await cp(
+        path.join(root, "android/build-logic"),
+        path.join(repository, "android/build-logic"),
+        { recursive: true },
+      );
+      await cp(path.join(root, "package.json"), path.join(repository, "package.json"));
+      await cp(path.join(root, "package-lock.json"), path.join(repository, "package-lock.json"));
+      if (fixture.name === "missing-tsc") {
+        await mkdir(path.join(repository, "node_modules/.bin"), { recursive: true, mode: 0o700 });
+      }
+
+      const gradleMarker = path.join(fixtureRoot, "gradle-started");
+      const emulatorMarker = path.join(fixtureRoot, "emulator-started");
+      await writeFile(
+        path.join(repository, "android/gradlew"),
+        `#!${bash}\n: > "$GRADLE_MARKER"\nexit 97\n`,
+        { mode: 0o700 },
+      );
+      const fakeBin = await privateDirectory(fixtureRoot, "bin");
+      const fakeEmulator = path.join(fakeBin, "emulator");
+      await writeFile(fakeEmulator, `#!${bash}\n: > "$EMULATOR_MARKER"\nexit 98\n`, { mode: 0o700 });
+      await chmod(fakeEmulator, 0o700);
+
+      const tokenFile = path.join(fixtureRoot, "api-token");
+      if (fixture.validToken) await writePrivateToken(tokenFile, `${fixtureToken}\n`);
+      const artifacts = path.join(fixtureRoot, "artifacts");
+      const requestsBefore = requests.length;
+      await assert.rejects(
+        runProcess("bash", [
+          path.join(repository, "android/build-logic/external-canary-proof.sh"),
+          "--api-url", origin,
+          "--token-file", tokenFile,
+          "--artifacts", artifacts,
+          "--allow-insecure-http",
+        ], {
+          env: {
+            PATH: `${fakeBin}:${process.env.PATH ?? ""}`,
+            GRADLE_MARKER: gradleMarker,
+            EMULATOR_MARKER: emulatorMarker,
+          },
+        }),
+        (error) => {
+          assert.equal(error.code, 70, fixture.name);
+          assert.equal(error.stdout, "", fixture.name);
+          assert.equal(
+            error.stderr,
+            "external_canary_local_preflight_failed code=node_dependencies_unavailable remedy=npm_ci_ignore_scripts\n",
+            fixture.name,
+          );
+          assert.doesNotMatch(`${error.stdout}${error.stderr}`, new RegExp(fixtureToken), fixture.name);
+          return true;
+        },
+      );
+      assert.equal(requests.length, requestsBefore, `${fixture.name} must perform zero GETs`);
+      await assert.rejects(stat(gradleMarker), { code: "ENOENT" });
+      await assert.rejects(stat(emulatorMarker), { code: "ENOENT" });
+      await assert.rejects(stat(artifacts), { code: "ENOENT" });
+    }
+  });
+});
+
 test("false observer eligibility reaches the next bounded harness phase", async (t) => {
   const sandbox = await mkdtemp(path.join(tmpdir(), "pi-droid-external-false-path-test-"));
   t.after(() => rm(sandbox, { recursive: true, force: true }));
@@ -354,7 +429,11 @@ test("false observer eligibility reaches the next bounded harness phase", async 
   const fakeNpm = path.join(fakeBin, "npm");
   const bash = await resolveBash();
   await writePrivateToken(tokenFile, `${fixtureToken}\n`);
-  await writeFile(fakeNpm, `#!${bash}\nprintf '%s\\n' 'phase=node-build boundary=entered'\nexit 23\n`, { mode: 0o700 });
+  await writeFile(
+    fakeNpm,
+    `#!${bash}\nif [[ "\${1:-}" == 'ls' ]]; then exit 0; fi\nprintf '%s\\n' 'phase=node-build boundary=entered'\nexit 23\n`,
+    { mode: 0o700 },
+  );
   await chmod(fakeNpm, 0o700);
 
   await withFixtureServer(fixtureToken, async ({ origin, requests, setTranscriptUnavailable }) => {
