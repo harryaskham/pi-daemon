@@ -352,7 +352,7 @@ if [[ "$FAKE_ADB_MODE" == 'cumulative-bound' ]]; then
   # phase depend on process-launch latency, especially inside Darwin builders.
   external_canary_staging_now_millis() {
     local call_index=0
-    local now_millis=1001000
+    local now_millis=1005000
     IFS= read -r call_index < "$FAKE_STAGING_CLOCK"
     case "$call_index" in
       0) now_millis=1000000 ;;
@@ -361,6 +361,13 @@ if [[ "$FAKE_ADB_MODE" == 'cumulative-bound' ]]; then
     esac
     printf '%s\\n' "$((call_index + 1))" > "$FAKE_STAGING_CLOCK"
     printf '%s\\n' "$now_millis"
+  }
+elif [[ "$FAKE_ADB_MODE" == *-hang ]]; then
+  # Keep prerequisite process-launch latency from spending the one-second
+  # fixture budget before the intended hanging phase starts. The real timeout
+  # command still enforces one wall-clock second around each fake ADB process.
+  external_canary_staging_now_millis() {
+    printf '%s\\n' '1000000'
   }
 fi
 staging_file="$2"
@@ -380,18 +387,18 @@ stage_external_canary_import \\
 
   for (const fixture of [
     { name: "success", mode: "success", code: 0, receiptCode: "verified", launches: true, deadlineSeconds: 5 },
-    { name: "mkdir-failure", mode: "mkdir-failure", code: 70, receiptCode: "adb_staging_mkdir_failed", phase: "mkdir", launches: false },
+    { name: "mkdir-failure", mode: "mkdir-failure", code: 70, receiptCode: "adb_staging_mkdir_failed", phase: "mkdir", launches: false, deadlineSeconds: 5 },
     { name: "mkdir-hang", mode: "mkdir-hang", code: 70, receiptCode: "adb_staging_timeout", phase: "mkdir", launches: false, bounded: true },
-    { name: "write-failure", mode: "write-failure", code: 70, receiptCode: "adb_staging_write_failed", phase: "write", launches: false },
+    { name: "write-failure", mode: "write-failure", code: 70, receiptCode: "adb_staging_write_failed", phase: "write", launches: false, deadlineSeconds: 5 },
     { name: "write-hang-after-eof", mode: "write-hang", code: 70, receiptCode: "adb_staging_timeout", phase: "write", launches: false, bounded: true },
-    { name: "chmod-failure", mode: "chmod-failure", code: 70, receiptCode: "adb_staging_chmod_failed", phase: "chmod", launches: false },
+    { name: "chmod-failure", mode: "chmod-failure", code: 70, receiptCode: "adb_staging_chmod_failed", phase: "chmod", launches: false, deadlineSeconds: 5 },
     { name: "chmod-hang", mode: "chmod-hang", code: 70, receiptCode: "adb_staging_timeout", phase: "chmod", launches: false, bounded: true },
-    { name: "stat-failure", mode: "stat-failure", code: 70, receiptCode: "adb_staging_verification_failed", phase: "stat", launches: false },
+    { name: "stat-failure", mode: "stat-failure", code: 70, receiptCode: "adb_staging_verification_failed", phase: "stat", launches: false, deadlineSeconds: 5 },
     { name: "stat-hang", mode: "stat-hang", code: 70, receiptCode: "adb_staging_timeout", phase: "stat", launches: false, bounded: true },
-    { name: "sha256-failure", mode: "sha256-failure", code: 70, receiptCode: "adb_staging_verification_failed", phase: "sha256", launches: false },
+    { name: "sha256-failure", mode: "sha256-failure", code: 70, receiptCode: "adb_staging_verification_failed", phase: "sha256", launches: false, deadlineSeconds: 5 },
     { name: "sha256-hang", mode: "sha256-hang", code: 70, receiptCode: "adb_staging_timeout", phase: "sha256", launches: false, bounded: true },
-    { name: "verification-mismatch", mode: "verification-mismatch", code: 70, receiptCode: "adb_staging_verification_failed", phase: "verification", launches: false },
-    { name: "cumulative-bound", mode: "cumulative-bound", code: 70, receiptCode: "adb_staging_timeout", phase: "chmod", launches: false, bounded: true },
+    { name: "verification-mismatch", mode: "verification-mismatch", code: 70, receiptCode: "adb_staging_verification_failed", phase: "verification", launches: false, deadlineSeconds: 5 },
+    { name: "cumulative-bound", mode: "cumulative-bound", code: 70, receiptCode: "adb_staging_timeout", phase: "chmod", launches: false, deadlineSeconds: 5 },
   ]) {
     const fixtureRoot = await privateDirectory(sandbox, fixture.name);
     const artifacts = await privateDirectory(fixtureRoot, "artifacts");
