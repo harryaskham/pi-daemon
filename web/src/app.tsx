@@ -119,7 +119,7 @@ function displaySession(record: SessionInventoryRecord): SessionFixture {
     project,
     model: "not hydrated",
     thinking: "off",
-    contextPercent: 0,
+    contextPercent: null,
   };
 }
 

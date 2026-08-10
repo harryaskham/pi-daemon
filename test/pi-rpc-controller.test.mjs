@@ -5,6 +5,7 @@ import test from "node:test";
 import {
   PI_RPC_HOST_CAPABILITIES,
   PiRpcController,
+  projectPiRpcSessionStats,
 } from "../dist/pi-rpc-controller.js";
 import { PI_RPC_COMMAND_TYPES } from "../dist/session-api.js";
 
@@ -160,7 +161,18 @@ class FakeRpcSession {
     this.bashAborted = true;
   }
   getSessionStats() {
-    return { sessionId: this.sessionId, sessionFile: this.sessionFile, totalMessages: 2 };
+    return {
+      sessionId: this.sessionId,
+      sessionFile: this.sessionFile,
+      userMessages: 1,
+      assistantMessages: 1,
+      toolCalls: 0,
+      toolResults: 0,
+      totalMessages: 2,
+      tokens: { input: 20, output: 5, cacheRead: 3, cacheWrite: 0, total: 28 },
+      cost: 0.25,
+      contextUsage: { tokens: 85_000, contextWindow: 200_000, percent: 42.5 },
+    };
   }
   getUserMessagesForForking() {
     return [{ entryId: "entry-1", text: "hello" }];
@@ -311,6 +323,13 @@ test("controller conforms to every pinned Pi RPC command without owning a proces
   ]);
   assert.equal(host.session.thinkingLevel, "max");
   assert.equal(host.session.sessionName, "named");
+  const stats = (await controller.handle({ type: "get_session_stats" })).data;
+  assert.deepEqual(stats.contextUsage, {
+    tokens: 85_000,
+    contextWindow: 200_000,
+    percent: 42.5,
+  });
+  assert.equal("sessionFile" in stats, false, "session statistics must not expose private paths");
   assert.deepEqual(
     (await controller.handle({ type: "get_entries", since: "entry-1" })).data.entries,
     [entryTwo],
@@ -334,6 +353,33 @@ test("controller conforms to every pinned Pi RPC command without owning a proces
   ]);
   await assert.rejects(controller.navigateTree({ entryId: "x".repeat(300) }), /entryId/);
   controller.dispose();
+});
+
+test("session stats projection preserves Pi context truth and fails unknown safely", () => {
+  const base = {
+    sessionId: "stats-session",
+    sessionFile: "/private/session.jsonl",
+    userMessages: 1,
+    assistantMessages: 1,
+    toolCalls: 0,
+    toolResults: 0,
+    totalMessages: 2,
+    tokens: { input: 1, output: 2, cacheRead: 3, cacheWrite: 4, total: 10 },
+    cost: 0.1,
+  };
+  assert.deepEqual(projectPiRpcSessionStats({
+    ...base,
+    contextUsage: { tokens: 250, contextWindow: 200, percent: 125 },
+  }).contextUsage, { tokens: 250, contextWindow: 200, percent: 100 });
+  assert.deepEqual(projectPiRpcSessionStats({
+    ...base,
+    contextUsage: { tokens: null, contextWindow: 200, percent: 25 },
+  }).contextUsage, { tokens: null, contextWindow: 200, percent: null });
+  assert.equal(projectPiRpcSessionStats({
+    ...base,
+    contextUsage: { tokens: 10, contextWindow: 0, percent: 10 },
+  }).contextUsage, undefined);
+  assert.equal("sessionFile" in projectPiRpcSessionStats(base), false);
 });
 
 test("shared prompt scheduler holds capacity through settlement while responding at preflight", async () => {

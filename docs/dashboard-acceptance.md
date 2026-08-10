@@ -41,6 +41,13 @@ rendered the same non-fixture production inventory, and then stopped without a
 listener leak. This proves the same SPA/BFF behavior in embedded and dedicated
 modes without in-process coupling.
 
+Live Rich hydration reads Pi's supported active-context usage rather than
+inventing a value from transcript totals. The browser renders the SDK percentage
+when available, refreshes it after turn/model/compaction/tree/reconnect changes,
+and renders **Unknown** while the SDK estimate is absent. A missing field can
+therefore never appear as `0%`; an actual zero remains distinguishable and
+measured.
+
 ## Performance and bundle receipts
 
 Machine-readable values are checked in at

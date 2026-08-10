@@ -485,6 +485,9 @@ process appears per wake.
 
 ## Provisional Beads work board
 
+- [x] `bd-2aeb03` Project the pinned Pi SDK's live active-context usage into
+  Dash, refresh it on context/identity transitions, and render unavailable
+  estimates as unknown instead of hard-coded zero.
 - [x] `bd-6b9b42` Synchronize the unpublished alpha.2 workspace-ui API baseline
   with PR #57's additive public daily-driver surface before artifact creation.
 - [x] `bd-d3772c` Remove the Pi Droid SDK lifecycle proof's check-then-bind port
