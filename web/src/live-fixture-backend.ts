@@ -703,6 +703,13 @@ function resource(session: SessionFixture): SessionResource {
     lastUsedAt: session.modifiedAt,
     spec: { cwd: session.cwd, target: { mode: "memory" }, isolation: { mode: "unisolated" } },
     environment: { keys: [], persistence: "memory-only", provisioned: true },
+    toolMaterialization: {
+      state: "unavailable",
+      truncated: false,
+      active: [],
+      required: [],
+      entries: [],
+    },
     links: { self: `/v1/session/${session.sessionId}`, rpc: `/v1/session/${session.sessionId}/rpc`, apc: `/v1/session/${session.sessionId}/apc` },
   };
 }

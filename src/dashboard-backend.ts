@@ -279,6 +279,17 @@ export class InProcessDashboardBackend implements DashboardBackend {
     const managed = info.managed;
     if (managed === undefined) return info;
     const hub = this.#richHubs.get(hubKey(managed.sessionId, managed.generation));
+    const [retained, liveToolMaterialization] = await Promise.all([
+      this.#multiplexer.retainedSession(managed.sessionId),
+      this.#multiplexer.sessionToolMaterialization(
+        managed.sessionId,
+        managed.generation,
+      ),
+    ]);
+    const toolMaterialization =
+      retained === undefined
+        ? liveToolMaterialization
+        : catalogRecordToSessionResource(retained, liveToolMaterialization).toolMaterialization;
     return {
       ...info,
       runtime: {
@@ -289,6 +300,7 @@ export class InProcessDashboardBackend implements DashboardBackend {
           managed.generation,
         ),
         isolation: "unisolated",
+        ...(toolMaterialization === undefined ? {} : { toolMaterialization }),
       },
     };
   }
@@ -534,7 +546,10 @@ export class InProcessDashboardBackend implements DashboardBackend {
     this.#assertOpen();
     const record = await this.#multiplexer.retainedSession(sessionRef);
     if (record === undefined) throw new InProcessDashboardBackendError("session_not_found", "managed session does not exist");
-    return catalogRecordToSessionResource(record);
+    return catalogRecordToSessionResource(
+      record,
+      await this.#multiplexer.sessionToolMaterialization(record.sessionId, record.generation),
+    );
   }
 
   async openSessionChannel(options: SessionChannelOptions): Promise<DashboardChannel> {
@@ -642,7 +657,13 @@ export class InProcessDashboardBackend implements DashboardBackend {
         sessionId: retained.sessionId,
         generation,
       },
-      session: catalogRecordToSessionResource(retained),
+      session: catalogRecordToSessionResource(
+        retained,
+        await this.#multiplexer.sessionToolMaterialization(
+          retained.sessionId,
+          retained.generation,
+        ),
+      ),
       controller,
     };
   }

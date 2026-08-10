@@ -59,6 +59,7 @@ import {
 } from "./session-ownership-store.js";
 import { formatSessionSourceFingerprint } from "./source-fingerprint.js";
 import { hasForbiddenExposure, hasForeignPathOwner } from "./path-ownership.js";
+import { unavailableToolMaterialization } from "./tool-materialization.js";
 
 export const DIRECT_COOPT_POLICY_REF = DASH_DIRECT_COOPT_POLICY_REF;
 export const DEFAULT_OWNERSHIP_MAX_SOURCE_BYTES = 256 * 1024 * 1024;
@@ -1342,6 +1343,7 @@ function snapshotToResource(opened: OpenResult, spec: SessionSpec): SessionResou
     lastUsedAt: now,
     spec: structuredClone(persistedSpec),
     environment: { keys: [], persistence: "memory-only", provisioned: true },
+    toolMaterialization: unavailableToolMaterialization(persistedSpec, "unavailable"),
     links: {
       self: `/v1/session/${encodeURIComponent(opened.session.sessionId)}`,
       rpc: `/v1/session/${encodeURIComponent(opened.session.sessionId)}/rpc`,

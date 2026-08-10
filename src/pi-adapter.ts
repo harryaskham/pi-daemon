@@ -26,6 +26,7 @@ import {
   type CreateAgentSessionRuntimeFactory,
   type ResourceLoader,
   type ToolDefinition,
+  type ToolInfo,
 } from "@earendil-works/pi-coding-agent";
 
 import { encodedSessionId, ensurePrivateDirectory } from "./durability.js";
@@ -43,6 +44,7 @@ import {
   extensionFlagValues,
   providerApiKeyFromEnvironment,
   toolConfiguration,
+  type PersistedSessionConfiguration,
   type PreparedSessionRuntimeOptions,
 } from "./session-config.js";
 import type {
@@ -59,6 +61,14 @@ import {
 } from "./tool-adapter-runtime.js";
 import type { HostToolAdapterDescriptor } from "./tool-adapter-protocol.js";
 import { hasForbiddenExposure, hasForeignPathOwner } from "./path-ownership.js";
+import type {
+  SessionToolMaterialization,
+  SessionToolSourceClass,
+} from "./session-api.js";
+import {
+  liveToolMaterialization,
+  type RuntimeToolInventoryEntry,
+} from "./tool-materialization.js";
 
 export interface PiSessionFactoryOptions {
   stateDir: string;
@@ -429,6 +439,7 @@ export class PiSessionFactory implements SessionFactory {
         : await this.#hostToolAdapters.open(hostToolAdapter, { cwd });
     const hostToolDefinitions =
       hostToolSession === undefined ? [] : createHostToolDefinitions(hostToolSession);
+    const toolSourceClassOverrides = new Map<string, SessionToolSourceClass>();
 
     const createRuntime: CreateAgentSessionRuntimeFactory = async ({
       cwd: runtimeCwd,
@@ -546,7 +557,23 @@ export class PiSessionFactory implements SessionFactory {
         result.session.dispose();
         throw new DOMException("operation aborted", "AbortError");
       }
+      refreshToolSourceClassOverrides(
+        toolSourceClassOverrides,
+        result.session.getAllTools(),
+        installedPackageResources.extensions,
+      );
       const activeToolNames = result.session.getActiveToolNames();
+      const missingRequiredTools = (configuredSpec?.tools?.required ?? []).filter(
+        (name) => !activeToolNames.includes(name),
+      );
+      if (missingRequiredTools.length > 0) {
+        result.session.dispose();
+        throw new PiAdapterError(
+          "required_tools_unavailable",
+          "one or more required tools were not active after session materialization",
+          { missingToolIds: missingRequiredTools.sort((left, right) => left.localeCompare(right)) },
+        );
+      }
       if (
         hostToolAdapter !== undefined &&
         (activeToolNames.length !== hostToolNames.length ||
@@ -592,6 +619,9 @@ export class PiSessionFactory implements SessionFactory {
         sessionRoot: canonicalSessionDir,
         validateCwd,
         onTurnAuthOutcome: (failure) => this.#recordCallAuthOutcome(failure),
+        ...(configuredSpec === undefined ? {} : { configuredSpec }),
+        ...(hostToolNames.length === 0 ? {} : { hostToolNames }),
+        toolSourceClassOverrides,
         ...(hostToolSession === undefined
           ? {}
           : { disposeSessionResources: () => hostToolSession.dispose() }),
@@ -640,6 +670,9 @@ export interface PiSessionAdapterOptions {
   sessionRoot: string;
   validateCwd: (cwd: string) => Promise<string>;
   disposeSessionResources?: () => Promise<void>;
+  configuredSpec?: PersistedSessionConfiguration;
+  hostToolNames?: string[];
+  toolSourceClassOverrides?: ReadonlyMap<string, SessionToolSourceClass>;
   /**
    * Report the outcome of a completed turn's authentication.
    *
@@ -659,6 +692,9 @@ export class PiSessionAdapter implements SessionAdapter {
   readonly #validateCwd: (cwd: string) => Promise<string>;
   readonly #disposeSessionResources: (() => Promise<void>) | undefined;
   readonly #onTurnAuthOutcome: ((failure: string | undefined) => void) | undefined;
+  readonly #configuredSpec: PersistedSessionConfiguration | undefined;
+  readonly #hostToolNames: ReadonlySet<string>;
+  readonly #toolSourceClassOverrides: ReadonlyMap<string, SessionToolSourceClass>;
   #unsubscribe: (() => void) | undefined;
   #identityChangeHandler: ((identity: PiSessionIdentity) => Promise<void>) | undefined;
   #sessionNameChangeHandler: ((name: string) => Promise<void>) | undefined;
@@ -675,6 +711,9 @@ export class PiSessionAdapter implements SessionAdapter {
     this.#validateCwd = options.validateCwd;
     this.#disposeSessionResources = options.disposeSessionResources;
     this.#onTurnAuthOutcome = options.onTurnAuthOutcome;
+    this.#configuredSpec = options.configuredSpec;
+    this.#hostToolNames = new Set(options.hostToolNames ?? []);
+    this.#toolSourceClassOverrides = options.toolSourceClassOverrides ?? new Map();
     runtime.setBeforeSessionInvalidate(() => this.#invalidateSession());
     runtime.setRebindSession(async (session) => this.#bindSession(session, true, true));
   }
@@ -726,6 +765,26 @@ export class PiSessionAdapter implements SessionAdapter {
     if (this.#disposed || this.#invalidated) return undefined;
     const model = this.#runtime.session.model;
     return model === undefined ? undefined : { provider: model.provider, id: model.id };
+  }
+
+  toolMaterialization(): SessionToolMaterialization | undefined {
+    if (this.#disposed || this.#invalidated || this.#configuredSpec === undefined) {
+      return undefined;
+    }
+    const session = this.#runtime.session;
+    const inventory: RuntimeToolInventoryEntry[] = session.getAllTools().map((tool) => ({
+      name: tool.name,
+      sourceClass: toolSourceClass(
+        tool,
+        this.#hostToolNames,
+        this.#toolSourceClassOverrides,
+      ),
+    }));
+    return liveToolMaterialization(
+      this.#configuredSpec,
+      inventory,
+      session.getActiveToolNames(),
+    );
   }
 
   rpcSession(): AgentSession {
@@ -866,6 +925,7 @@ export class PiSessionAdapter implements SessionAdapter {
       if (bindExtensions) {
         await session.bindExtensions(this.#extensionBindingsFactory());
       }
+      this.#assertRequiredTools(session);
       this.#unsubscribe = session.subscribe((event) => this.#onSessionEvent(event));
       this.#invalidated = false;
       if (replacement && this.#identityChangeHandler !== undefined) {
@@ -938,6 +998,20 @@ export class PiSessionAdapter implements SessionAdapter {
     }
   }
 
+  #assertRequiredTools(session: AgentSession): void {
+    const active = new Set(session.getActiveToolNames());
+    const missing = (this.#configuredSpec?.tools?.required ?? [])
+      .filter((name) => !active.has(name))
+      .sort((left, right) => left.localeCompare(right));
+    if (missing.length > 0) {
+      throw new PiAdapterError(
+        "required_tools_unavailable",
+        "one or more required tools were not active after session materialization",
+        { missingToolIds: missing },
+      );
+    }
+  }
+
   #onSessionEvent(event: AgentSessionEvent): void {
     if (event.type === "turn_end") this.#reportTurnAuthOutcome(event.message);
     for (const listener of this.#rpcEventListeners) listener(event);
@@ -948,12 +1022,49 @@ export class PiSessionAdapter implements SessionAdapter {
 
 export class PiAdapterError extends Error {
   readonly code: string;
+  readonly details: Record<string, unknown> | undefined;
+  readonly protocolSafe = true as const;
 
-  constructor(code: string, message: string) {
+  constructor(code: string, message: string, details?: Record<string, unknown>) {
     super(message);
     this.name = "PiAdapterError";
     this.code = code;
+    this.details = details;
   }
+}
+
+function toolSourceClass(
+  tool: ToolInfo,
+  hostToolNames: ReadonlySet<string>,
+  overrides: ReadonlyMap<string, SessionToolSourceClass>,
+): SessionToolSourceClass {
+  const override = overrides.get(tool.name);
+  if (override !== undefined) return override;
+  if (hostToolNames.has(tool.name)) return "host-adapter";
+  if (tool.sourceInfo.source === "builtin") return "builtin";
+  if (tool.sourceInfo.origin === "package") return "inherited-package";
+  if (tool.sourceInfo.source === "sdk") return "sdk";
+  return "explicit-extension";
+}
+
+function refreshToolSourceClassOverrides(
+  overrides: Map<string, SessionToolSourceClass>,
+  tools: readonly ToolInfo[],
+  installedExtensionRoots: readonly string[],
+): void {
+  overrides.clear();
+  const roots = installedExtensionRoots.map((path) => resolve(path));
+  for (const tool of tools) {
+    const path = resolve(tool.sourceInfo.path);
+    if (roots.some((root) => path === root || isPathWithin(root, path))) {
+      overrides.set(tool.name, "inherited-package");
+    }
+  }
+}
+
+function isPathWithin(root: string, path: string): boolean {
+  const child = relative(root, path);
+  return child !== "" && !child.startsWith("..") && !isAbsolute(child);
 }
 
 class LockedResourceLoader implements ResourceLoader {

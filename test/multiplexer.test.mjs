@@ -153,6 +153,29 @@ class ControlledAdapter {
     this.aborted += 1;
   }
 
+  toolMaterialization() {
+    return {
+      state: "materialized",
+      truncated: false,
+      active: ["read"],
+      required: ["read"],
+      entries: [
+        {
+          name: "read",
+          sourceClass: "builtin",
+          policyDisposition: "required",
+          availability: "resident",
+          active: true,
+          required: true,
+        },
+      ],
+      provenance: {
+        source: "test-profile",
+        materializationGeneration: "profile-gen-1",
+      },
+    };
+  }
+
   dispose() {
     this.disposed += 1;
   }
@@ -208,6 +231,42 @@ test("open is generation-aware idempotent and replaces only idle sessions", asyn
   assert.equal(replacement.created, true);
   assert.equal(replacement.session.generation, 2);
   assert.equal(oldAdapter.disposed, 1);
+});
+
+test("resident tool materialization is generation-fenced and returned by value", async () => {
+  const factory = new ControlledFactory();
+  const mux = new Multiplexer({ factory, hostInstanceId: "host-test" });
+  await mux.open(openCommand("tool-status"));
+  const materialization = await mux.sessionToolMaterialization("tool-status", 1);
+  assert.equal(materialization.state, "materialized");
+  assert.deepEqual(materialization.active, ["read"]);
+  materialization.active.push("mutated-client-copy");
+  assert.deepEqual(
+    (await mux.sessionToolMaterialization("tool-status", 1)).active,
+    ["read"],
+  );
+  assert.equal(await mux.sessionToolMaterialization("tool-status", 2), undefined);
+});
+
+test("typed adapter materialization failures retain stable code and content-free details", async () => {
+  const factory = {
+    async open() {
+      const error = new Error("one or more required tools were unavailable");
+      error.code = "required_tools_unavailable";
+      error.protocolSafe = true;
+      error.details = { missingToolIds: ["caco_msg_send"] };
+      throw error;
+    },
+  };
+  const mux = new Multiplexer({ factory, hostInstanceId: "host-test" });
+  await assert.rejects(
+    mux.open(openCommand("required-tool-failure")),
+    (error) =>
+      error instanceof MultiplexerError &&
+      error.code === "required_tools_unavailable" &&
+      error.retryable === false &&
+      error.details?.missingToolIds?.[0] === "caco_msg_send",
+  );
 });
 
 test("protocol v2 tool adapters are host/session/generation bound before factory open", async () => {

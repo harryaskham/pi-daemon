@@ -16,19 +16,75 @@
     "spec": {
       "cwd": "/srv/work/project-a",
       "name": "release-audit",
-      "target": { "mode": "new" },
+      "target": {
+        "mode": "new"
+      },
       "model": {
         "provider": "github-copilot",
         "id": "gpt-5-mini",
         "thinkingLevel": "medium"
       },
-      "isolation": { "mode": "unisolated" }
+      "tools": {
+        "mode": "allowlist",
+        "include": [
+          "read",
+          "bash"
+        ],
+        "required": [
+          "read",
+          "bash"
+        ]
+      },
+      "materialization": {
+        "source": "managed-profile",
+        "materializationGeneration": "profile-gen-42"
+      },
+      "isolation": {
+        "mode": "unisolated"
+      }
     },
     "environment": {
-      "keys": ["CI", "PROVIDER_TOKEN"],
+      "keys": [
+        "CI",
+        "PROVIDER_TOKEN"
+      ],
       "digest": "sha256:fixture-digest",
       "persistence": "memory-only",
       "provisioned": true
+    },
+    "toolMaterialization": {
+      "state": "materialized",
+      "active": [
+        "bash",
+        "read"
+      ],
+      "required": [
+        "bash",
+        "read"
+      ],
+      "entries": [
+        {
+          "name": "bash",
+          "sourceClass": "builtin",
+          "policyDisposition": "required",
+          "availability": "resident",
+          "active": true,
+          "required": true
+        },
+        {
+          "name": "read",
+          "sourceClass": "builtin",
+          "policyDisposition": "required",
+          "availability": "resident",
+          "active": true,
+          "required": true
+        }
+      ],
+      "provenance": {
+        "source": "managed-profile",
+        "materializationGeneration": "profile-gen-42"
+      },
+      "truncated": false
     },
     "links": {
       "self": "/v1/session/agent-a",

@@ -17,13 +17,55 @@
         "lastUsedAt": "2026-07-14T08:09:59.000Z",
         "spec": {
           "cwd": "/srv/work/project-a",
-          "target": { "mode": "new" },
-          "isolation": { "mode": "unisolated" }
+          "target": {
+            "mode": "new"
+          },
+          "tools": {
+            "mode": "allowlist",
+            "include": [
+              "read"
+            ],
+            "required": [
+              "read"
+            ]
+          },
+          "materialization": {
+            "source": "managed-profile",
+            "materializationGeneration": "profile-gen-41"
+          },
+          "isolation": {
+            "mode": "unisolated"
+          }
         },
         "environment": {
-          "keys": ["CI"],
+          "keys": [
+            "CI"
+          ],
           "persistence": "memory-only",
           "provisioned": true
+        },
+        "toolMaterialization": {
+          "state": "not-resident",
+          "active": [],
+          "required": [
+            "read"
+          ],
+          "entries": [
+            {
+              "name": "read",
+              "sourceClass": "unknown",
+              "policyDisposition": "required",
+              "availability": "dormant",
+              "active": false,
+              "required": true,
+              "omissionReason": "runtime_not_resident"
+            }
+          ],
+          "provenance": {
+            "source": "managed-profile",
+            "materializationGeneration": "profile-gen-41"
+          },
+          "truncated": false
         },
         "recovery": {
           "state": "reprovision_required",

@@ -62,6 +62,7 @@ import {
 import {
   DASHBOARD_TUI_SUBPROTOCOL,
   SESSION_API_VERSION,
+  SESSION_TOOL_MATERIALIZATION_CAPABILITY,
   type ApiErrorBody,
   type SessionEnvironmentSummary,
   type TicketResource,
@@ -339,6 +340,7 @@ export class ApiServer {
             acp: this.#acpAdapters.capabilities,
             isolationModes: ["unisolated"],
             authentication: "service-bearer",
+            toolMaterialization: SESSION_TOOL_MATERIALIZATION_CAPABILITY,
             host: {
               ready: host.ready,
               draining: host.draining,
@@ -381,13 +383,24 @@ export class ApiServer {
           limit,
           ...(cursor === undefined ? {} : { cursor }),
         });
+        const sessions = await Promise.all(
+          page.sessions.map(async (record) =>
+            catalogRecordToSessionResource(
+              record,
+              await this.#multiplexer.sessionToolMaterialization(
+                record.sessionId,
+                record.generation,
+              ),
+            ),
+          ),
+        );
         sendJson(response, 200, {
           apiVersion: SESSION_API_VERSION,
           requestId,
           hostInstanceId: this.#multiplexer.hostInstanceId,
           ok: true,
           data: {
-            sessions: page.sessions.map(catalogRecordToSessionResource),
+            sessions,
             ...(page.nextCursor === undefined ? {} : { nextCursor: page.nextCursor }),
           },
         });
@@ -468,7 +481,13 @@ export class ApiServer {
               requestId,
               hostInstanceId: this.#multiplexer.hostInstanceId,
               ok: true,
-              data: catalogRecordToSessionResource(record),
+              data: catalogRecordToSessionResource(
+                record,
+                await this.#multiplexer.sessionToolMaterialization(
+                  record.sessionId,
+                  record.generation,
+                ),
+              ),
             },
             { ETag: sessionEtag(record.sessionId, record.revision) },
           );
@@ -1433,7 +1452,10 @@ export class ApiServer {
     if (record === undefined) {
       throw new MultiplexerError("catalog_record_missing", "session catalog record is missing");
     }
-    return catalogRecordToSessionResource(record);
+    return catalogRecordToSessionResource(
+      record,
+      await this.#multiplexer.sessionToolMaterialization(record.sessionId, record.generation),
+    );
   }
 
   async #handleUpgrade(request: IncomingMessage, socket: Duplex): Promise<void> {

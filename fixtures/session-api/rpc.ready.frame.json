@@ -36,6 +36,24 @@
         "persistence": "memory-only",
         "provisioned": true
       },
+      "toolMaterialization": {
+        "state": "materialized",
+        "active": [
+          "read"
+        ],
+        "required": [],
+        "entries": [
+          {
+            "name": "read",
+            "sourceClass": "builtin",
+            "policyDisposition": "allowed",
+            "availability": "resident",
+            "active": true,
+            "required": false
+          }
+        ],
+        "truncated": false
+      },
       "links": {
         "self": "/v1/session/agent-a",
         "rpc": "/v1/session/agent-a/rpc",

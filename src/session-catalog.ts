@@ -19,8 +19,10 @@ import type {
   SessionRecoveryCondition,
   SessionResource,
   SessionSpec,
+  SessionToolMaterialization,
   SessionTerminalSummary,
 } from "./session-api.js";
+import { unavailableToolMaterialization } from "./tool-materialization.js";
 
 export const SESSION_CATALOG_FORMAT_VERSION = 1 as const;
 export const DEFAULT_MAX_CATALOG_SESSIONS = 4096;
@@ -610,6 +612,7 @@ export class FileSessionCatalog implements SessionCatalogStore {
 
 export function catalogRecordToSessionResource(
   record: SessionCatalogRecord,
+  toolMaterialization?: SessionToolMaterialization,
 ): SessionResource {
   const sessionRef = encodeURIComponent(record.sessionId);
   return {
@@ -624,6 +627,13 @@ export function catalogRecordToSessionResource(
     lastUsedAt: record.lastUsedAt,
     spec: structuredClone(record.spec),
     environment: structuredClone(record.environment),
+    toolMaterialization: structuredClone(
+      toolMaterialization ??
+        unavailableToolMaterialization(
+          record.spec,
+          record.residency === "dormant" ? "not-resident" : "unavailable",
+        ),
+    ),
     ...(record.recovery === undefined
       ? {}
       : { recovery: structuredClone(record.recovery) }),

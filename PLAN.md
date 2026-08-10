@@ -485,6 +485,10 @@ process appears per wake.
 
 ## Provisional Beads work board
 
+- [x] `bd-bed0ef` Expose bounded, content-free configured-session tool
+  materialization provenance and effective inventory; fail closed before
+  residency when caller-required stable tool IDs are unavailable, while keeping
+  the neutral daemon free of Cacophony-specific authority.
 - [x] `bd-6b9b42` Synchronize the unpublished alpha.2 workspace-ui API baseline
   with PR #57's additive public daily-driver surface before artifact creation.
 - [x] `bd-d3772c` Remove the Pi Droid SDK lifecycle proof's check-then-bind port

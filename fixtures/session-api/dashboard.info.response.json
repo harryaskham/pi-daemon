@@ -67,7 +67,41 @@
       "controllerConnectionId": "connection-fixture-01",
       "readerCount": 2,
       "warmLeaseCount": 1,
-      "isolation": "unisolated"
+      "isolation": "unisolated",
+      "toolMaterialization": {
+        "state": "materialized",
+        "active": [
+          "bash",
+          "read"
+        ],
+        "required": [
+          "bash",
+          "read"
+        ],
+        "entries": [
+          {
+            "name": "bash",
+            "sourceClass": "builtin",
+            "policyDisposition": "required",
+            "availability": "resident",
+            "active": true,
+            "required": true
+          },
+          {
+            "name": "read",
+            "sourceClass": "builtin",
+            "policyDisposition": "required",
+            "availability": "resident",
+            "active": true,
+            "required": true
+          }
+        ],
+        "provenance": {
+          "source": "managed-profile",
+          "materializationGeneration": "profile-gen-42"
+        },
+        "truncated": false
+      }
     }
   }
 }

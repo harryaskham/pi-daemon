@@ -48,7 +48,42 @@ Tool modes map as follows:
 - `none` — no tools;
 - `no-builtin` — extension/custom tools only;
 - `allowlist` — only named tools;
-- `exclude` — applied after the selected mode/allowlist.
+- `exclude` — applied after the selected mode/allowlist;
+- `required` — stable tool IDs that must be active after Pi finishes loading the
+  reviewed resources. A missing required tool fails session open with
+  `required_tools_unavailable` before the generation becomes resident. Required
+  tools cannot be combined with `mode: none`, named in `exclude`, or omitted
+  from an `allowlist`.
+
+`materialization` is optional nonsecret caller provenance for the already
+resolved policy. Its `materializationGeneration` is deliberately distinct from
+the Pi Daemon session `generation`: changing either the source generation or its
+optional digest changes the retained policy digest, so an old generation cannot
+silently reuse a newly resolved profile. Optional authorization source/scope and
+`ownershipGeneration` strings are status receipts, not new authority. Ownership,
+materialization, and Pi Daemon session generations stay distinctly named and
+never contain credentials,
+environment values, or filesystem paths.
+
+Session resources expose `toolMaterialization` as bounded, content-free runtime
+truth:
+
+- `materialized` reports active stable IDs and registry entries only while the
+  runtime is resident;
+- `not-resident` never fabricates an inventory for a dormant generation;
+- `unavailable` distinguishes a resident generation whose adapter cannot supply
+  runtime inventory;
+- each entry reports a source class (`builtin`, `explicit-extension`,
+  `inherited-package`, `host-adapter`, `sdk`, or `unknown`), policy disposition,
+  resident/dormant availability, required status, and a fixed omission reason;
+- `truncated` is explicit when the versioned capability's bounded inventory
+  limit was reached; required/requested names take precedence in that bound;
+- no tool descriptions, extension paths, package paths, prompts, settings, or
+  environment values appear in this status.
+
+The same object is available from the session API and Dashboard session-info
+runtime. Dashboard clients therefore distinguish a real empty tool set from a
+runtime that was never hydrated or is no longer resident.
 
 ## Execution lifetime and concurrency
 

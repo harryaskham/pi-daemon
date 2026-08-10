@@ -46,6 +46,13 @@
         "persistence": "memory-only",
         "provisioned": true
       },
+      "toolMaterialization": {
+        "state": "unavailable",
+        "active": [],
+        "required": [],
+        "entries": [],
+        "truncated": false
+      },
       "lastTerminal": {
         "state": "succeeded",
         "at": "2026-07-18T12:00:00.000Z",

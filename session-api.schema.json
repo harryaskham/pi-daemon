@@ -231,6 +231,73 @@
             "maxLength": 128
           },
           "uniqueItems": true
+        },
+        "required": {
+          "type": "array",
+          "maxItems": 128,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+          },
+          "uniqueItems": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "sessionMaterialization": {
+      "type": "object",
+      "required": [
+        "source",
+        "materializationGeneration"
+      ],
+      "properties": {
+        "source": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "materializationGeneration": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "digest": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "authorization": {
+          "type": "object",
+          "required": [
+            "source",
+            "scope"
+          ],
+          "properties": {
+            "source": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+            },
+            "scope": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+            },
+            "ownershipGeneration": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+            }
+          },
+          "additionalProperties": false
         }
       },
       "additionalProperties": false
@@ -395,6 +462,9 @@
         "resources": {
           "$ref": "#/$defs/sessionResources"
         },
+        "materialization": {
+          "$ref": "#/$defs/sessionMaterialization"
+        },
         "settings": {
           "type": "object",
           "maxProperties": 512
@@ -437,6 +507,9 @@
         },
         "resources": {
           "$ref": "#/$defs/sessionResources"
+        },
+        "materialization": {
+          "$ref": "#/$defs/sessionMaterialization"
         },
         "settings": {
           "type": "object",
@@ -527,6 +600,121 @@
       },
       "additionalProperties": false
     },
+    "sessionToolMaterializationEntry": {
+      "type": "object",
+      "required": [
+        "name",
+        "sourceClass",
+        "policyDisposition",
+        "availability",
+        "active",
+        "required"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "sourceClass": {
+          "enum": [
+            "builtin",
+            "explicit-extension",
+            "inherited-package",
+            "host-adapter",
+            "sdk",
+            "unknown"
+          ]
+        },
+        "policyDisposition": {
+          "enum": [
+            "required",
+            "allowed",
+            "excluded",
+            "not-selected"
+          ]
+        },
+        "availability": {
+          "enum": [
+            "resident",
+            "dormant",
+            "unavailable"
+          ]
+        },
+        "active": {
+          "type": "boolean"
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "omissionReason": {
+          "enum": [
+            "not_registered",
+            "excluded_by_policy",
+            "tools_disabled",
+            "not_selected_by_policy",
+            "inactive_in_runtime",
+            "runtime_not_resident",
+            "runtime_inventory_unavailable"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "sessionToolMaterialization": {
+      "type": "object",
+      "required": [
+        "state",
+        "truncated",
+        "active",
+        "required",
+        "entries"
+      ],
+      "properties": {
+        "state": {
+          "enum": [
+            "materialized",
+            "not-resident",
+            "unavailable"
+          ]
+        },
+        "truncated": {
+          "type": "boolean"
+        },
+        "active": {
+          "type": "array",
+          "maxItems": 128,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "uniqueItems": true
+        },
+        "required": {
+          "type": "array",
+          "maxItems": 128,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "uniqueItems": true
+        },
+        "entries": {
+          "type": "array",
+          "maxItems": 128,
+          "items": {
+            "$ref": "#/$defs/sessionToolMaterializationEntry"
+          }
+        },
+        "provenance": {
+          "$ref": "#/$defs/sessionMaterialization"
+        }
+      },
+      "additionalProperties": false
+    },
     "sessionRecoveryCondition": {
       "type": "object",
       "required": [
@@ -586,6 +774,7 @@
         "lastUsedAt",
         "spec",
         "environment",
+        "toolMaterialization",
         "links"
       ],
       "properties": {
@@ -634,6 +823,9 @@
         },
         "environment": {
           "$ref": "#/$defs/environmentSummary"
+        },
+        "toolMaterialization": {
+          "$ref": "#/$defs/sessionToolMaterialization"
         },
         "recovery": {
           "$ref": "#/$defs/sessionRecoveryCondition"
@@ -1150,6 +1342,7 @@
         "acp",
         "isolationModes",
         "authentication",
+        "toolMaterialization",
         "host",
         "schedules",
         "blobTransfers"
@@ -1194,6 +1387,65 @@
         },
         "authentication": {
           "const": "service-bearer"
+        },
+        "toolMaterialization": {
+          "type": "object",
+          "required": [
+            "contractVersion",
+            "requiredToolAdmission",
+            "provenance",
+            "effectiveInventory",
+            "maxEntries",
+            "sourceClasses",
+            "omissionReasons"
+          ],
+          "properties": {
+            "contractVersion": {
+              "const": "1.0"
+            },
+            "requiredToolAdmission": {
+              "const": true
+            },
+            "provenance": {
+              "const": true
+            },
+            "effectiveInventory": {
+              "const": true
+            },
+            "maxEntries": {
+              "const": 128
+            },
+            "sourceClasses": {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "builtin",
+                  "explicit-extension",
+                  "inherited-package",
+                  "host-adapter",
+                  "sdk",
+                  "unknown"
+                ]
+              },
+              "uniqueItems": true
+            },
+            "omissionReasons": {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "not_registered",
+                  "excluded_by_policy",
+                  "tools_disabled",
+                  "not_selected_by_policy",
+                  "inactive_in_runtime",
+                  "runtime_not_resident",
+                  "runtime_inventory_unavailable"
+                ]
+              },
+              "uniqueItems": true
+            }
+          },
+          "additionalProperties": false
         },
         "host": {
           "type": "object",

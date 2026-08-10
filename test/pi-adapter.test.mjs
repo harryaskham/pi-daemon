@@ -65,6 +65,20 @@ class FakePiSession {
     return [...this.activeToolNames];
   }
 
+  getAllTools() {
+    return this.activeToolNames.map((name) => ({
+      name,
+      description: `${name} fixture`,
+      parameters: {},
+      sourceInfo: {
+        path: `<builtin:${name}>`,
+        source: "builtin",
+        scope: "temporary",
+        origin: "top-level",
+      },
+    }));
+  }
+
   async bindExtensions() {
     this.bindings += 1;
   }
@@ -354,8 +368,12 @@ test("configured factory applies scoped model auth, settings, resources, and too
     modelRuntime,
     async createSession(options) {
       captures.push(options);
+      const session = new FakePiSession("configured-sdk", options.model, options.sessionManager);
+      session.activeToolNames = (options.tools ?? []).filter((name) =>
+        ["read", "bash", "write"].includes(name),
+      );
       return {
-        session: new FakePiSession("configured-sdk", options.model, options.sessionManager),
+        session,
         extensionsResult: options.resourceLoader.getExtensions(),
       };
     },
@@ -365,7 +383,12 @@ test("configured factory applies scoped model auth, settings, resources, and too
     agentDir: scopedAgentDir,
     target: { mode: "memory" },
     model: { provider: model.provider, id: model.id, thinkingLevel: "high" },
-    tools: { mode: "allowlist", include: ["read", "bash"], exclude: ["write"] },
+    tools: {
+      mode: "allowlist",
+      include: ["read", "bash"],
+      exclude: ["write"],
+      required: ["read", "bash"],
+    },
     resources: {
       extensions: [extensionPath],
       noSkills: true,
@@ -376,6 +399,11 @@ test("configured factory applies scoped model auth, settings, resources, and too
       systemPrompt: "Configured system prompt.",
       appendSystemPrompt: ["Configured appendix."],
       extensionFlags: { fixture: true },
+    },
+    materialization: {
+      source: "managed-profile",
+      materializationGeneration: "profile-gen-42",
+      authorization: { source: "controller", scope: "project:fixture" },
     },
     settings: { retry: { enabled: false, maxRetries: 1 } },
     env: { OPENAI_API_KEY: "session-key", SESSION_MARKER: "configured" },
@@ -421,6 +449,23 @@ test("configured factory applies scoped model auth, settings, resources, and too
     assert.equal(options.resourceLoader.getExtensions().extensions.length, 1);
     assert.equal(process.env.OPENAI_API_KEY, undefined);
     assert.equal((await adapter.rpcController()).capabilities.policy.bash, true);
+    const tooling = adapter.toolMaterialization();
+    assert.deepEqual(tooling.active, ["bash", "read"]);
+    assert.deepEqual(tooling.required, ["bash", "read"]);
+    assert.deepEqual(tooling.provenance, prepared.persistedSpec.materialization);
+    assert.deepEqual(
+      tooling.entries.map(({ name, sourceClass, policyDisposition, active }) => ({
+        name,
+        sourceClass,
+        policyDisposition,
+        active,
+      })),
+      [
+        { name: "bash", sourceClass: "builtin", policyDisposition: "required", active: true },
+        { name: "read", sourceClass: "builtin", policyDisposition: "required", active: true },
+        { name: "write", sourceClass: "unknown", policyDisposition: "excluded", active: false },
+      ],
+    );
 
     const denied = parseSessionConfiguration({
       cwd,
@@ -473,6 +518,27 @@ test("configured factory applies scoped model auth, settings, resources, and too
         error instanceof PiAdapterError && error.code === "resource_policy_unavailable",
     );
     assert.equal(captures.length, 2);
+
+    const missingRequired = parseSessionConfiguration({
+      cwd,
+      agentDir: scopedAgentDir,
+      target: { mode: "memory" },
+      model: { provider: model.provider, id: model.id },
+      tools: { mode: "allowlist", include: ["missing_tool"], required: ["missing_tool"] },
+      env: { OPENAI_API_KEY: "session-key" },
+    });
+    await assert.rejects(
+      factory.open({
+        sessionId: "configured-missing-required-tool",
+        generation: 1,
+        ...missingRequired.openRequest,
+      }),
+      (error) =>
+        error instanceof PiAdapterError &&
+        error.code === "required_tools_unavailable" &&
+        error.details?.missingToolIds?.[0] === "missing_tool",
+    );
+    assert.equal(captures.length, 3);
   } finally {
     await adapter.dispose();
     if (previous === undefined) delete process.env.OPENAI_API_KEY;
@@ -863,7 +929,7 @@ test("configured sessions inherit only Pi packages already installed by the Pi C
   await mkdir(join(packageRoot, "extensions"), { recursive: true });
   await writeFile(
     join(packageRoot, "extensions", "fixture.mjs"),
-    "export default function () {}\n",
+    `export default function (pi) {\n  pi.registerTool({ name: "installed_tool", label: "Installed", description: "Installed package fixture", parameters: { type: "object", properties: {} }, async execute() { return { content: [{ type: "text", text: "ok" }] }; } });\n}\n`,
   );
   await writeFile(
     join(packageRoot, "package.json"),
@@ -884,17 +950,18 @@ test("configured sessions inherit only Pi packages already installed by the Pi C
     modelRuntime,
     async createSession(options) {
       captures.push(options);
-      return {
-        session: new FakePiSession("installed-package", options.model, options.sessionManager),
-        extensionsResult: options.resourceLoader.getExtensions(),
-      };
+      return createAgentSession(options);
     },
   });
   const prepared = parseSessionConfiguration({
     cwd,
     target: { mode: "memory" },
     model: { provider: model.provider, id: model.id },
-    tools: { mode: "none" },
+    tools: {
+      mode: "allowlist",
+      include: ["installed_tool"],
+      required: ["installed_tool"],
+    },
     resources: {
       inheritInstalledPackages: true,
       noSkills: true,
@@ -917,6 +984,16 @@ test("configured sessions inherit only Pi packages already installed by the Pi C
     assert.equal(loaded.errors.length, 0);
     assert.equal(loaded.extensions.length, 1);
     assert.equal(loaded.extensions[0].path, join(packageRoot, "extensions", "fixture.mjs"));
+    assert.deepEqual(adapter.toolMaterialization().entries, [
+      {
+        name: "installed_tool",
+        sourceClass: "inherited-package",
+        policyDisposition: "required",
+        availability: "resident",
+        active: true,
+        required: true,
+      },
+    ]);
   } finally {
     await adapter.dispose();
   }
@@ -968,7 +1045,11 @@ test("real Pi SDK loads only an explicitly approved extension command/tool profi
     cwd,
     target: { mode: "memory" },
     model: { provider: model.provider, id: model.id },
-    tools: { mode: "allowlist", include: ["self_set_model"] },
+    tools: {
+      mode: "allowlist",
+      include: ["self_set_model"],
+      required: ["self_set_model"],
+    },
     resources: {
       extensions: [extension],
       noSkills: true,
@@ -976,6 +1057,10 @@ test("real Pi SDK loads only an explicitly approved extension command/tool profi
       noThemes: true,
       noContextFiles: true,
       projectTrust: "approve",
+    },
+    materialization: {
+      source: "managed-profile",
+      materializationGeneration: "profile-gen-extension",
     },
   });
   const adapter = await factory.open({
@@ -993,7 +1078,106 @@ test("real Pi SDK loads only an explicitly approved extension command/tool profi
     true,
   );
   assert.deepEqual(sessions[0].getActiveToolNames(), ["self_set_model"]);
+  assert.deepEqual(adapter.toolMaterialization(), {
+    state: "materialized",
+    truncated: false,
+    active: ["self_set_model"],
+    required: ["self_set_model"],
+    entries: [
+      {
+        name: "self_set_model",
+        sourceClass: "explicit-extension",
+        policyDisposition: "required",
+        availability: "resident",
+        active: true,
+        required: true,
+      },
+    ],
+    provenance: {
+      source: "managed-profile",
+      materializationGeneration: "profile-gen-extension",
+    },
+  });
   await adapter.dispose();
+});
+
+test("real Pi SDK materializes a required worker Bash and extension-message profile", async () => {
+  const stateDir = await temporaryDirectory();
+  const agentDir = await temporaryDirectory();
+  const cwd = await temporaryDirectory();
+  const extension = join(cwd, "worker-message-tool.mjs");
+  await writeFile(
+    extension,
+    `export default function (pi) {\n  pi.registerTool({ name: "caco_msg_send", label: "Message", description: "Fixture messaging tool", parameters: { type: "object", properties: {} }, async execute() { return { content: [{ type: "text", text: "ok" }] }; } });\n}\n`,
+    { mode: 0o600 },
+  );
+  const { credentials, modelRuntime, model } = await modelHarness();
+  const factory = new PiSessionFactory({
+    stateDir,
+    agentDir,
+    allowedRoots: [cwd],
+    credentials,
+    modelRuntime,
+    createSession: (options) => createAgentSession(options),
+  });
+  const prepared = parseSessionConfiguration({
+    cwd,
+    target: { mode: "memory" },
+    model: { provider: model.provider, id: model.id },
+    tools: {
+      mode: "allowlist",
+      include: ["bash", "caco_msg_send"],
+      required: ["bash", "caco_msg_send"],
+    },
+    resources: {
+      extensions: [extension],
+      noSkills: true,
+      noPromptTemplates: true,
+      noThemes: true,
+      noContextFiles: true,
+      projectTrust: "approve",
+    },
+    materialization: {
+      source: "managed-profile",
+      materializationGeneration: "profile-gen-worker",
+      authorization: {
+        source: "controller",
+        scope: "project:fixture",
+        ownershipGeneration: "ownership-gen-worker",
+      },
+    },
+  });
+  const adapter = await factory.open({
+    sessionId: "required-worker-tools",
+    generation: 1,
+    ...prepared.openRequest,
+  });
+  try {
+    const tooling = adapter.toolMaterialization();
+    assert.equal(tooling.state, "materialized");
+    assert.equal(tooling.truncated, false);
+    assert.deepEqual(tooling.active, ["bash", "caco_msg_send"]);
+    assert.deepEqual(tooling.required, ["bash", "caco_msg_send"]);
+    assert.deepEqual(
+      tooling.entries.map(({ name, sourceClass, policyDisposition, active }) => ({
+        name,
+        sourceClass,
+        policyDisposition,
+        active,
+      })),
+      [
+        { name: "bash", sourceClass: "builtin", policyDisposition: "required", active: true },
+        {
+          name: "caco_msg_send",
+          sourceClass: "explicit-extension",
+          policyDisposition: "required",
+          active: true,
+        },
+      ],
+    );
+  } finally {
+    await adapter.dispose();
+  }
 });
 
 test("real Pi SDK accepts the configured bash override without a model turn", async () => {
