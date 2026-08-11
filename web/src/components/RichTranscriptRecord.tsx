@@ -218,9 +218,32 @@ function ToolOutput({ record }: { record: TranscriptToolRecord }) {
   return <pre className="generic-tool-output">{text.slice(0, 20_000)}</pre>;
 }
 
+function BashCommand({ command }: { command: string }) {
+  const [copied, setCopied] = useState(false);
+  const clipboardAvailable = typeof navigator !== "undefined" && navigator.clipboard !== undefined;
+
+  async function copyCommand(): Promise<void> {
+    if (!clipboardAvailable) return;
+    try {
+      await navigator.clipboard.writeText(command);
+      setCopied(true);
+    } catch {
+      setCopied(false);
+    }
+  }
+
+  return (
+    <section className="bash-command" aria-label="Full bash command">
+      <header><strong>Command</strong><button type="button" disabled={!clipboardAvailable} onClick={() => void copyCommand()}>{copied ? "Copied" : "Copy command"}</button></header>
+      <pre><code>{command}</code></pre>
+    </section>
+  );
+}
+
 function ToolRecord({ record }: { record: TranscriptToolRecord }) {
   const [expanded, setExpanded] = useState(record.state === "error" || record.state === "running");
   const title = toolTitle(record);
+  const command = record.toolName === "bash" ? argument(record, "command") : undefined;
   const details = record.details;
   const durationMs = details && typeof details === "object" && !Array.isArray(details) && typeof details.durationMs === "number" ? details.durationMs : undefined;
   const icon = record.toolName === "bash" ? <TerminalSquare size={15} /> : ["edit", "write"].includes(record.toolName) ? <Code2 size={15} /> : <ToolCase size={15} />;
@@ -234,7 +257,7 @@ function ToolRecord({ record }: { record: TranscriptToolRecord }) {
           {record.state === "pending" || record.state === "running" ? <><i /> running</> : record.state === "error" ? <><AlertCircle size={12} /> attention</> : <><Check size={12} /> complete</>}
           {durationMs ? <time>{durationMs} ms</time> : null}
         </footer>
-        {expanded ? <ToolOutput record={record} /> : null}
+        {expanded ? <>{command ? <BashCommand command={command} /> : null}<ToolOutput record={record} /></> : null}
       </div>
       <button type="button" aria-label={`${expanded ? "Hide" : "Show"} details for ${title}`} aria-expanded={expanded} onClick={() => setExpanded((value) => !value)}><MoreHorizontal size={15} /></button>
     </article>

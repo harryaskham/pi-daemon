@@ -88,6 +88,18 @@ describe("preview composer layout", () => {
     expect(css).toMatch(/\.message__body p \{[^}]*overflow-wrap: anywhere;[^}]*word-break: break-word;/);
   });
 
+  it("keeps compact bash titles while exposing selectable full commands in expanded cards", async () => {
+    const [source, css] = await Promise.all([
+      readFile(new URL("../components/RichTranscriptRecord.tsx", import.meta.url), "utf8"),
+      readFile(new URL("../app.css", import.meta.url), "utf8"),
+    ]);
+    expect(source).toMatch(/aria-label="Full bash command"/);
+    expect(source).toMatch(/navigator\.clipboard\.writeText\(command\)/);
+    expect(source).toMatch(/command \? <BashCommand command=\{command\}/);
+    expect(css).toMatch(/\.tool-card__copy strong \{[^}]*text-overflow: ellipsis;/);
+    expect(css).toMatch(/\.bash-command pre \{[^}]*overflow-wrap: anywhere;[^}]*white-space: pre-wrap;[^}]*word-break: break-word;/);
+  });
+
   it("keeps new-session configuration scrollable with a fixed composer footer", async () => {
     const css = await readFile(new URL("../app.css", import.meta.url), "utf8");
     expect(css).toMatch(
