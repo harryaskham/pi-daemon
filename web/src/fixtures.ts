@@ -211,6 +211,7 @@ export function createTranscriptFixtures(count = 1_200): TranscriptRecord[] {
 /** A deterministic newest viewport that exercises every production renderer. */
 export function createTranscriptShowcaseFixtures(): TranscriptRecord[] {
   const time = (offset: number) => new Date(Date.now() - (8 - offset) * 12_000).toISOString();
+  const longUnbrokenUrl = `https://example.invalid/feed-layout/${"unbroken-segment".repeat(180)}`;
   return [
     {
       recordId: "showcase:image",
@@ -313,6 +314,19 @@ export function createTranscriptShowcaseFixtures(): TranscriptRecord[] {
       source: "live",
       timestamp: time(7),
       content: [{ type: "error", text: "A replay gap paused live rendering; persisted history remains safe while the page reconciles." }],
+    },
+    {
+      recordId: "showcase:long-message",
+      key: { entryId: "showcase-long-entry", messageId: "showcase-long-message" },
+      kind: "message",
+      role: "user",
+      state: "complete",
+      source: "persisted",
+      timestamp: time(7.5),
+      content: [{
+        type: "text",
+        text: `LONG-MESSAGE-SENTINEL first paragraph must size its virtual row.\n\n${longUnbrokenUrl}\n\nThe final paragraph must remain inside the same message before the next feed entry.`,
+      }],
     },
     {
       recordId: "showcase:stream",

@@ -197,6 +197,53 @@ test("rich transcript renders semantic markdown, tools, images, summaries, custo
   await expect(page.getByRole("button", { name: "Hide details for Edit web/src/transcript-store.ts" })).toHaveAttribute("aria-expanded", "true");
 });
 
+test("long feed messages resize their virtual rows without overlapping adjacent entries @smoke", async ({ page }) => {
+  await page.setViewportSize({ width: 1_280, height: 820 });
+  await page.goto("./?fixture=1&state=ready");
+  const transcript = page.locator(".workspace-pane--selected .transcript");
+  const longRow = transcript.locator('[data-record-id="showcase:long-message"]');
+
+  const geometry = async () => {
+    await longRow.scrollIntoViewIfNeeded();
+    await expect(longRow.getByText("LONG-MESSAGE-SENTINEL", { exact: false })).toBeVisible();
+    return transcript.evaluate((element) => {
+      const row = element.querySelector<HTMLElement>('[data-record-id="showcase:long-message"]');
+      if (row === null) throw new Error("long-message row is not rendered");
+      const article = row.querySelector<HTMLElement>(".message");
+      const body = row.querySelector<HTMLElement>(".message__body");
+      if (article === null || body === null) throw new Error("long-message content is incomplete");
+      const rowBounds = row.getBoundingClientRect();
+      const articleBounds = article.getBoundingClientRect();
+      const rowIndex = Number(row.dataset.index);
+      const next = [...element.querySelectorAll<HTMLElement>("[data-transcript-row]")]
+        .filter((candidate) => Number(candidate.dataset.index) > rowIndex)
+        .sort((left, right) => Number(left.dataset.index) - Number(right.dataset.index))[0];
+      const nextBounds = next?.getBoundingClientRect();
+      return {
+        contentContained: articleBounds.bottom <= rowBounds.bottom + 1 && articleBounds.top >= rowBounds.top - 1,
+        nextFound: nextBounds !== undefined,
+        nextSeparated: nextBounds === undefined || nextBounds.top >= rowBounds.bottom - 1,
+        textFits: body.scrollWidth <= body.clientWidth + 1,
+      };
+    });
+  };
+
+  await expect.poll(geometry).toEqual({
+    contentContained: true,
+    nextFound: true,
+    nextSeparated: true,
+    textFits: true,
+  });
+
+  await page.setViewportSize({ width: 760, height: 820 });
+  await expect.poll(geometry).toEqual({
+    contentContained: true,
+    nextFound: true,
+    nextSeparated: true,
+    textFits: true,
+  });
+});
+
 test("split creation, keyboard resize, close promotion, and revision persistence stay coherent", async ({ page }) => {
   await page.goto("./?fixture=1&state=ready");
   const panes = page.locator("[data-pane-id]");

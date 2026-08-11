@@ -295,9 +295,14 @@ export function ChatPane({
     (index: number) => shownRecords[index]?.kind === "tool" ? 126 : shownRecords[index]?.kind === "timeline" ? 56 : 132,
     [shownRecords],
   );
+  const getRecordKey = useCallback(
+    (index: number) => shownRecords[index]?.recordId ?? `missing-transcript-record:${index}`,
+    [shownRecords],
+  );
   const virtualizer = useVirtualizer({
     count: shownRecords.length,
     getScrollElement: () => scrollerRef.current,
+    getItemKey: getRecordKey,
     estimateSize: estimateRecordSize,
     measureElement: (element, _entry, instance) => {
       const index = instance.indexFromElement(element);
@@ -311,6 +316,7 @@ export function ChatPane({
       );
     },
     overscan: 7,
+    useAnimationFrameWithResizeObserver: true,
   });
 
   async function submitComposer(value: string): Promise<void | boolean> {
@@ -486,6 +492,7 @@ export function ChatPane({
                   key={record.recordId}
                   ref={virtualizer.measureElement}
                   data-index={row.index}
+                  data-record-id={record.recordId}
                   data-transcript-row
                   className="transcript-row"
                   style={{ transform: `translateY(${row.start}px)` }}
