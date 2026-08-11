@@ -12,6 +12,7 @@ import {
 } from "../icons";
 import type { DashboardLiveSessionController, DashboardLiveSessionState } from "../dashboard-live-session";
 import type { DemoState, SessionFixture, TranscriptRecord } from "../model";
+import { modelLabel } from "../model-label";
 import { liveContextLabel } from "../session-stats";
 import { LiveSessionControls } from "./LiveSessionControls";
 
@@ -240,16 +241,6 @@ export function measuredRecordHeight(
   if (Number.isFinite(measured) && measured > 0) return measured;
   if (cached !== undefined && Number.isFinite(cached) && cached > 0) return cached;
   return estimated;
-}
-
-export function modelLabel(value: unknown): string {
-  if (typeof value === "string") return value;
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return "unknown";
-  const model = value as Record<string, unknown>;
-  const provider = typeof model.provider === "string" ? model.provider : undefined;
-  const id = typeof model.id === "string" ? model.id : undefined;
-  if (provider !== undefined && id !== undefined) return `${provider}/${id}`;
-  return id ?? provider ?? "unknown";
 }
 
 export function ChatPane({

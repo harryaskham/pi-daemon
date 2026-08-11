@@ -1,4 +1,5 @@
 import { DASH_DEFAULT_LIMITS } from "@harryaskham/pi-daemon/dashboard-contract";
+import { modelLabel } from "./model-label";
 
 export const SESSION_TREE_DEFAULT_LIMITS = {
   maxNodes: DASH_DEFAULT_LIMITS.maxTreeNodes,
@@ -260,7 +261,7 @@ function projectEntry(entry: Record<string, unknown>, type: string, path: string
   if (type === "compaction" || type === "branch_summary") {
     return { summary: snippet(typeof entry.summary === "string" ? entry.summary : type.replaceAll("_", " "), maxSnippetBytes) };
   }
-  if (type === "model_change") return { summary: snippet(`${String(entry.provider ?? "model")}/${String(entry.modelId ?? "unknown")}`, maxSnippetBytes) };
+  if (type === "model_change") return { summary: snippet(modelLabel({ provider: entry.provider, id: entry.modelId }), maxSnippetBytes) };
   if (type === "thinking_level_change") return { summary: snippet(`Thinking: ${String(entry.thinkingLevel ?? "unknown")}`, maxSnippetBytes) };
   if (type === "label") return { summary: snippet(typeof entry.label === "string" ? entry.label : "Label cleared", maxSnippetBytes) };
   if (type === "session_info") return { summary: snippet(typeof entry.name === "string" ? entry.name : "Session metadata", maxSnippetBytes) };

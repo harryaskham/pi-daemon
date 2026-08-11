@@ -38,6 +38,7 @@ import { createSessionFixtures, createTranscriptFixtures, createTranscriptShowca
 import { createTuiInputRuns, createTuiSnapshot, TUI_FIXTURE_OVERLAYS, TUI_FIXTURE_SELECTION } from "./tui-fixtures";
 import { closePane, collectPaneIds, INITIAL_LAYOUT, splitPane, toDashboardLayout, updatePaneTarget } from "./layout";
 import type { DemoState, InventoryId, LayoutNode, SessionFixture } from "./model";
+import { modelLabel } from "./model-label";
 import { hasScheduleBackend } from "./schedule";
 import {
   draftIdForLocalTarget,
@@ -433,7 +434,7 @@ function DashWorkspace({
       cwd: liveState.info?.cwd ?? session.cwd,
       project: liveState.info?.projectLabel ?? session.project,
       activityAt: liveState.info?.activityAt ?? session.activityAt ?? session.modifiedAt,
-      model: liveState.info?.runtime?.model?.id ?? String(liveState.rpcState.model ?? session.model),
+      model: modelLabel(liveState.info?.runtime?.model ?? liveState.rpcState.model ?? session.model),
       thinking: thinkingLevel(liveState.info?.runtime?.model?.thinkingLevel ?? liveState.rpcState.thinkingLevel, session.thinking),
       presence: {
         ...session.presence,

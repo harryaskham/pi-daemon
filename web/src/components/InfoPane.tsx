@@ -12,6 +12,7 @@ import {
 import type { SessionInfoResource } from "@harryaskham/pi-daemon/dashboard-contract";
 import type { ReactNode } from "react";
 import type { SessionFixture } from "../model";
+import { modelLabel } from "../model-label";
 import { contextPercentLabel } from "../session-stats";
 import { preciseRelativeTime } from "../time";
 
@@ -73,7 +74,7 @@ export function InfoPane({ session, info, scheduleEditor }: InfoPaneProps) {
         <dl className="detail-list">
           <div><dt><Activity size={14} /> Runtime</dt><dd>{session.presence.runtime}</dd></div>
           <div><dt><FileCode2 size={14} /> Source</dt><dd>{session.sourceKind}</dd></div>
-          <div><dt><BrainCircuit size={14} /> Model</dt><dd>{session.model}</dd></div>
+          <div><dt><BrainCircuit size={14} /> Model</dt><dd>{modelLabel(session.model)}</dd></div>
           <div><dt><Gauge size={14} /> Thinking</dt><dd>{session.thinking}</dd></div>
           <div><dt><GitBranch size={14} /> Pi session</dt><dd>{session.sessionId}</dd></div>
           <div><dt><Cpu size={14} /> Inventory ID</dt><dd>{session.inventoryId}</dd></div>

@@ -136,7 +136,10 @@ test("expandable filters and hover/focus information stay accessible", async ({ 
   await expect(page.getByRole("tooltip")).toContainText("Working dir");
   await expect(page.getByRole("tooltip")).toContainText("Open the information view");
   await info.click();
-  await expect(page.getByText("Session information").first()).toBeVisible();
+  const infoPane = page.locator(".workspace-pane--selected .info-pane");
+  await expect(infoPane.getByText("Session information").first()).toBeVisible();
+  await expect(infoPane).not.toContainText("[object Object]");
+  await expect(infoPane.locator(".detail-list > div").filter({ hasText: "Model" }).locator("dd")).toHaveText(/.+/);
 });
 
 test("capability-gated schedule editor renders validation, history, disabled and unseen states", async ({ page }) => {
