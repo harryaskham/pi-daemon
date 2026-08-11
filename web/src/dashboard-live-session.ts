@@ -67,6 +67,22 @@ export interface LiveExtensionWidget {
   placement: "aboveEditor" | "belowEditor";
 }
 
+export type PendingSteeringMessageState =
+  | "pending"
+  | "delivering"
+  | "delivered"
+  | "indeterminate";
+
+/** Browser-private preview of a message waiting for the next Pi steering point. */
+export interface PendingSteeringMessage {
+  queueId: string;
+  preview: string;
+  truncated: boolean;
+  queuedAt: string;
+  state: PendingSteeringMessageState;
+  errorCode?: string;
+}
+
 export interface DashboardLiveSessionState {
   inventoryId: string;
   phase: LiveSessionPhase;
@@ -92,6 +108,7 @@ export interface DashboardLiveSessionState {
   extensionNotifications: LiveExtensionNotification[];
   extensionStatuses: Record<string, string>;
   extensionWidgets: Record<string, LiveExtensionWidget>;
+  pendingSteeringMessages: PendingSteeringMessage[];
   extensionTitle?: string;
   extensionEditorText?: string;
   tree?: SessionTreeModel;
@@ -113,6 +130,26 @@ export interface DashboardLiveSessionOptions {
 }
 
 type Listener = (state: DashboardLiveSessionState) => void;
+
+type SteeringDeliveryMode = "steer" | "next-turn";
+type SteeringReceiptState = "queued" | "cancelled" | "delivered" | "indeterminate";
+
+interface SteeringQueueEntry extends PendingSteeringMessage {
+  message: string;
+  idempotencyKey: string;
+  remoteObserved: boolean;
+}
+
+interface SteeringReceipt {
+  queueId: string;
+  message: string;
+  state: SteeringReceiptState;
+}
+
+const MAX_PENDING_STEERING_MESSAGES = 32;
+const MAX_PENDING_STEERING_BYTES = 1_048_576;
+const MAX_STEERING_RECEIPTS = 128;
+const STEERING_PREVIEW_CHARS = 512;
 
 const CONTEXT_REFRESH_OPERATIONS = new Set<DashboardCommandOperation>([
   "compact",
@@ -165,6 +202,10 @@ export class DashboardLiveSessionController {
   #liveRecordSequence = 0;
   #activeAssistantMessageId: string | undefined;
   #sessionStatsRefresh: Promise<void> | undefined;
+  #steeringQueue: SteeringQueueEntry[] = [];
+  #steeringReceipts = new Map<string, SteeringReceipt>();
+  #steeringPoints: SteeringDeliveryMode[] = [];
+  #steeringDrain: Promise<void> | undefined;
   #stopped = false;
 
   constructor(
@@ -195,6 +236,7 @@ export class DashboardLiveSessionController {
       extensionNotifications: [],
       extensionStatuses: {},
       extensionWidgets: {},
+      pendingSteeringMessages: [],
       treePhase: "idle",
       unread: false,
     };
@@ -375,6 +417,13 @@ export class DashboardLiveSessionController {
     idempotencyKey?: string,
   ): Promise<DashboardCommandResult> {
     if (this.#channel !== undefined) {
+      if (
+        operation === "prompt" &&
+        this.#state.phase === "streaming" &&
+        payload.streamingBehavior === undefined
+      ) {
+        return this.#enqueueSteeringPrompt(payload, idempotencyKey);
+      }
       return this.command(operation, payload, idempotencyKey);
     }
     const correlationId = `command-${++this.#commandSequence}`;
@@ -460,6 +509,27 @@ export class DashboardLiveSessionController {
       );
     }
     return this.command(operation, payload, idempotencyKey);
+  }
+
+  /**
+   * Cancel one browser-held steering message before a Pi steering point claims
+   * it. Once delivery begins the outcome belongs to Pi and cannot be rewritten.
+   */
+  cancelQueuedSteeringMessage(queueId: string): boolean {
+    const index = this.#steeringQueue.findIndex(
+      (entry) => entry.queueId === queueId && entry.state === "pending",
+    );
+    if (index < 0) return false;
+    const [entry] = this.#steeringQueue.splice(index, 1);
+    if (entry !== undefined) {
+      this.#setSteeringReceipt(entry.idempotencyKey, {
+        queueId: entry.queueId,
+        message: entry.message,
+        state: "cancelled",
+      });
+    }
+    this.#syncSteeringQueue();
+    return true;
   }
 
   async command(
@@ -700,8 +770,10 @@ export class DashboardLiveSessionController {
   async stop(): Promise<void> {
     this.#stopped = true;
     this.#generation += 1;
+    this.#steeringPoints = [];
+    this.#steeringQueue = [];
     await this.#disconnect();
-    this.#patch({ phase: "closed" });
+    this.#patch({ phase: "closed", pendingSteeringMessages: [] });
     this.#listeners.clear();
   }
 
@@ -727,7 +799,9 @@ export class DashboardLiveSessionController {
     this.#channel = channel;
     this.#unsubscribeChannel = channel.subscribe((event) => this.#onEvent(event));
     this.#acceptChannelSnapshot(channel);
-    this.#patch({ phase: "live", role: channel.role });
+    const streaming = channel.snapshot.rpcState.isStreaming === true;
+    this.#patch({ phase: streaming ? "streaming" : "live", role: channel.role });
+    if (!streaming && channel.role === "controller") this.#scheduleSteeringDelivery("next-turn");
     void this.#loadChannelMetadata(channel);
   }
 
@@ -817,7 +891,11 @@ export class DashboardLiveSessionController {
 
   #onEvent(event: DashboardChannelEvent): void {
     if (event.kind === "control") {
-      this.#patch({ role: event.action === "control_granted" ? "controller" : "observer" });
+      const role = event.action === "control_granted" ? "controller" : "observer";
+      this.#patch({ role });
+      if (role === "controller" && this.#state.phase === "live") {
+        this.#scheduleSteeringDelivery("next-turn");
+      }
       return;
     }
     if (event.kind === "extension_ui") {
@@ -926,13 +1004,16 @@ export class DashboardLiveSessionController {
       });
     }
     const type = typeof event.type === "string" ? event.type : "";
+    if (type === "queue_update") this.#reconcileRemoteSteeringQueue(event);
     if (this.#state.tree !== undefined && ["entry_appended", "session_forked", "session_switched"].includes(type)) {
       this.#patch({ treePhase: "stale" });
     }
     if (["agent_start", "message_update", "tool_execution_start", "tool_execution_update"].includes(type)) {
       this.#patch({ phase: "streaming" });
-    } else if (["agent_end", "agent_settled", "tool_execution_end"].includes(type)) {
+    } else if (type === "agent_settled") {
       this.#patch({ phase: "live", unread: true });
+      this.#dropDeliveredSteeringMessages();
+      this.#scheduleSteeringDelivery("next-turn");
     } else if (
       type === "retry_start" ||
       type === "auto_retry_start" ||
@@ -948,7 +1029,231 @@ export class DashboardLiveSessionController {
     } else if (type === "error") {
       this.#patch({ phase: "error", error: { code: "session_event_error", message: String(event.message ?? "Session error"), retryable: true } });
     }
+    if (type === "tool_execution_end") this.#scheduleSteeringDelivery("steer");
     if (CONTEXT_REFRESH_EVENTS.has(type)) this.#scheduleSessionStatsRefresh();
+  }
+
+  #enqueueSteeringPrompt(
+    payload: JsonObject,
+    requestedIdempotencyKey: string | undefined,
+  ): DashboardCommandResult {
+    const correlationId = `command-${++this.#commandSequence}`;
+    if (this.#state.role !== "controller") {
+      return rejected(correlationId, "controller_required", "Controller role is required", false);
+    }
+    const message = typeof payload.message === "string" ? payload.message.trim() : "";
+    if (message.length === 0) {
+      return rejected(correlationId, "invalid_prompt", "Steering message must not be empty", false);
+    }
+    const idempotencyKey = requestedIdempotencyKey ?? `dash-steering-${crypto.randomUUID()}`;
+    const prior = this.#steeringReceipts.get(idempotencyKey);
+    if (prior !== undefined) {
+      if (prior.message !== message) {
+        return rejected(
+          correlationId,
+          "idempotency_conflict",
+          "Steering idempotency key was reused with different content",
+          false,
+        );
+      }
+      return {
+        correlationId,
+        state: "completed",
+        data: { queueId: prior.queueId, disposition: prior.state },
+      };
+    }
+    const messageBytes = new TextEncoder().encode(message).byteLength;
+    const queuedBytes = this.#steeringQueue.reduce(
+      (total, entry) => total + new TextEncoder().encode(entry.message).byteLength,
+      0,
+    );
+    if (
+      this.#steeringQueue.length >= MAX_PENDING_STEERING_MESSAGES ||
+      messageBytes > MAX_PENDING_STEERING_BYTES ||
+      queuedBytes + messageBytes > MAX_PENDING_STEERING_BYTES
+    ) {
+      return rejected(
+        correlationId,
+        "steering_queue_capacity",
+        "The bounded browser steering queue is full",
+        true,
+      );
+    }
+    const queueId = crypto.randomUUID();
+    const entry: SteeringQueueEntry = {
+      queueId,
+      message,
+      preview: message.slice(0, STEERING_PREVIEW_CHARS),
+      truncated: message.length > STEERING_PREVIEW_CHARS,
+      queuedAt: new Date().toISOString(),
+      state: "pending",
+      idempotencyKey,
+      remoteObserved: false,
+    };
+    this.#steeringQueue.push(entry);
+    this.#setSteeringReceipt(idempotencyKey, {
+      queueId,
+      message,
+      state: "queued",
+    });
+    this.#syncSteeringQueue();
+    return {
+      correlationId,
+      state: "completed",
+      data: { queueId, disposition: "queued" },
+    };
+  }
+
+  #scheduleSteeringDelivery(mode: SteeringDeliveryMode): void {
+    if (
+      this.#stopped ||
+      this.#channel === undefined ||
+      this.#state.role !== "controller" ||
+      !this.#steeringQueue.some((entry) => entry.state === "pending")
+    ) {
+      return;
+    }
+    if (this.#steeringPoints.length < MAX_PENDING_STEERING_MESSAGES) {
+      this.#steeringPoints.push(mode);
+    }
+    this.#ensureSteeringDrain();
+  }
+
+  #ensureSteeringDrain(): void {
+    if (this.#steeringDrain !== undefined || this.#steeringPoints.length === 0) return;
+    // Defer the drain one microtask so the in-flight sentinel is visible before
+    // a synchronous fixture/channel event can schedule another steering point.
+    const drain = Promise.resolve().then(() => this.#drainSteeringPoints());
+    this.#steeringDrain = drain;
+    void drain.finally(() => {
+      if (this.#steeringDrain !== drain) return;
+      this.#steeringDrain = undefined;
+      if (
+        this.#steeringPoints.length > 0 &&
+        this.#steeringQueue.some((entry) => entry.state === "pending")
+      ) {
+        this.#ensureSteeringDrain();
+      }
+    });
+  }
+
+  async #drainSteeringPoints(): Promise<void> {
+    while (!this.#stopped && this.#steeringPoints.length > 0) {
+      const mode = this.#steeringPoints.shift();
+      const entry = this.#steeringQueue.find((candidate) => candidate.state === "pending");
+      if (mode === undefined || entry === undefined) continue;
+      entry.state = "delivering";
+      delete entry.errorCode;
+      this.#syncSteeringQueue();
+      const result = await this.command(
+        "prompt",
+        {
+          message: entry.message,
+          ...(mode === "steer" ? { streamingBehavior: "steer" } : {}),
+        },
+        entry.idempotencyKey,
+      );
+      if (result.state === "completed" || result.state === "streaming") {
+        entry.state = "delivered";
+        this.#setSteeringReceipt(entry.idempotencyKey, {
+          queueId: entry.queueId,
+          message: entry.message,
+          state: "delivered",
+        });
+        this.#syncSteeringQueue();
+        continue;
+      }
+      if (result.state === "indeterminate") {
+        entry.state = "indeterminate";
+        this.#setSteeringReceipt(entry.idempotencyKey, {
+          queueId: entry.queueId,
+          message: entry.message,
+          state: "indeterminate",
+        });
+        this.#steeringPoints = [];
+        this.#syncSteeringQueue();
+        return;
+      }
+      entry.state = "pending";
+      entry.errorCode = result.error?.code ?? "steering_rejected";
+      this.#steeringPoints = [];
+      this.#syncSteeringQueue();
+      return;
+    }
+  }
+
+  #reconcileRemoteSteeringQueue(event: Record<string, unknown>): void {
+    const remote = Array.isArray(event.steering)
+      ? event.steering.filter((value): value is string => typeof value === "string")
+      : [];
+    const counts = new Map<string, number>();
+    for (const message of remote) counts.set(message, (counts.get(message) ?? 0) + 1);
+    let changed = false;
+    const next: SteeringQueueEntry[] = [];
+    for (const entry of this.#steeringQueue) {
+      if (entry.state !== "delivering" && entry.state !== "delivered") {
+        next.push(entry);
+        continue;
+      }
+      const count = counts.get(entry.message) ?? 0;
+      if (count > 0) {
+        counts.set(entry.message, count - 1);
+        if (!entry.remoteObserved) {
+          entry.remoteObserved = true;
+          changed = true;
+        }
+        next.push(entry);
+        continue;
+      }
+      if (entry.remoteObserved) {
+        this.#setSteeringReceipt(entry.idempotencyKey, {
+          queueId: entry.queueId,
+          message: entry.message,
+          state: "delivered",
+        });
+        changed = true;
+        continue;
+      }
+      next.push(entry);
+    }
+    if (!changed) return;
+    this.#steeringQueue = next;
+    this.#syncSteeringQueue();
+  }
+
+  #dropDeliveredSteeringMessages(): void {
+    const delivered = this.#steeringQueue.filter((entry) => entry.state === "delivered");
+    if (delivered.length === 0) return;
+    for (const entry of delivered) {
+      this.#setSteeringReceipt(entry.idempotencyKey, {
+        queueId: entry.queueId,
+        message: entry.message,
+        state: "delivered",
+      });
+    }
+    this.#steeringQueue = this.#steeringQueue.filter((entry) => entry.state !== "delivered");
+    this.#syncSteeringQueue();
+  }
+
+  #syncSteeringQueue(): void {
+    this.#patch({
+      pendingSteeringMessages: this.#steeringQueue.map((entry) => ({
+        queueId: entry.queueId,
+        preview: entry.preview,
+        truncated: entry.truncated,
+        queuedAt: entry.queuedAt,
+        state: entry.state,
+        ...(entry.errorCode === undefined ? {} : { errorCode: entry.errorCode }),
+      })),
+    });
+  }
+
+  #setSteeringReceipt(idempotencyKey: string, receipt: SteeringReceipt): void {
+    if (!this.#steeringReceipts.has(idempotencyKey) && this.#steeringReceipts.size >= MAX_STEERING_RECEIPTS) {
+      const oldest = this.#steeringReceipts.keys().next().value;
+      if (oldest !== undefined) this.#steeringReceipts.delete(oldest);
+    }
+    this.#steeringReceipts.set(idempotencyKey, receipt);
   }
 
   #recordsForEvent(event: Record<string, unknown>): NormalizedTranscriptRecord[] {

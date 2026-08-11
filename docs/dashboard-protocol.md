@@ -292,6 +292,20 @@ commands split the canonical `provider/model-id` reference and issue the typed
 for completion, while the extension command itself still executes inside Pi's
 registered-command path without becoming a model prompt.
 
+An ordinary composer send during an active turn enters a bounded,
+browser-private FIFO rather than issuing a second concurrent prompt. The pane
+shows a bounded preview and permits cancellation while the item is still held
+locally. At the next observed tool boundary, Dash submits exactly the first item
+as stock `prompt` with `streamingBehavior: "steer"`: Pi queues it when the run is
+still active and starts a normal turn if the run settled during transport. If no
+tool boundary occurs, `agent_settled` submits the first item as one normal next
+turn. Further items wait in FIFO order for later boundaries/settlements. Once
+delivery begins, cancellation disappears; an indeterminate command stays
+visible and is never replayed automatically. The queue is capped at 32 items
+and 1 MiB total, is not persisted in browser storage, and never enters logs,
+capabilities, inventory, or diagnostics. Explicit `/steer` and `/follow-up`
+commands retain their immediate Pi semantics and do not enter this local queue.
+
 Export remains a fourth explicit durable operation. Frozen tickets cover a
 successful export-as-new and an indeterminate append-to-origin. A client never
 blindly retries an indeterminate activation, command, or export with a new

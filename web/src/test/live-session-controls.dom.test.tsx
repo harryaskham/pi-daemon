@@ -28,6 +28,7 @@ function previewState(
     extensionNotifications: [],
     extensionStatuses: {},
     extensionWidgets: {},
+    pendingSteeringMessages: [],
     treePhase: "idle",
     unread: false,
     info: {

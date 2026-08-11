@@ -114,6 +114,62 @@ describe("Dashboard live session controller", () => {
     await controller.stop();
   });
 
+  it("queues active-turn messages as cancellable FIFO steering input", async () => {
+    const backend = new LiveFixtureDashboardBackend();
+    const session = backend.sessions[0]!;
+    const controller = new DashboardLiveSessionController(backend, session.inventoryId);
+    await controller.start();
+    await controller.command("prompt", { message: "exercise one steering boundary" });
+    expect(controller.state.phase).toBe("streaming");
+
+    const first = await controller.submit("prompt", { message: "steer this first" }, "steer-first");
+    const duplicate = await controller.submit("prompt", { message: "steer this first" }, "steer-first");
+    const second = await controller.submit("prompt", { message: "cancel this second" }, "steer-second");
+    expect(first).toMatchObject({ state: "completed", data: { disposition: "queued" } });
+    expect(duplicate).toMatchObject({ state: "completed", data: { disposition: "queued" } });
+    expect(second.state).toBe("completed");
+    expect(controller.state.pendingSteeringMessages.map((message) => message.preview)).toEqual([
+      "steer this first",
+      "cancel this second",
+    ]);
+    expect(liveComposerPresentation(controller.state)).toMatchObject({
+      disabled: false,
+      submitLabel: "Queue steer",
+      status: "2 steering messages waiting in FIFO order",
+    });
+
+    const cancelledId = controller.state.pendingSteeringMessages[1]?.queueId;
+    expect(cancelledId).toBeDefined();
+    expect(controller.cancelQueuedSteeringMessage(cancelledId!)).toBe(true);
+    expect(controller.cancelQueuedSteeringMessage(cancelledId!)).toBe(false);
+    expect((await controller.submit("prompt", { message: "different" }, "steer-first")).state).toBe("rejected");
+
+    await waitFor(() => controller.state.pendingSteeringMessages.length === 0);
+    const transcript = JSON.stringify(controller.state.transcript?.records ?? []);
+    expect(transcript).not.toContain("cancel this second");
+    await controller.stop();
+  });
+
+  it("submits a FIFO steering message as the next turn when the active run settles first", async () => {
+    const backend = new LiveFixtureDashboardBackend();
+    const session = backend.sessions[0]!;
+    const controller = new DashboardLiveSessionController(backend, session.inventoryId);
+    await controller.start();
+    await controller.command("prompt", { message: "turn without a tool boundary" });
+    await controller.submit("prompt", { message: "queued next turn one" }, "next-turn-one");
+    await controller.submit("prompt", { message: "queued next turn two" }, "next-turn-two");
+
+    await waitFor(() => {
+      const transcript = JSON.stringify(controller.state.transcript?.records ?? []);
+      return transcript.includes("Completed fixture response to: queued next turn one") &&
+        transcript.includes("Completed fixture response to: queued next turn two") &&
+        controller.state.pendingSteeringMessages.length === 0;
+    });
+    const transcript = JSON.stringify(controller.state.transcript?.records ?? []);
+    expect(transcript.indexOf("queued next turn one")).toBeLessThan(transcript.indexOf("queued next turn two"));
+    await controller.stop();
+  });
+
   it("normalizes raw Pi message, tool and durable entry events by stable identity", async () => {
     const backend = new LiveFixtureDashboardBackend();
     const session = backend.sessions[0]!;

@@ -369,6 +369,8 @@ class FixtureRichHub {
   #model: string;
   #thinking: string;
   #contextPercent: number | null;
+  #streaming = false;
+  #steeringQueue: string[] = [];
 
   constructor(session: SessionFixture, records: NormalizedTranscriptRecord[], onIdle: () => void) {
     this.session = session;
@@ -441,11 +443,28 @@ class FixtureRichHub {
     if (command.operation === "clone") return completed(command.correlationId, { cancelled: false });
     if (command.operation === "prompt") {
       const text = typeof command.payload?.message === "string" ? command.payload.message : "Fixture prompt";
+      if (command.payload?.streamingBehavior === "steer" && this.#streaming) {
+        this.#steeringQueue.push(text);
+        this.#publish({ type: "queue_update", steering: [...this.#steeringQueue], followUp: [] });
+        globalThis.setTimeout(() => {
+          const index = this.#steeringQueue.indexOf(text);
+          if (index >= 0) this.#steeringQueue.splice(index, 1);
+          this.#publish({ type: "queue_update", steering: [...this.#steeringQueue], followUp: [] });
+        }, 10);
+        return completed(command.correlationId);
+      }
+      this.#streaming = true;
       this.#publish({ type: "agent_start" });
       this.#publish({
         type: "message_update",
         normalizedRecord: messageRecord(`live-${this.#sequence}`, "assistant", `Streaming fixture response to: ${text}`, "live", "streaming"),
       });
+      if (text.includes("steering boundary")) {
+        globalThis.setTimeout(() => {
+          this.#publish({ type: "tool_execution_start", toolCallId: "steering-tool", toolName: "read", args: { path: "fixture.txt" } });
+          this.#publish({ type: "tool_execution_end", toolCallId: "steering-tool", toolName: "read", result: { content: [{ type: "text", text: "steering point" }] }, isError: false });
+        }, 20);
+      }
       if (text.includes("raw Pi events")) {
         const rawMessage = { role: "assistant", content: [{ type: "text", text: "Raw Pi stream" }], timestamp: new Date().toISOString() };
         this.#publish({ type: "message_start", message: rawMessage });
@@ -481,6 +500,7 @@ class FixtureRichHub {
           this.#broadcast({ kind: "extension_ui", identity: this.identity, requestId: "fixture-editor", method: "set_editor_text", payload: { text: "prefilled extension text" } });
         }
         this.#contextPercent = Math.min(100, (this.#contextPercent ?? 18) + 1);
+        this.#streaming = false;
         this.#publish({ type: "agent_settled" });
       }, 80);
       return { correlationId: command.correlationId, state: "streaming" };
@@ -490,6 +510,7 @@ class FixtureRichHub {
       return completed(command.correlationId);
     }
     if (command.operation === "abort") {
+      this.#streaming = false;
       this.#publish({ type: "agent_settled", reason: "aborted" });
       return completed(command.correlationId);
     }
@@ -545,7 +566,7 @@ class FixtureRichHub {
   }
 
   #rpcState(): JsonObject {
-    return { model: this.#model, thinkingLevel: this.#thinking, isStreaming: false, commands: COMMANDS };
+    return { model: this.#model, thinkingLevel: this.#thinking, isStreaming: this.#streaming, commands: COMMANDS };
   }
 
   #publish(event: Record<string, unknown>): void {

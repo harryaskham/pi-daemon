@@ -717,7 +717,12 @@ A chat pane contains:
   presentation toggle;
 - virtualized transcript with “jump to latest” behavior;
 - streaming assistant/tool updates as soon as emitted by Pi Daemon;
-- queued steering/follow-up messages;
+- a bounded browser-private FIFO for ordinary messages sent during an active
+  turn: each message remains visibly cancellable until the next tool boundary,
+  is then submitted with Pi's supported `streamingBehavior: "steer"`, and falls
+  back to one exact next-turn prompt if the run settles first;
+- explicit `/steer` and `/follow-up` controls for callers that intentionally
+  bypass that cancellable browser queue;
 - extension UI dialogs/widgets/status where serializable;
 - composer with multiline editing, paste/images, submit/steer/follow-up, abort,
   history, and explicit busy/controller states; and

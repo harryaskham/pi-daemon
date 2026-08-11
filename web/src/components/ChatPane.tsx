@@ -15,6 +15,7 @@ import type { DemoState, SessionFixture, TranscriptRecord } from "../model";
 import { modelLabel } from "../model-label";
 import { liveContextLabel } from "../session-stats";
 import { LiveSessionControls } from "./LiveSessionControls";
+import { SteeringQueue } from "./SteeringQueue";
 
 const Composer = lazy(() => import("./Composer"));
 const RichTranscriptRecord = lazy(() => import("./RichTranscriptRecord").then((module) => ({ default: module.RichTranscriptRecord })));
@@ -70,7 +71,24 @@ export function liveComposerPresentation(
       tone: "error",
     };
   }
-  if (state.phase === "live" || state.phase === "streaming") {
+  if (state.phase === "streaming") {
+    const controller = state.role === "controller";
+    const count = state.pendingSteeringMessages.length;
+    return {
+      disabled: !controller,
+      submitLabel: "Queue steer",
+      hint: controller
+        ? "New messages wait locally for the next tool boundary"
+        : "Request control to queue steering input",
+      status: controller
+        ? count === 0
+          ? "Active turn · send queues a cancellable FIFO steering message"
+          : `${count} steering message${count === 1 ? "" : "s"} waiting in FIFO order`
+        : "Observer mode · request control to send",
+      tone: controller ? "waiting" : "warning",
+    };
+  }
+  if (state.phase === "live") {
     const controller = state.role === "controller";
     return {
       disabled: !controller,
@@ -525,6 +543,10 @@ export function ChatPane({
             ) : null}
           </div>
         ) : null}
+        <SteeringQueue
+          messages={liveState.pendingSteeringMessages}
+          onCancel={(queueId) => liveController.cancelQueuedSteeringMessage(queueId)}
+        />
         <Suspense fallback={<div className="composer composer--loading"><i /><span>Loading the editor chunk…</span></div>}>
           <Composer
             vimEnabled={vimEnabled}
