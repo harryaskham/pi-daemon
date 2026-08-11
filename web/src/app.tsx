@@ -54,10 +54,17 @@ import { createLocalPreferencesBackend, useDashboardSettings, useDashboardWorksp
 
 const FIXTURE_SESSION_COUNT = 10_000;
 const BOOTSTRAP_SESSIONS = createSessionFixtures(100);
+const SHOWCASE_TRANSCRIPT_RECORDS = createTranscriptShowcaseFixtures();
 const INITIAL_TRANSCRIPT_RECORDS = [
   ...createTranscriptFixtures(232),
-  ...createTranscriptShowcaseFixtures(),
+  ...SHOWCASE_TRANSCRIPT_RECORDS,
 ];
+
+function fixtureTranscriptRecords(): typeof INITIAL_TRANSCRIPT_RECORDS {
+  return new URLSearchParams(window.location.search).get("transcript") === "showcase"
+    ? SHOWCASE_TRANSCRIPT_RECORDS
+    : INITIAL_TRANSCRIPT_RECORDS;
+}
 
 interface DraftPaneState {
   initialCwd: string;
@@ -620,7 +627,7 @@ function DashWorkspace({
       <ConnectedChatPane
         backend={backend}
         session={session}
-        fallbackRecords={fixtureMode ? INITIAL_TRANSCRIPT_RECORDS : []}
+        fallbackRecords={fixtureMode ? fixtureTranscriptRecords() : []}
         active={selectedPaneId === node.paneId && presentation === "rich"}
         fixtureMode={fixtureMode}
         tuiAvailable={fixtureMode || capabilities.presentations.tui.available}

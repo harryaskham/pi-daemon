@@ -1264,6 +1264,10 @@ export class DashboardLiveSessionController {
       const message = jsonRecord(event.message);
       if (message === undefined) return [];
       const role = typeof message.role === "string" ? message.role : "assistant";
+      // Pi emits tool execution events and may also emit the same toolResult as
+      // a message boundary. The tool event owns the rich card; rendering the
+      // message as custom prose would duplicate its raw output in the chat.
+      if (role === "toolResult") return [];
       if (role !== "assistant") {
         if (type !== "message_end") return [];
         return [liveMessageRecord(
