@@ -14,6 +14,7 @@ import type { DashboardLiveSessionController, DashboardLiveSessionState } from "
 import type { DemoState, SessionFixture, TranscriptRecord } from "../model";
 import { modelLabel } from "../model-label";
 import { liveContextLabel } from "../session-stats";
+import { transcriptRecordIdentity } from "../transcript-store";
 import { LiveSessionControls } from "./LiveSessionControls";
 import { SteeringQueue } from "./SteeringQueue";
 
@@ -32,6 +33,7 @@ interface ChatPaneProps {
   vimEnabled: boolean;
   submitKey: "enter" | "mod-enter";
   composerHistory: string[];
+  transcriptPreferences: { expandTools: boolean; expandThinking: boolean };
   needsReconcile: boolean;
   droppedRecords: number;
   liveState: DashboardLiveSessionState;
@@ -272,6 +274,7 @@ export function ChatPane({
   vimEnabled,
   submitKey,
   composerHistory,
+  transcriptPreferences,
   needsReconcile,
   droppedRecords,
   liveState,
@@ -305,7 +308,10 @@ export function ChatPane({
     [shownRecords],
   );
   const getRecordKey = useCallback(
-    (index: number) => shownRecords[index]?.recordId ?? `missing-transcript-record:${index}`,
+    (index: number) => {
+      const record = shownRecords[index];
+      return record === undefined ? `missing-transcript-record:${index}` : transcriptRecordIdentity(record);
+    },
     [shownRecords],
   );
   const virtualizer = useVirtualizer({
@@ -498,7 +504,7 @@ export function ChatPane({
               const isLastAssistant = record.kind === "message" && record.role === "assistant" && row.index === shownRecords.length - 1;
               return (
                 <div
-                  key={record.recordId}
+                  key={transcriptRecordIdentity(record)}
                   ref={virtualizer.measureElement}
                   data-index={row.index}
                   data-record-id={record.recordId}
@@ -507,7 +513,7 @@ export function ChatPane({
                   style={{ transform: `translateY(${row.start}px)` }}
                 >
                   <Suspense fallback={<div className="record-loading" aria-label="Loading rich transcript record" />}>
-                    <RichTranscriptRecord record={record} {...(fixtureMode && isLastAssistant && demoState === "streaming" ? { streaming: streamText } : {})} />
+                    <RichTranscriptRecord record={record} {...transcriptPreferences} {...(fixtureMode && isLastAssistant && demoState === "streaming" ? { streaming: streamText } : {})} />
                   </Suspense>
                 </div>
               );

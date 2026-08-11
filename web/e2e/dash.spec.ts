@@ -313,7 +313,13 @@ test("split creation, keyboard resize, close promotion, and revision persistence
 });
 
 test("settings hot-switch, source reporting, reset, and keyboard guide are revisioned", async ({ page }) => {
-  await page.goto("./?fixture=1&state=ready");
+  await page.goto("./?fixture=1&state=ready&transcript=showcase");
+  const transcript = page.locator(".workspace-pane--selected .transcript");
+  await transcript.evaluate((element) => { element.scrollTop = 0; });
+  const edit = transcript.locator('[data-record-id="showcase:edit"]');
+  const persistedReasoning = transcript.locator('[data-record-id="showcase:markdown"] .thinking-block');
+  await expect(edit.getByRole("button", { name: "Show details for Edit web/src/transcript-store.ts" })).toBeVisible();
+  await expect(persistedReasoning).not.toHaveAttribute("open", "");
   await page.getByRole("button", { name: "Settings" }).click();
   const settings = page.locator(".settings-dialog");
   await expect(settings).toBeVisible();
@@ -331,12 +337,17 @@ test("settings hot-switch, source reporting, reset, and keyboard guide are revis
   await settings.getByRole("tab", { name: "Transcript" }).click();
   await expect(settings.getByRole("tabpanel")).toContainText("Expand tool calls");
   await settings.getByRole("switch", { name: "Expand tool calls" }).click();
+  await settings.getByRole("switch", { name: "Expand reasoning" }).click();
+  await expect(edit.getByRole("button", { name: "Hide details for Edit web/src/transcript-store.ts" })).toHaveAttribute("aria-expanded", "true");
+  await expect(persistedReasoning).toHaveAttribute("open", "");
   await settings.getByRole("tab", { name: "Cache & limits" }).click();
   await expect(settings.getByRole("spinbutton", { name: "Transcript cache entries" })).toHaveValue("64");
 
   await settings.getByRole("button", { name: "Revert to configured defaults" }).click();
   await expect(page.locator(".dash-app")).toHaveAttribute("data-theme", "nord-midnight");
   await expect(page.locator(".dash-app")).toHaveAttribute("data-density", "comfortable");
+  await expect(edit.getByRole("button", { name: "Show details for Edit web/src/transcript-store.ts" })).toHaveAttribute("aria-expanded", "false");
+  await expect(persistedReasoning).not.toHaveAttribute("open", "");
   await settings.getByRole("button", { name: "Done" }).click();
 
   await page.keyboard.press("?");

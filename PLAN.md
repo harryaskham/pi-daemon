@@ -1010,6 +1010,9 @@ implementation order. This list is a human-readable crosswalk.
 - [ ] `bd-467201` — accumulate live Pi reasoning deltas into the identity-stable
   transcript row, keep token usage current, and reconcile exactly with the
   persisted reasoning entry after completion or reload.
+- [ ] `bd-7677ba` — thread the existing transcript expansion settings into rich
+  cards and preserve their component/measurement state across semantic
+  live-to-persisted record replacement.
 - [ ] `bd-4e10da` — future neutral persisted per-session cron/prompt scheduler
   and durable wakes; detailed alongside Dash in `web/PLAN.md`.
   - [x] `bd-6d96bb` — v1 schedule resource/schema/fixtures, bounded owner-private
