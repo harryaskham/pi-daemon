@@ -348,7 +348,16 @@ export class LiveFixtureDashboardBackend extends LocalFixtureBackend implements 
     if (options.generation !== undefined && options.generation !== session.generation) throw new Error("stale generation");
     let hub = this.#hubs.get(session.sessionId);
     if (!hub) {
-      hub = new FixtureRichHub(session, this.transcript.slice(-200), () => this.#hubs.delete(session.sessionId));
+      hub = new FixtureRichHub(
+        session,
+        this.transcript.slice(-200),
+        (record) => {
+          const existing = this.transcript.findIndex((candidate) => candidate.recordId === record.recordId);
+          if (existing >= 0) this.transcript[existing] = structuredClone(record);
+          else this.transcript.push(structuredClone(record));
+        },
+        () => this.#hubs.delete(session.sessionId),
+      );
       this.#hubs.set(session.sessionId, hub);
     }
     return hub.open(options);
@@ -363,6 +372,7 @@ class FixtureRichHub {
   readonly session: SessionFixture;
   readonly identity: DashboardSessionIdentity;
   readonly records: NormalizedTranscriptRecord[];
+  readonly #persistRecord: (record: NormalizedTranscriptRecord) => void;
   readonly #onIdle: () => void;
   readonly #channels = new Map<string, FixtureRichChannel>();
   readonly #events: Array<{ sequence: number; cursor: DashboardCursor; event: DashboardChannelEvent }> = [];
@@ -374,9 +384,15 @@ class FixtureRichHub {
   #streaming = false;
   #steeringQueue: string[] = [];
 
-  constructor(session: SessionFixture, records: NormalizedTranscriptRecord[], onIdle: () => void) {
+  constructor(
+    session: SessionFixture,
+    records: NormalizedTranscriptRecord[],
+    persistRecord: (record: NormalizedTranscriptRecord) => void,
+    onIdle: () => void,
+  ) {
     this.session = session;
     this.records = structuredClone(records);
+    this.#persistRecord = persistRecord;
     this.identity = { hostInstanceId: "fixture-host-01", sessionId: session.sessionId, generation: session.generation };
     this.#onIdle = onIdle;
     this.#model = session.model;
@@ -476,6 +492,30 @@ class FixtureRichHub {
         this.#publish({ type: "message_end", message: { role: "toolResult", toolCallId: "raw-tool", toolName: "read", content: [{ type: "text", text: "raw tool duplicate message must stay hidden" }] } });
         this.#publish({ type: "message_end", message: { ...rawMessage, content: [{ type: "text", text: "Raw Pi stream complete" }] } });
         this.#publish({ type: "entry_appended", entry: { id: "raw-entry", parentId: null, type: "message", timestamp: new Date().toISOString(), message: { ...rawMessage, content: [{ type: "text", text: "Raw Pi stream persisted" }] } } });
+      }
+      if (text.includes("reasoning stream")) {
+        const timestamp = new Date().toISOString();
+        const message = { id: "fixture-reasoning", role: "assistant", content: [{ type: "thinking", thinking: "" }], timestamp };
+        this.#publish({ type: "message_start", message });
+        this.#publish({ type: "message_update", assistantMessageEvent: { type: "thinking_delta", contentIndex: 0, delta: "Inspecting " } });
+        this.#publish({ type: "message_update", message: { ...message, usage: { input: 5, output: 2 } }, assistantMessageEvent: { type: "thinking_delta", contentIndex: 0, delta: "very " } });
+        this.#publish({ type: "message_update", message: { ...message, usage: { input: 5, output: 3 } }, assistantMessageEvent: { type: "thinking_delta", contentIndex: 0, delta: "very " } });
+        this.#publish({ type: "message_update", message: { ...message, usage: { input: 5, output: 4 } }, assistantMessageEvent: { type: "thinking_delta", contentIndex: 0, delta: "carefully." } });
+        const complete = { ...message, content: [{ type: "thinking", thinking: "Inspecting very very carefully." }], usage: { input: 5, output: 4 } };
+        this.#publish({ type: "message_end", message: complete });
+        this.#publish({ type: "entry_appended", entry: { id: "fixture-reasoning-entry", parentId: null, type: "message", timestamp, message: complete } });
+        const persistedReasoning: NormalizedTranscriptRecord = {
+          recordId: "message:fixture-reasoning",
+          key: { entryId: "fixture-reasoning-entry", messageId: "fixture-reasoning" },
+          kind: "message",
+          role: "assistant",
+          state: "complete",
+          source: "persisted",
+          timestamp,
+          content: [{ type: "thinking", text: "Inspecting very very carefully." }, { type: "usage", inputTokens: 5, outputTokens: 4 }],
+        };
+        this.records.push(persistedReasoning);
+        this.#persistRecord(persistedReasoning);
       }
       globalThis.setTimeout(() => {
         const record = messageRecord(`durable-${this.#sequence}`, "assistant", `Completed fixture response to: ${text}`, "persisted", "complete");

@@ -205,6 +205,10 @@ test("rich transcript renders semantic markdown, tools, images, summaries, custo
 
   await transcript.evaluate((element) => { element.scrollTop = element.scrollHeight; });
   await expect(transcript.locator('[data-record-id="showcase:error"] .message-error')).toContainText("replay gap");
+  const reasoning = transcript.locator('[data-record-id="showcase:stream"]');
+  await expect(reasoning.locator(".thinking-block")).toHaveAttribute("open", "");
+  await expect(reasoning).toContainText("Inspecting streamed generation identity");
+  await expect(reasoning.locator("footer")).toContainText("21 in · 7 out");
 });
 
 test("expanded bash cards expose and copy the exact full command without breaking layout @smoke", async ({ page }) => {

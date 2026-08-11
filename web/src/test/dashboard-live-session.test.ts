@@ -185,6 +185,51 @@ describe("Dashboard live session controller", () => {
     await controller.stop();
   });
 
+  it("accumulates live reasoning deltas and reconciles them with persisted content", async () => {
+    const backend = new LiveFixtureDashboardBackend();
+    const session = backend.sessions[0]!;
+    const controller = new DashboardLiveSessionController(backend, session.inventoryId);
+    const observed: Array<{ text: string; outputTokens?: number; state: string; source: string }> = [];
+    const unsubscribe = controller.subscribe((state) => {
+      const record = state.transcript?.records.find((candidate) => candidate.kind === "message" && candidate.key.messageId === "fixture-reasoning");
+      if (record?.kind !== "message") return;
+      const thinking = record.content.find((block) => block.type === "thinking");
+      const usage = record.content.find((block) => block.type === "usage");
+      if (thinking?.type === "thinking") {
+        observed.push({
+          text: thinking.text,
+          ...(usage?.type === "usage" && usage.outputTokens !== undefined ? { outputTokens: usage.outputTokens } : {}),
+          state: record.state,
+          source: record.source,
+        });
+      }
+    });
+    await controller.start();
+    await controller.command("prompt", { message: "exercise reasoning stream" });
+
+    expect(observed).toContainEqual(expect.objectContaining({ text: "Inspecting ", state: "streaming", source: "live" }));
+    expect(observed).toContainEqual(expect.objectContaining({ text: "Inspecting very ", outputTokens: 2, state: "streaming" }));
+    expect(observed).toContainEqual(expect.objectContaining({ text: "Inspecting very very carefully.", outputTokens: 4 }));
+    let records = controller.state.transcript?.records.filter((record) => record.kind === "message" && record.key.messageId === "fixture-reasoning") ?? [];
+    expect(records).toHaveLength(1);
+    let persisted = records[0];
+    expect(persisted).toMatchObject({ state: "complete", source: "persisted" });
+    if (persisted?.kind !== "message") throw new Error("reasoning fixture did not project a message");
+    expect(persisted.content).toEqual(expect.arrayContaining([
+      { type: "thinking", text: "Inspecting very very carefully." },
+      expect.objectContaining({ type: "usage", outputTokens: 4 }),
+    ]));
+
+    await controller.reconnect();
+    records = controller.state.transcript?.records.filter((record) => record.kind === "message" && record.key.messageId === "fixture-reasoning") ?? [];
+    expect(records).toHaveLength(1);
+    persisted = records[0];
+    if (persisted?.kind !== "message") throw new Error("reasoning fixture was not durable across reconnect");
+    expect(persisted.content).toEqual(expect.arrayContaining([{ type: "thinking", text: "Inspecting very very carefully." }]));
+    unsubscribe();
+    await controller.stop();
+  });
+
   it("surfaces extension UI and clears it after controller response", async () => {
     const backend = new LiveFixtureDashboardBackend();
     const session = backend.sessions[0]!;

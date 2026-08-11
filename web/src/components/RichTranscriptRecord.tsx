@@ -133,12 +133,24 @@ function usage(blocks: TranscriptContentBlock[]) {
   return blocks.find((block) => block.type === "usage");
 }
 
+function ThinkingBlock({ text, streaming }: { text: string; streaming: boolean }) {
+  const [expanded, setExpanded] = useState(streaming);
+  return (
+    <details className="thinking-block" open={expanded} onToggle={(event) => setExpanded(event.currentTarget.open)}>
+      <summary><BrainCircuit size={13} /> Reasoning</summary>
+      <CollapsibleText text={text} />
+    </details>
+  );
+}
+
 function MessageBlock({
   block,
   resolveBlob,
+  streaming,
 }: {
   block: TranscriptContentBlock;
   resolveBlob?: (blobRef: string) => string | undefined;
+  streaming: boolean;
 }) {
   if (block.type === "usage") return null;
   if (block.type === "image") {
@@ -150,7 +162,7 @@ function MessageBlock({
     );
   }
   if (block.type === "thinking") {
-    return <details className="thinking-block"><summary><BrainCircuit size={13} /> Reasoning</summary><CollapsibleText text={block.text} /></details>;
+    return <ThinkingBlock text={block.text} streaming={streaming} />;
   }
   if (block.type === "error") {
     return <div className="message-error" role="alert"><AlertCircle size={15} /><CollapsibleText text={block.text} /></div>;
@@ -178,7 +190,7 @@ function MessageRecord({ record, streaming, resolveBlob }: {
           <span className={`record-source record-source--${record.source}`}>{record.source}</span>
           {record.timestamp ? <time dateTime={record.timestamp}>{relativeTime(record.timestamp)}</time> : null}
         </header>
-        {record.content.map((block, index) => <MessageBlock key={index} block={block} {...(resolveBlob ? { resolveBlob } : {})} />)}
+        {record.content.map((block, index) => <MessageBlock key={index} block={block} streaming={record.state === "streaming"} {...(resolveBlob ? { resolveBlob } : {})} />)}
         {streaming ? <p>{streaming}<span className="stream-caret" /></p> : null}
         {usageBlock?.type === "usage" ? <footer>{(usageBlock.inputTokens ?? 0).toLocaleString()} in · {(usageBlock.outputTokens ?? 0).toLocaleString()} out{usageBlock.cost !== undefined ? ` · $${usageBlock.cost.toFixed(4)}` : ""}</footer> : null}
       </div>
