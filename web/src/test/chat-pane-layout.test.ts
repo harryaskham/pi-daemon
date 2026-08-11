@@ -97,6 +97,8 @@ describe("preview composer layout", () => {
     expect(source).toMatch(/aria-label="Full bash command"/);
     expect(source).toMatch(/navigator\.clipboard\.writeText\(command\)/);
     expect(source).toMatch(/command \? <BashCommand command=\{command\}/);
+    expect(source).toMatch(/prettyJsonToolOutput\(text\)/);
+    expect(source).toMatch(/SyntaxCodeBlock language="json"/);
     expect(css).toMatch(/\.tool-card__copy strong \{[^}]*text-overflow: ellipsis;/);
     expect(css).toMatch(/\.bash-command pre \{[^}]*overflow-wrap: anywhere;[^}]*white-space: pre-wrap;[^}]*word-break: break-word;/);
   });

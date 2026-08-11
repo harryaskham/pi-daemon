@@ -179,31 +179,38 @@ test("sidebar loading, error recovery, and mobile drawer states are explicit @sm
 });
 
 test("rich transcript renders semantic markdown, tools, images, summaries, custom and error states", async ({ page }) => {
-  await page.goto("./?fixture=1&state=ready");
-  await expect(page.getByRole("heading", { name: "Generation-safe reducer" })).toBeVisible();
-  await expect(page.locator(".syntax-block").first()).toBeVisible();
-  await expect(page.locator("script[data-unsafe]")).toHaveCount(0);
-  await expect(page.getByText("<script data-unsafe>window.__dashUnsafe = true</script>", { exact: true })).toBeVisible();
-  await expect(page.locator(".message-image--placeholder")).toContainText("Nord Midnight dashboard reference");
-  await expect(page.locator(".summary-card")).toContainText("Context compacted");
-  await expect(page.locator(".custom-record").filter({ hasText: "safe generic renderer" })).toBeVisible();
-  await expect(page.locator(".timeline-record--queue")).toContainText("Follow-up queued");
-  await expect(page.locator(".message-error")).toContainText("replay gap");
-  await expect(page.locator(".tool-card--bash")).toContainText("bounded stream still running");
-  const customDetails = page.getByRole("button", { name: "Show details for Render extension status" });
-  await customDetails.click();
-  await expect(page.locator(".generic-tool-output")).toContainText("without executing browser-side extension code");
+  await page.goto("./?fixture=1&state=ready&transcript=showcase");
+  const transcript = page.locator(".workspace-pane--selected .transcript");
+  await transcript.evaluate((element) => { element.scrollTop = 0; });
 
-  const editDetails = page.getByRole("button", { name: "Show details for Edit web/src/transcript-store.ts" });
-  await editDetails.click();
-  await expect(page.locator(".diff-line--add").first()).toContainText("transcriptRecordIdentity");
-  await expect(page.getByRole("button", { name: "Hide details for Edit web/src/transcript-store.ts" })).toHaveAttribute("aria-expanded", "true");
+  const markdown = transcript.locator('[data-record-id="showcase:markdown"]');
+  await expect(markdown.getByRole("heading", { name: "Generation-safe reducer" })).toBeVisible();
+  await expect(markdown.locator(".syntax-block")).toBeVisible();
+  await expect(markdown.locator("script[data-unsafe]")).toHaveCount(0);
+  await expect(markdown).toContainText("<script data-unsafe>window.__dashUnsafe = true</script>");
+  await expect(transcript.locator('[data-record-id="showcase:image"] .message-image--placeholder')).toContainText("Nord Midnight dashboard reference");
+  await expect(transcript.locator('[data-record-id="showcase:summary"] .summary-card')).toContainText("Context compacted");
+  await expect(transcript.locator('[data-record-id="showcase:custom"] .custom-record')).toContainText("safe generic renderer");
+  await expect(transcript.locator('[data-record-id="showcase:queue"] .timeline-record--queue')).toContainText("Follow-up queued");
+  await expect(transcript.locator('[data-record-id="showcase:bash"] .tool-card--bash')).toContainText("bounded stream still running");
+
+  const customTool = transcript.locator('[data-record-id="showcase:custom-tool"]');
+  await customTool.getByRole("button", { name: "Show details for Render extension status" }).click();
+  await expect(customTool.locator(".generic-tool-output")).toContainText("without executing browser-side extension code");
+
+  const edit = transcript.locator('[data-record-id="showcase:edit"]');
+  await edit.getByRole("button", { name: "Show details for Edit web/src/transcript-store.ts" }).click();
+  await expect(edit.locator(".diff-line--add").first()).toContainText("transcriptRecordIdentity");
+  await expect(edit.getByRole("button", { name: "Hide details for Edit web/src/transcript-store.ts" })).toHaveAttribute("aria-expanded", "true");
+
+  await transcript.evaluate((element) => { element.scrollTop = element.scrollHeight; });
+  await expect(transcript.locator('[data-record-id="showcase:error"] .message-error')).toContainText("replay gap");
 });
 
 test("expanded bash cards expose and copy the exact full command without breaking layout @smoke", async ({ page }) => {
   await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
-  await page.goto("./?fixture=1&state=ready");
-  const card = page.locator(".tool-card--bash");
+  await page.goto("./?fixture=1&state=ready&transcript=showcase");
+  const card = page.locator(".tool-card--bash").filter({ hasText: "bounded stream still running" });
   const fullCommand = card.getByRole("region", { name: "Full bash command" });
   await expect(fullCommand).toContainText("nix develop .#e2e");
   await expect(fullCommand).toContainText("--define=single-tokensingle-token");
@@ -218,7 +225,7 @@ test("expanded bash cards expose and copy the exact full command without breakin
 
 test("long feed messages resize their virtual rows without overlapping adjacent entries @smoke", async ({ page }) => {
   await page.setViewportSize({ width: 1_280, height: 820 });
-  await page.goto("./?fixture=1&state=ready");
+  await page.goto("./?fixture=1&state=ready&transcript=showcase");
   const transcript = page.locator(".workspace-pane--selected .transcript");
   const longRow = transcript.locator('[data-record-id="showcase:long-message"]');
 

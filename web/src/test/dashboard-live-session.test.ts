@@ -181,6 +181,7 @@ describe("Dashboard live session controller", () => {
     expect(rawMessages).toHaveLength(1);
     expect(rawMessages[0]).toMatchObject({ source: "persisted", state: "complete" });
     expect(records.find((record) => record.kind === "tool" && record.key.toolCallId === "raw-tool")).toMatchObject({ state: "success", source: "live" });
+    expect(records.some((record) => record.kind === "message" && record.content.some((block) => "text" in block && block.text.includes("raw tool duplicate")))).toBe(false);
     await controller.stop();
   });
 

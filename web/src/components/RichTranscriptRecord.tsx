@@ -19,6 +19,7 @@ import {
   UserRound,
 } from "../icons";
 import { relativeTime } from "../time";
+import { prettyJsonToolOutput } from "../tool-output-format";
 
 const SyntaxCodeBlock = lazy(() => import("./SyntaxCodeBlock"));
 
@@ -211,6 +212,10 @@ function ToolOutput({ record }: { record: TranscriptToolRecord }) {
   const isDiff = record.toolName === "edit" || /^[-+]{1}[^-+]/m.test(text);
   if (isDiff) {
     return <pre className="diff-output">{text.split("\n").slice(0, 400).map((line, index) => <span key={index} className={line.startsWith("+") ? "diff-line--add" : line.startsWith("-") ? "diff-line--remove" : ""}>{line || " "}{"\n"}</span>)}</pre>;
+  }
+  const prettyJson = record.toolName === "bash" ? prettyJsonToolOutput(text) : undefined;
+  if (prettyJson !== undefined) {
+    return <Suspense fallback={<pre className="code-loading">Loading JSON output…</pre>}><SyntaxCodeBlock language="json" code={prettyJson} /></Suspense>;
   }
   if (record.toolName === "bash" || record.toolName === "read" || ["grep", "search", "find", "ls", "list"].includes(record.toolName)) {
     return <Suspense fallback={<pre className="code-loading">Loading output…</pre>}><SyntaxCodeBlock language={record.toolName === "bash" ? "shell" : "text"} code={text} /></Suspense>;

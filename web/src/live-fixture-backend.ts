@@ -68,10 +68,12 @@ export class LiveFixtureDashboardBackend extends LocalFixtureBackend implements 
   readonly #draftTickets = new Map<string, DashboardSessionDraftSendTicket>();
 
   override get transcript(): NormalizedTranscriptRecord[] {
-    return this.#liveTranscript ??= [
-      ...createTranscriptFixtures(1_192),
-      ...createTranscriptShowcaseFixtures(),
-    ];
+    return this.#liveTranscript ??= typeof window !== "undefined" && new URLSearchParams(window.location.search).get("transcript") === "showcase"
+      ? createTranscriptShowcaseFixtures()
+      : [
+          ...createTranscriptFixtures(1_192),
+          ...createTranscriptShowcaseFixtures(),
+        ];
   }
 
   async capabilities(): Promise<DashboardCapabilities> {
@@ -471,6 +473,7 @@ class FixtureRichHub {
         this.#publish({ type: "message_update", message: { ...rawMessage, content: [{ type: "text", text: "Raw Pi stream updated" }] }, assistantMessageEvent: { type: "text_delta", delta: " updated" } });
         this.#publish({ type: "tool_execution_start", toolCallId: "raw-tool", toolName: "read", args: { path: "raw.txt" } });
         this.#publish({ type: "tool_execution_end", toolCallId: "raw-tool", toolName: "read", result: { content: [{ type: "text", text: "raw tool complete" }] }, isError: false });
+        this.#publish({ type: "message_end", message: { role: "toolResult", toolCallId: "raw-tool", toolName: "read", content: [{ type: "text", text: "raw tool duplicate message must stay hidden" }] } });
         this.#publish({ type: "message_end", message: { ...rawMessage, content: [{ type: "text", text: "Raw Pi stream complete" }] } });
         this.#publish({ type: "entry_appended", entry: { id: "raw-entry", parentId: null, type: "message", timestamp: new Date().toISOString(), message: { ...rawMessage, content: [{ type: "text", text: "Raw Pi stream persisted" }] } } });
       }
