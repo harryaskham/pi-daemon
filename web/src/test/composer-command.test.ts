@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { commandNames, modelLabel } from "../components/ChatPane";
+import { commandNames } from "../components/ChatPane";
 import { parseComposerCommand } from "../components/ConnectedChatPane";
+import { modelLabel } from "../model-label";
 
 describe("Dash composer command routing", () => {
   it("maps browser built-ins to typed dashboard operations instead of prompting", () => {
@@ -26,13 +27,25 @@ describe("Dash composer command routing", () => {
     })).toEqual(["/m", "/compact", "/thinking"]);
   });
 
-  it("renders effective model objects as canonical provider/model labels", () => {
+  it("renders effective model objects as bounded canonical labels without object coercion", () => {
     expect(modelLabel({ provider: "github-copilot", id: "gpt-5.6-sol" })).toBe(
       "github-copilot/gpt-5.6-sol",
     );
+    expect(modelLabel({ provider: "github-copilot", modelId: "gpt-5.6-sol" })).toBe(
+      "github-copilot/gpt-5.6-sol",
+    );
+    expect(modelLabel({ provider: "github-copilot", model: { id: "gpt-5.6-sol" } })).toBe(
+      "github-copilot/gpt-5.6-sol",
+    );
+    expect(modelLabel({ name: "local-model" })).toBe("local-model");
     expect(modelLabel("github-copilot/gpt-5.6-sol")).toBe(
       "github-copilot/gpt-5.6-sol",
     );
+    expect(modelLabel(null)).toBe("unknown");
+    expect(modelLabel({})).toBe("unknown");
+    expect(modelLabel([])).toBe("unknown");
+    expect(modelLabel({ provider: "github-copilot", id: "gpt".repeat(200) }).length).toBeLessThanOrEqual(271);
+    expect(modelLabel({ provider: "github-copilot", id: "gpt" })).not.toContain("[object Object]");
   });
 
   it("keeps ordinary text as a normal prompt", () => {

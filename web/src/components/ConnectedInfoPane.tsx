@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { DashboardBackend, SessionInfoResource } from "@harryaskham/pi-daemon/dashboard-contract";
 import type { SessionFixture } from "../model";
+import { modelLabel } from "../model-label";
 import type { ScheduleBackend } from "../schedule";
 import { InfoPane } from "./InfoPane";
 import { ScheduleEditor } from "./ScheduleEditor";
@@ -47,7 +48,7 @@ function mergeInfo(session: SessionFixture, info: SessionInfoResource): SessionF
     generation: info.managed?.generation ?? session.generation,
     cwd: info.cwd,
     project: info.projectLabel ?? session.project,
-    model: info.runtime?.model?.id ?? session.model,
+    model: modelLabel(info.runtime?.model ?? session.model),
     thinking: thinkingLevel(info.runtime?.model?.thinkingLevel, session.thinking),
   };
 }
