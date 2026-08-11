@@ -316,14 +316,14 @@ kbd { border: 1px solid var(--dash-border-subtle); border-bottom-color: var(--da
 .message__avatar { display: grid; place-items: center; width: 28px; height: 28px; border: 1px solid var(--dash-border-subtle); border-radius: var(--dash-radius-sm); background: var(--dash-bg-elevated); color: var(--dash-fg-muted); }
 .message--assistant .message__avatar { color: var(--dash-accent-primary); }
 .message--thinking .message__avatar { color: var(--dash-accent-violet); }
-.message__body { min-width: 0; }
-.message__body header { display: flex; gap: 8px; align-items: baseline; }
+.message__body { min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
+.message__body header { display: flex; gap: 8px; align-items: baseline; min-width: 0; }
 .message__body header strong { font-size: 11px; }
 .message__body time { color: var(--dash-fg-dim); font: 8px/1 var(--dash-font-mono); }
 .record-source { padding: 2px 4px; border: 1px solid var(--dash-border-subtle); border-radius: var(--dash-radius-xs); color: var(--dash-fg-dim); font: 7px/1 var(--dash-font-mono); text-transform: uppercase; }
 .record-source--live { border-color: color-mix(in srgb, var(--dash-state-running) 34%, var(--dash-border-subtle)); color: var(--dash-state-running); }
 .record-source--optimistic { border-color: color-mix(in srgb, var(--dash-state-warning) 34%, var(--dash-border-subtle)); color: var(--dash-state-warning); }
-.message__body p { margin: 7px 0 4px; color: var(--dash-fg-muted); font-size: 12px; line-height: 1.58; white-space: pre-wrap; }
+.message__body p { max-width: 100%; margin: 7px 0 4px; overflow-wrap: anywhere; color: var(--dash-fg-muted); font-size: 12px; line-height: 1.58; white-space: pre-wrap; word-break: break-word; }
 .message--user .message__body p { color: var(--dash-fg-primary); }
 .message__body footer { color: var(--dash-fg-dim); font: 8px/1 var(--dash-font-mono); }
 .message--state-error { border-color: color-mix(in srgb, var(--dash-state-error) 42%, var(--dash-border-subtle)); background: color-mix(in srgb, var(--dash-state-error) 5%, var(--dash-bg-surface)); }

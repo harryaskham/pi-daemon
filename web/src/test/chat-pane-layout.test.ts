@@ -75,6 +75,19 @@ describe("preview composer layout", () => {
     expect(css).toMatch(/\.chat-pane__footer \{[^}]*position: relative;[^}]*z-index: 8;/);
   });
 
+  it("keys dynamic transcript measurements by record identity and contains long text", async () => {
+    const [source, css] = await Promise.all([
+      readFile(new URL("../components/ChatPane.tsx", import.meta.url), "utf8"),
+      readFile(new URL("../app.css", import.meta.url), "utf8"),
+    ]);
+    expect(source).toMatch(/getItemKey: getRecordKey/);
+    expect(source).toMatch(/shownRecords\[index\]\?\.recordId/);
+    expect(source).toMatch(/useAnimationFrameWithResizeObserver: true/);
+    expect(source).toMatch(/data-record-id=\{record\.recordId\}/);
+    expect(css).toMatch(/\.message__body \{[^}]*overflow-wrap: anywhere;/);
+    expect(css).toMatch(/\.message__body p \{[^}]*overflow-wrap: anywhere;[^}]*word-break: break-word;/);
+  });
+
   it("keeps new-session configuration scrollable with a fixed composer footer", async () => {
     const css = await readFile(new URL("../app.css", import.meta.url), "utf8");
     expect(css).toMatch(
