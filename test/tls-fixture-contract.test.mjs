@@ -38,9 +38,10 @@ test("a missing openssl names the dependency and the lane instead of a spawn ENO
 });
 
 test("the openssl dependency is declared in every lane that runs the suite", async () => {
-  const [flake, ci] = await Promise.all([
+  const [flake, ci, release] = await Promise.all([
     readFile(join(repositoryRoot, "flake.nix"), "utf8"),
     readFile(join(repositoryRoot, ".github", "workflows", "ci.yml"), "utf8"),
+    readFile(join(repositoryRoot, ".github", "workflows", "release.yml"), "utf8"),
   ]);
   // The package build and the dev shells. bd-833b3e adds pinned Bash to
   // package checks because NixOS/sandbox has neither /bin/bash nor an exported
@@ -52,6 +53,14 @@ test("the openssl dependency is declared in every lane that runs the suite", asy
   assert.notEqual(provide, -1, "the Node lane must provide openssl explicitly");
   assert.match(ci.slice(provide - 400, provide), /--inputs-from \./);
   assert.equal(provide < ci.indexOf("- run: npm test"), true, "provide it before the suite runs");
+
+  const releaseProvide = release.indexOf("nixpkgs#openssl.bin");
+  const releaseTest = release.indexOf("nix develop .#default --command npm test");
+  assert.notEqual(releaseProvide, -1, "the release lane must provide openssl explicitly");
+  assert.match(release.slice(releaseProvide - 400, releaseProvide), /--inputs-from \./);
+  assert.match(release.slice(releaseProvide, releaseTest), /OPENSSL_BIN=.*\/bin\/openssl/);
+  assert.match(release.slice(releaseProvide, releaseTest), />> "\$GITHUB_ENV"/);
+  assert.equal(releaseProvide < releaseTest, true, "provide it before the release suite runs");
 });
 
 test("the fixture fails rather than degrading when openssl is absent", async (t) => {

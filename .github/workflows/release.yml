@@ -30,6 +30,11 @@ jobs:
       - run: npm ci --ignore-scripts
       - name: Verify release metadata
         run: npm run release:check -- --tag "$PI_DAEMON_RELEASE_TAG"
+      - name: Provide the TLS fixture's openssl dependency
+        run: |
+          openssl_out="$(nix build --no-link --print-out-paths --inputs-from . 'nixpkgs#openssl.bin')"
+          echo "OPENSSL_BIN=$openssl_out/bin/openssl" >> "$GITHUB_ENV"
+        timeout-minutes: 10
       - run: nix develop .#default --command npm test
       - name: Build exact self-update npm tarball and checksum
         id: pack
