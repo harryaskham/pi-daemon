@@ -129,6 +129,19 @@
         "runtime_inventory_unavailable"
       ]
     },
+    "hostToolAdapterQueue": {
+      "contractVersion": "1.0",
+      "capacity": true,
+      "occupancy": true,
+      "highWater": true,
+      "rejectionReason": true,
+      "saturation": true,
+      "perOperationTiming": true,
+      "recommended": {
+        "maxConcurrentRequests": 4,
+        "maxQueuedRequests": 16
+      }
+    },
     "host": {
       "ready": true,
       "draining": false

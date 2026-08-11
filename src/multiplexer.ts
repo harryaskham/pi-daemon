@@ -28,7 +28,10 @@ import {
   type OpenPayloadV2,
   type SupportedProtocolCommand as ProtocolCommand,
 } from "./protocol-v2.js";
-import type { HostToolAdapterDescriptor } from "./tool-adapter-protocol.js";
+import type {
+  HostToolAdapterDescriptor,
+  HostToolAdapterQueueSnapshot,
+} from "./tool-adapter-protocol.js";
 import {
   HostMetrics,
   NOOP_LOGGER,
@@ -104,6 +107,8 @@ export interface SessionAdapter {
   boundModel?(): { provider: string; id: string } | undefined;
   /** Content-free effective tool inventory for the currently resident runtime. */
   toolMaterialization?(): SessionToolMaterialization | undefined;
+  /** Content-free host tool-adapter queue telemetry for this exact generation. */
+  hostToolAdapterQueue?(): HostToolAdapterQueueSnapshot | undefined;
   setIdentityChangeHandler?(
     handler: ((identity: SessionConversationIdentity) => Promise<void>) | undefined,
   ): void;
@@ -142,6 +147,7 @@ export interface SessionSnapshot {
   activeRequestId?: string;
   lastErrorCode?: string;
   model?: { provider: string; id: string };
+  hostToolAdapterQueue?: HostToolAdapterQueueSnapshot;
   lastUsedAt: string;
   idleForMs: number;
 }
@@ -1660,6 +1666,26 @@ export class Multiplexer {
     }
   }
 
+  sessionHostToolAdapterQueue(
+    sessionId: string,
+    generation?: number,
+  ): HostToolAdapterQueueSnapshot | undefined {
+    const slot = this.#sessions.get(sessionId);
+    if (slot === undefined) return undefined;
+    if (generation !== undefined && generation !== slot.generation) return undefined;
+    try {
+      const queue = slot.adapter.hostToolAdapterQueue?.();
+      return queue === undefined ? undefined : structuredClone(queue);
+    } catch (error) {
+      this.#logger.write("warn", "tool_adapter_queue_status_unavailable", {
+        sessionId: slot.sessionId,
+        generation: slot.generation,
+        errorCode: errorCode(error),
+      });
+      return undefined;
+    }
+  }
+
   async retainedSessions(
     options: { limit?: number; cursor?: string } = {},
   ): Promise<SessionCatalogPage> {
@@ -2490,6 +2516,10 @@ function snapshot(slot: SessionSlot, now: number): SessionSnapshot {
   if (slot.lastErrorCode !== undefined) result.lastErrorCode = slot.lastErrorCode;
   const model = slot.adapter.boundModel?.();
   if (model !== undefined) result.model = { provider: model.provider, id: model.id };
+  const hostToolAdapterQueue = slot.adapter.hostToolAdapterQueue?.();
+  if (hostToolAdapterQueue !== undefined) {
+    result.hostToolAdapterQueue = structuredClone(hostToolAdapterQueue);
+  }
   return result;
 }
 

@@ -172,6 +172,11 @@ test("Unix client/server handshake open wake and status round trip", async (t) =
   assert.equal(negotiated.requestedProtocolVersion, "2.0");
   assert.deepEqual(negotiated.response.data.supportedProtocolVersions, ["1.0", "2.0"]);
   assert.equal(negotiated.response.data.capabilities.hostToolAdapter, true);
+  assert.equal(negotiated.response.data.capabilities.hostToolAdapterQueueTelemetry, true);
+  assert.deepEqual(negotiated.response.data.capabilities.hostToolAdapterRecommendedQueueLimits, {
+    maxConcurrentRequests: 4,
+    maxQueuedRequests: 16,
+  });
   assert.equal(negotiated.response.data.capabilities.configuredOpen, true);
   assert.equal(negotiated.response.data.capabilities.sessionDir, true);
   assert.equal(negotiated.response.data.host.hostInstanceId, "host-test");
@@ -218,6 +223,11 @@ test("protocol v2 handshake/open responses echo version and never expose capabil
   assert.equal(handshake.protocolVersion, "2.0");
   assert.deepEqual(handshake.data.supportedProtocolVersions, ["1.0", "2.0"]);
   assert.equal(handshake.data.capabilities.hostToolAdapter, true);
+  assert.equal(handshake.data.capabilities.hostToolAdapterQueueTelemetry, true);
+  assert.deepEqual(handshake.data.capabilities.hostToolAdapterRecommendedQueueLimits, {
+    maxConcurrentRequests: 4,
+    maxQueuedRequests: 16,
+  });
   assert.equal(handshake.data.capabilities.hostToolOperationCount, 6);
   assert.equal(handshake.data.capabilities.configuredOpen, true);
   assert.equal(handshake.data.capabilities.sessionDir, true);

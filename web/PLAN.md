@@ -727,7 +727,10 @@ A chat pane contains:
 - composer with multiline editing, paste/images, submit/steer/follow-up, abort,
   history, and explicit busy/controller states; and
 - semantic chips below the composer for cwd, context usage/window, token/usage
-  summary, provider/model, thinking effort, tool policy, and generation.
+  summary, provider/model, thinking effort, tool policy, and generation; and
+- authenticated session information for a resident host adapter's content-free
+  queue capacity, occupancy/high-water, refusal/saturation counts, and bounded
+  per-operation wait/latency summaries.
 
 The context chip uses SDK `getContextUsage()`/session stats when hydrated. A
 preview-only session labels estimates as such rather than inventing an exact

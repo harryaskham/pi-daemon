@@ -878,8 +878,9 @@ Both connect and handshake are deadline bounded.
 Probe negotiates the highest supported protocol version by default and reports
 the version it asked for as `requestedProtocolVersion`. This matters for
 integration: a host advertises `configuredOpen`, `sessionDir`,
-`hostToolAdapter`, `hostToolOperationCount`, and `supportedProtocolVersions`
-only when the request declares a 2.x version, so a v1 probe cannot distinguish a
+`hostToolAdapter`, `hostToolAdapterQueueTelemetry`,
+`hostToolAdapterRecommendedQueueLimits`, `hostToolOperationCount`, and
+`supportedProtocolVersions` only when the request declares a 2.x version, so a v1 probe cannot distinguish a
 v1-only host from a fully v2-capable one. Use `--protocol-version` to pin one
 version when you need to see exactly what a peer speaking it would be told. A
 host that cannot answer a 2.x handshake still yields a truthful v1 result.
@@ -887,10 +888,14 @@ host that cannot answer a 2.x handshake still yields a truthful v1 result.
 Status retains safe recovery
 phase, pending replay/mutation counts, indeterminate counts, failure-code counts,
 typed quarantined session/generation conditions, metrics, memory,
-resident/retained sessions, turns, and draining state; it excludes prompts,
-results, credentials, adapter endpoints/handles, error text, and private paths.
-The authenticated `GET /v1/capabilities` surface exposes only the current
-`host.ready` and `host.draining` booleans needed by reviewed remote preflights.
+resident/retained sessions, turns, and draining state. Resident host-adapter
+sessions additionally report content-free queue capacity, occupancy/high-water,
+outcome and saturation counters, and fixed-operation timing summaries; status
+still excludes prompts, results, request/idempotency keys, credentials, adapter
+endpoints/handles, error text, and private paths. The authenticated
+`GET /v1/capabilities` surface exposes current `host.ready` / `host.draining`
+plus the versioned queue-telemetry contract and reviewed explicit-descriptor
+starting point.
 
 ## Shutdown
 

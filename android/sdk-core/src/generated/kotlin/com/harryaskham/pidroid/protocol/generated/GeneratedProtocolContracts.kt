@@ -2220,8 +2220,8 @@ public object GeneratedProtocolContracts {
       schemaPath = "session-api.schema.json",
       name = "capabilities",
       kind = SchemaKind.OBJECT,
-      knownFields = setOf("acp", "apiVersion", "authentication", "blobTransfers", "dashboard", "host", "isolationModes", "rpc", "rpcSubprotocols", "schedules", "toolMaterialization", "transports"),
-      requiredFields = setOf("acp", "apiVersion", "authentication", "blobTransfers", "host", "isolationModes", "rpc", "rpcSubprotocols", "schedules", "toolMaterialization", "transports"),
+      knownFields = setOf("acp", "apiVersion", "authentication", "blobTransfers", "dashboard", "host", "hostToolAdapterQueue", "isolationModes", "rpc", "rpcSubprotocols", "schedules", "toolMaterialization", "transports"),
+      requiredFields = setOf("acp", "apiVersion", "authentication", "blobTransfers", "host", "hostToolAdapterQueue", "isolationModes", "rpc", "rpcSubprotocols", "schedules", "toolMaterialization", "transports"),
       enumValues = emptyList(),
       diagnostics = emptyList(),
     ),
@@ -2625,7 +2625,7 @@ public object GeneratedProtocolContracts {
       schemaPath = "session-api.schema.json",
       name = "sessionResource",
       kind = SchemaKind.OBJECT,
-      knownFields = setOf("createdAt", "environment", "generation", "lastTerminal", "lastUsedAt", "links", "name", "recovery", "residency", "revision", "sessionId", "spec", "state", "toolMaterialization", "updatedAt"),
+      knownFields = setOf("createdAt", "environment", "generation", "hostToolAdapterQueue", "lastTerminal", "lastUsedAt", "links", "name", "recovery", "residency", "revision", "sessionId", "spec", "state", "toolMaterialization", "updatedAt"),
       requiredFields = setOf("createdAt", "environment", "generation", "lastUsedAt", "links", "residency", "revision", "sessionId", "spec", "state", "toolMaterialization", "updatedAt"),
       enumValues = emptyList(),
       diagnostics = emptyList(),
@@ -2789,6 +2789,33 @@ public object GeneratedProtocolContracts {
       kind = SchemaKind.STRING,
       knownFields = emptySet(),
       requiredFields = emptySet(),
+      enumValues = emptyList(),
+      diagnostics = emptyList(),
+    ),
+    SchemaDefinition(
+      schemaPath = "session-api.schema.json",
+      name = "toolAdapterOperationQueue",
+      kind = SchemaKind.OBJECT,
+      knownFields = setOf("acceptedRequests", "activeRequests", "cancelledRequests", "completedRequests", "failedRequests", "operation", "queueWaitMs", "queuedRequests", "rejectedRequests", "requestLatencyMs", "timedOutRequests"),
+      requiredFields = setOf("acceptedRequests", "activeRequests", "cancelledRequests", "completedRequests", "failedRequests", "operation", "queueWaitMs", "queuedRequests", "rejectedRequests", "requestLatencyMs", "timedOutRequests"),
+      enumValues = emptyList(),
+      diagnostics = emptyList(),
+    ),
+    SchemaDefinition(
+      schemaPath = "session-api.schema.json",
+      name = "toolAdapterQueue",
+      kind = SchemaKind.OBJECT,
+      knownFields = setOf("acceptedRequests", "cancelledRequests", "capacity", "completedRequests", "failedRequests", "highWater", "lastRejectionReason", "occupancy", "operations", "rejectedRequests", "saturation", "timedOutRequests"),
+      requiredFields = setOf("acceptedRequests", "cancelledRequests", "capacity", "completedRequests", "failedRequests", "highWater", "occupancy", "operations", "rejectedRequests", "saturation", "timedOutRequests"),
+      enumValues = emptyList(),
+      diagnostics = emptyList(),
+    ),
+    SchemaDefinition(
+      schemaPath = "session-api.schema.json",
+      name = "toolAdapterTimingSummary",
+      kind = SchemaKind.OBJECT,
+      knownFields = setOf("count", "last", "max", "min", "sum"),
+      requiredFields = setOf("count", "last", "max", "min", "sum"),
       enumValues = emptyList(),
       diagnostics = emptyList(),
     ),
@@ -3305,7 +3332,7 @@ public object GeneratedProtocolContracts {
     ),
     ProtocolInput(
       path = "session-api.schema.json",
-      sha256 = "57c6a892dfa4a4e7a553328729ad0f48b684cff20367107d1f73c0cbfeb330b2",
+      sha256 = "c11f18ccebcdbd60c52fe90249018564890a4b35eb0b9d4c4ea015c6eefa7a72",
       kind = ProtocolInputKind.CONTRACT,
     ),
     ProtocolInput(
@@ -3440,7 +3467,7 @@ public object GeneratedProtocolContracts {
     ),
     ProtocolInput(
       path = "fixtures/dashboard-api/session-info.resource.json",
-      sha256 = "39bf201b4a406b212009b4e2f8a5bf7a7d58705f8a533779ad94ffafb07b145c",
+      sha256 = "516059cc20ec43e371faa984b0603a8d784b8ff753328658ec1a68e15273afc0",
       kind = ProtocolInputKind.FIXTURE,
     ),
     ProtocolInput(
@@ -3620,7 +3647,7 @@ public object GeneratedProtocolContracts {
     ),
     ProtocolInput(
       path = "fixtures/session-api/capabilities.response.json",
-      sha256 = "d3c4c719c891a3531363dcda415aac01c401592c7db55c92c92e050b639270a6",
+      sha256 = "30fdc3877460c7d837a052d0459553123cefa7a91dd32ed4adedb865791ad357",
       kind = ProtocolInputKind.FIXTURE,
     ),
     ProtocolInput(
@@ -3655,7 +3682,7 @@ public object GeneratedProtocolContracts {
     ),
     ProtocolInput(
       path = "fixtures/session-api/dashboard.info.response.json",
-      sha256 = "339a81650984f74b7f5b97e79b895c5020db14fbc60333660b75d4edaaa00688",
+      sha256 = "70365a4f59a04befa85cdb72f7e01038c54bf3f6a9a0f74b1bbfa3401d420279",
       kind = ProtocolInputKind.FIXTURE,
     ),
     ProtocolInput(
@@ -3770,7 +3797,7 @@ public object GeneratedProtocolContracts {
     ),
     ProtocolInput(
       path = "fixtures/session-api/session.resource.json",
-      sha256 = "6cb164157ff7873e5f82f54e94f948546294eecfc383cdbebede3e0e10072bf3",
+      sha256 = "4ace7c82c23a3569d600a857b9ecd9e52d5125e2dc9b4a765980f8ad31f9685e",
       kind = ProtocolInputKind.FIXTURE,
     ),
     ProtocolInput(

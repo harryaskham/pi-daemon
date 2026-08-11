@@ -134,6 +134,27 @@ serializes the normalized mandatory `bind` and `bound` frames and rejects limits
 that cannot contain them. Thus a legal descriptor can always complete its own
 handshake even when identity and capability fields approach their maxima.
 
+Every descriptor still names every limit explicitly; Pi Daemon never replaces a
+caller's resource policy with an ambient default. For ordinary parallel Pi tool
+bursts, the exported and negotiated reviewed starting point is 4 concurrent plus
+16 queued requests. Operators may choose another value inside the hard bounds
+after measuring their host/adapter. Queue timeout uses `requestTimeoutMs` from
+initial admission, so waiting is bounded. Once both active and queued capacity
+are genuinely full, the next request fails before any wire write with retryable
+`adapter_queue_capacity` and a bounded `retryAfterMs` hint. Retrying the same
+semantic request must preserve its original idempotency key; an active timeout
+remains indeterminate and must never be replayed blindly.
+
+`HostToolAdapterSession.status()` and the negotiated
+`hostToolAdapterQueue` Session API projection expose only content-free numeric
+telemetry: configured capacity, current occupancy, active/queued high-water
+marks, accepted/completed/failed/rejected/cancelled/timed-out counts, the fixed
+last-refusal reason, saturation count/duration, and per-operation queue-wait and
+request-latency summaries. No payload, path, idempotency key, request ID,
+endpoint, capability, response, or error text is included. Each session owns an
+independent bounded queue, so one saturated session cannot consume another
+session's Pi-side admission slots.
+
 ## Restart quarantine and reprovisioning
 
 A process restart deliberately loses every adapter endpoint binding and

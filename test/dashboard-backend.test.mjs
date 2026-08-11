@@ -101,6 +101,23 @@ class FakeAdapter {
     return this.controller;
   }
 
+  hostToolAdapterQueue() {
+    return {
+      capacity: { maxConcurrentRequests: 2, maxQueuedRequests: 16 },
+      occupancy: { activeRequests: 1, queuedRequests: 2 },
+      highWater: { activeRequests: 2, queuedRequests: 7 },
+      acceptedRequests: 10,
+      completedRequests: 7,
+      failedRequests: 0,
+      rejectedRequests: 1,
+      cancelledRequests: 0,
+      timedOutRequests: 0,
+      lastRejectionReason: "adapter_queue_capacity",
+      saturation: { active: false, count: 1, totalMs: 5, longestMs: 5 },
+      operations: [],
+    };
+  }
+
   async dispose() {
     this.disposed += 1;
   }
@@ -367,6 +384,11 @@ test("rich channels coalesce controller events, enforce roles, replay and durabl
   const activeInfo = await backend.getSessionInfo(fixtures.sessionInfo.inventoryId);
   assert.equal(activeInfo.runtime.readerCount, 2);
   assert.equal(activeInfo.runtime.warmLeaseCount, 2);
+  assert.deepEqual(activeInfo.runtime.hostToolAdapterQueue.occupancy, {
+    activeRequests: 1,
+    queuedRequests: 2,
+  });
+  assert.equal(activeInfo.runtime.hostToolAdapterQueue.rejectedRequests, 1);
   const observerEvents = [];
   observer.subscribe((event) => observerEvents.push(event));
   assert.equal(observerEvents[0].kind, "session_event");

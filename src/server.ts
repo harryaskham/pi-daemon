@@ -23,7 +23,10 @@ import {
   parseSupportedProtocolCommand,
   type SupportedProtocolCommand as ProtocolCommand,
 } from "./protocol-v2.js";
-import { NEUTRAL_TOOL_OPERATIONS } from "./tool-adapter-protocol.js";
+import {
+  HOST_TOOL_ADAPTER_RECOMMENDED_QUEUE_LIMITS,
+  NEUTRAL_TOOL_OPERATIONS,
+} from "./tool-adapter-protocol.js";
 import { PI_DAEMON_VERSION } from "./version.js";
 import { hasForbiddenExposure, hasForeignPathOwner } from "./path-ownership.js";
 
@@ -367,6 +370,10 @@ export class ProtocolServer {
             ...(command.protocolVersion.startsWith("2.")
               ? {
                   hostToolAdapter: true,
+                  hostToolAdapterQueueTelemetry: true,
+                  hostToolAdapterRecommendedQueueLimits: {
+                    ...HOST_TOOL_ADAPTER_RECOMMENDED_QUEUE_LIMITS,
+                  },
                   hostToolOperationCount: NEUTRAL_TOOL_OPERATIONS.length,
                   configuredOpen: true,
                   sessionDir: true,
