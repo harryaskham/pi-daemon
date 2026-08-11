@@ -200,6 +200,22 @@ test("rich transcript renders semantic markdown, tools, images, summaries, custo
   await expect(page.getByRole("button", { name: "Hide details for Edit web/src/transcript-store.ts" })).toHaveAttribute("aria-expanded", "true");
 });
 
+test("expanded bash cards expose and copy the exact full command without breaking layout @smoke", async ({ page }) => {
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+  await page.goto("./?fixture=1&state=ready");
+  const card = page.locator(".tool-card--bash");
+  const fullCommand = card.getByRole("region", { name: "Full bash command" });
+  await expect(fullCommand).toContainText("nix develop .#e2e");
+  await expect(fullCommand).toContainText("--define=single-tokensingle-token");
+  const commandText = await fullCommand.locator("code").textContent();
+  expect(commandText).not.toBeNull();
+  expect(commandText).not.toContain("…");
+  expect(await fullCommand.locator("pre").evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
+  await fullCommand.getByRole("button", { name: "Copy command" }).click();
+  await expect(fullCommand.getByRole("button", { name: "Copied" })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(commandText);
+});
+
 test("long feed messages resize their virtual rows without overlapping adjacent entries @smoke", async ({ page }) => {
   await page.setViewportSize({ width: 1_280, height: 820 });
   await page.goto("./?fixture=1&state=ready");

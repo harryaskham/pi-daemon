@@ -259,7 +259,10 @@ export function createTranscriptShowcaseFixtures(): TranscriptRecord[] {
       state: "running",
       source: "live",
       timestamp: time(4),
-      arguments: { command: "npm run web:test", cwd: "/work/aurora" },
+      arguments: {
+        command: `nix develop .#e2e --command npm run web:e2e:nix -- --grep "dashboard bash card" --define=${"single-token".repeat(48)}`,
+        cwd: "/work/aurora",
+      },
       content: [{ type: "text", text: "$ npm run web:test\n✓ semantic markdown and tool renderers\n✓ replay-gap reconciliation\n… bounded stream still running" }],
       details: { durationMs: 318 },
     },
