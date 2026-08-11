@@ -132,6 +132,38 @@ test("manual release workflow is isolated from ordinary CI and retains exact evi
     source(".github/workflows/android-fast.yml"),
   ]);
 
+  const nix = workflow.indexOf("cachix/install-nix-action@v31");
+  const credential = workflow.indexOf("name: Verify Play credential-file preflight");
+  const java = workflow.indexOf("name: Expose pinned Java to Gradle action");
+  const gradle = workflow.indexOf("gradle/actions/setup-gradle@v5");
+  assert.ok(nix >= 0 && nix < credential && credential < java && java < gradle);
+
+  assert.match(workflow, /PI_DROID_SOPS_AGE_KEY_FILE: \$\{\{ secrets\.PI_DROID_SOPS_AGE_KEY_FILE \}\}/);
+  assert.match(
+    workflow,
+    /PI_DROID_SOPS_SSH_PRIVATE_KEY_FILE: \$\{\{ secrets\.PI_DROID_SOPS_SSH_PRIVATE_KEY_FILE \}\}/,
+  );
+  const credentialPreflight = workflow.slice(credential, java);
+  assert.match(credentialPreflight, /credential_file=''/);
+  assert.match(credentialPreflight, /-n "\$\{PI_DROID_SOPS_AGE_KEY_FILE:-\}"/);
+  assert.match(credentialPreflight, /credential_file="\$PI_DROID_SOPS_AGE_KEY_FILE"/);
+  assert.match(credentialPreflight, /-n "\$\{PI_DROID_SOPS_SSH_PRIVATE_KEY_FILE:-\}"/);
+  assert.match(credentialPreflight, /credential_file="\$PI_DROID_SOPS_SSH_PRIVATE_KEY_FILE"/);
+  assert.match(credentialPreflight, /! -f "\$credential_file"/);
+  assert.match(credentialPreflight, /! -r "\$credential_file"/);
+  assert.doesNotMatch(
+    credentialPreflight,
+    /(?:echo|printf)[^\n]*\$(?:credential_file|PI_DROID_SOPS_[A-Z_]+)/,
+  );
+
+  const exposeJava = workflow.slice(java, gradle);
+  assert.match(exposeJava, /shell: nix develop \.#androidRelease --command bash -euo pipefail \{0\}/);
+  assert.match(exposeJava, /gradle_user_home="\$RUNNER_TEMP\/gradle-user-home"/);
+  assert.match(exposeJava, /printf "JAVA_HOME=%s\\n" "\$JAVA_HOME" >> "\$GITHUB_ENV"/);
+  assert.match(exposeJava, /printf "GRADLE_USER_HOME=%s\\n" "\$gradle_user_home" >> "\$GITHUB_ENV"/);
+  assert.match(exposeJava, /dirname "\$\(command -v java\)" >> "\$GITHUB_PATH"/);
+  assert.doesNotMatch(workflow, /actions\/setup-java/);
+
   assert.match(workflow, /workflow_dispatch:/);
   assert.doesNotMatch(workflow, /pull_request:/);
   assert.doesNotMatch(workflow, /push:/);
