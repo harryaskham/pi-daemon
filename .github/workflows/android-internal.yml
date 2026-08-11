@@ -29,29 +29,19 @@ jobs:
     timeout-minutes: 90
     env:
       PI_DROID_PLAY_TRACK: internal
-      PI_DROID_SOPS_AGE_KEY_FILE: ${{ secrets.PI_DROID_SOPS_AGE_KEY_FILE }}
-      PI_DROID_SOPS_SSH_PRIVATE_KEY_FILE: ${{ secrets.PI_DROID_SOPS_SSH_PRIVATE_KEY_FILE }}
     steps:
       - uses: actions/checkout@v7
       - uses: cachix/install-nix-action@v31
         with:
           github_access_token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Verify Play credential-file preflight
+      - name: Materialize Play credential identity
         shell: bash
-        run: |
-          credential_file=''
-          if [[ -n "${PI_DROID_SOPS_AGE_KEY_FILE:-}" ]]; then
-            credential_file="$PI_DROID_SOPS_AGE_KEY_FILE"
-          elif [[ -n "${PI_DROID_SOPS_SSH_PRIVATE_KEY_FILE:-}" ]]; then
-            credential_file="$PI_DROID_SOPS_SSH_PRIVATE_KEY_FILE"
-          else
-            printf '%s\n' 'a SOPS age or SSH identity file must be configured for google-play-internal' >&2
-            exit 78
-          fi
-          if [[ ! -f "$credential_file" || ! -r "$credential_file" ]]; then
-            printf '%s\n' 'the configured SOPS identity must name a readable file' >&2
-            exit 66
-          fi
+        env:
+          PI_DROID_SOPS_AGE_KEY: ${{ secrets.PI_DROID_SOPS_AGE_KEY }}
+          PI_DROID_SOPS_SSH_PRIVATE_KEY: ${{ secrets.PI_DROID_SOPS_SSH_PRIVATE_KEY }}
+          PI_DROID_SOPS_AGE_KEY_FILE: ${{ secrets.PI_DROID_SOPS_AGE_KEY_FILE }}
+          PI_DROID_SOPS_SSH_PRIVATE_KEY_FILE: ${{ secrets.PI_DROID_SOPS_SSH_PRIVATE_KEY_FILE }}
+        run: android/build-logic/materialize-sops-identity.sh
       - name: Expose pinned Java to Gradle action
         shell: nix develop .#androidRelease --command bash -euo pipefail {0}
         run: |

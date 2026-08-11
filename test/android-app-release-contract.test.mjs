@@ -127,33 +127,45 @@ test("release script materializes secrets privately and verifies fixed identity 
 });
 
 test("manual release workflow is isolated from ordinary CI and retains exact evidence", async () => {
-  const [workflow, fastWorkflow] = await Promise.all([
+  const [workflow, fastWorkflow, credentialScript] = await Promise.all([
     source(".github/workflows/android-internal.yml"),
     source(".github/workflows/android-fast.yml"),
+    source("android/build-logic/materialize-sops-identity.sh"),
   ]);
 
   const nix = workflow.indexOf("cachix/install-nix-action@v31");
-  const credential = workflow.indexOf("name: Verify Play credential-file preflight");
+  const credential = workflow.indexOf("name: Materialize Play credential identity");
   const java = workflow.indexOf("name: Expose pinned Java to Gradle action");
   const gradle = workflow.indexOf("gradle/actions/setup-gradle@v5");
   assert.ok(nix >= 0 && nix < credential && credential < java && java < gradle);
 
+  assert.match(workflow, /PI_DROID_SOPS_AGE_KEY: \$\{\{ secrets\.PI_DROID_SOPS_AGE_KEY \}\}/);
+  assert.match(
+    workflow,
+    /PI_DROID_SOPS_SSH_PRIVATE_KEY: \$\{\{ secrets\.PI_DROID_SOPS_SSH_PRIVATE_KEY \}\}/,
+  );
   assert.match(workflow, /PI_DROID_SOPS_AGE_KEY_FILE: \$\{\{ secrets\.PI_DROID_SOPS_AGE_KEY_FILE \}\}/);
   assert.match(
     workflow,
     /PI_DROID_SOPS_SSH_PRIVATE_KEY_FILE: \$\{\{ secrets\.PI_DROID_SOPS_SSH_PRIVATE_KEY_FILE \}\}/,
   );
   const credentialPreflight = workflow.slice(credential, java);
-  assert.match(credentialPreflight, /credential_file=''/);
-  assert.match(credentialPreflight, /-n "\$\{PI_DROID_SOPS_AGE_KEY_FILE:-\}"/);
-  assert.match(credentialPreflight, /credential_file="\$PI_DROID_SOPS_AGE_KEY_FILE"/);
-  assert.match(credentialPreflight, /-n "\$\{PI_DROID_SOPS_SSH_PRIVATE_KEY_FILE:-\}"/);
-  assert.match(credentialPreflight, /credential_file="\$PI_DROID_SOPS_SSH_PRIVATE_KEY_FILE"/);
-  assert.match(credentialPreflight, /! -f "\$credential_file"/);
-  assert.match(credentialPreflight, /! -r "\$credential_file"/);
+  assert.match(credentialPreflight, /android\/build-logic\/materialize-sops-identity\.sh/);
+  assert.doesNotMatch(credentialPreflight, /credential_file=/);
+
+  assert.match(credentialScript, /set -euo pipefail/);
+  assert.match(credentialScript, /umask 077/);
+  assert.match(credentialScript, /\$RUNNER_TEMP\/pi-droid-sops-identity/);
+  assert.match(credentialScript, /chmod 700 "\$identity_dir"/);
+  assert.match(credentialScript, /chmod 600 "\$target"/);
+  assert.match(credentialScript, /PI_DROID_SOPS_AGE_KEY:-/);
+  assert.match(credentialScript, /PI_DROID_SOPS_SSH_PRIVATE_KEY:-/);
+  assert.match(credentialScript, /PI_DROID_SOPS_AGE_KEY_FILE:-/);
+  assert.match(credentialScript, /PI_DROID_SOPS_SSH_PRIVATE_KEY_FILE:-/);
+  assert.match(credentialScript, />> "\$GITHUB_ENV"/);
   assert.doesNotMatch(
-    credentialPreflight,
-    /(?:echo|printf)[^\n]*\$(?:credential_file|PI_DROID_SOPS_[A-Z_]+)/,
+    credentialScript,
+    /(?:echo|printf)[^\n]*\$(?:PI_DROID_SOPS_AGE_KEY|PI_DROID_SOPS_SSH_PRIVATE_KEY)(?:[^_A-Z]|$)/,
   );
 
   const exposeJava = workflow.slice(java, gradle);
