@@ -47,6 +47,32 @@ export const DASHBOARD_TUI_SUBPROTOCOL = "pi-daemon-tui.v1" as const;
 export const SESSION_RPC_SUBPROTOCOLS = ["pi-rpc.v1", "pi-daemon-rpc.v1"] as const;
 export type SessionRpcSubprotocol = (typeof SESSION_RPC_SUBPROTOCOLS)[number];
 
+/** Versioned additive contract that clients must negotiate before sending required/provenance fields. */
+export const SESSION_TOOL_MATERIALIZATION_CAPABILITY = {
+  contractVersion: "1.0",
+  requiredToolAdmission: true,
+  provenance: true,
+  effectiveInventory: true,
+  maxEntries: 128,
+  sourceClasses: [
+    "builtin",
+    "explicit-extension",
+    "inherited-package",
+    "host-adapter",
+    "sdk",
+    "unknown",
+  ],
+  omissionReasons: [
+    "not_registered",
+    "excluded_by_policy",
+    "tools_disabled",
+    "not_selected_by_policy",
+    "inactive_in_runtime",
+    "runtime_not_resident",
+    "runtime_inventory_unavailable",
+  ],
+} as const;
+
 /** Pi 0.82.1 RPC command names. Additions require compatibility fixtures. */
 export const PI_RPC_COMMAND_TYPES = [
   "prompt",
@@ -119,6 +145,49 @@ export interface SessionToolSpec {
   mode?: "default" | "none" | "no-builtin" | "allowlist";
   include?: string[];
   exclude?: string[];
+  /** Stable tool IDs that must be active before the session may become resident. */
+  required?: string[];
+}
+
+/** Caller-supplied, nonsecret provenance for a fully materialized session policy. */
+export interface SessionMaterializationSpec {
+  source: string;
+  /** Upstream policy generation; distinct from the Pi Daemon session generation. */
+  materializationGeneration: string;
+  digest?: string;
+  authorization?: {
+    source: string;
+    scope: string;
+    /** Upstream ownership fence; distinct from both session and materialization generations. */
+    ownershipGeneration?: string;
+  };
+}
+
+export type SessionToolSourceClass =
+  (typeof SESSION_TOOL_MATERIALIZATION_CAPABILITY.sourceClasses)[number];
+export type SessionToolPolicyDisposition = "required" | "allowed" | "excluded" | "not-selected";
+export type SessionToolAvailability = "resident" | "dormant" | "unavailable";
+export type SessionToolOmissionReason =
+  (typeof SESSION_TOOL_MATERIALIZATION_CAPABILITY.omissionReasons)[number];
+
+export interface SessionToolMaterializationEntry {
+  name: string;
+  sourceClass: SessionToolSourceClass;
+  policyDisposition: SessionToolPolicyDisposition;
+  availability: SessionToolAvailability;
+  active: boolean;
+  required: boolean;
+  omissionReason?: SessionToolOmissionReason;
+}
+
+/** Content-free effective tool inventory; never contains paths, descriptions, or environment values. */
+export interface SessionToolMaterialization {
+  state: "materialized" | "not-resident" | "unavailable";
+  truncated: boolean;
+  active: string[];
+  required: string[];
+  entries: SessionToolMaterializationEntry[];
+  provenance?: SessionMaterializationSpec;
 }
 
 export interface SessionResourceSpec {
@@ -153,6 +222,8 @@ export interface SessionSpec {
   model?: SessionModelSpec;
   tools?: SessionToolSpec;
   resources?: SessionResourceSpec;
+  /** Nonsecret source/generation receipt for the resolved policy supplied by the caller. */
+  materialization?: SessionMaterializationSpec;
   settings?: JsonObject;
   env?: SessionEnvironment;
   isolation?: { mode: IsolationMode };
@@ -204,6 +275,7 @@ export interface SessionResource {
   lastUsedAt: string;
   spec: Omit<SessionSpec, "env">;
   environment: SessionEnvironmentSummary;
+  toolMaterialization: SessionToolMaterialization;
   recovery?: SessionRecoveryCondition;
   lastTerminal?: SessionTerminalSummary;
   links: {

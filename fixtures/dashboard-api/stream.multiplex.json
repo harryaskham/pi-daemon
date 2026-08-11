@@ -87,6 +87,13 @@
             "self": "/v1/session/session-fixture-01",
             "rpc": "/v1/session/session-fixture-01/rpc",
             "apc": "/v1/session/session-fixture-01/apc"
+          },
+          "toolMaterialization": {
+            "state": "unavailable",
+            "active": [],
+            "required": [],
+            "entries": [],
+            "truncated": false
           }
         },
         "rpcState": {
@@ -216,6 +223,13 @@
             "self": "/v1/session/session-fixture-01",
             "rpc": "/v1/session/session-fixture-01/rpc",
             "apc": "/v1/session/session-fixture-01/apc"
+          },
+          "toolMaterialization": {
+            "state": "unavailable",
+            "active": [],
+            "required": [],
+            "entries": [],
+            "truncated": false
           }
         },
         "rpcState": {

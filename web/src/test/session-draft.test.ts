@@ -109,6 +109,7 @@ describe("new session draft frontend model", () => {
         isolation: { mode: "unisolated" },
       },
       environment: { keys: [], persistence: "memory-only", provisioned: true },
+      toolMaterialization: { state: "materialized", truncated: false, active: [], required: [], entries: [] },
       links: { self: "/session", rpc: "/rpc", apc: "/apc" },
     };
     expect(materializedDraftSession("draft-live:draft-fixture-01", draft, resource)).toMatchObject({

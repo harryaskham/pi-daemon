@@ -108,6 +108,30 @@ test("all JSON routes authenticate before revealing capabilities or route state"
   assert.equal(allowed.value.requestId, "capabilities-1");
   assert.equal(allowed.value.hostInstanceId, "host-api-test");
   assert.equal(allowed.value.data.authentication, "service-bearer");
+  assert.deepEqual(allowed.value.data.toolMaterialization, {
+    contractVersion: "1.0",
+    requiredToolAdmission: true,
+    provenance: true,
+    effectiveInventory: true,
+    maxEntries: 128,
+    sourceClasses: [
+      "builtin",
+      "explicit-extension",
+      "inherited-package",
+      "host-adapter",
+      "sdk",
+      "unknown",
+    ],
+    omissionReasons: [
+      "not_registered",
+      "excluded_by_policy",
+      "tools_disabled",
+      "not_selected_by_policy",
+      "inactive_in_runtime",
+      "runtime_not_resident",
+      "runtime_inventory_unavailable",
+    ],
+  });
   assert.deepEqual(allowed.value.data.host, { ready: true, draining: false });
   assert.deepEqual(allowed.value.data.transports, ["unix-ndjson", "http", "websocket"]);
   assert.deepEqual(allowed.value.data.rpcSubprotocols, ["pi-rpc.v1", "pi-daemon-rpc.v1"]);
@@ -135,6 +159,11 @@ test("authenticated session reads expose bounded resident/dormant catalog resour
       spec: {
         cwd: `/work/${id}`,
         target: { mode: "new" },
+        tools: { mode: "allowlist", include: ["read"], required: ["read"] },
+        materialization: {
+          source: "managed-profile",
+          materializationGeneration: `profile-${id}`,
+        },
         isolation: { mode: "unisolated" },
       },
     });
@@ -161,6 +190,16 @@ test("authenticated session reads expose bounded resident/dormant catalog resour
   assert.equal(first.status, 200);
   assert.equal(first.value.data.sessions[0].sessionId, "a");
   assert.equal(first.value.data.sessions[0].residency, "dormant");
+  assert.equal(first.value.data.sessions[0].toolMaterialization.state, "not-resident");
+  assert.deepEqual(first.value.data.sessions[0].toolMaterialization.required, ["read"]);
+  assert.equal(
+    first.value.data.sessions[0].toolMaterialization.entries[0].omissionReason,
+    "runtime_not_resident",
+  );
+  assert.equal(
+    first.value.data.sessions[0].toolMaterialization.provenance.materializationGeneration,
+    "profile-a",
+  );
   assert.equal(first.value.data.sessions[0].recovery.code, "tool_adapter_reprovision_required");
   assert.ok(first.value.data.nextCursor);
 

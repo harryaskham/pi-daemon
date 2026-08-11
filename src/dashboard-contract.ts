@@ -22,6 +22,7 @@ import type {
   PiRpcEvent,
   SessionRecoveryCondition,
   SessionResource,
+  SessionToolMaterialization,
 } from "./session-api.js";
 import type {
   ScheduleCapabilities,
@@ -516,6 +517,7 @@ export interface SessionInfoResource extends SessionInventoryRecord {
     readerCount: number;
     warmLeaseCount: number;
     isolation?: "unisolated";
+    toolMaterialization?: SessionToolMaterialization;
   };
 }
 

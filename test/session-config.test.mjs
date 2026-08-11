@@ -35,6 +35,17 @@ test("session configuration separates durable policy from a bounded memory-only 
   assert.equal(prepared.openRequest.runtimeOptions, prepared.runtimeOptions);
   assert.equal(prepared.runtimeOptions.persistedSpec, prepared.persistedSpec);
   assert.equal(prepared.persistedSpec.isolation.mode, "unisolated");
+  assert.deepEqual(prepared.persistedSpec.tools.required, ["read", "bash"]);
+  assert.deepEqual(prepared.persistedSpec.materialization, {
+    source: "managed-profile",
+    materializationGeneration: "profile-gen-42",
+    digest: "sha256:fixture-materialization",
+    authorization: {
+      source: "controller",
+      scope: "project:fixture",
+      ownershipGeneration: "ownership-gen-7",
+    },
+  });
   assert.deepEqual(toolConfiguration(prepared.persistedSpec), {
     tools: ["read", "bash"],
     excludeTools: ["write"],
@@ -113,6 +124,45 @@ test("configuration errors distinguish invalid, unsupported, and too-large input
       },
       code: "unsupported_session_configuration",
       statusClass: "unsupported",
+    },
+    {
+      value: {
+        cwd: "/work",
+        target: { mode: "memory" },
+        tools: { mode: "none", required: ["read"] },
+      },
+      code: "invalid_session_spec",
+      statusClass: "invalid",
+    },
+    {
+      value: {
+        cwd: "/work",
+        target: { mode: "memory" },
+        tools: { mode: "allowlist", include: ["read"], required: ["bash"] },
+      },
+      code: "invalid_session_spec",
+      statusClass: "invalid",
+    },
+    {
+      value: {
+        cwd: "/work",
+        target: { mode: "memory" },
+        tools: { required: ["read"], exclude: ["read"] },
+      },
+      code: "invalid_session_spec",
+      statusClass: "invalid",
+    },
+    {
+      value: {
+        cwd: "/work",
+        target: { mode: "memory" },
+        materialization: {
+          source: "/private/profile/path",
+          materializationGeneration: "profile-gen-1",
+        },
+      },
+      code: "invalid_session_spec",
+      statusClass: "invalid",
     },
   ];
   for (const item of cases) {

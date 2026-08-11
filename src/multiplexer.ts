@@ -14,6 +14,7 @@ import {
 import type {
   SessionEnvironmentSummary,
   SessionRecoveryCondition,
+  SessionToolMaterialization,
   TicketResource,
 } from "./session-api.js";
 import { wakeTicketResource } from "./tickets.js";
@@ -101,6 +102,8 @@ export interface SessionAdapter {
    * than inferring it from the event stream (bd-99577e).
    */
   boundModel?(): { provider: string; id: string } | undefined;
+  /** Content-free effective tool inventory for the currently resident runtime. */
+  toolMaterialization?(): SessionToolMaterialization | undefined;
   setIdentityChangeHandler?(
     handler: ((identity: SessionConversationIdentity) => Promise<void>) | undefined,
   ): void;
@@ -1635,6 +1638,28 @@ export class Multiplexer {
     }
   }
 
+  async sessionToolMaterialization(
+    sessionRef: string,
+    generation?: number,
+  ): Promise<SessionToolMaterialization | undefined> {
+    const retained = await this.retainedSession(sessionRef);
+    const sessionId = retained?.sessionId ?? sessionRef;
+    const slot = this.#sessions.get(sessionId);
+    if (slot === undefined) return undefined;
+    if (generation !== undefined && generation !== slot.generation) return undefined;
+    try {
+      const materialization = slot.adapter.toolMaterialization?.();
+      return materialization === undefined ? undefined : structuredClone(materialization);
+    } catch (error) {
+      this.#logger.write("warn", "tool_inventory_unavailable", {
+        sessionId: slot.sessionId,
+        generation: slot.generation,
+        errorCode: errorCode(error),
+      });
+      return undefined;
+    }
+  }
+
   async retainedSessions(
     options: { limit?: number; cursor?: string } = {},
   ): Promise<SessionCatalogPage> {
@@ -2620,6 +2645,22 @@ function asMultiplexerError(error: unknown, code: string, message: string): Mult
     return new MultiplexerError(error.code, error.message, {
       retryable: error instanceof SessionCatalogError ? error.retryable : false,
       ...(error.details === undefined ? {} : { details: error.details }),
+    });
+  }
+  if (
+    error instanceof Error &&
+    (error as Error & { protocolSafe?: unknown }).protocolSafe === true &&
+    typeof (error as Error & { code?: unknown }).code === "string"
+  ) {
+    const typed = error as Error & {
+      code: string;
+      protocolSafe: true;
+      retryable?: boolean;
+      details?: Record<string, unknown>;
+    };
+    return new MultiplexerError(typed.code, typed.message, {
+      retryable: typed.retryable ?? false,
+      ...(typed.details === undefined ? {} : { details: typed.details }),
     });
   }
   if (isAbortError(error)) {

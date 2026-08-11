@@ -20,16 +20,31 @@
       "provider": "github-copilot",
       "id": "gpt-5-mini",
       "thinkingLevel": "medium",
-      "scopedModels": ["github-copilot/gpt-5-mini:medium"]
+      "scopedModels": [
+        "github-copilot/gpt-5-mini:medium"
+      ]
     },
     "tools": {
       "mode": "allowlist",
-      "include": ["read", "bash"],
-      "exclude": ["write"]
+      "include": [
+        "read",
+        "bash"
+      ],
+      "exclude": [
+        "write"
+      ],
+      "required": [
+        "read",
+        "bash"
+      ]
     },
     "resources": {
-      "extensions": ["/srv/extensions/safe-a.ts"],
-      "skills": ["/srv/skills/release"],
+      "extensions": [
+        "/srv/extensions/safe-a.ts"
+      ],
+      "skills": [
+        "/srv/skills/release"
+      ],
       "noThemes": true,
       "projectTrust": "approve",
       "extensionFlags": {
@@ -37,16 +52,83 @@
         "region": "local"
       }
     },
-    "settings": {
-      "retry": { "enabled": true, "maxRetries": 3 }
+    "materialization": {
+      "source": "managed-profile",
+      "materializationGeneration": "profile-gen-42",
+      "digest": "sha256:fixture-materialization",
+      "authorization": {
+        "source": "controller",
+        "scope": "project:fixture",
+        "ownershipGeneration": "ownership-gen-7"
+      }
     },
-    "isolation": { "mode": "unisolated" }
+    "settings": {
+      "retry": {
+        "enabled": true,
+        "maxRetries": 3
+      }
+    },
+    "isolation": {
+      "mode": "unisolated"
+    }
   },
   "environment": {
-    "keys": ["CI", "PROVIDER_TOKEN"],
+    "keys": [
+      "CI",
+      "PROVIDER_TOKEN"
+    ],
     "digest": "sha256:fixture-digest",
     "persistence": "memory-only",
     "provisioned": true
+  },
+  "toolMaterialization": {
+    "state": "materialized",
+    "active": [
+      "bash",
+      "read"
+    ],
+    "required": [
+      "bash",
+      "read"
+    ],
+    "entries": [
+      {
+        "name": "bash",
+        "sourceClass": "builtin",
+        "policyDisposition": "required",
+        "availability": "resident",
+        "active": true,
+        "required": true
+      },
+      {
+        "name": "read",
+        "sourceClass": "builtin",
+        "policyDisposition": "required",
+        "availability": "resident",
+        "active": true,
+        "required": true
+      },
+      {
+        "name": "write",
+        "sourceClass": "builtin",
+        "policyDisposition": "excluded",
+        "availability": "resident",
+        "active": false,
+        "required": false,
+        "omissionReason": "excluded_by_policy"
+      }
+    ],
+    "provenance": {
+      "source": "managed-profile",
+      "materializationGeneration": "profile-gen-42",
+      "digest": "sha256:fixture-materialization",
+      "authorization": {
+        "source": "controller",
+        "scope": "project:fixture",
+        "ownershipGeneration": "ownership-gen-7"
+      }
+    },
+    "truncated": false
   },
   "links": {
     "self": "/v1/session/agent-a",

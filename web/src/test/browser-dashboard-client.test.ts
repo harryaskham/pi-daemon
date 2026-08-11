@@ -88,6 +88,7 @@ const snapshot: DashboardChannelSnapshot = {
     lastUsedAt: "2026-07-19T00:00:00.000Z",
     spec: { cwd: "/work/test", target: { mode: "memory" }, isolation: { mode: "unisolated" } },
     environment: { keys: [], persistence: "memory-only", provisioned: true },
+    toolMaterialization: { state: "unavailable", truncated: false, active: [], required: [], entries: [] },
     links: { self: "/v1/session/session-test", rpc: "/v1/session/session-test/rpc", apc: "/v1/session/session-test/apc" },
   },
   rpcState: {},

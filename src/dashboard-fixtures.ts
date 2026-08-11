@@ -37,6 +37,7 @@ import {
 } from "./session-api.js";
 import { EXTENSION_VIEW_CAPABILITY } from "./extension-view-contract.js";
 import { createExtensionViewFixture } from "./extension-view-fixtures.js";
+import { unavailableToolMaterialization } from "./tool-materialization.js";
 
 const FIXTURE_TIME = "2026-07-18T12:00:00.000Z";
 const FIXTURE_CLIENT = "client-fixture-01";
@@ -209,6 +210,14 @@ function managedSessionFixture(): SessionResource {
       isolation: { mode: "unisolated" },
     },
     environment: { keys: [], persistence: "memory-only", provisioned: true },
+    toolMaterialization: unavailableToolMaterialization(
+      {
+        cwd: "/srv/work/fixture",
+        target: { mode: "open", path: "/srv/state/session-fixture.jsonl" },
+        isolation: { mode: "unisolated" },
+      },
+      "unavailable",
+    ),
     lastTerminal: { state: "succeeded", at: FIXTURE_TIME, requestId: "req-turn-01" },
     links: {
       self: `/v1/session/${FIXTURE_SESSION}`,
@@ -318,6 +327,34 @@ export function createDashboardContractFixtures(): DashboardContractFixtures {
       readerCount: 2,
       warmLeaseCount: 1,
       isolation: "unisolated",
+      toolMaterialization: {
+        state: "materialized",
+        truncated: false,
+        active: ["bash", "read"],
+        required: ["bash", "read"],
+        entries: [
+          {
+            name: "bash",
+            sourceClass: "builtin",
+            policyDisposition: "required",
+            availability: "resident",
+            active: true,
+            required: true,
+          },
+          {
+            name: "read",
+            sourceClass: "builtin",
+            policyDisposition: "required",
+            availability: "resident",
+            active: true,
+            required: true,
+          },
+        ],
+        provenance: {
+          source: "managed-profile",
+          materializationGeneration: "profile-gen-42",
+        },
+      },
     },
   };
   const transcript: TranscriptPage = {

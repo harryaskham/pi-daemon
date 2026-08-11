@@ -177,6 +177,7 @@ class TestWebSocket {
   #messages = [];
   #waiters = [];
   #closed = false;
+  #respondToPing = true;
 
   constructor(socket, initial) {
     this.#socket = socket;
@@ -245,6 +246,10 @@ class TestWebSocket {
     this.#socket.resume();
   }
 
+  ignorePingFrames() {
+    this.#respondToPing = false;
+  }
+
   close() {
     if (this.#closed) return;
     this.#socket.write(maskedFrame(0x8, Buffer.from([0x03, 0xe8])));
@@ -275,7 +280,7 @@ class TestWebSocket {
       const payload = this.#buffer.subarray(offset, offset + length);
       this.#buffer = this.#buffer.subarray(offset + length);
       if (opcode === 0x9) {
-        this.#socket.write(maskedFrame(0x0a, payload));
+        if (this.#respondToPing) this.#socket.write(maskedFrame(0x0a, payload));
         continue;
       }
       if (opcode === 0x8) {
@@ -768,9 +773,7 @@ test("ping keepalive closes a reader that stops returning pong frames", async (t
   const harness = await startHarness(t, { keepAliveMs: 20 });
   const connection = await connectWebSocket(harness.address, { role: "observer" });
   await ready(connection);
-  connection.websocket.pause();
-  await new Promise((resolve) => setTimeout(resolve, 60));
-  connection.websocket.resume();
+  connection.websocket.ignorePingFrames();
   await connection.websocket.waitClosed();
   assert.equal(harness.multiplexer.status("rpc-session").state, "idle");
 });

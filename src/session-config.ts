@@ -92,6 +92,7 @@ export function parseSessionConfiguration(
     "model",
     "tools",
     "resources",
+    "materialization",
     "settings",
     "env",
     "isolation",
@@ -109,6 +110,9 @@ export function parseSessionConfiguration(
   if (input.tools !== undefined) spec.tools = parseTools(input.tools);
   if (input.resources !== undefined) {
     spec.resources = parseResources(input.resources, cwd, limits);
+  }
+  if (input.materialization !== undefined) {
+    spec.materialization = parseMaterialization(input.materialization);
   }
   if (input.settings !== undefined) {
     spec.settings = cloneJsonObject(input.settings, limits);
@@ -363,7 +367,7 @@ function parseModel(value: unknown): NonNullable<PersistedSessionConfiguration["
 
 function parseTools(value: unknown): NonNullable<PersistedSessionConfiguration["tools"]> {
   const input = record(value, "spec.tools");
-  rejectUnknown(input, ["mode", "include", "exclude"], "spec.tools");
+  rejectUnknown(input, ["mode", "include", "exclude", "required"], "spec.tools");
   const result: NonNullable<PersistedSessionConfiguration["tools"]> = {};
   if (input.mode !== undefined) {
     if (!["default", "none", "no-builtin", "allowlist"].includes(input.mode as string)) {
@@ -380,7 +384,79 @@ function parseTools(value: unknown): NonNullable<PersistedSessionConfiguration["
   if (input.exclude !== undefined) {
     result.exclude = uniqueStrings(input.exclude, "spec.tools.exclude", 256, 128);
   }
+  if (input.required !== undefined) {
+    result.required = uniqueStrings(input.required, "spec.tools.required", 128, 128);
+    if (result.required.some((name) => !POLICY_IDENTIFIER.test(name))) {
+      invalid("spec.tools.required must contain stable tool identifiers");
+    }
+  }
   if (result.mode === "allowlist" && result.include === undefined) result.include = [];
+  const required = result.required ?? [];
+  if (result.mode === "none" && required.length > 0) {
+    invalid("spec.tools.required cannot be used when tools.mode is none");
+  }
+  const excluded = new Set(result.exclude ?? []);
+  if (required.some((name) => excluded.has(name))) {
+    invalid("spec.tools.required cannot contain an excluded tool");
+  }
+  if (result.mode === "allowlist") {
+    const included = new Set(result.include ?? []);
+    if (required.some((name) => !included.has(name))) {
+      invalid("spec.tools.required must be included by an allowlist policy");
+    }
+  }
+  return result;
+}
+
+function parseMaterialization(
+  value: unknown,
+): NonNullable<PersistedSessionConfiguration["materialization"]> {
+  const input = record(value, "spec.materialization");
+  rejectUnknown(
+    input,
+    ["source", "materializationGeneration", "digest", "authorization"],
+    "spec.materialization",
+  );
+  const result: NonNullable<PersistedSessionConfiguration["materialization"]> = {
+    source: policyIdentifier(input.source, "spec.materialization.source", 128),
+    materializationGeneration: policyIdentifier(
+      input.materializationGeneration,
+      "spec.materialization.materializationGeneration",
+      256,
+    ),
+  };
+  if (input.digest !== undefined) {
+    result.digest = policyIdentifier(input.digest, "spec.materialization.digest", 256);
+  }
+  if (input.authorization !== undefined) {
+    const authorization = record(input.authorization, "spec.materialization.authorization");
+    rejectUnknown(
+      authorization,
+      ["source", "scope", "ownershipGeneration"],
+      "spec.materialization.authorization",
+    );
+    result.authorization = {
+      source: policyIdentifier(
+        authorization.source,
+        "spec.materialization.authorization.source",
+        128,
+      ),
+      scope: policyIdentifier(
+        authorization.scope,
+        "spec.materialization.authorization.scope",
+        256,
+      ),
+      ...(authorization.ownershipGeneration === undefined
+        ? {}
+        : {
+            ownershipGeneration: policyIdentifier(
+              authorization.ownershipGeneration,
+              "spec.materialization.authorization.ownershipGeneration",
+              256,
+            ),
+          }),
+    };
+  }
   return result;
 }
 
@@ -575,6 +651,16 @@ function boundedString(value: unknown, path: string, maxLength: number): string 
     invalid(`${path} must be a non-empty string no longer than ${maxLength} characters`);
   }
   return value as string;
+}
+
+const POLICY_IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9._:-]*$/u;
+
+function policyIdentifier(value: unknown, path: string, maxLength: number): string {
+  const identifier = boundedString(value, path, maxLength);
+  if (!POLICY_IDENTIFIER.test(identifier)) {
+    invalid(`${path} must be a stable identifier`);
+  }
+  return identifier;
 }
 
 function boolean(value: unknown, path: string): boolean {

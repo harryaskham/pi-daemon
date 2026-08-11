@@ -48,7 +48,23 @@ test("catalog persists secret-free records with exact ID/name resolution and opt
   assert.equal(created.policyDigest, sessionSpecDigest(spec("/work/a")));
   const resource = catalogRecordToSessionResource(created);
   assert.equal(resource.residency, "resident");
+  assert.equal(resource.toolMaterialization.state, "unavailable");
   assert.equal(resource.links.self, "/v1/session/session%2F%CE%B1");
+  assert.notEqual(
+    sessionSpecDigest(spec("/work/a", {
+      materialization: {
+        source: "managed-profile",
+        materializationGeneration: "profile-gen-1",
+      },
+    })),
+    sessionSpecDigest(spec("/work/a", {
+      materialization: {
+        source: "managed-profile",
+        materializationGeneration: "profile-gen-2",
+      },
+    })),
+    "materialization generation must fence the retained policy digest",
+  );
 
   const path = join(stateDir, "catalog", `${encodedSessionId("session/α")}.json`);
   assert.equal((await lstat(path)).mode & 0o777, 0o600);
@@ -379,8 +395,22 @@ test("configured sessions recover full persisted runtime options without environ
     cwd: "/work/configured",
     name: "configured-name",
     target: { mode: "new" },
-    tools: { mode: "allowlist", include: ["read"], exclude: ["bash"] },
+    tools: {
+      mode: "allowlist",
+      include: ["read"],
+      exclude: ["bash"],
+      required: ["read"],
+    },
     resources: { noThemes: true, projectTrust: "deny" },
+    materialization: {
+      source: "managed-profile",
+      materializationGeneration: "profile-gen-42",
+      authorization: {
+        source: "controller",
+        scope: "project:fixture",
+        ownershipGeneration: "ownership-gen-7",
+      },
+    },
     settings: { retry: { enabled: true } },
     isolation: { mode: "unisolated" },
   });
@@ -396,6 +426,21 @@ test("configured sessions recover full persisted runtime options without environ
     environmentSummary: configuration.environmentSummary,
     catalogSpec: configuration.persistedSpec,
   });
+  const changedMaterialization = parseSessionConfiguration({
+    ...configuration.persistedSpec,
+    materialization: {
+      ...configuration.persistedSpec.materialization,
+      materializationGeneration: "profile-gen-43",
+    },
+  });
+  await assert.rejects(
+    first.open(openCommand("configured"), {
+      runtimeOptions: changedMaterialization.runtimeOptions,
+      environmentSummary: changedMaterialization.environmentSummary,
+      catalogSpec: changedMaterialization.persistedSpec,
+    }),
+    (error) => error?.code === "session_policy_conflict",
+  );
 
   const restartedFactory = new CatalogFactory();
   const restarted = new Multiplexer({
@@ -410,6 +455,16 @@ test("configured sessions recover full persisted runtime options without environ
     mode: "allowlist",
     include: ["read"],
     exclude: ["bash"],
+    required: ["read"],
+  });
+  assert.deepEqual(request.runtimeOptions.persistedSpec.materialization, {
+    source: "managed-profile",
+    materializationGeneration: "profile-gen-42",
+    authorization: {
+      source: "controller",
+      scope: "project:fixture",
+      ownershipGeneration: "ownership-gen-7",
+    },
   });
   assert.deepEqual(request.runtimeOptions.persistedSpec.settings, {
     retry: { enabled: true },

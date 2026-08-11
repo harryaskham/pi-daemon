@@ -128,6 +128,8 @@ flags such as `--help`, `--version`, `--mode`, or an interactive resume picker.
 | `--session-dir` | `spec.target.sessionDir` |
 | `--provider`, `--model`, `--thinking`, `--models` | `spec.model` |
 | `--tools`, `--exclude-tools`, `--no-tools`, `--no-builtin-tools` | `spec.tools` |
+| caller-required stable tool IDs | `spec.tools.required` |
+| resolved-policy provenance and authorization scope | `spec.materialization` |
 | extension/skill/prompt/theme paths and `--no-*` | `spec.resources` |
 | already-installed global Pi packages | `spec.resources.inheritInstalledPackages` |
 | system and appended prompts | `spec.resources.systemPrompt`, `appendSystemPrompt` |
@@ -144,6 +146,35 @@ them. `inheritInstalledPackages` is explicit shared-process authority. It reads
 only the bounded global package declarations from `AGENT_DIR/settings.json` and
 requires Pi CLI's npm/git/local install paths to exist. Pi Daemon never installs,
 updates, reconciles, invokes a package manager, or uses network for this field.
+
+### Tool materialization contract
+
+Clients must first negotiate `capabilities.toolMaterialization.contractVersion ==
+"1.0"` before sending the additive `required` or `materialization` fields. The
+capability also publishes source/omission enums and the effective inventory
+bound; older hosts remain usable without fabricating support.
+
+`spec.tools.required` is an admission assertion, not another tool loader. Pi
+Daemon first applies the mode/include/exclude policy and loads the reviewed
+resources, then verifies every required stable ID is active. Missing required
+tools fail with `required_tools_unavailable` before the session becomes
+resident. The error carries only bounded stable IDs.
+
+`spec.materialization.materializationGeneration` names the caller's resolved
+policy generation and must not be confused with the session resource's
+`generation` fence. Its source, optional digest, and optional authorization
+source/scope/`ownershipGeneration` are nonsecret provenance; all three generation
+names remain explicit rather than overloaded. They participate in the retained policy
+digest, so a changed upstream generation cannot silently reuse an old desired
+policy.
+
+Every session resource returns `toolMaterialization`. Resident runtimes report a
+bounded content-free inventory with stable name, source class, policy
+disposition, availability, required/active flags, and fixed omission reason.
+Dormant resources return `not-resident` and no fabricated active inventory;
+legacy or non-reporting resident adapters return `unavailable`. Paths,
+descriptions, prompts, package details, settings, and environment values are
+never part of this resource. Dashboard session-info exposes the same object.
 
 ### Environment contract
 

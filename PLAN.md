@@ -485,6 +485,10 @@ process appears per wake.
 
 ## Provisional Beads work board
 
+- [x] `bd-bed0ef` Expose bounded, content-free configured-session tool
+  materialization provenance and effective inventory; fail closed before
+  residency when caller-required stable tool IDs are unavailable, while keeping
+  the neutral daemon free of Cacophony-specific authority.
 - [x] `bd-2aeb03` Project the pinned Pi SDK's live active-context usage into
   Dash, refresh it on context/identity transitions, and render unavailable
   estimates as unknown instead of hard-coded zero.

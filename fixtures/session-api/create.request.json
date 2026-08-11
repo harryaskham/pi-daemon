@@ -18,7 +18,8 @@
     "tools": {
       "mode": "allowlist",
       "include": ["read", "bash"],
-      "exclude": ["write"]
+      "exclude": ["write"],
+      "required": ["read", "bash"]
     },
     "resources": {
       "extensions": ["/srv/extensions/safe-a.ts"],
@@ -29,6 +30,16 @@
       "extensionFlags": {
         "release-mode": true,
         "region": "local"
+      }
+    },
+    "materialization": {
+      "source": "managed-profile",
+      "materializationGeneration": "profile-gen-42",
+      "digest": "sha256:fixture-materialization",
+      "authorization": {
+        "source": "controller",
+        "scope": "project:fixture",
+        "ownershipGeneration": "ownership-gen-7"
       }
     },
     "settings": {

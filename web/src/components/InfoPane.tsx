@@ -31,7 +31,15 @@ function Metric({ label, value, detail }: { label: string; value: string; detail
   );
 }
 
+function boundedToolNames(names: string[]): string {
+  if (names.length === 0) return "none";
+  const visible = names.slice(0, 12).join(", ");
+  return names.length <= 12 ? visible : `${visible} +${names.length - 12}`;
+}
+
 export function InfoPane({ session, info, scheduleEditor }: InfoPaneProps) {
+  const tooling = info?.runtime?.toolMaterialization;
+  const omittedTools = tooling?.entries.filter((entry) => !entry.active) ?? [];
   return (
     <article className="info-pane" aria-label={`Information for ${session.title}`}>
       <header className="info-hero">
@@ -75,6 +83,21 @@ export function InfoPane({ session, info, scheduleEditor }: InfoPaneProps) {
           {info?.runtime ? <div><dt><Activity size={14} /> Readers / warm leases</dt><dd>{info.runtime.readerCount} / {info.runtime.warmLeaseCount}</dd></div> : null}
         </dl>
       </section>
+
+      {tooling ? (
+        <section className="info-section" aria-labelledby="info-tooling">
+          <h3 id="info-tooling">Tool materialization</h3>
+          <dl className="detail-list">
+            <div><dt><Activity size={14} /> State</dt><dd>{tooling.state}{tooling.truncated ? " · truncated" : ""}</dd></div>
+            <div><dt><Cpu size={14} /> Active</dt><dd>{boundedToolNames(tooling.active)}</dd></div>
+            <div><dt><ShieldCheck size={14} /> Required</dt><dd>{boundedToolNames(tooling.required)}</dd></div>
+            <div><dt><FileCode2 size={14} /> Omitted</dt><dd>{omittedTools.length === 0 ? "none" : omittedTools.slice(0, 8).map((entry) => `${entry.name}:${entry.omissionReason ?? "unavailable"}`).join(", ")}</dd></div>
+            {tooling.provenance ? <div><dt><GitBranch size={14} /> Materialization</dt><dd>{tooling.provenance.source} · {tooling.provenance.materializationGeneration}</dd></div> : null}
+            {tooling.provenance?.authorization ? <div><dt><ShieldCheck size={14} /> Authorization</dt><dd>{tooling.provenance.authorization.source} · {tooling.provenance.authorization.scope}</dd></div> : null}
+            {tooling.provenance?.authorization?.ownershipGeneration ? <div><dt><GitBranch size={14} /> Ownership generation</dt><dd>{tooling.provenance.authorization.ownershipGeneration}</dd></div> : null}
+          </dl>
+        </section>
+      ) : null}
 
       {scheduleEditor}
 

@@ -105,6 +105,30 @@
       "unisolated"
     ],
     "authentication": "service-bearer",
+    "toolMaterialization": {
+      "contractVersion": "1.0",
+      "requiredToolAdmission": true,
+      "provenance": true,
+      "effectiveInventory": true,
+      "maxEntries": 128,
+      "sourceClasses": [
+        "builtin",
+        "explicit-extension",
+        "inherited-package",
+        "host-adapter",
+        "sdk",
+        "unknown"
+      ],
+      "omissionReasons": [
+        "not_registered",
+        "excluded_by_policy",
+        "tools_disabled",
+        "not_selected_by_policy",
+        "inactive_in_runtime",
+        "runtime_not_resident",
+        "runtime_inventory_unavailable"
+      ]
+    },
     "host": {
       "ready": true,
       "draining": false

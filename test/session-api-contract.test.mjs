@@ -10,6 +10,7 @@ import {
   SESSION_API_PATHS,
   SESSION_API_VERSION,
   SESSION_RPC_SUBPROTOCOLS,
+  SESSION_TOOL_MATERIALIZATION_CAPABILITY,
 } from "../dist/session-api.js";
 
 const readJson = async (path) =>
@@ -157,6 +158,10 @@ test("Pi RPC compatibility inventory is exact and includes settled-era commands"
   const capabilities = await fixture("capabilities.response.json");
   assert.deepEqual(schema.$defs.piRpcCommand.properties.type.enum, [...PI_RPC_COMMAND_TYPES]);
   assert.deepEqual(capabilities.data.rpc.host.commandTypes, [...PI_RPC_COMMAND_TYPES]);
+  assert.deepEqual(
+    capabilities.data.toolMaterialization,
+    SESSION_TOOL_MATERIALIZATION_CAPABILITY,
+  );
   assert.equal(PI_RPC_COMMAND_TYPES.length, 32);
   assert.equal(PI_RPC_COMMAND_TYPES.includes("navigate_tree"), false, "framed Dashboard navigation must not widen stock Pi RPC");
   for (const command of ["get_entries", "get_tree", "set_thinking_level", "get_commands"]) {
