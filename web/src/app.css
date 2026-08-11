@@ -421,6 +421,18 @@ kbd { border: 1px solid var(--dash-border-subtle); border-bottom-color: var(--da
 .composer-status > button, .composer-activation-modes button { padding: 4px 7px; border: 1px solid var(--dash-border-subtle); border-radius: var(--dash-radius-xs); background: var(--dash-bg-elevated); color: var(--dash-fg-muted); font-size: 8px; cursor: pointer; }
 .composer-activation-modes { display: flex; gap: 4px; }
 .composer-activation-modes button[aria-pressed="true"] { border-color: var(--dash-accent-strong); background: var(--dash-accent-soft); color: var(--dash-accent-primary); }
+.steering-queue { display: grid; gap: 6px; margin: 0 2px 7px; padding: 7px; border: 1px solid color-mix(in srgb, var(--dash-state-running) 35%, var(--dash-border-subtle)); border-radius: var(--dash-radius-sm); background: color-mix(in srgb, var(--dash-state-running) 5%, var(--dash-bg-deep)); }
+.steering-queue > header { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--dash-fg-dim); font: 8px/1.2 var(--dash-font-mono); text-transform: uppercase; letter-spacing: .06em; }
+.steering-queue > header strong { color: var(--dash-state-running); font-size: 8px; }
+.steering-queue ol { display: grid; gap: 5px; max-height: 132px; margin: 0; padding: 0; overflow: auto; list-style: none; }
+.steering-queue li { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 6px 7px; border: 1px solid var(--dash-border-subtle); border-radius: var(--dash-radius-xs); background: color-mix(in srgb, var(--dash-bg-elevated) 70%, transparent); }
+.steering-queue li[data-state="indeterminate"] { border-color: color-mix(in srgb, var(--dash-state-warning) 48%, var(--dash-border-subtle)); }
+.steering-queue li > div { min-width: 0; flex: 1 1 auto; }
+.steering-queue p { overflow: hidden; margin: 0; color: var(--dash-fg-muted); font-size: 9px; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
+.steering-queue small { display: block; overflow: hidden; margin-top: 2px; color: var(--dash-fg-dim); font: 8px/1.2 var(--dash-font-mono); text-overflow: ellipsis; white-space: nowrap; }
+.steering-queue li[data-state="indeterminate"] small { color: var(--dash-state-warning); }
+.steering-queue button { display: flex; flex: 0 0 auto; align-items: center; gap: 4px; padding: 4px 6px; border: 1px solid var(--dash-border-subtle); border-radius: var(--dash-radius-xs); background: var(--dash-bg-deep); color: var(--dash-fg-muted); font-size: 8px; cursor: pointer; }
+.steering-queue button:hover { border-color: var(--dash-state-warning); color: var(--dash-state-warning); }
 .composer { overflow: hidden; border: 1px solid var(--dash-border-muted); border-radius: var(--dash-radius-md); background: var(--dash-bg-deep); box-shadow: inset 0 1px color-mix(in srgb, var(--dash-fg-primary) 3%, transparent); }
 .composer:focus-within { border-color: var(--dash-accent-strong); box-shadow: 0 0 0 3px color-mix(in srgb, var(--dash-accent-soft) 58%, transparent); }
 .composer--disabled { opacity: .62; }
