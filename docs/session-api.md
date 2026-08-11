@@ -376,6 +376,12 @@ switch_session fork clone get_fork_messages
 get_entries get_tree get_last_assistant_text set_session_name
 ```
 
+`get_session_stats` returns a secret-safe projection of the pinned Pi SDK
+statistics. It omits `sessionFile`; optional `contextUsage` carries Pi's
+active-branch token estimate, selected-model context window, and percentage.
+The estimate and percentage are nullable after compaction or whenever Pi cannot
+measure them, and consumers must render that as unknown rather than zero.
+
 Protocol additions from a later Pi SDK require a fixture, compatibility test,
 and additive capability advertisement before the daemon accepts them. The
 `tree_navigate` frame is deliberately not a stock command: it exists only on

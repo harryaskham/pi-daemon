@@ -203,6 +203,6 @@ export function materializedDraftSession(
       resource.spec.model?.thinkingLevel === "xhigh" || resource.spec.model?.thinkingLevel === "max"
         ? "high"
         : resource.spec.model?.thinkingLevel ?? "off",
-    contextPercent: 0,
+    contextPercent: null,
   };
 }

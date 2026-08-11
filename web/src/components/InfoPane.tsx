@@ -12,6 +12,7 @@ import {
 import type { SessionInfoResource } from "@harryaskham/pi-daemon/dashboard-contract";
 import type { ReactNode } from "react";
 import type { SessionFixture } from "../model";
+import { contextPercentLabel } from "../session-stats";
 import { preciseRelativeTime } from "../time";
 
 interface InfoPaneProps {
@@ -58,7 +59,11 @@ export function InfoPane({ session, info, scheduleEditor }: InfoPaneProps) {
         <div className="metric-grid">
           <Metric label="Messages" value={session.messageCount.toLocaleString()} detail="active branch" />
           <Metric label="Tool calls" value={(session.toolCallCount ?? 0).toLocaleString()} detail="bounded output" />
-          <Metric label="Context" value={`${session.contextPercent}%`} detail="hydrated estimate" />
+          <Metric
+            label="Context"
+            value={contextPercentLabel(session.contextPercent)}
+            detail={session.contextPercent === null ? "live Pi stats unavailable" : "active context"}
+          />
           <Metric label="Generation" value={`#${session.generation}`} detail="current fence" />
         </div>
       </section>

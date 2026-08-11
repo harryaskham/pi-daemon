@@ -94,6 +94,25 @@ semantically identical commands, and host/session/generation cursors produce an
 explicit replay gap plus fresh snapshot when stale. Closing the final pane
 releases controller UI, listeners, replay memory, and residency leases.
 
+## Live context usage
+
+Rich channels hydrate context usage through Pi RPC `get_session_stats`. Pi
+Daemon projects the pinned SDK's active-branch `contextUsage` object—estimated
+context tokens, the selected model's context window, and Pi's percentage—while
+omitting the private session-file path. Percentages are clamped for display;
+tokens or percentage remain `null` when Pi cannot estimate them, including the
+period immediately after compaction. Missing, malformed, dormant, or
+unhydrated statistics render as **Unknown**, never as measured `0%`.
+
+The browser clears stale context telemetry on reconnect, replay gaps,
+compaction, model changes, and tree/session replacement. It refreshes after
+turn settlement and those identity/context transitions. A refresh is bound to
+the exact host/session/generation channel, so a late response cannot cross into
+a replacement session. Context usage is distinct from lifetime message/tool
+counts and token totals; the browser never reconstructs active context by
+summing transcript history. No prompt, model output, environment value,
+credential, provider error, or private path enters this metric.
+
 ## Browser authentication boundary
 
 The daemon service bearer is **server-to-server only**. Dedicated Dash loads it

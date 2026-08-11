@@ -9,6 +9,7 @@ import {
   type RpcExtensionUIRequest,
   type RpcExtensionUIResponse,
   type RpcResponse,
+  type SessionStats,
 } from "@earendil-works/pi-coding-agent";
 
 import { PI_SDK_COMPATIBILITY_VERSION } from "./pi-sdk-contract.js";
@@ -39,6 +40,50 @@ export type PiRpcControllerOutput =
       error: string;
     }
   | { type: "extension_shutdown_requested" };
+
+export interface PiRpcContextUsage {
+  /** Active-context token estimate from Pi, or null until Pi can estimate it. */
+  tokens: number | null;
+  /** Context window for the live selected model. */
+  contextWindow: number;
+  /** Pi's active-context percentage, clamped for display safety, or null when unknown. */
+  percent: number | null;
+}
+
+/** Secret-safe subset of Pi's live session statistics exposed over RPC. */
+export type PiRpcSessionStats = Omit<SessionStats, "sessionFile" | "contextUsage"> & {
+  contextUsage?: PiRpcContextUsage;
+};
+
+export function projectPiRpcSessionStats(stats: SessionStats): PiRpcSessionStats {
+  const { sessionFile: _sessionFile, contextUsage, ...safe } = stats;
+  const projected = projectPiRpcContextUsage(contextUsage);
+  return {
+    ...safe,
+    ...(projected === undefined ? {} : { contextUsage: projected }),
+  };
+}
+
+function projectPiRpcContextUsage(
+  usage: SessionStats["contextUsage"],
+): PiRpcContextUsage | undefined {
+  if (
+    usage === undefined ||
+    !Number.isSafeInteger(usage.contextWindow) ||
+    usage.contextWindow < 1
+  ) {
+    return undefined;
+  }
+  const tokens =
+    usage.tokens !== null && Number.isFinite(usage.tokens) && usage.tokens >= 0
+      ? usage.tokens
+      : null;
+  const percent =
+    tokens !== null && usage.percent !== null && Number.isFinite(usage.percent)
+      ? Math.min(100, Math.max(0, usage.percent))
+      : null;
+  return { tokens, contextWindow: usage.contextWindow, percent };
+}
 
 export interface PiRpcControllerOptions {
   maxPendingUiRequests?: number;
@@ -347,7 +392,7 @@ export class PiRpcController {
           session.abortBash();
           return success(id, "abort_bash");
         case "get_session_stats":
-          return success(id, "get_session_stats", session.getSessionStats());
+          return success(id, "get_session_stats", projectPiRpcSessionStats(session.getSessionStats()));
         case "export_html":
           if (this.#exportHtml === undefined) {
             return failure(id, "export_html", "HTML export is disabled by this session policy");

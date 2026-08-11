@@ -289,7 +289,7 @@ export class LiveFixtureDashboardBackend extends LocalFixtureBackend implements 
           current.spec.model?.thinkingLevel === "xhigh" || current.spec.model?.thinkingLevel === "max"
             ? "high"
             : current.spec.model?.thinkingLevel ?? "off",
-        contextPercent: 0,
+        contextPercent: null,
       });
     }
     return structuredClone(ticket);
@@ -368,6 +368,7 @@ class FixtureRichHub {
   #sequence = 0;
   #model: string;
   #thinking: string;
+  #contextPercent: number | null;
 
   constructor(session: SessionFixture, records: NormalizedTranscriptRecord[], onIdle: () => void) {
     this.session = session;
@@ -376,6 +377,7 @@ class FixtureRichHub {
     this.#onIdle = onIdle;
     this.#model = session.model;
     this.#thinking = session.thinking;
+    this.#contextPercent = session.contextPercent;
   }
 
   get size(): number { return this.#channels.size; }
@@ -402,7 +404,25 @@ class FixtureRichHub {
     if (command.operation === "get_entries") {
       return completed(command.correlationId, { records: this.records } as unknown as JsonValue);
     }
-    if (command.operation === "get_session_stats") return completed(command.correlationId, { contextPercent: this.session.contextPercent, messages: this.records.length });
+    if (command.operation === "get_session_stats") {
+      const contextWindow = 200_000;
+      const percent = this.#contextPercent;
+      return completed(command.correlationId, {
+        sessionId: this.session.sessionId,
+        userMessages: this.records.filter((record) => record.kind === "message" && record.role === "user").length,
+        assistantMessages: this.records.filter((record) => record.kind === "message" && record.role === "assistant").length,
+        toolCalls: this.records.filter((record) => record.kind === "tool").length,
+        toolResults: this.records.filter((record) => record.kind === "tool" && record.state !== "running").length,
+        totalMessages: this.records.filter((record) => record.kind === "message").length,
+        tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+        cost: 0,
+        contextUsage: {
+          tokens: percent === null ? null : Math.round((percent / 100) * contextWindow),
+          contextWindow,
+          percent,
+        },
+      });
+    }
     if (command.operation === "get_commands") return completed(command.correlationId, { commands: ["/model", "/thinking", "/compact", "/name", "/abort"] });
     if (command.operation === "get_available_models") return completed(command.correlationId, { models: ["gpt-5.6", "claude-opus-4.8", "gpt-5-mini"] });
     if (command.operation === "get_tree") return completed(command.correlationId, fixtureSessionTree() as unknown as JsonValue);
@@ -460,6 +480,7 @@ class FixtureRichHub {
           this.#broadcast({ kind: "extension_ui", identity: this.identity, requestId: "fixture-title", method: "setTitle", payload: { title: "Fixture extension title" } });
           this.#broadcast({ kind: "extension_ui", identity: this.identity, requestId: "fixture-editor", method: "set_editor_text", payload: { text: "prefilled extension text" } });
         }
+        this.#contextPercent = Math.min(100, (this.#contextPercent ?? 18) + 1);
         this.#publish({ type: "agent_settled" });
       }, 80);
       return { correlationId: command.correlationId, state: "streaming" };
@@ -472,7 +493,10 @@ class FixtureRichHub {
       this.#publish({ type: "agent_settled", reason: "aborted" });
       return completed(command.correlationId);
     }
-    if (command.operation === "set_model" && typeof command.payload?.modelId === "string") this.#model = command.payload.modelId;
+    if (command.operation === "set_model" && typeof command.payload?.modelId === "string") {
+      this.#model = command.payload.modelId;
+      this.#contextPercent = Math.max(0, (this.#contextPercent ?? 20) - 2);
+    }
     if (command.operation === "set_thinking_level" && typeof command.payload?.level === "string") this.#thinking = command.payload.level;
     const label = `${command.operation.replaceAll("_", " ")} completed`;
     this.#publish({ type: command.operation, normalizedRecord: timelineRecord(`timeline-${this.#sequence}`, label) });
