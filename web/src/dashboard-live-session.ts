@@ -1261,7 +1261,7 @@ export class DashboardLiveSessionController {
     if (direct !== undefined) return [direct];
     const type = typeof event.type === "string" ? event.type : "";
     if (type === "message_start" || type === "message_update" || type === "message_end") {
-      const message = jsonRecord(event.message);
+      const message = jsonRecord(event.message) ?? (type === "message_update" ? { role: "assistant", content: [] } : undefined);
       if (message === undefined) return [];
       const role = typeof message.role === "string" ? message.role : "assistant";
       // Pi emits tool execution events and may also emit the same toolResult as
@@ -1282,12 +1282,21 @@ export class DashboardLiveSessionController {
           ? message.id
           : `live-assistant-${++this.#liveRecordSequence}`;
       }
+      const update = jsonRecord(event.assistantMessageEvent);
+      const partial = jsonRecord(update?.partial);
       const record = liveMessageRecord(
         this.#activeAssistantMessageId,
         "assistant",
-        message,
+        partial ?? message,
         type === "message_end" ? "complete" : "streaming",
       );
+      if (type === "message_update" && partial === undefined && update !== undefined) {
+        const existing = this.#state.transcript?.records.find(
+          (candidate): candidate is TranscriptMessageRecord =>
+            candidate.kind === "message" && candidate.key.messageId === this.#activeAssistantMessageId,
+        );
+        record.content = applyAssistantMessageDelta(existing?.content, record.content, update);
+      }
       return [record];
     }
     if (type === "tool_execution_start" || type === "tool_execution_update" || type === "tool_execution_end") {
@@ -1462,6 +1471,51 @@ function liveMessageRecord(
     timestamp: typeof message.timestamp === "string" ? message.timestamp : new Date().toISOString(),
     content: messageContent(message),
   };
+}
+
+function applyAssistantMessageDelta(
+  previous: TranscriptContentBlock[] | undefined,
+  projected: TranscriptContentBlock[],
+  update: Record<string, unknown>,
+): TranscriptContentBlock[] {
+  const updateType = update.type;
+  const delta = update.delta;
+  if ((updateType !== "text_delta" && updateType !== "thinking_delta") || typeof delta !== "string") {
+    return projected;
+  }
+  const targetType = updateType === "thinking_delta" ? "thinking" : "markdown";
+  const base = previous ?? projected;
+  const content = base.filter((block) => block.type !== "usage" && block.type !== "error");
+  const requestedIndex = typeof update.contentIndex === "number" && Number.isSafeInteger(update.contentIndex) && update.contentIndex >= 0
+    ? update.contentIndex
+    : undefined;
+  let targetIndex = requestedIndex !== undefined && content[requestedIndex]?.type === targetType
+    ? requestedIndex
+    : -1;
+  if (targetIndex < 0) {
+    for (let index = content.length - 1; index >= 0; index -= 1) {
+      if (content[index]?.type === targetType) {
+        targetIndex = index;
+        break;
+      }
+    }
+  }
+  if (targetIndex < 0) {
+    targetIndex = requestedIndex === undefined ? content.length : Math.min(requestedIndex, content.length);
+    content.splice(targetIndex, 0, { type: targetType, text: "" });
+  }
+  const target = content[targetIndex];
+  if (target !== undefined && target.type === targetType) {
+    // Some transports include an already-updated message alongside the delta.
+    // Do not append the same chunk twice when that full text is authoritative.
+    const text = previous === undefined && target.text.endsWith(delta) ? target.text : `${target.text}${delta}`;
+    content[targetIndex] = { type: targetType, text: boundedText(text) };
+  }
+  const metadata = projected.filter((block) => block.type === "usage" || block.type === "error");
+  if (metadata.length === 0) {
+    metadata.push(...base.filter((block) => block.type === "usage" || block.type === "error"));
+  }
+  return [...content, ...metadata];
 }
 
 function toolContent(result: Record<string, unknown> | undefined): TranscriptContentBlock[] {

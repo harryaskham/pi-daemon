@@ -339,7 +339,11 @@ export function createTranscriptShowcaseFixtures(): TranscriptRecord[] {
       state: "streaming",
       source: "live",
       timestamp: time(8),
-      content: [{ type: "markdown", text: "The normalized stream is reconciled and rendering the newest bounded delta." }],
+      content: [
+        { type: "thinking", text: "Inspecting streamed generation identity before the persisted reconciliation arrives." },
+        { type: "markdown", text: "The normalized stream is reconciled and rendering the newest bounded delta." },
+        { type: "usage", inputTokens: 21, outputTokens: 7 },
+      ],
     },
   ];
 }
