@@ -30,11 +30,37 @@ jobs:
     env:
       PI_DROID_PLAY_TRACK: internal
       PI_DROID_SOPS_AGE_KEY_FILE: ${{ secrets.PI_DROID_SOPS_AGE_KEY_FILE }}
+      PI_DROID_SOPS_SSH_PRIVATE_KEY_FILE: ${{ secrets.PI_DROID_SOPS_SSH_PRIVATE_KEY_FILE }}
     steps:
       - uses: actions/checkout@v7
       - uses: cachix/install-nix-action@v31
         with:
           github_access_token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Verify Play credential-file preflight
+        shell: bash
+        run: |
+          credential_file=''
+          if [[ -n "${PI_DROID_SOPS_AGE_KEY_FILE:-}" ]]; then
+            credential_file="$PI_DROID_SOPS_AGE_KEY_FILE"
+          elif [[ -n "${PI_DROID_SOPS_SSH_PRIVATE_KEY_FILE:-}" ]]; then
+            credential_file="$PI_DROID_SOPS_SSH_PRIVATE_KEY_FILE"
+          else
+            printf '%s\n' 'a SOPS age or SSH identity file must be configured for google-play-internal' >&2
+            exit 78
+          fi
+          if [[ ! -f "$credential_file" || ! -r "$credential_file" ]]; then
+            printf '%s\n' 'the configured SOPS identity must name a readable file' >&2
+            exit 66
+          fi
+      - name: Expose pinned Java to Gradle action
+        shell: nix develop .#androidRelease --command bash -euo pipefail {0}
+        run: |
+          gradle_user_home="$RUNNER_TEMP/gradle-user-home"
+          mkdir -p "$gradle_user_home"
+          printf "JAVA_HOME=%s\n" "$JAVA_HOME" >> "$GITHUB_ENV"
+          printf "GRADLE_USER_HOME=%s\n" "$gradle_user_home" >> "$GITHUB_ENV"
+          printf "TMPDIR=%s\n" "$RUNNER_TEMP" >> "$GITHUB_ENV"
+          dirname "$(command -v java)" >> "$GITHUB_PATH"
       - uses: gradle/actions/setup-gradle@v5
         with:
           cache-read-only: true

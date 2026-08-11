@@ -6,6 +6,7 @@ import { join, resolve } from "node:path";
 import test from "node:test";
 
 const repositoryRoot = resolve(import.meta.dirname, "..");
+const childTerminalReceipts = new WeakMap();
 
 async function waitForReady(path, child, stderr, timeoutMs = 15_000) {
   const deadline = Date.now() + timeoutMs;
@@ -24,12 +25,23 @@ async function waitForReady(path, child, stderr, timeoutMs = 15_000) {
 }
 
 async function stopChild(child) {
-  if (child.exitCode !== null) return;
+  const recorded = childTerminalReceipts.get(child);
+  if (recorded) return recorded;
+  if (child.exitCode !== null || child.signalCode !== null) {
+    const receipt = { exitCode: child.exitCode, signalCode: child.signalCode };
+    childTerminalReceipts.set(child, receipt);
+    return receipt;
+  }
+  const terminal = new Promise((resolveClose) => child.once("close", (exitCode, signalCode) => {
+    resolveClose({ exitCode, signalCode });
+  }));
   child.kill("SIGTERM");
-  await Promise.race([
-    new Promise((resolveExit) => child.once("exit", resolveExit)),
+  const receipt = await Promise.race([
+    terminal,
     new Promise((_, reject) => setTimeout(() => reject(new Error("disposable daemon did not stop")), 5_000)),
   ]);
+  childTerminalReceipts.set(child, receipt);
+  return receipt;
 }
 
 test("Pi Droid SDK lifecycle proof uses a disposable real API server", async (t) => {
@@ -82,6 +94,6 @@ test("Pi Droid SDK lifecycle proof uses a disposable real API server", async (t)
   assert.equal(JSON.stringify(receipt).includes(token), false);
   assert.equal(stderr.value.includes(token), false);
 
-  await stopChild(child);
-  assert.equal(child.exitCode, 0);
+  const terminal = await stopChild(child);
+  assert.deepEqual(terminal, { exitCode: 0, signalCode: null });
 });
