@@ -3,6 +3,11 @@ name: Release
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing immutable v* tag to publish with trusted current workflow code'
+        required: true
 
 permissions:
   contents: write
@@ -11,16 +16,21 @@ jobs:
   release:
     runs-on: [self-hosted, nix, x86_64-linux]
     timeout-minutes: 45
+    env:
+      PI_DAEMON_RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag || github.sha }}
+          fetch-depth: 1
       - uses: actions/setup-node@v7
         with:
           node-version: "22.19.0"
           cache: npm
       - run: npm ci --ignore-scripts
       - name: Verify release metadata
-        run: npm run release:check -- --tag "$GITHUB_REF_NAME"
-      - run: npm test
+        run: npm run release:check -- --tag "$PI_DAEMON_RELEASE_TAG"
+      - run: nix develop .#default --command npm test
       - name: Build exact self-update npm tarball and checksum
         id: pack
         shell: bash
@@ -58,14 +68,14 @@ jobs:
           npm_version=$("$install_root/node_modules/.bin/pi-daemon" version)
           nix_version=$(nix run .#pi-daemon -- version)
           npm run release:check -- \
-            --tag "$GITHUB_REF_NAME" \
+            --tag "$PI_DAEMON_RELEASE_TAG" \
             --artifact-version "npm=$npm_version" \
             --artifact-version "nix=$nix_version"
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: >-
-          gh release create "${GITHUB_REF_NAME}"
+          gh release create "${PI_DAEMON_RELEASE_TAG}"
           "${{ steps.pack.outputs.tarball }}"
           "${{ steps.pack.outputs.tarball }}.sha256"
           --generate-notes
