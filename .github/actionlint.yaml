@@ -2,3 +2,5 @@ self-hosted-runner:
   labels:
     - nix
     - x86_64-linux
+    - android-kvm-candidate
+    - android-kvm

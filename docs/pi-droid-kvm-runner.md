@@ -4,11 +4,17 @@ title: Pi Droid KVM runner qualification
 
 # Pi Droid KVM runner qualification
 
-Pi Droid's Play Internal job may run only on a self-hosted runner whose actual
-GitHub `Runner.Worker` process can open `/dev/kvm` read/write and obtain KVM API
-version 12. Host-shell probes are not qualification evidence: the runner service
-may have a different user, group list, device namespace, WSL projection, or
-systemd device policy.
+Pi Droid's optional emulator-evidence job may run only on a self-hosted runner
+whose actual GitHub `Runner.Worker` process can open `/dev/kvm` read/write and
+obtain KVM API version 12. Host-shell probes are not qualification evidence: the
+runner service may have a different user, group list, device namespace, WSL
+projection, or systemd device policy.
+
+KVM is **not** required to compile, sign, validate, upload, or read back an AAB.
+The Play Internal workflow deliberately uses the generic
+`self-hosted,nix,x86_64-linux` lane and prepares the signed AAB with
+`--skip-emulator`. Runner qualification must not block a release whose separate
+product acceptance gates are already satisfied.
 
 ## Labels
 
@@ -20,10 +26,10 @@ systemd device policy.
   namespace, WSL environment, or `/dev/kvm` device mapping changes. Re-prove
   before restoring the label.
 
-The release workflow selects
-`self-hosted,nix,x86_64-linux,android-kvm` and repeats the proof before loading
-release secrets or starting signing/build work. A stale or incorrect label
-therefore fails closed.
+Any workflow that requests emulator screenshots or accelerated Android runtime
+evidence selects `self-hosted,nix,x86_64-linux,android-kvm` and repeats the KVM
+proof before starting the emulator. A stale or incorrect label therefore fails
+that evidence lane closed without blocking the independent AAB release lane.
 
 ## Qualification procedure
 
@@ -52,8 +58,9 @@ therefore fails closed.
 ## Release gate
 
 Runs `31558756854`, `31560683515`, and `31560935109` are preserved failure
-evidence. Do not rerun them unchanged. After one runner is qualified, the five
-reviewed `google-play-internal` content secrets are present, and the remaining
-crash/ANR gates are satisfied, dispatch exactly one new monotonic Internal
-release. Retain its signed AAB, mapping, checksums, KVM receipt, screenshots,
-Play commit/readback receipt, and physical/emulator daily-driver proof.
+evidence. Do not rerun them unchanged. After the five reviewed `google-play-internal` content secrets are present and
+the remaining product crash/ANR gates are satisfied, dispatch exactly one new
+monotonic Internal release on the generic x86 Nix lane. Retain its signed AAB,
+mapping, checksums, and Play commit/readback receipt. KVM receipts and emulator
+screenshots are separate evidence when that optional lane is available; they are
+not prerequisites for building or releasing the AAB.
