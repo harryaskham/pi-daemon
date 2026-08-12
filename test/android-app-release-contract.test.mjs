@@ -225,6 +225,7 @@ test("manual release workflow is isolated from ordinary CI and retains exact evi
   assert.match(workflow, /mapping\.txt/);
   assert.match(workflow, /sha256sums\.txt/);
   assert.match(workflow, /play-internal-receipt\.json/);
+  assert.match(workflow, /name: Verify prepared evidence before Play mutation\n\s+shell: nix develop \.#androidRelease --command bash -euo pipefail \{0\}/);
   assert.match(workflow, /\.emulatorEvidence == false/);
   assert.doesNotMatch(workflow, /test -d .*screenshots/);
   assert.doesNotMatch(workflow, /android-kvm|prove-kvm-runner-capability/);
