@@ -58,6 +58,14 @@ test-daemon`. It creates a safe node-local config if absent, Nix-builds/tests
 exact main, and starts an isolated non-service tmux instance. See
 [Rolling non-launchd test instance](docs/operations.md#rolling-non-launchd-test-instance).
 
+**Install current checkout:** run `just install`. It enters the pinned Nix dev
+shell, performs the locked npm build/package flow, and installs the portable npm
+package under `${PI_DAEMON_INSTALL_PREFIX:-$HOME/.local}`. Both `pi-daemon` and
+`pi-daemon-rpc` are verified after installation; neither resolves into the Nix
+store. The command updates the two local CLI links but deliberately does not
+restart any service. A Node runtime satisfying `package.json` must remain on the
+service or interactive `PATH`.
+
 ## Why
 
 Starting one `pi --mode rpc` process for every logical agent or every cold wake

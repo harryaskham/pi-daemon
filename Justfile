@@ -2,6 +2,10 @@ set shell := ["bash", "-euo", "pipefail", "-c"]
 
 test-helper := "./scripts/pi-daemon-test-instance.sh"
 
+# Build and install a portable npm package from the current checkout under ~/.local.
+install:
+    nix develop --command bash scripts/install-local.sh
+
 # First-run safe config + exact main Nix build/test + isolated tmux start.
 test-daemon:
     {{test-helper}} install
