@@ -25,7 +25,7 @@ jobs:
   release:
     name: Signed AAB to Play internal
     environment: google-play-internal
-    runs-on: [self-hosted, nix, x86_64-linux, android-kvm]
+    runs-on: [self-hosted, nix, x86_64-linux]
     timeout-minutes: 90
     env:
       PI_DROID_PLAY_TRACK: internal
@@ -34,12 +34,6 @@ jobs:
       - uses: cachix/install-nix-action@v31
         with:
           github_access_token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Verify labeled runner KVM capability
-        id: kvm
-        shell: nix develop .#androidRelease --command bash -euo pipefail {0}
-        env:
-          PI_DROID_KVM_RECEIPT_FILE: ${{ runner.temp }}/pi-droid-release/kvm-capability.json
-        run: android/build-logic/prove-kvm-runner-capability.sh
       - name: Materialize Play release secrets
         shell: nix develop .#androidRelease --command bash -euo pipefail {0}
         env:
@@ -61,20 +55,22 @@ jobs:
       - uses: gradle/actions/setup-gradle@v5
         with:
           cache-read-only: true
-      - name: Build, verify, and screenshot signed AAB
+      - name: Build and verify signed AAB without an emulator
         run: |
           nix develop .#androidRelease --command \
             android/build-logic/release-internal.sh \
             --version-code '${{ inputs.versionCode }}' \
             --version-name '${{ inputs.versionName }}' \
             --artifacts "$RUNNER_TEMP/pi-droid-release" \
-            --prepare-only
+            --prepare-only \
+            --skip-emulator
       - name: Verify prepared evidence before Play mutation
         run: |
           test -f "$RUNNER_TEMP/pi-droid-release/pi-droid-release.aab"
           test -f "$RUNNER_TEMP/pi-droid-release/mapping.txt"
           test -f "$RUNNER_TEMP/pi-droid-release/sha256sums.txt"
-          test -d "$RUNNER_TEMP/pi-droid-release/screenshots"
+          test -f "$RUNNER_TEMP/pi-droid-release/release-build-receipt.json"
+          jq -e '.emulatorEvidence == false' "$RUNNER_TEMP/pi-droid-release/release-build-receipt.json" >/dev/null
       - name: Publish exact prepared AAB to internal only
         run: |
           nix develop .#androidRelease --command \

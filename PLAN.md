@@ -510,11 +510,12 @@ process appears per wake.
 - [x] Operator-directed Pi Droid preview 6 publication from the exact merged UX
   source to Play internal with signed phone/tablet/wide install smoke, immutable
   AAB/mapping/source/notes hashes, and independent pre/post version receipts.
-- [ ] `bd-2cc76d` Qualify one GitHub `Runner.Worker` for Pi Droid with an
-  Actions-executed `/dev/kvm` open/ioctl receipt, promote only that runner from
-  `android-kvm-candidate` to `android-kvm`, pin/re-prove the release job before
-  secrets or build, and preserve the three failed generic-runner receipts before
-  exactly one new monotonic Internal release.
+- [ ] `bd-2cc76d` Keep accelerated emulator evidence honest with an
+  Actions-executed `/dev/kvm` open/ioctl receipt and promotion from
+  `android-kvm-candidate` to `android-kvm`, while keeping signed AAB build,
+  validation, Play upload, and readback on the generic x86 Nix lane with no KVM
+  dependency. Preserve the three failed mixed-lane receipts before exactly one
+  new monotonic Internal release.
 - [x] `bd-c42fff` Publish Pi Droid preview 5 from the exact reviewed
   daily-driver source to Play internal with signed install smoke, immutable
   AAB/mapping/source/notes hashes, and independent pre/post version receipts.

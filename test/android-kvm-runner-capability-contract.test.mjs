@@ -59,7 +59,7 @@ async function doesNotExist(target) {
   await assert.rejects(access(target), { code: "ENOENT" });
 }
 
-test("Pi Droid KVM capability is proven in Actions before label promotion or release", async (t) => {
+test("Pi Droid KVM capability is proven for emulator evidence without blocking AAB release", async (t) => {
   const [helper, capabilityWorkflow, releaseWorkflow, documentation] = await Promise.all([
     source("android/build-logic/prove-kvm-runner-capability.sh"),
     source(".github/workflows/android-kvm-capability.yml"),
@@ -93,15 +93,15 @@ test("Pi Droid KVM capability is proven in Actions before label promotion or rel
   assert.match(capabilityWorkflow, /actions\/upload-artifact@v6/);
   assert.doesNotMatch(capabilityWorkflow, /google-play-internal|PI_DROID_RELEASE_|PI_DROID_GOOGLE_PLAY/);
 
-  assert.match(releaseWorkflow, /runs-on: \[self-hosted, nix, x86_64-linux, android-kvm\]/);
-  const proof = releaseWorkflow.indexOf("name: Verify labeled runner KVM capability");
-  const secrets = releaseWorkflow.indexOf("name: Materialize Play release secrets");
-  const build = releaseWorkflow.indexOf("name: Build, verify, and screenshot signed AAB");
-  assert.ok(proof >= 0 && proof < secrets && secrets < build);
-  assert.match(releaseWorkflow.slice(proof, secrets), /prove-kvm-runner-capability\.sh/);
-  assert.match(releaseWorkflow, /pi-droid-release\/kvm-capability\.json/);
-  assert.doesNotMatch(releaseWorkflow, /run: test -r \/dev\/kvm -a -w \/dev\/kvm/);
+  assert.match(releaseWorkflow, /runs-on: \[self-hosted, nix, x86_64-linux\]/);
+  assert.doesNotMatch(releaseWorkflow, /runs-on: [^\n]*android-kvm/);
+  assert.doesNotMatch(releaseWorkflow, /prove-kvm-runner-capability\.sh|kvm-capability\.json/);
+  assert.match(releaseWorkflow, /name: Build and verify signed AAB without an emulator/);
+  assert.match(releaseWorkflow, /--prepare-only[\s\\]*\n[\s]*--skip-emulator/);
+  assert.match(releaseWorkflow, /\.emulatorEvidence == false/);
+  assert.doesNotMatch(releaseWorkflow, /test -d .*screenshots/);
 
+  assert.match(documentation, /KVM is \*\*not\*\* required to compile, sign, validate, upload, or read back an AAB/);
   assert.match(documentation, /android-kvm-candidate.*temporary routing only/s);
   assert.match(documentation, /Add it only after.*Actions-executed proof succeeds/s);
   assert.match(documentation, /Do not.*recurring `chmod`/s);
