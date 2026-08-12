@@ -119,39 +119,76 @@ require_private_file() {
   fi
 }
 
-age_key_file="${PI_DROID_SOPS_AGE_KEY_FILE:-}"
-if [[ -n "$age_key_file" ]]; then
-  require_private_file PI_DROID_SOPS_AGE_KEY_FILE "$age_key_file"
-elif [[ -n "${PI_DROID_SOPS_SSH_PRIVATE_KEY_FILE:-}" ]]; then
-  require_private_file PI_DROID_SOPS_SSH_PRIVATE_KEY_FILE "$PI_DROID_SOPS_SSH_PRIVATE_KEY_FILE"
-  age_key_file="$private_dir/age-identity.txt"
-  ssh-to-age -private-key -i "$PI_DROID_SOPS_SSH_PRIVATE_KEY_FILE" > "$age_key_file"
-  chmod 600 "$age_key_file"
-else
-  printf '%s\n' 'set PI_DROID_SOPS_AGE_KEY_FILE or PI_DROID_SOPS_SSH_PRIVATE_KEY_FILE; no replacement key will be created' >&2
+direct_keystore_file="${PI_DROID_RELEASE_KEYSTORE:-}"
+direct_alias_file="${PI_DROID_RELEASE_KEY_ALIAS_FILE:-}"
+direct_store_password_file="${PI_DROID_RELEASE_STORE_PASSWORD_FILE:-}"
+direct_key_password_file="${PI_DROID_RELEASE_KEY_PASSWORD_FILE:-}"
+direct_service_account_file="${PI_DROID_PLAY_SERVICE_ACCOUNT_FILE:-}"
+direct_secret_files=(
+  "$direct_keystore_file"
+  "$direct_alias_file"
+  "$direct_store_password_file"
+  "$direct_key_password_file"
+  "$direct_service_account_file"
+)
+direct_secret_count=0
+for direct_file in "${direct_secret_files[@]}"; do
+  if [[ -n "$direct_file" ]]; then
+    direct_secret_count=$((direct_secret_count + 1))
+  fi
+done
+
+if (( direct_secret_count > 0 && direct_secret_count < ${#direct_secret_files[@]} )); then
+  printf '%s\n' 'direct Play release files must be configured as one complete set' >&2
   exit 78
 fi
 
-secret_json="$private_dir/release-secrets.json"
-SOPS_AGE_KEY_FILE="$age_key_file" \
-  sops --decrypt --input-type yaml --output-type json \
-  "$repo_root/secrets/android-play-upload.sops.yaml" > "$secret_json"
-chmod 600 "$secret_json"
+if (( direct_secret_count == ${#direct_secret_files[@]} )); then
+  keystore_file="$direct_keystore_file"
+  alias_file="$direct_alias_file"
+  store_password_file="$direct_store_password_file"
+  key_password_file="$direct_key_password_file"
+  service_account_file="$direct_service_account_file"
+  require_private_file PI_DROID_RELEASE_KEYSTORE "$keystore_file"
+  require_private_file PI_DROID_RELEASE_KEY_ALIAS_FILE "$alias_file"
+  require_private_file PI_DROID_RELEASE_STORE_PASSWORD_FILE "$store_password_file"
+  require_private_file PI_DROID_RELEASE_KEY_PASSWORD_FILE "$key_password_file"
+  require_private_file PI_DROID_PLAY_SERVICE_ACCOUNT_FILE "$service_account_file"
+else
+  age_key_file="${PI_DROID_SOPS_AGE_KEY_FILE:-}"
+  if [[ -n "$age_key_file" ]]; then
+    require_private_file PI_DROID_SOPS_AGE_KEY_FILE "$age_key_file"
+  elif [[ -n "${PI_DROID_SOPS_SSH_PRIVATE_KEY_FILE:-}" ]]; then
+    require_private_file PI_DROID_SOPS_SSH_PRIVATE_KEY_FILE "$PI_DROID_SOPS_SSH_PRIVATE_KEY_FILE"
+    age_key_file="$private_dir/age-identity.txt"
+    ssh-to-age -private-key -i "$PI_DROID_SOPS_SSH_PRIVATE_KEY_FILE" > "$age_key_file"
+    chmod 600 "$age_key_file"
+  else
+    printf '%s\n' 'set the complete direct Play release file set or a SOPS age/SSH identity file' >&2
+    exit 78
+  fi
 
-keystore_file="$private_dir/pi-droid-release.p12"
-alias_file="$private_dir/key-alias.txt"
-store_password_file="$private_dir/store-password.txt"
-key_password_file="$private_dir/key-password.txt"
-service_account_file="$private_dir/play-service-account.json"
+  secret_json="$private_dir/release-secrets.json"
+  SOPS_AGE_KEY_FILE="$age_key_file" \
+    sops --decrypt --input-type yaml --output-type json \
+    "$repo_root/secrets/android-play-upload.sops.yaml" > "$secret_json"
+  chmod 600 "$secret_json"
 
-jq -er '.play_keystore_base64 | strings | select(length > 0)' "$secret_json" \
-  | base64 --decode > "$keystore_file"
-jq -er '.play_key_alias | strings | select(length > 0)' "$secret_json" > "$alias_file"
-jq -er '.play_store_password | strings | select(length > 0)' "$secret_json" > "$store_password_file"
-jq -er '.play_key_password | strings | select(length > 0)' "$secret_json" > "$key_password_file"
-jq -er '.play_service_account_json | if type == "string" then . else tojson end | select(length > 0)' \
-  "$secret_json" > "$service_account_file"
-chmod 600 "$keystore_file" "$alias_file" "$store_password_file" "$key_password_file" "$service_account_file"
+  keystore_file="$private_dir/pi-droid-release.p12"
+  alias_file="$private_dir/key-alias.txt"
+  store_password_file="$private_dir/store-password.txt"
+  key_password_file="$private_dir/key-password.txt"
+  service_account_file="$private_dir/play-service-account.json"
+
+  jq -er '.play_keystore_base64 | strings | select(length > 0)' "$secret_json" \
+    | base64 --decode > "$keystore_file"
+  jq -er '.play_key_alias | strings | select(length > 0)' "$secret_json" > "$alias_file"
+  jq -er '.play_store_password | strings | select(length > 0)' "$secret_json" > "$store_password_file"
+  jq -er '.play_key_password | strings | select(length > 0)' "$secret_json" > "$key_password_file"
+  jq -er '.play_service_account_json | if type == "string" then . else tojson end | select(length > 0)' \
+    "$secret_json" > "$service_account_file"
+  chmod 600 "$keystore_file" "$alias_file" "$store_password_file" "$key_password_file" "$service_account_file"
+fi
 
 actual_cert="$({
   keytool -list -v \
