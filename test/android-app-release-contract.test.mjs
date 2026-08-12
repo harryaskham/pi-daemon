@@ -152,6 +152,7 @@ test("manual release workflow is isolated from ordinary CI and retains exact evi
   }
   assert.doesNotMatch(workflow, /PI_DROID_SOPS_(?:AGE_KEY|SSH_PRIVATE_KEY)/);
   const credentialPreflight = workflow.slice(credential, java);
+  assert.match(credentialPreflight, /shell: nix develop \.#androidRelease --command bash -euo pipefail \{0\}/);
   assert.match(credentialPreflight, /android\/build-logic\/materialize-play-release-secrets\.sh/);
 
   assert.match(credentialScript, /set -euo pipefail/);
