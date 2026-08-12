@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { closeSync, constants, fstatSync, openSync, readFileSync } from "node:fs";
+import { closeSync, constants, fstatSync, openSync, readFileSync, realpathSync } from "node:fs";
 import { realpath } from "node:fs/promises";
 import type { Readable, Writable } from "node:stream";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -215,12 +215,22 @@ export function loadClientBearer(options: {
 }
 
 function readPrivateTokenFile(path: string): string {
-  let fd: number;
+  let canonical: string;
   try {
-    fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+    canonical = realpathSync(path);
   } catch (error) {
     if (isNodeError(error) && error.code === "ELOOP") {
-      throw new Error("bearer token file must be a regular non-symlink file");
+      throw new Error("bearer token symlink chain is invalid");
+    }
+    throw new Error("unable to resolve bearer token file");
+  }
+
+  let fd: number;
+  try {
+    fd = openSync(canonical, constants.O_RDONLY | constants.O_NOFOLLOW);
+  } catch (error) {
+    if (isNodeError(error) && error.code === "ELOOP") {
+      throw new Error("bearer token target changed before it could be opened safely");
     }
     throw new Error("unable to open bearer token file");
   }

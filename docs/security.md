@@ -23,6 +23,7 @@ project code or tools.
 - JSON listener defaults to literal loopback and refuses implicit remote plaintext
 - exactly one effective service bearer source: when no external file, fd, or environment source is configured, first launch atomically generates `STATE_DIR/api-token`
 - generated bearer files are random, owner-only, complete before publication, stable across restart, and never overwrite an existing path
+- configured secret-manager bearer symlinks are resolved to a canonical target that is opened with no-follow protection against a second traversal; the opened inode must be regular, current-user-owned, owner-only, and bounded
 - bearer authorization is checked before JSON bodies, route/session disclosure, and RPC/ACP stream upgrades
 - bearer material is reduced to a one-way digest after startup loading and never logged or returned
 - owner-only Unix socket in a non-group/world-writable real directory

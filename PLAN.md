@@ -949,9 +949,9 @@ implementation order. This list is a human-readable crosswalk.
   API bearer, and non-overwriting per-instance Pi auth seeding.
 - [x] `bd-df5f19` — prebuild/cache aarch64-linux packages off-device so
   Nix-on-Droid never falls back to its native npm double-free path.
-- [ ] `bd-68867d` — keep API bearer symlink refusal intact while correcting the
-  Home Manager SOPS example, documenting supported recovery, and emitting a
-  content-free `path_bootstrap` failure classification.
+- [ ] `bd-68867d` — support SOPS-backed API bearer symlinks by resolving the
+  chain, opening the canonical target with no-follow race protection, and
+  validating the opened inode without exposing bearer paths or values.
 - [x] `bd-23110a` — neutral Dash HTTP routing extracted from the core API server
   behind a small router interface, preserving auth-before-routing, shared
   response bounds, and WebSocket admission.

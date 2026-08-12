@@ -7,6 +7,7 @@ import {
   linkSync,
   openSync,
   readSync,
+  realpathSync,
   unlinkSync,
   writeFileSync,
 } from "node:fs";
@@ -146,12 +147,25 @@ export function loadServiceBearer(
 }
 
 function readPrivateTokenFile(path: string): string {
-  let fd: number;
+  let canonical: string;
   try {
-    fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+    canonical = realpathSync(path);
   } catch (error) {
     if (isNodeError(error) && error.code === "ELOOP") {
-      throw new Error("API bearer token file must be a regular non-symlink file");
+      throw new Error("API bearer token symlink chain is invalid");
+    }
+    throw error;
+  }
+
+  let fd: number;
+  try {
+    // Resolve a configured secret-manager link first, then refuse any second
+    // traversal if the canonical target is swapped to a link before open.
+    // All authority checks apply to the opened final inode below.
+    fd = openSync(canonical, constants.O_RDONLY | constants.O_NOFOLLOW);
+  } catch (error) {
+    if (isNodeError(error) && error.code === "ELOOP") {
+      throw new Error("API bearer token target changed before it could be opened safely");
     }
     throw error;
   }
