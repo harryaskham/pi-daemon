@@ -1007,13 +1007,13 @@ implementation order. This list is a human-readable crosswalk.
   authoritative.
 - [x] `bd-568050` — the exposure policy adopted at all 40 mode-check call sites,
   leaving no raw permission mask in `src/` outside the predicate.
-- [ ] `bd-a0ba53` — render Bash tool results as bounded rich cards, including
+- [x] `bd-a0ba53` — render Bash tool results as bounded rich cards, including
   pretty JSON, while suppressing only the duplicate live raw-result message.
-  Source is published as PR #80 and awaits canonical landing.
-- [ ] `bd-467201` — accumulate live Pi reasoning deltas into the identity-stable
+  Source landed through PR #80.
+- [x] `bd-467201` — accumulate live Pi reasoning deltas into the identity-stable
   transcript row, keep token usage current, and reconcile exactly with the
   persisted reasoning entry after completion or reload.
-- [ ] `bd-7677ba` — thread the existing transcript expansion settings into rich
+- [x] `bd-7677ba` — thread the existing transcript expansion settings into rich
   cards and preserve their component/measurement state across semantic
   live-to-persisted record replacement.
 - [ ] `bd-4e10da` — future neutral persisted per-session cron/prompt scheduler
