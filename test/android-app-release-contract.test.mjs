@@ -127,46 +127,63 @@ test("release script materializes secrets privately and verifies fixed identity 
 });
 
 test("manual release workflow is isolated from ordinary CI and retains exact evidence", async () => {
-  const [workflow, fastWorkflow, credentialScript] = await Promise.all([
+  const [workflow, fastWorkflow, credentialScript, releaseScript] = await Promise.all([
     source(".github/workflows/android-internal.yml"),
     source(".github/workflows/android-fast.yml"),
-    source("android/build-logic/materialize-sops-identity.sh"),
+    source("android/build-logic/materialize-play-release-secrets.sh"),
+    source("android/build-logic/release-internal.sh"),
   ]);
 
   const nix = workflow.indexOf("cachix/install-nix-action@v31");
-  const credential = workflow.indexOf("name: Materialize Play credential identity");
+  const credential = workflow.indexOf("name: Materialize Play release secrets");
   const java = workflow.indexOf("name: Expose pinned Java to Gradle action");
   const gradle = workflow.indexOf("gradle/actions/setup-gradle@v5");
   assert.ok(nix >= 0 && nix < credential && credential < java && java < gradle);
 
-  assert.match(workflow, /PI_DROID_SOPS_AGE_KEY: \$\{\{ secrets\.PI_DROID_SOPS_AGE_KEY \}\}/);
-  assert.match(
-    workflow,
-    /PI_DROID_SOPS_SSH_PRIVATE_KEY: \$\{\{ secrets\.PI_DROID_SOPS_SSH_PRIVATE_KEY \}\}/,
-  );
-  assert.match(workflow, /PI_DROID_SOPS_AGE_KEY_FILE: \$\{\{ secrets\.PI_DROID_SOPS_AGE_KEY_FILE \}\}/);
-  assert.match(
-    workflow,
-    /PI_DROID_SOPS_SSH_PRIVATE_KEY_FILE: \$\{\{ secrets\.PI_DROID_SOPS_SSH_PRIVATE_KEY_FILE \}\}/,
-  );
+  for (const name of [
+    "PI_DROID_RELEASE_KEYSTORE_BASE64",
+    "PI_DROID_RELEASE_KEY_ALIAS",
+    "PI_DROID_RELEASE_STORE_PASSWORD",
+    "PI_DROID_RELEASE_KEY_PASSWORD",
+    "PI_DROID_GOOGLE_PLAY_SERVICE_ACCOUNT_JSON",
+  ]) {
+    assert.match(workflow, new RegExp(`${name}: \\$\\{\\{ secrets\\.${name} \\}\\}`));
+  }
+  assert.doesNotMatch(workflow, /PI_DROID_SOPS_(?:AGE_KEY|SSH_PRIVATE_KEY)/);
   const credentialPreflight = workflow.slice(credential, java);
-  assert.match(credentialPreflight, /android\/build-logic\/materialize-sops-identity\.sh/);
-  assert.doesNotMatch(credentialPreflight, /credential_file=/);
+  assert.match(credentialPreflight, /android\/build-logic\/materialize-play-release-secrets\.sh/);
 
   assert.match(credentialScript, /set -euo pipefail/);
   assert.match(credentialScript, /umask 077/);
-  assert.match(credentialScript, /\$RUNNER_TEMP\/pi-droid-sops-identity/);
-  assert.match(credentialScript, /chmod 700 "\$identity_dir"/);
-  assert.match(credentialScript, /chmod 600 "\$target"/);
-  assert.match(credentialScript, /PI_DROID_SOPS_AGE_KEY:-/);
-  assert.match(credentialScript, /PI_DROID_SOPS_SSH_PRIVATE_KEY:-/);
-  assert.match(credentialScript, /PI_DROID_SOPS_AGE_KEY_FILE:-/);
-  assert.match(credentialScript, /PI_DROID_SOPS_SSH_PRIVATE_KEY_FILE:-/);
+  assert.match(credentialScript, /\$RUNNER_TEMP\/pi-droid-play-release-secrets/);
+  assert.match(credentialScript, /chmod 700 "\$secret_dir"/);
+  assert.match(credentialScript, /chmod 600 "\$keystore_file"/);
+  assert.match(credentialScript, /PI_DROID_GOOGLE_PLAY_SERVICE_ACCOUNT_JSON/);
+  assert.match(credentialScript, /PI_DROID_PLAY_SERVICE_ACCOUNT_FILE=%s/);
   assert.match(credentialScript, />> "\$GITHUB_ENV"/);
-  assert.doesNotMatch(
+  assert.doesNotMatch(credentialScript, /set -x/);
+  assert.match(
     credentialScript,
-    /(?:echo|printf)[^\n]*\$(?:PI_DROID_SOPS_AGE_KEY|PI_DROID_SOPS_SSH_PRIVATE_KEY)(?:[^_A-Z]|$)/,
+    /printf '%s' "\$PI_DROID_RELEASE_KEYSTORE_BASE64" \| base64 [^\n]+ > "\$keystore_file"/,
   );
+  assert.match(
+    credentialScript,
+    /printf '%s' "\$PI_DROID_RELEASE_STORE_PASSWORD" > "\$store_password_file"/,
+  );
+  assert.match(
+    credentialScript,
+    /printf '%s' "\$PI_DROID_RELEASE_KEY_PASSWORD" > "\$key_password_file"/,
+  );
+  assert.match(
+    credentialScript,
+    /printf '%s' "\$PI_DROID_GOOGLE_PLAY_SERVICE_ACCOUNT_JSON" > "\$service_account_file"/,
+  );
+
+  assert.match(releaseScript, /direct_secret_count/);
+  assert.match(releaseScript, /direct Play release files must be configured as one complete set/);
+  assert.match(releaseScript, /require_private_file PI_DROID_PLAY_SERVICE_ACCOUNT_FILE/);
+  assert.match(releaseScript, /PI_DROID_SOPS_AGE_KEY_FILE/);
+  assert.match(releaseScript, /PI_DROID_SOPS_SSH_PRIVATE_KEY_FILE/);
 
   const exposeJava = workflow.slice(java, gradle);
   assert.match(exposeJava, /shell: nix develop \.#androidRelease --command bash -euo pipefail \{0\}/);
