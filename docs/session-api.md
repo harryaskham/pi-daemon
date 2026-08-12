@@ -176,6 +176,24 @@ legacy or non-reporting resident adapters return `unavailable`. Paths,
 descriptions, prompts, package details, settings, and environment values are
 never part of this resource. Dashboard session-info exposes the same object.
 
+### Host tool-adapter queue telemetry
+
+Clients must negotiate `capabilities.hostToolAdapterQueue.contractVersion ==
+"1.0"` before depending on `session.hostToolAdapterQueue`. The capability names
+the content-free capacity/occupancy/high-water/rejection/saturation/per-operation
+timing fields and publishes the reviewed 4-active/16-queued starting point.
+Those numbers are guidance for an explicit descriptor, not ambient authority or
+a server-side replacement for caller policy.
+
+A resident host-adapter generation returns its live bounded queue projection;
+non-adapter and dormant generations omit it. Queue counters and timing summaries
+contain no prompts, paths, payloads, request or idempotency keys, responses,
+endpoints, capability handles, environment values, or error text. The same
+projection appears in authenticated Dash session information. A hard-capacity
+refusal remains `adapter_queue_capacity`, is retryable only because no invoke
+frame was written, and carries a bounded retry hint; accepted or indeterminate
+requests are never replayed by this telemetry surface.
+
 ### Environment contract
 
 Raw `spec.env` values are input-only. A session response contains only sorted

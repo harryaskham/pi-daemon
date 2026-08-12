@@ -46,9 +46,26 @@ test("catalog persists secret-free records with exact ID/name resolution and opt
   assert.equal((await catalog.get("worker-a")).sessionId, "session/α");
   assert.equal((await catalog.get("session/α")).name, "worker-a");
   assert.equal(created.policyDigest, sessionSpecDigest(spec("/work/a")));
-  const resource = catalogRecordToSessionResource(created);
+  const queue = {
+    capacity: { maxConcurrentRequests: 2, maxQueuedRequests: 16 },
+    occupancy: { activeRequests: 1, queuedRequests: 3 },
+    highWater: { activeRequests: 2, queuedRequests: 8 },
+    acceptedRequests: 9,
+    completedRequests: 5,
+    failedRequests: 0,
+    rejectedRequests: 1,
+    cancelledRequests: 0,
+    timedOutRequests: 0,
+    lastRejectionReason: "adapter_queue_capacity",
+    saturation: { active: false, count: 1, totalMs: 4, longestMs: 4 },
+    operations: [],
+  };
+  const resource = catalogRecordToSessionResource(created, undefined, queue);
   assert.equal(resource.residency, "resident");
   assert.equal(resource.toolMaterialization.state, "unavailable");
+  assert.deepEqual(resource.hostToolAdapterQueue, queue);
+  resource.hostToolAdapterQueue.occupancy.queuedRequests = 999;
+  assert.equal(queue.occupancy.queuedRequests, 3);
   assert.equal(resource.links.self, "/v1/session/session%2F%CE%B1");
   assert.notEqual(
     sessionSpecDigest(spec("/work/a", {

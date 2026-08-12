@@ -6,6 +6,16 @@ export const TOOL_ADAPTER_PROTOCOL_VERSION = "1.0" as const;
 export const TOOL_ADAPTER_MAX_SOCKET_PATH_BYTES = 100;
 export const TOOL_ADAPTER_MAX_CONTENT_BYTES = 4 * 1024 * 1024;
 
+/**
+ * Product-neutral reviewed starting point for ordinary parallel Pi tool bursts.
+ * Descriptors still carry every limit explicitly; this is guidance, not ambient
+ * authority or an admission default.
+ */
+export const HOST_TOOL_ADAPTER_RECOMMENDED_QUEUE_LIMITS = Object.freeze({
+  maxConcurrentRequests: 4,
+  maxQueuedRequests: 16,
+});
+
 export const NEUTRAL_TOOL_OPERATIONS = [
   "fs.list",
   "fs.stat",
@@ -63,6 +73,62 @@ export interface HostToolAdapterLimits {
   requestTimeoutMs: number;
   maxIdempotencyKeys: number;
   idempotencyTtlMs: number;
+}
+
+/** Bounded numeric summary with no request content or identity. */
+export interface HostToolAdapterTimingSummary {
+  count: number;
+  sum: number;
+  min: number;
+  max: number;
+  last: number;
+}
+
+export interface HostToolAdapterOperationQueueSnapshot {
+  operation: NeutralToolOperation;
+  activeRequests: number;
+  queuedRequests: number;
+  acceptedRequests: number;
+  completedRequests: number;
+  failedRequests: number;
+  rejectedRequests: number;
+  cancelledRequests: number;
+  timedOutRequests: number;
+  queueWaitMs: HostToolAdapterTimingSummary;
+  requestLatencyMs: HostToolAdapterTimingSummary;
+}
+
+/**
+ * Content-free live queue telemetry for one exact adapter session generation.
+ * It is a daemon status projection, never an adapter wire frame.
+ */
+export interface HostToolAdapterQueueSnapshot {
+  capacity: {
+    maxConcurrentRequests: number;
+    maxQueuedRequests: number;
+  };
+  occupancy: {
+    activeRequests: number;
+    queuedRequests: number;
+  };
+  highWater: {
+    activeRequests: number;
+    queuedRequests: number;
+  };
+  acceptedRequests: number;
+  completedRequests: number;
+  failedRequests: number;
+  rejectedRequests: number;
+  cancelledRequests: number;
+  timedOutRequests: number;
+  lastRejectionReason?: "adapter_queue_capacity";
+  saturation: {
+    active: boolean;
+    count: number;
+    totalMs: number;
+    longestMs: number;
+  };
+  operations: HostToolAdapterOperationQueueSnapshot[];
 }
 
 export interface HostToolAdapterDescriptor {

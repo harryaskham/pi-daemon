@@ -39,6 +39,22 @@ class SessionAdapter {
   identity() {
     return { sessionId: "pi-api-fixture" };
   }
+  hostToolAdapterQueue() {
+    return {
+      capacity: { maxConcurrentRequests: 4, maxQueuedRequests: 16 },
+      occupancy: { activeRequests: 1, queuedRequests: 2 },
+      highWater: { activeRequests: 4, queuedRequests: 8 },
+      acceptedRequests: 10,
+      completedRequests: 7,
+      failedRequests: 0,
+      rejectedRequests: 1,
+      cancelledRequests: 0,
+      timedOutRequests: 0,
+      lastRejectionReason: "adapter_queue_capacity",
+      saturation: { active: false, count: 1, totalMs: 4, longestMs: 4 },
+      operations: [],
+    };
+  }
   async dispose() {}
 }
 
@@ -131,6 +147,16 @@ test("all JSON routes authenticate before revealing capabilities or route state"
       "runtime_not_resident",
       "runtime_inventory_unavailable",
     ],
+  });
+  assert.deepEqual(allowed.value.data.hostToolAdapterQueue, {
+    contractVersion: "1.0",
+    capacity: true,
+    occupancy: true,
+    highWater: true,
+    rejectionReason: true,
+    saturation: true,
+    perOperationTiming: true,
+    recommended: { maxConcurrentRequests: 4, maxQueuedRequests: 16 },
   });
   assert.deepEqual(allowed.value.data.host, { ready: true, draining: false });
   assert.deepEqual(allowed.value.data.transports, ["unix-ndjson", "http", "websocket"]);
@@ -317,6 +343,11 @@ test("authenticated CRUD mutations return durable deduplicated tickets and termi
   assert.equal(createTerminal.state, "succeeded");
   assert.equal(createTerminal.result.sessionId, "created-session");
   assert.equal(createTerminal.result.name, "created-name");
+  assert.deepEqual(createTerminal.result.hostToolAdapterQueue.occupancy, {
+    activeRequests: 1,
+    queuedRequests: 2,
+  });
+  assert.equal(createTerminal.result.hostToolAdapterQueue.rejectedRequests, 1);
 
   const duplicate = await requestJson(harness.address, {
     method: "POST",

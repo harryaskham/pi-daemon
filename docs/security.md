@@ -117,7 +117,11 @@ persisted credential, and it must not enter logs, errors, status, events,
 manifests, journals, tickets, or acknowledgements. Restart changes host identity
 and requires reprovisioning rather than replay. Per-invocation `abort` and
 best-effort generation/session `revoke` prevent one stuck tool from requiring a
-whole shared socket teardown. V2 configured opens may select a per-session
+whole shared socket teardown. Queue telemetry is numeric and content-free:
+capacity, occupancy/high-water, fixed outcome/reason counters, saturation
+length, and fixed-operation timing only. It never carries request IDs,
+idempotency keys, payloads, paths, endpoints, handles, responses, or error text.
+V2 configured opens may select a per-session
 `agentDir` and `sessionDir`, but only through the strict prepared-session path;
 private auth mode/ownership, allowed cwd roots, canonical
 `<agentDir>/sessions` confinement, and credential/state/workload overlap checks

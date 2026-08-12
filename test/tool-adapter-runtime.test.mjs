@@ -47,6 +47,7 @@ function descriptor(socketPath, overrides = {}) {
       sessionId: "session-fixture",
       generation: 7,
       capabilityHandle,
+      ...(overrides.binding ?? {}),
     },
     operations: overrides.operations ?? [
       "fs.list",
@@ -236,22 +237,189 @@ test("client enforces concurrent and queued request limits without unbounded wri
   const second = session.invoke("fs.stat", { path: "two" }, { idempotencyKey: "two" });
   await assert.rejects(
     session.invoke("fs.stat", { path: "three" }, { idempotencyKey: "three" }),
-    (error) => error instanceof HostToolAdapterError && error.code === "adapter_queue_capacity",
+    (error) =>
+      error instanceof HostToolAdapterError &&
+      error.code === "adapter_queue_capacity" &&
+      error.retryable &&
+      Number.isInteger(error.retryAfterMs) &&
+      error.retryAfterMs >= 25,
   );
   assert.equal(session.activeRequests, 1);
   assert.equal(session.queuedRequests, 1);
+  assert.deepEqual(session.status().occupancy, { activeRequests: 1, queuedRequests: 1 });
+  assert.deepEqual(session.status().highWater, { activeRequests: 1, queuedRequests: 1 });
+  assert.equal(session.status().rejectedRequests, 1);
+  assert.equal(session.status().lastRejectionReason, "adapter_queue_capacity");
   held[0].send(
     held[0].socket,
     responseFor(held[0].input, held[0].frame, { type: "file", size: 1 }),
   );
   assert.deepEqual(await first, { type: "file", size: 1 });
   await waitFor(() => held.length === 2, "second invoke");
+  const retried = session.invoke("fs.stat", { path: "three" }, { idempotencyKey: "three" });
+  assert.equal(session.queuedRequests, 1);
   held[1].send(
     held[1].socket,
     responseFor(held[1].input, held[1].frame, { type: "file", size: 2 }),
   );
   assert.deepEqual(await second, { type: "file", size: 2 });
+  await waitFor(() => held.length === 3, "retried invoke");
+  held[2].send(
+    held[2].socket,
+    responseFor(held[2].input, held[2].frame, { type: "file", size: 3 }),
+  );
+  assert.deepEqual(await retried, { type: "file", size: 3 });
+  const finalStatus = session.status();
+  assert.deepEqual(finalStatus, {
+    capacity: { maxConcurrentRequests: 1, maxQueuedRequests: 1 },
+    occupancy: { activeRequests: 0, queuedRequests: 0 },
+    highWater: { activeRequests: 1, queuedRequests: 1 },
+    acceptedRequests: 3,
+    completedRequests: 3,
+    failedRequests: 0,
+    rejectedRequests: 1,
+    cancelledRequests: 0,
+    timedOutRequests: 0,
+    lastRejectionReason: "adapter_queue_capacity",
+    saturation: {
+      active: false,
+      count: 2,
+      totalMs: finalStatus.saturation.totalMs,
+      longestMs: finalStatus.saturation.longestMs,
+    },
+    operations: [
+      {
+        operation: "fs.stat",
+        activeRequests: 0,
+        queuedRequests: 0,
+        acceptedRequests: 3,
+        completedRequests: 3,
+        failedRequests: 0,
+        rejectedRequests: 1,
+        cancelledRequests: 0,
+        timedOutRequests: 0,
+        queueWaitMs: finalStatus.operations[0].queueWaitMs,
+        requestLatencyMs: finalStatus.operations[0].requestLatencyMs,
+      },
+    ],
+  });
+  assert.equal(finalStatus.operations[0].queueWaitMs.count, 3);
+  assert.equal(finalStatus.operations[0].requestLatencyMs.count, 3);
   await session.dispose();
+});
+
+test("normal tool bursts drain through the reviewed bounded queue without loss", async (t) => {
+  const held = [];
+  const fixture = await harness(t, {
+    descriptor: {
+      limits: {
+        maxConcurrentRequests: 2,
+        maxQueuedRequests: 16,
+        requestTimeoutMs: 5_000,
+      },
+      operations: ["fs.stat"],
+    },
+    onFrame({ frame, socket, send, input }) {
+      if (frame.kind === "bind") {
+        send(socket, {
+          ...commonFrame(input, "bound"),
+          operations: input.operations,
+          limits: input.limits,
+        });
+      } else if (frame.kind === "invoke") {
+        held.push({ frame, socket, send, input });
+      }
+    },
+  });
+  const registry = new HostToolAdapterRegistry();
+  const session = await registry.open(fixture.input, { cwd: fixture.cwd });
+  const requests = Array.from({ length: 18 }, (_, index) =>
+    session.invoke(
+      "fs.stat",
+      { path: `burst-${index}` },
+      { idempotencyKey: `burst-${index}` },
+    ));
+  await waitFor(() => held.length === 2, "initial burst concurrency");
+  assert.deepEqual(session.status().occupancy, { activeRequests: 2, queuedRequests: 16 });
+  assert.equal(session.status().rejectedRequests, 0);
+
+  for (let index = 0; index < requests.length; index += 1) {
+    await waitFor(() => held.length > index, `burst invoke ${index}`);
+    held[index].send(
+      held[index].socket,
+      responseFor(held[index].input, held[index].frame, { type: "file", size: index }),
+    );
+  }
+  const results = await Promise.all(requests);
+  assert.deepEqual(results.map((result) => result.size), [...Array(18).keys()]);
+  const status = session.status();
+  assert.deepEqual(status.occupancy, { activeRequests: 0, queuedRequests: 0 });
+  assert.deepEqual(status.highWater, { activeRequests: 2, queuedRequests: 16 });
+  assert.equal(status.acceptedRequests, 18);
+  assert.equal(status.completedRequests, 18);
+  assert.equal(status.rejectedRequests, 0);
+  assert.equal(status.operations[0].queueWaitMs.count, 18);
+  assert.equal(status.operations[0].requestLatencyMs.count, 18);
+  const serialized = JSON.stringify(status);
+  assert.equal(serialized.includes("burst-"), false);
+  assert.equal(serialized.includes(capabilityHandle), false);
+  assert.equal(serialized.includes(fixture.socketPath), false);
+  await session.dispose();
+});
+
+test("one saturated session cannot starve another adapter session", async (t) => {
+  const noisyHeld = [];
+  const noisyFixture = await harness(t, {
+    descriptor: {
+      binding: { sessionId: "noisy-session" },
+      limits: { maxConcurrentRequests: 1, maxQueuedRequests: 1, requestTimeoutMs: 5_000 },
+      operations: ["fs.stat"],
+    },
+    onFrame({ frame, socket, send, input }) {
+      if (frame.kind === "bind") {
+        send(socket, {
+          ...commonFrame(input, "bound"),
+          operations: input.operations,
+          limits: input.limits,
+        });
+      } else if (frame.kind === "invoke") {
+        noisyHeld.push({ frame, socket, send, input });
+      }
+    },
+  });
+  const healthyFixture = await harness(t, {
+    descriptor: {
+      binding: { sessionId: "healthy-session" },
+      operations: ["fs.stat"],
+    },
+  });
+  const registry = new HostToolAdapterRegistry();
+  const noisy = await registry.open(noisyFixture.input, { cwd: noisyFixture.cwd });
+  const healthy = await registry.open(healthyFixture.input, { cwd: healthyFixture.cwd });
+  const first = noisy.invoke("fs.stat", { path: "one" }, { idempotencyKey: "noisy-one" });
+  void first.catch(() => undefined);
+  await waitFor(() => noisyHeld.length === 1, "noisy active request");
+  const second = noisy.invoke("fs.stat", { path: "two" }, { idempotencyKey: "noisy-two" });
+  void second.catch(() => undefined);
+  await assert.rejects(
+    noisy.invoke("fs.stat", { path: "three" }, { idempotencyKey: "noisy-three" }),
+    (error) => error instanceof HostToolAdapterError && error.code === "adapter_queue_capacity",
+  );
+
+  assert.deepEqual(
+    await healthy.invoke("fs.stat", { path: "." }, { idempotencyKey: "healthy-one" }),
+    { type: "directory", size: 0 },
+  );
+  assert.equal(healthy.status().completedRequests, 1);
+  assert.equal(noisy.status().rejectedRequests, 1);
+
+  await noisy.dispose();
+  await assert.rejects(first, (error) => error instanceof HostToolAdapterError);
+  await assert.rejects(second, (error) => error instanceof HostToolAdapterError);
+  assert.equal(noisy.status().cancelledRequests, 2);
+  assert.deepEqual(noisy.status().occupancy, { activeRequests: 0, queuedRequests: 0 });
+  await healthy.dispose();
+  await registry.dispose();
 });
 
 test("AbortSignal emits a targeted abort without tearing down other multiplexed work", async (t) => {
@@ -304,6 +472,57 @@ test("AbortSignal emits a targeted abort without tearing down other multiplexed 
     await session.invoke("fs.stat", { path: "file" }, { idempotencyKey: "stat-after-abort" }),
     { type: "file", size: 0 },
   );
+  assert.equal(session.status().cancelledRequests, 1);
+  assert.equal(session.status().completedRequests, 1);
+  assert.equal(session.status().operations.find((entry) => entry.operation === "fs.read").cancelledRequests, 1);
+  await session.dispose();
+});
+
+test("active request timeout is indeterminate, aborts once, and updates telemetry", async (t) => {
+  let held;
+  const fixture = await harness(t, {
+    descriptor: {
+      limits: { requestTimeoutMs: 100 },
+      operations: ["fs.stat"],
+    },
+    onFrame({ frame, socket, send, input }) {
+      if (frame.kind === "bind") {
+        send(socket, {
+          ...commonFrame(input, "bound"),
+          operations: input.operations,
+          limits: input.limits,
+        });
+      } else if (frame.kind === "invoke") {
+        held = frame;
+      } else if (frame.kind === "abort") {
+        send(socket, {
+          ...commonFrame(input, "aborted"),
+          requestId: frame.requestId,
+          targetRequestId: frame.targetRequestId,
+          aborted: true,
+        });
+      }
+    },
+  });
+  const registry = new HostToolAdapterRegistry();
+  const session = await registry.open(fixture.input, { cwd: fixture.cwd });
+  await assert.rejects(
+    session.invoke("fs.stat", { path: "slow" }, { idempotencyKey: "slow-once" }),
+    (error) =>
+      error instanceof HostToolAdapterError &&
+      error.code === "adapter_request_timeout" &&
+      error.retryable &&
+      error.indeterminate,
+  );
+  assert.ok(held);
+  await waitFor(
+    () => fixture.frames.filter((frame) => frame.kind === "abort").length === 1,
+    "one timeout abort",
+  );
+  assert.equal(session.status().timedOutRequests, 1);
+  assert.equal(session.status().operations[0].timedOutRequests, 1);
+  assert.equal(session.status().acceptedRequests, 1);
+  assert.equal(session.status().completedRequests, 0);
   await session.dispose();
 });
 

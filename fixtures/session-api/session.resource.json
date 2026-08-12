@@ -130,6 +130,60 @@
     },
     "truncated": false
   },
+  "hostToolAdapterQueue": {
+    "capacity": {
+      "maxConcurrentRequests": 4,
+      "maxQueuedRequests": 16
+    },
+    "occupancy": {
+      "activeRequests": 2,
+      "queuedRequests": 3
+    },
+    "highWater": {
+      "activeRequests": 4,
+      "queuedRequests": 12
+    },
+    "acceptedRequests": 21,
+    "completedRequests": 15,
+    "failedRequests": 1,
+    "rejectedRequests": 1,
+    "cancelledRequests": 1,
+    "timedOutRequests": 0,
+    "lastRejectionReason": "adapter_queue_capacity",
+    "saturation": {
+      "active": false,
+      "count": 2,
+      "totalMs": 35,
+      "longestMs": 20
+    },
+    "operations": [
+      {
+        "operation": "fs.read",
+        "activeRequests": 2,
+        "queuedRequests": 3,
+        "acceptedRequests": 21,
+        "completedRequests": 15,
+        "failedRequests": 1,
+        "rejectedRequests": 1,
+        "cancelledRequests": 1,
+        "timedOutRequests": 0,
+        "queueWaitMs": {
+          "count": 18,
+          "sum": 90,
+          "min": 0,
+          "max": 20,
+          "last": 4
+        },
+        "requestLatencyMs": {
+          "count": 16,
+          "sum": 160,
+          "min": 1,
+          "max": 30,
+          "last": 9
+        }
+      }
+    ]
+  },
   "links": {
     "self": "/v1/session/agent-a",
     "rpc": "/v1/session/agent-a/rpc",

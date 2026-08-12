@@ -38,8 +38,14 @@ function boundedToolNames(names: string[]): string {
   return names.length <= 12 ? visible : `${visible} +${names.length - 12}`;
 }
 
+function timingLabel(summary: { count: number; sum: number; max: number }): string {
+  if (summary.count === 0) return "no samples";
+  return `${Math.round(summary.sum / summary.count)} ms avg · ${Math.round(summary.max)} ms max`;
+}
+
 export function InfoPane({ session, info, scheduleEditor }: InfoPaneProps) {
   const tooling = info?.runtime?.toolMaterialization;
+  const queue = info?.runtime?.hostToolAdapterQueue;
   const omittedTools = tooling?.entries.filter((entry) => !entry.active) ?? [];
   return (
     <article className="info-pane" aria-label={`Information for ${session.title}`}>
@@ -96,6 +102,37 @@ export function InfoPane({ session, info, scheduleEditor }: InfoPaneProps) {
             {tooling.provenance ? <div><dt><GitBranch size={14} /> Materialization</dt><dd>{tooling.provenance.source} · {tooling.provenance.materializationGeneration}</dd></div> : null}
             {tooling.provenance?.authorization ? <div><dt><ShieldCheck size={14} /> Authorization</dt><dd>{tooling.provenance.authorization.source} · {tooling.provenance.authorization.scope}</dd></div> : null}
             {tooling.provenance?.authorization?.ownershipGeneration ? <div><dt><GitBranch size={14} /> Ownership generation</dt><dd>{tooling.provenance.authorization.ownershipGeneration}</dd></div> : null}
+          </dl>
+        </section>
+      ) : null}
+
+      {queue ? (
+        <section className="info-section" aria-labelledby="info-tool-queue">
+          <h3 id="info-tool-queue">Host tool queue</h3>
+          <dl className="detail-list">
+            <div>
+              <dt><Activity size={14} /> Occupancy</dt>
+              <dd>{queue.occupancy.activeRequests} / {queue.capacity.maxConcurrentRequests} active · {queue.occupancy.queuedRequests} / {queue.capacity.maxQueuedRequests} queued</dd>
+            </div>
+            <div>
+              <dt><Gauge size={14} /> High water</dt>
+              <dd>{queue.highWater.activeRequests} active · {queue.highWater.queuedRequests} queued</dd>
+            </div>
+            <div>
+              <dt><ShieldCheck size={14} /> Outcomes</dt>
+              <dd>{queue.completedRequests} completed · {queue.rejectedRequests} rejected · {queue.cancelledRequests} cancelled · {queue.timedOutRequests} timed out</dd>
+            </div>
+            <div>
+              <dt><Clock3 size={14} /> Saturation</dt>
+              <dd>{queue.saturation.active ? "active" : "clear"} · {queue.saturation.count} episode{queue.saturation.count === 1 ? "" : "s"} · {Math.round(queue.saturation.totalMs)} ms total</dd>
+            </div>
+            {queue.lastRejectionReason ? <div><dt><ShieldCheck size={14} /> Last refusal</dt><dd>{queue.lastRejectionReason}</dd></div> : null}
+            {queue.operations.map((operation) => (
+              <div key={operation.operation}>
+                <dt><Cpu size={14} /> {operation.operation}</dt>
+                <dd>{operation.activeRequests} active · {operation.queuedRequests} queued · wait {timingLabel(operation.queueWaitMs)} · latency {timingLabel(operation.requestLatencyMs)}</dd>
+              </div>
+            ))}
           </dl>
         </section>
       ) : null}

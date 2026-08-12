@@ -20,7 +20,9 @@ import {
   type HostToolAdapterDescriptor,
   type HostToolAdapterLimits,
   type HostToolAdapterMessage,
+  type HostToolAdapterQueueSnapshot,
   type HostToolAdapterResultFrame,
+  type HostToolAdapterTimingSummary,
   type NeutralToolOperation,
 } from "./tool-adapter-protocol.js";
 import { hasForbiddenExposure, hasForeignPathOwner } from "./path-ownership.js";
@@ -63,6 +65,8 @@ interface PendingInvocation {
   reject: (error: HostToolAdapterError) => void;
   abortListener: (() => void) | undefined;
   timer: NodeJS.Timeout | undefined;
+  enqueuedAt: number;
+  startedAt: number | undefined;
 }
 
 interface AbortedInvocation {
@@ -72,21 +76,38 @@ interface AbortedInvocation {
   timer: NodeJS.Timeout;
 }
 
+type MutableTimingSummary = HostToolAdapterTimingSummary;
+
+interface MutableOperationQueueStats {
+  acceptedRequests: number;
+  completedRequests: number;
+  failedRequests: number;
+  rejectedRequests: number;
+  cancelledRequests: number;
+  timedOutRequests: number;
+  queueWaitMs: MutableTimingSummary;
+  requestLatencyMs: MutableTimingSummary;
+}
+
+type TerminalRequestOutcome = "completed" | "failed" | "cancelled" | "timed-out";
+
 export class HostToolAdapterError extends Error {
   readonly code: string;
   readonly retryable: boolean;
   readonly indeterminate: boolean;
+  readonly retryAfterMs: number | undefined;
 
   constructor(
     code: string,
     message: string,
-    options: { retryable?: boolean; indeterminate?: boolean } = {},
+    options: { retryable?: boolean; indeterminate?: boolean; retryAfterMs?: number } = {},
   ) {
     super(message);
     this.name = "HostToolAdapterError";
     this.code = safeCode(code);
     this.retryable = options.retryable === true;
     this.indeterminate = options.indeterminate === true;
+    this.retryAfterMs = options.retryAfterMs;
   }
 }
 
@@ -154,6 +175,20 @@ export class HostToolAdapterSession {
   readonly #queue: PendingInvocation[] = [];
   readonly #active = new Map<string, PendingInvocation>();
   readonly #aborted = new Map<string, AbortedInvocation>();
+  readonly #operationStats = new Map<NeutralToolOperation, MutableOperationQueueStats>();
+  #activeHighWater = 0;
+  #queuedHighWater = 0;
+  #acceptedRequests = 0;
+  #completedRequests = 0;
+  #failedRequests = 0;
+  #rejectedRequests = 0;
+  #cancelledRequests = 0;
+  #timedOutRequests = 0;
+  #lastRejectionReason: "adapter_queue_capacity" | undefined;
+  #saturationCount = 0;
+  #saturationTotalMs = 0;
+  #saturationLongestMs = 0;
+  #saturationStartedAt: number | undefined;
   #bound = false;
   #disposed = false;
   #writeBlocked = false;
@@ -172,6 +207,9 @@ export class HostToolAdapterSession {
     this.#socket = socket;
     this.#onClose = onClose;
     this.#decoder = new NdjsonDecoder(descriptor.limits.maxResponseBytes - 1);
+    for (const operation of descriptor.operations) {
+      this.#operationStats.set(operation, emptyOperationQueueStats());
+    }
     socket.on("data", (chunk: Buffer) => this.#onData(chunk));
     socket.on("drain", () => {
       this.#writeBlocked = false;
@@ -239,6 +277,58 @@ export class HostToolAdapterSession {
     return this.#queue.length;
   }
 
+  status(): HostToolAdapterQueueSnapshot {
+    const now = Date.now();
+    this.#recordOccupancy(now);
+    const currentSaturationMs =
+      this.#saturationStartedAt === undefined ? 0 : Math.max(0, now - this.#saturationStartedAt);
+    return {
+      capacity: {
+        maxConcurrentRequests: this.#descriptor.limits.maxConcurrentRequests,
+        maxQueuedRequests: this.#descriptor.limits.maxQueuedRequests,
+      },
+      occupancy: {
+        activeRequests: this.#active.size,
+        queuedRequests: this.#queue.length,
+      },
+      highWater: {
+        activeRequests: this.#activeHighWater,
+        queuedRequests: this.#queuedHighWater,
+      },
+      acceptedRequests: this.#acceptedRequests,
+      completedRequests: this.#completedRequests,
+      failedRequests: this.#failedRequests,
+      rejectedRequests: this.#rejectedRequests,
+      cancelledRequests: this.#cancelledRequests,
+      timedOutRequests: this.#timedOutRequests,
+      ...(this.#lastRejectionReason === undefined
+        ? {}
+        : { lastRejectionReason: this.#lastRejectionReason }),
+      saturation: {
+        active: this.#saturationStartedAt !== undefined,
+        count: this.#saturationCount,
+        totalMs: this.#saturationTotalMs + currentSaturationMs,
+        longestMs: Math.max(this.#saturationLongestMs, currentSaturationMs),
+      },
+      operations: this.#descriptor.operations.map((operation) => {
+        const stats = this.#operationStats.get(operation)!;
+        return {
+          operation,
+          activeRequests: countOperation(this.#active.values(), operation),
+          queuedRequests: countOperation(this.#queue, operation),
+          acceptedRequests: stats.acceptedRequests,
+          completedRequests: stats.completedRequests,
+          failedRequests: stats.failedRequests,
+          rejectedRequests: stats.rejectedRequests,
+          cancelledRequests: stats.cancelledRequests,
+          timedOutRequests: stats.timedOutRequests,
+          queueWaitMs: { ...stats.queueWaitMs },
+          requestLatencyMs: { ...stats.requestLatencyMs },
+        };
+      }),
+    };
+  }
+
   async invoke(
     operation: NeutralToolOperation,
     payload: HostToolJsonObject,
@@ -256,21 +346,31 @@ export class HostToolAdapterSession {
     if (options.signal?.aborted) {
       throw new HostToolAdapterError("adapter_request_aborted", "Host tool adapter request was aborted");
     }
-    if (
-      this.#active.size >= this.#descriptor.limits.maxConcurrentRequests &&
-      this.#queue.length >= this.#descriptor.limits.maxQueuedRequests
-    ) {
-      throw new HostToolAdapterError(
-        "adapter_queue_capacity",
-        "Host tool adapter request queue is full",
-        { retryable: true },
-      );
-    }
     const idempotencyKey = boundedIdentifier(
       options.idempotencyKey,
       "idempotency key",
       512,
     );
+    if (
+      this.#active.size >= this.#descriptor.limits.maxConcurrentRequests &&
+      this.#queue.length >= this.#descriptor.limits.maxQueuedRequests
+    ) {
+      this.#rejectedRequests += 1;
+      this.#operationStats.get(operation)!.rejectedRequests += 1;
+      this.#lastRejectionReason = "adapter_queue_capacity";
+      this.#recordOccupancy();
+      throw new HostToolAdapterError(
+        "adapter_queue_capacity",
+        "Host tool adapter request queue is full",
+        {
+          retryable: true,
+          retryAfterMs: Math.max(
+            25,
+            Math.min(1_000, Math.floor(this.#descriptor.limits.requestTimeoutMs / 20)),
+          ),
+        },
+      );
+    }
     return await new Promise<HostToolJsonValue>((resolvePromise, rejectPromise) => {
       const pending: PendingInvocation = {
         requestId: randomUUID(),
@@ -282,6 +382,8 @@ export class HostToolAdapterSession {
         reject: rejectPromise,
         abortListener: undefined,
         timer: undefined,
+        enqueuedAt: Date.now(),
+        startedAt: undefined,
       };
       if (options.signal !== undefined) {
         const abortListener = (): void => this.#abortInvocation(pending);
@@ -293,6 +395,8 @@ export class HostToolAdapterSession {
         this.#descriptor.limits.requestTimeoutMs,
       );
       pending.timer.unref();
+      this.#acceptedRequests += 1;
+      this.#operationStats.get(operation)!.acceptedRequests += 1;
       this.#queue.push(pending);
       this.#pump();
     });
@@ -346,9 +450,16 @@ export class HostToolAdapterSession {
       "Host tool adapter session is closed",
       { indeterminate: this.#active.size > 0 },
     );
-    for (const pending of this.#queue.splice(0)) this.#settle(pending, undefined, error);
-    for (const pending of this.#active.values()) this.#settle(pending, undefined, error);
+    for (const pending of this.#queue.splice(0)) {
+      this.#recordTerminal(pending, "cancelled");
+      this.#settle(pending, undefined, error);
+    }
+    for (const pending of this.#active.values()) {
+      this.#recordTerminal(pending, "cancelled");
+      this.#settle(pending, undefined, error);
+    }
     this.#active.clear();
+    this.#recordOccupancy();
     for (const aborted of this.#aborted.values()) clearTimeout(aborted.timer);
     this.#aborted.clear();
     if (!this.#socket.destroyed) {
@@ -486,12 +597,14 @@ export class HostToolAdapterSession {
     if (aborted !== undefined) return;
     this.#active.delete(requestId);
     if (value.ok) {
+      this.#recordTerminal(pending!, "completed");
       this.#settle(
         pending!,
         value.data as unknown as HostToolJsonValue,
         undefined,
       );
     } else {
+      this.#recordTerminal(pending!, "failed");
       this.#settle(
         pending!,
         undefined,
@@ -516,7 +629,11 @@ export class HostToolAdapterSession {
   }
 
   #pump(): void {
-    if (this.#disposed || !this.#bound || this.#writeBlocked) return;
+    if (this.#disposed || !this.#bound) return;
+    if (this.#writeBlocked) {
+      this.#recordOccupancy();
+      return;
+    }
     while (
       this.#queue.length > 0 &&
       this.#active.size < this.#descriptor.limits.maxConcurrentRequests &&
@@ -524,6 +641,7 @@ export class HostToolAdapterSession {
     ) {
       const pending = this.#queue.shift()!;
       if (pending.signal?.aborted) {
+        this.#recordTerminal(pending, "cancelled");
         this.#settle(
           pending,
           undefined,
@@ -542,6 +660,7 @@ export class HostToolAdapterSession {
       try {
         parsedFrame = this.#parseFrame(frame);
       } catch {
+        this.#recordTerminal(pending, "failed");
         this.#settle(
           pending,
           undefined,
@@ -559,6 +678,7 @@ export class HostToolAdapterSession {
           this.#descriptor.limits.maxRequestBytes,
         );
       } catch {
+        this.#recordTerminal(pending, "failed");
         this.#settle(
           pending,
           undefined,
@@ -569,25 +689,34 @@ export class HostToolAdapterSession {
         );
         continue;
       }
+      pending.startedAt = Date.now();
+      observeTiming(
+        this.#operationStats.get(pending.operation)!.queueWaitMs,
+        Math.max(0, pending.startedAt - pending.enqueuedAt),
+      );
       this.#active.set(pending.requestId, pending);
       this.#writeBlocked = !this.#socket.write(encoded, (error) => {
         if (error !== null && error !== undefined) this.#failConnection("adapter_connection_failed");
       });
     }
+    this.#recordOccupancy();
   }
 
   #abortInvocation(pending: PendingInvocation): void {
     const queuedIndex = this.#queue.indexOf(pending);
     if (queuedIndex >= 0) {
       this.#queue.splice(queuedIndex, 1);
+      this.#recordTerminal(pending, "cancelled");
       this.#settle(
         pending,
         undefined,
         new HostToolAdapterError("adapter_request_aborted", "Host tool adapter request was aborted"),
       );
+      this.#recordOccupancy();
       return;
     }
     if (!this.#active.delete(pending.requestId)) return;
+    this.#recordTerminal(pending, "cancelled");
     this.#rememberAborted(pending);
     this.#sendAbort(pending);
     this.#settle(
@@ -604,6 +733,7 @@ export class HostToolAdapterSession {
     const queuedIndex = this.#queue.indexOf(pending);
     if (queuedIndex >= 0) {
       this.#queue.splice(queuedIndex, 1);
+      this.#recordTerminal(pending, "timed-out");
       this.#settle(
         pending,
         undefined,
@@ -613,9 +743,11 @@ export class HostToolAdapterSession {
           { retryable: true },
         ),
       );
+      this.#recordOccupancy();
       return;
     }
     if (!this.#active.delete(pending.requestId)) return;
+    this.#recordTerminal(pending, "timed-out");
     this.#rememberAborted(pending);
     this.#sendAbort(pending);
     this.#settle(
@@ -702,9 +834,16 @@ export class HostToolAdapterSession {
       retryable: true,
       indeterminate: activeIds.size > 0,
     });
-    for (const pending of this.#queue.splice(0)) this.#settle(pending, undefined, failure);
-    for (const pending of this.#active.values()) this.#settle(pending, undefined, failure);
+    for (const pending of this.#queue.splice(0)) {
+      this.#recordTerminal(pending, "failed");
+      this.#settle(pending, undefined, failure);
+    }
+    for (const pending of this.#active.values()) {
+      this.#recordTerminal(pending, "failed");
+      this.#settle(pending, undefined, failure);
+    }
     this.#active.clear();
+    this.#recordOccupancy();
     for (const aborted of this.#aborted.values()) clearTimeout(aborted.timer);
     this.#aborted.clear();
     this.#socket.destroy();
@@ -734,6 +873,99 @@ export class HostToolAdapterSession {
     };
   }
 
+  #recordTerminal(
+    pending: PendingInvocation,
+    outcome: TerminalRequestOutcome,
+    now = Date.now(),
+  ): void {
+    const operation = this.#operationStats.get(pending.operation)!;
+    if (pending.startedAt !== undefined) {
+      observeTiming(operation.requestLatencyMs, Math.max(0, now - pending.startedAt));
+    }
+    switch (outcome) {
+      case "completed":
+        this.#completedRequests += 1;
+        operation.completedRequests += 1;
+        break;
+      case "failed":
+        this.#failedRequests += 1;
+        operation.failedRequests += 1;
+        break;
+      case "cancelled":
+        this.#cancelledRequests += 1;
+        operation.cancelledRequests += 1;
+        break;
+      case "timed-out":
+        this.#timedOutRequests += 1;
+        operation.timedOutRequests += 1;
+        break;
+    }
+  }
+
+  #recordOccupancy(now = Date.now()): void {
+    this.#activeHighWater = Math.max(this.#activeHighWater, this.#active.size);
+    this.#queuedHighWater = Math.max(this.#queuedHighWater, this.#queue.length);
+    const saturated =
+      this.#active.size >= this.#descriptor.limits.maxConcurrentRequests &&
+      this.#queue.length >= this.#descriptor.limits.maxQueuedRequests;
+    if (saturated && this.#saturationStartedAt === undefined) {
+      this.#saturationStartedAt = now;
+      this.#saturationCount += 1;
+      return;
+    }
+    if (!saturated && this.#saturationStartedAt !== undefined) {
+      const duration = Math.max(0, now - this.#saturationStartedAt);
+      this.#saturationTotalMs += duration;
+      this.#saturationLongestMs = Math.max(this.#saturationLongestMs, duration);
+      this.#saturationStartedAt = undefined;
+    }
+  }
+
+}
+
+function emptyTimingSummary(): MutableTimingSummary {
+  return { count: 0, sum: 0, min: 0, max: 0, last: 0 };
+}
+
+function emptyOperationQueueStats(): MutableOperationQueueStats {
+  return {
+    acceptedRequests: 0,
+    completedRequests: 0,
+    failedRequests: 0,
+    rejectedRequests: 0,
+    cancelledRequests: 0,
+    timedOutRequests: 0,
+    queueWaitMs: emptyTimingSummary(),
+    requestLatencyMs: emptyTimingSummary(),
+  };
+}
+
+function observeTiming(summary: MutableTimingSummary, value: number): void {
+  if (!Number.isFinite(value) || value < 0) return;
+  if (summary.count === 0) {
+    summary.count = 1;
+    summary.sum = value;
+    summary.min = value;
+    summary.max = value;
+    summary.last = value;
+    return;
+  }
+  summary.count += 1;
+  summary.sum += value;
+  summary.min = Math.min(summary.min, value);
+  summary.max = Math.max(summary.max, value);
+  summary.last = value;
+}
+
+function countOperation(
+  pending: Iterable<PendingInvocation>,
+  operation: NeutralToolOperation,
+): number {
+  let count = 0;
+  for (const invocation of pending) {
+    if (invocation.operation === operation) count += 1;
+  }
+  return count;
 }
 
 export function createHostToolDefinitions(session: HostToolAdapterSession): ToolDefinition[] {

@@ -94,6 +94,34 @@ const info: SessionInfoResource = {
         },
       },
     },
+    hostToolAdapterQueue: {
+      capacity: { maxConcurrentRequests: 4, maxQueuedRequests: 16 },
+      occupancy: { activeRequests: 2, queuedRequests: 3 },
+      highWater: { activeRequests: 4, queuedRequests: 12 },
+      acceptedRequests: 21,
+      completedRequests: 15,
+      failedRequests: 0,
+      rejectedRequests: 1,
+      cancelledRequests: 1,
+      timedOutRequests: 0,
+      lastRejectionReason: "adapter_queue_capacity",
+      saturation: { active: false, count: 2, totalMs: 35, longestMs: 20 },
+      operations: [
+        {
+          operation: "fs.read",
+          activeRequests: 2,
+          queuedRequests: 3,
+          acceptedRequests: 21,
+          completedRequests: 15,
+          failedRequests: 0,
+          rejectedRequests: 1,
+          cancelledRequests: 1,
+          timedOutRequests: 0,
+          queueWaitMs: { count: 18, sum: 90, min: 0, max: 20, last: 4 },
+          requestLatencyMs: { count: 16, sum: 160, min: 1, max: 30, last: 9 },
+        },
+      ],
+    },
   },
 };
 
@@ -112,6 +140,13 @@ describe("InfoPane tool materialization", () => {
       expect(tooling?.textContent).toContain("controller · project:fixture");
       expect(tooling?.textContent).toContain("ownership-gen-7");
       expect(tooling?.textContent).not.toContain("/work/project");
+      const queue = container.querySelector('[aria-labelledby="info-tool-queue"]');
+      expect(queue?.textContent).toContain("2 / 4 active · 3 / 16 queued");
+      expect(queue?.textContent).toContain("4 active · 12 queued");
+      expect(queue?.textContent).toContain("15 completed · 1 rejected · 1 cancelled");
+      expect(queue?.textContent).toContain("adapter_queue_capacity");
+      expect(queue?.textContent).toContain("fs.read");
+      expect(queue?.textContent).toContain("5 ms avg · 20 ms max");
     } finally {
       await act(async () => root.unmount());
       container.remove();

@@ -59,7 +59,10 @@ import {
   HostToolAdapterRegistry,
   createHostToolDefinitions,
 } from "./tool-adapter-runtime.js";
-import type { HostToolAdapterDescriptor } from "./tool-adapter-protocol.js";
+import type {
+  HostToolAdapterDescriptor,
+  HostToolAdapterQueueSnapshot,
+} from "./tool-adapter-protocol.js";
 import { hasForbiddenExposure, hasForeignPathOwner } from "./path-ownership.js";
 import type {
   SessionToolMaterialization,
@@ -624,7 +627,10 @@ export class PiSessionFactory implements SessionFactory {
         toolSourceClassOverrides,
         ...(hostToolSession === undefined
           ? {}
-          : { disposeSessionResources: () => hostToolSession.dispose() }),
+          : {
+              disposeSessionResources: () => hostToolSession.dispose(),
+              hostToolAdapterQueue: () => hostToolSession.status(),
+            }),
       });
       await adapter.rpcController(
         configuredRpcControllerOptions(this.#rpcControllerOptions, runtimeOptions),
@@ -670,6 +676,7 @@ export interface PiSessionAdapterOptions {
   sessionRoot: string;
   validateCwd: (cwd: string) => Promise<string>;
   disposeSessionResources?: () => Promise<void>;
+  hostToolAdapterQueue?: () => HostToolAdapterQueueSnapshot;
   configuredSpec?: PersistedSessionConfiguration;
   hostToolNames?: string[];
   toolSourceClassOverrides?: ReadonlyMap<string, SessionToolSourceClass>;
@@ -691,6 +698,7 @@ export class PiSessionAdapter implements SessionAdapter {
   readonly #sessionRoot: string;
   readonly #validateCwd: (cwd: string) => Promise<string>;
   readonly #disposeSessionResources: (() => Promise<void>) | undefined;
+  readonly #hostToolAdapterQueue: (() => HostToolAdapterQueueSnapshot) | undefined;
   readonly #onTurnAuthOutcome: ((failure: string | undefined) => void) | undefined;
   readonly #configuredSpec: PersistedSessionConfiguration | undefined;
   readonly #hostToolNames: ReadonlySet<string>;
@@ -710,6 +718,7 @@ export class PiSessionAdapter implements SessionAdapter {
     this.#sessionRoot = options.sessionRoot;
     this.#validateCwd = options.validateCwd;
     this.#disposeSessionResources = options.disposeSessionResources;
+    this.#hostToolAdapterQueue = options.hostToolAdapterQueue;
     this.#onTurnAuthOutcome = options.onTurnAuthOutcome;
     this.#configuredSpec = options.configuredSpec;
     this.#hostToolNames = new Set(options.hostToolNames ?? []);
@@ -765,6 +774,12 @@ export class PiSessionAdapter implements SessionAdapter {
     if (this.#disposed || this.#invalidated) return undefined;
     const model = this.#runtime.session.model;
     return model === undefined ? undefined : { provider: model.provider, id: model.id };
+  }
+
+  hostToolAdapterQueue(): HostToolAdapterQueueSnapshot | undefined {
+    if (this.#disposed || this.#invalidated) return undefined;
+    const queue = this.#hostToolAdapterQueue?.();
+    return queue === undefined ? undefined : structuredClone(queue);
   }
 
   toolMaterialization(): SessionToolMaterialization | undefined {

@@ -1,3 +1,8 @@
+import {
+  HOST_TOOL_ADAPTER_RECOMMENDED_QUEUE_LIMITS,
+  type HostToolAdapterQueueSnapshot,
+} from "./tool-adapter-protocol.js";
+
 export const SESSION_API_VERSION = "1.0" as const;
 export const SESSION_API_BASE_PATH = "/v1" as const;
 
@@ -48,6 +53,17 @@ export const SESSION_RPC_SUBPROTOCOLS = ["pi-rpc.v1", "pi-daemon-rpc.v1"] as con
 export type SessionRpcSubprotocol = (typeof SESSION_RPC_SUBPROTOCOLS)[number];
 
 /** Versioned additive contract that clients must negotiate before sending required/provenance fields. */
+export const HOST_TOOL_ADAPTER_QUEUE_CAPABILITY = {
+  contractVersion: "1.0",
+  capacity: true,
+  occupancy: true,
+  highWater: true,
+  rejectionReason: true,
+  saturation: true,
+  perOperationTiming: true,
+  recommended: { ...HOST_TOOL_ADAPTER_RECOMMENDED_QUEUE_LIMITS },
+} as const;
+
 export const SESSION_TOOL_MATERIALIZATION_CAPABILITY = {
   contractVersion: "1.0",
   requiredToolAdmission: true,
@@ -276,6 +292,8 @@ export interface SessionResource {
   spec: Omit<SessionSpec, "env">;
   environment: SessionEnvironmentSummary;
   toolMaterialization: SessionToolMaterialization;
+  /** Present only for a resident generation using the host tool adapter. */
+  hostToolAdapterQueue?: HostToolAdapterQueueSnapshot;
   recovery?: SessionRecoveryCondition;
   lastTerminal?: SessionTerminalSummary;
   links: {

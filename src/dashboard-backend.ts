@@ -286,10 +286,18 @@ export class InProcessDashboardBackend implements DashboardBackend {
         managed.generation,
       ),
     ]);
+    const hostToolAdapterQueue = this.#multiplexer.sessionHostToolAdapterQueue(
+      managed.sessionId,
+      managed.generation,
+    );
     const toolMaterialization =
       retained === undefined
         ? liveToolMaterialization
-        : catalogRecordToSessionResource(retained, liveToolMaterialization).toolMaterialization;
+        : catalogRecordToSessionResource(
+            retained,
+            liveToolMaterialization,
+            hostToolAdapterQueue,
+          ).toolMaterialization;
     return {
       ...info,
       runtime: {
@@ -301,6 +309,7 @@ export class InProcessDashboardBackend implements DashboardBackend {
         ),
         isolation: "unisolated",
         ...(toolMaterialization === undefined ? {} : { toolMaterialization }),
+        ...(hostToolAdapterQueue === undefined ? {} : { hostToolAdapterQueue }),
       },
     };
   }
@@ -549,6 +558,7 @@ export class InProcessDashboardBackend implements DashboardBackend {
     return catalogRecordToSessionResource(
       record,
       await this.#multiplexer.sessionToolMaterialization(record.sessionId, record.generation),
+      this.#multiplexer.sessionHostToolAdapterQueue(record.sessionId, record.generation),
     );
   }
 
@@ -660,6 +670,10 @@ export class InProcessDashboardBackend implements DashboardBackend {
       session: catalogRecordToSessionResource(
         retained,
         await this.#multiplexer.sessionToolMaterialization(
+          retained.sessionId,
+          retained.generation,
+        ),
+        this.#multiplexer.sessionHostToolAdapterQueue(
           retained.sessionId,
           retained.generation,
         ),
