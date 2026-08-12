@@ -25,7 +25,7 @@ jobs:
   release:
     name: Signed AAB to Play internal
     environment: google-play-internal
-    runs-on: [self-hosted, nix, x86_64-linux]
+    runs-on: [self-hosted, nix, x86_64-linux, android-kvm]
     timeout-minutes: 90
     env:
       PI_DROID_PLAY_TRACK: internal
@@ -34,6 +34,12 @@ jobs:
       - uses: cachix/install-nix-action@v31
         with:
           github_access_token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Verify labeled runner KVM capability
+        id: kvm
+        shell: nix develop .#androidRelease --command bash -euo pipefail {0}
+        env:
+          PI_DROID_KVM_RECEIPT_FILE: ${{ runner.temp }}/pi-droid-release/kvm-capability.json
+        run: android/build-logic/prove-kvm-runner-capability.sh
       - name: Materialize Play release secrets
         shell: nix develop .#androidRelease --command bash -euo pipefail {0}
         env:
@@ -55,8 +61,6 @@ jobs:
       - uses: gradle/actions/setup-gradle@v5
         with:
           cache-read-only: true
-      - name: Verify emulator capability
-        run: test -r /dev/kvm -a -w /dev/kvm
       - name: Build, verify, and screenshot signed AAB
         run: |
           nix develop .#androidRelease --command \

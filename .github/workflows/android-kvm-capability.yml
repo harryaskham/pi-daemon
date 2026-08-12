@@ -1,0 +1,41 @@
+name: Pi Droid KVM capability proof
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  prove:
+    name: Prove KVM from Runner.Worker context
+    runs-on: [self-hosted, nix, x86_64-linux, android-kvm-candidate]
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: cachix/install-nix-action@v31
+        with:
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Open KVM and record capability receipt
+        id: kvm
+        shell: nix develop .#androidRelease --command bash -euo pipefail {0}
+        env:
+          PI_DROID_KVM_RECEIPT_FILE: ${{ runner.temp }}/pi-droid-kvm-capability/receipt.json
+        run: android/build-logic/prove-kvm-runner-capability.sh
+      - name: Confirm capability is eligible for label promotion
+        env:
+          ANDROID_KVM_READY: ${{ steps.kvm.outputs.android_kvm_ready }}
+          PROVEN_RUNNER_NAME: ${{ steps.kvm.outputs.runner_name }}
+        run: |
+          test "$ANDROID_KVM_READY" = true
+          test "$PROVEN_RUNNER_NAME" = "$RUNNER_NAME"
+          printf 'Runner `%s` proved KVM from Runner.Worker context. Review the receipt before replacing `android-kvm-candidate` with `android-kvm`.\n' \
+            "$RUNNER_NAME" >> "$GITHUB_STEP_SUMMARY"
+      - name: Retain non-secret KVM capability receipt
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: pi-droid-kvm-capability-${{ runner.name }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/pi-droid-kvm-capability/receipt.json
+          if-no-files-found: warn
+          retention-days: 30
