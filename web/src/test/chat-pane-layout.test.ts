@@ -82,7 +82,8 @@ describe("preview composer layout", () => {
       readFile(new URL("../app.css", import.meta.url), "utf8"),
     ]);
     expect(source).toMatch(/getItemKey: getRecordKey/);
-    expect(source).toMatch(/shownRecords\[index\]\?\.recordId/);
+    expect(source).toMatch(/transcriptRecordIdentity\(record\)/);
+    expect(source).toMatch(/key=\{transcriptRecordIdentity\(record\)\}/);
     expect(source).toMatch(/useAnimationFrameWithResizeObserver: true/);
     expect(source).toMatch(/data-record-id=\{record\.recordId\}/);
     expect(css).toMatch(/\.message__body \{[^}]*overflow-wrap: anywhere;/);

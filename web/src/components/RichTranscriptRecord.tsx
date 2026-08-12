@@ -1,4 +1,4 @@
-import { lazy, Suspense, useMemo, useState, type ReactNode } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type {
   NormalizedTranscriptRecord,
   TranscriptContentBlock,
@@ -27,6 +27,8 @@ interface RichTranscriptRecordProps {
   record: NormalizedTranscriptRecord;
   streaming?: string;
   resolveBlob?(blobRef: string): string | undefined;
+  expandTools?: boolean;
+  expandThinking?: boolean;
 }
 
 function safeImageSource(source: string | undefined): string | undefined {
@@ -133,8 +135,22 @@ function usage(blocks: TranscriptContentBlock[]) {
   return blocks.find((block) => block.type === "usage");
 }
 
-function ThinkingBlock({ text, streaming }: { text: string; streaming: boolean }) {
-  const [expanded, setExpanded] = useState(streaming);
+function useExpansionState(expandedByDefault: boolean, forceExpanded: boolean) {
+  const [expanded, setExpanded] = useState(expandedByDefault || forceExpanded);
+  const previousDefault = useRef(expandedByDefault);
+  useEffect(() => {
+    if (expandedByDefault) setExpanded(true);
+    else if (previousDefault.current) setExpanded(false);
+    previousDefault.current = expandedByDefault;
+  }, [expandedByDefault]);
+  useEffect(() => {
+    if (forceExpanded) setExpanded(true);
+  }, [forceExpanded]);
+  return [expanded, setExpanded] as const;
+}
+
+function ThinkingBlock({ text, streaming, expandedByDefault }: { text: string; streaming: boolean; expandedByDefault: boolean }) {
+  const [expanded, setExpanded] = useExpansionState(expandedByDefault, streaming);
   return (
     <details className="thinking-block" open={expanded} onToggle={(event) => setExpanded(event.currentTarget.open)}>
       <summary><BrainCircuit size={13} /> Reasoning</summary>
@@ -147,10 +163,12 @@ function MessageBlock({
   block,
   resolveBlob,
   streaming,
+  expandThinking,
 }: {
   block: TranscriptContentBlock;
   resolveBlob?: (blobRef: string) => string | undefined;
   streaming: boolean;
+  expandThinking: boolean;
 }) {
   if (block.type === "usage") return null;
   if (block.type === "image") {
@@ -162,7 +180,7 @@ function MessageBlock({
     );
   }
   if (block.type === "thinking") {
-    return <ThinkingBlock text={block.text} streaming={streaming} />;
+    return <ThinkingBlock text={block.text} streaming={streaming} expandedByDefault={expandThinking} />;
   }
   if (block.type === "error") {
     return <div className="message-error" role="alert"><AlertCircle size={15} /><CollapsibleText text={block.text} /></div>;
@@ -170,10 +188,11 @@ function MessageBlock({
   return block.type === "markdown" ? <MarkdownBody text={block.text} /> : <CollapsibleText text={block.text} />;
 }
 
-function MessageRecord({ record, streaming, resolveBlob }: {
+function MessageRecord({ record, streaming, resolveBlob, expandThinking }: {
   record: TranscriptMessageRecord;
   streaming?: string;
   resolveBlob?: (blobRef: string) => string | undefined;
+  expandThinking: boolean;
 }) {
   const assistant = record.role !== "user";
   const thinking = record.content.some((block) => block.type === "thinking");
@@ -190,7 +209,7 @@ function MessageRecord({ record, streaming, resolveBlob }: {
           <span className={`record-source record-source--${record.source}`}>{record.source}</span>
           {record.timestamp ? <time dateTime={record.timestamp}>{relativeTime(record.timestamp)}</time> : null}
         </header>
-        {record.content.map((block, index) => <MessageBlock key={index} block={block} streaming={record.state === "streaming"} {...(resolveBlob ? { resolveBlob } : {})} />)}
+        {record.content.map((block, index) => <MessageBlock key={index} block={block} streaming={record.state === "streaming"} expandThinking={expandThinking} {...(resolveBlob ? { resolveBlob } : {})} />)}
         {streaming ? <p>{streaming}<span className="stream-caret" /></p> : null}
         {usageBlock?.type === "usage" ? <footer>{(usageBlock.inputTokens ?? 0).toLocaleString()} in · {(usageBlock.outputTokens ?? 0).toLocaleString()} out{usageBlock.cost !== undefined ? ` · $${usageBlock.cost.toFixed(4)}` : ""}</footer> : null}
       </div>
@@ -257,8 +276,8 @@ function BashCommand({ command }: { command: string }) {
   );
 }
 
-function ToolRecord({ record }: { record: TranscriptToolRecord }) {
-  const [expanded, setExpanded] = useState(record.state === "error" || record.state === "running");
+function ToolRecord({ record, expandedByDefault }: { record: TranscriptToolRecord; expandedByDefault: boolean }) {
+  const [expanded, setExpanded] = useExpansionState(expandedByDefault, record.state === "error" || record.state === "running");
   const title = toolTitle(record);
   const command = record.toolName === "bash" ? argument(record, "command") : undefined;
   const details = record.details;
@@ -295,12 +314,12 @@ function CustomRecord({ record }: { record: Extract<NormalizedTranscriptRecord, 
   return <article className={`custom-record${record.hidden ? " custom-record--hidden" : ""}`}><FileCode2 size={14} /><div><strong>{record.customType}</strong><p>{record.fallbackText ?? (record.hidden ? "Hidden custom entry" : "Custom extension entry")}</p></div></article>;
 }
 
-export function RichTranscriptRecord({ record, streaming, resolveBlob }: RichTranscriptRecordProps) {
+export function RichTranscriptRecord({ record, streaming, resolveBlob, expandTools = false, expandThinking = false }: RichTranscriptRecordProps) {
   return useMemo(() => {
-    if (record.kind === "message") return <MessageRecord record={record} {...(streaming ? { streaming } : {})} {...(resolveBlob ? { resolveBlob } : {})} />;
-    if (record.kind === "tool") return <ToolRecord record={record} />;
+    if (record.kind === "message") return <MessageRecord record={record} expandThinking={expandThinking} {...(streaming ? { streaming } : {})} {...(resolveBlob ? { resolveBlob } : {})} />;
+    if (record.kind === "tool") return <ToolRecord record={record} expandedByDefault={expandTools} />;
     if (record.kind === "timeline") return <TimelineRecord record={record} />;
     if (record.kind === "summary") return <SummaryRecord record={record} />;
     return <CustomRecord record={record} />;
-  }, [record, resolveBlob, streaming]);
+  }, [expandThinking, expandTools, record, resolveBlob, streaming]);
 }

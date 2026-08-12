@@ -235,6 +235,7 @@ export function createTranscriptShowcaseFixtures(): TranscriptRecord[] {
       source: "persisted",
       timestamp: time(2),
       content: [
+        { type: "thinking", text: "Persisted reasoning expansion follows the authenticated Dashboard preference." },
         { type: "markdown", text: "### Generation-safe reducer\n\nPersisted records replace **live partials** by Pi IDs, never rendered text.\n\n```ts\nconst current = frame.identity.generation === session.generation;\nif (!current) return state;\n```\n\n<script data-unsafe>window.__dashUnsafe = true</script>" },
         { type: "usage", inputTokens: 1_248, outputTokens: 264, cost: 0.0042 },
       ],

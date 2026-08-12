@@ -637,6 +637,7 @@ function DashWorkspace({
         vimEnabled={vimEnabled}
         submitKey={composerSubmitKey}
         composerHistory={composerHistory}
+        transcriptPreferences={settings.resource.effective.transcript}
         {...(session.inventoryId.startsWith("draft-live:") && session.managed !== undefined
           ? {
               initialManaged: {
