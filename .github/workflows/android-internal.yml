@@ -65,6 +65,7 @@ jobs:
             --prepare-only \
             --skip-emulator
       - name: Verify prepared evidence before Play mutation
+        shell: nix develop .#androidRelease --command bash -euo pipefail {0}
         run: |
           test -f "$RUNNER_TEMP/pi-droid-release/pi-droid-release.aab"
           test -f "$RUNNER_TEMP/pi-droid-release/mapping.txt"
