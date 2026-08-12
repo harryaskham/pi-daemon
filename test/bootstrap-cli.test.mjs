@@ -93,7 +93,7 @@ test("serve bootstraps an empty standalone instance before constructing the Pi f
   assert.match(capturedOutput, /"bootstrap":\{"bearerCreated":true,"auth":"seeded"\}/);
 });
 
-test("serve classifies a refused bearer symlink without exposing its path or value", async (t) => {
+test("serve accepts a protected secret-manager bearer symlink without exposing its path or value", async (t) => {
   const root = await mkdtemp(join(tmpdir(), "pi-daemon-bootstrap-token-link-"));
   t.after(async () => rm(root, { recursive: true, force: true }));
   const work = join(root, "work");
@@ -103,9 +103,11 @@ test("serve classifies a refused bearer symlink without exposing its path or val
     mkdir(tokenDirectory, { mode: 0o700 }),
   ]);
   const privateMarker = "bootstrap-token-marker-never-log";
+  const privateToken = privateMarker.padEnd(32, "x");
   const tokenTarget = join(tokenDirectory, "token-target-private-name");
   const tokenLink = join(root, "token-link-private-name");
-  await writeFile(tokenTarget, `${privateMarker.padEnd(32, "x")}\n`, { mode: 0o600 });
+  const socketPath = join(root, "state", "run", "pi-daemon.sock");
+  await writeFile(tokenTarget, `${privateToken}\n`, { mode: 0o600 });
   await symlink(tokenTarget, tokenLink);
 
   const child = spawn(
@@ -114,7 +116,7 @@ test("serve classifies a refused bearer symlink without exposing its path or val
       "dist/cli.js",
       "serve",
       "--socket",
-      join(root, "state", "run", "pi-daemon.sock"),
+      socketPath,
       "--state-dir",
       join(root, "state"),
       "--agent-dir",
@@ -137,11 +139,22 @@ test("serve classifies a refused bearer symlink without exposing its path or val
     },
   );
   const output = captureChildOutput(child);
-  const exit = await new Promise((resolve, reject) => {
+  t.after(() => {
+    if (child.exitCode === null) child.kill("SIGKILL");
+  });
+  const client = await waitForDaemonReady({
+    socketPath,
+    child,
+    handshakeRequestId: "bootstrap-token-link-handshake",
+    diagnostics: output.diagnostics,
+  });
+  client.close();
+  const exit = new Promise((resolve, reject) => {
     child.once("error", reject);
     child.once("exit", (code, signal) => resolve({ code, signal }));
   });
-  assert.deepEqual(exit, { code: 1, signal: null });
+  child.kill("SIGTERM");
+  assert.deepEqual(await exit, { code: 0, signal: null });
 
   const capturedOutput = output.text();
   const entries = output.snapshot().stderr.text
@@ -151,13 +164,10 @@ test("serve classifies a refused bearer symlink without exposing its path or val
   assert.ok(entries.some((entry) =>
     entry.event === "pi_daemon_startup_stage" &&
     entry.stage === "path_bootstrap" &&
-    entry.state === "failed" &&
-    entry.errorCode === "api_bearer_symlink"
+    entry.state === "completed" &&
+    entry.bearerCreated === false
   ));
-  assert.ok(entries.some((entry) =>
-    entry.event === "pi_daemon_fatal" && entry.message === "pi-daemon command failed"
-  ));
-  for (const value of [privateMarker, tokenTarget, tokenLink]) {
+  for (const value of [privateToken, tokenTarget, tokenLink]) {
     assert.equal(capturedOutput.includes(value), false);
   }
 });

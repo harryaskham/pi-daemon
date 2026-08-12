@@ -41,7 +41,7 @@ test("bearer source is singular and environment values never appear in errors", 
   );
 });
 
-test("owner-only regular token files and inherited descriptors load safely", async (t) => {
+test("owner-only regular token files, protected symlinks, and inherited descriptors load safely", async (t) => {
   const directory = await mkdtemp(join(tmpdir(), "pi-daemon-api-auth-"));
   t.after(async () => rm(directory, { recursive: true, force: true }));
   const tokenFile = join(directory, "token");
@@ -61,8 +61,26 @@ test("owner-only regular token files and inherited descriptors load safely", asy
   assert.throws(() => loadServiceBearer({ tokenFile, environment: {} }), /owner-only/);
   await chmod(tokenFile, 0o600);
   const tokenLink = join(directory, "token-link");
+  const nestedTokenLink = join(directory, "nested-token-link");
   await symlink(tokenFile, tokenLink);
-  assert.throws(() => loadServiceBearer({ tokenFile: tokenLink, environment: {} }), /non-symlink/);
+  await symlink(tokenLink, nestedTokenLink);
+  for (const linkedFile of [tokenLink, nestedTokenLink]) {
+    const linked = loadServiceBearer({ tokenFile: linkedFile, environment: {} });
+    assert.equal(linked.source, "file");
+    assert.equal(linked.authenticator.authenticate(`Bearer ${TOKEN}`), true);
+  }
+  await chmod(tokenFile, 0o644);
+  assert.throws(() => loadServiceBearer({ tokenFile: tokenLink, environment: {} }), /owner-only/);
+
+  const loop = join(directory, "token-link-loop-private-name");
+  await symlink(loop, loop);
+  assert.throws(
+    () => loadServiceBearer({ tokenFile: loop, environment: {} }),
+    (error) =>
+      error instanceof Error &&
+      error.message === "API bearer token symlink chain is invalid" &&
+      !error.message.includes(directory),
+  );
 });
 
 test("bearer values and files are bounded before unbounded reads", async (t) => {

@@ -1199,8 +1199,11 @@ function beginStartupStage(
 
 function pathBootstrapErrorCode(error: unknown): string {
   const message = error instanceof Error ? error.message : "";
-  if (message === "API bearer token file must be a regular non-symlink file") {
-    return "api_bearer_symlink";
+  if (
+    message === "API bearer token symlink chain is invalid" ||
+    message === "API bearer token target changed before it could be opened safely"
+  ) {
+    return "api_bearer_resolution";
   }
   if (
     message === "API bearer token file must be owner-only" ||
