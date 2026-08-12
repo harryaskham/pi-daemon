@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -91,4 +91,73 @@ test("serve bootstraps an empty standalone instance before constructing the Pi f
   assert.equal(capturedOutput.includes(bearer), false);
   assert.equal(capturedOutput.includes(authMarker), false);
   assert.match(capturedOutput, /"bootstrap":\{"bearerCreated":true,"auth":"seeded"\}/);
+});
+
+test("serve classifies a refused bearer symlink without exposing its path or value", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "pi-daemon-bootstrap-token-link-"));
+  t.after(async () => rm(root, { recursive: true, force: true }));
+  const work = join(root, "work");
+  const tokenDirectory = join(root, "secret-source");
+  await Promise.all([
+    mkdir(work, { mode: 0o700 }),
+    mkdir(tokenDirectory, { mode: 0o700 }),
+  ]);
+  const privateMarker = "bootstrap-token-marker-never-log";
+  const tokenTarget = join(tokenDirectory, "token-target-private-name");
+  const tokenLink = join(root, "token-link-private-name");
+  await writeFile(tokenTarget, `${privateMarker.padEnd(32, "x")}\n`, { mode: 0o600 });
+  await symlink(tokenTarget, tokenLink);
+
+  const child = spawn(
+    process.execPath,
+    [
+      "dist/cli.js",
+      "serve",
+      "--socket",
+      join(root, "state", "run", "pi-daemon.sock"),
+      "--state-dir",
+      join(root, "state"),
+      "--agent-dir",
+      join(root, "agent"),
+      "--allow-root",
+      work,
+      "--api-port",
+      "0",
+      "--api-token-file",
+      tokenLink,
+    ],
+    {
+      cwd: new URL("..", import.meta.url),
+      env: {
+        ...process.env,
+        PI_CODING_AGENT_DIR: join(root, "agent"),
+        PI_DAEMON_BEARER_TOKEN: undefined,
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+    },
+  );
+  const output = captureChildOutput(child);
+  const exit = await new Promise((resolve, reject) => {
+    child.once("error", reject);
+    child.once("exit", (code, signal) => resolve({ code, signal }));
+  });
+  assert.deepEqual(exit, { code: 1, signal: null });
+
+  const capturedOutput = output.text();
+  const entries = output.snapshot().stderr.text
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => JSON.parse(line));
+  assert.ok(entries.some((entry) =>
+    entry.event === "pi_daemon_startup_stage" &&
+    entry.stage === "path_bootstrap" &&
+    entry.state === "failed" &&
+    entry.errorCode === "api_bearer_symlink"
+  ));
+  assert.ok(entries.some((entry) =>
+    entry.event === "pi_daemon_fatal" && entry.message === "pi-daemon command failed"
+  ));
+  for (const value of [privateMarker, tokenTarget, tokenLink]) {
+    assert.equal(capturedOutput.includes(value), false);
+  }
 });

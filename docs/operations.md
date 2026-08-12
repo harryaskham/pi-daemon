@@ -498,8 +498,17 @@ CLI overrides. Instance names are bounded
 alphanumeric/hyphen identifiers. At least one explicit workload root and an API
 port are required when those surfaces are enabled. An optional external
 `tokenFile` contributes only its path to the Nix service definition, never its
-bearer bytes. `extraArgs` may set resource limits but
-cannot override module-managed identity, root, path, or API arguments.
+bearer bytes. It must resolve directly to a current-user-owned, owner-only,
+regular **non-symlink** file. Do not pass a normal sops-nix `secret.path`
+directly: that path is a symlink and the runtime deliberately refuses it. Omit
+`tokenFile` to let first launch atomically create and reuse the supported regular
+`stateDir/api-token`, or arrange for the credential manager to materialize a
+regular private file before the service starts. On a deployed instance that is
+crash-looping at `path_bootstrap` with `errorCode: "api_bearer_symlink"`, remove
+the symlink override, activate the Home Manager generation, and restart only the
+named Pi Daemon instance; never copy the bearer through argv, logs, chat, or a
+world-readable temporary path. `extraArgs` may set resource limits but cannot
+override module-managed identity, root, path, or API arguments.
 
 ## Rolling non-launchd test instance
 

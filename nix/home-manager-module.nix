@@ -193,8 +193,8 @@
         tokenFile = lib.mkOption {
           type = lib.types.nullOr lib.types.str;
           default = null;
-          example = lib.literalExpression "config.sops.secrets.pi-daemon-api-token.path";
-          description = "Optional owner-only bearer token file. When null, the daemon generates and reuses stateDir/api-token on first launch. Token bytes never enter the Nix store or argv.";
+          example = "${homeDirectory}/.local/state/pi-daemon/work/api-token";
+          description = "Optional current-user-owned, owner-only, regular non-symlink bearer token file. Secret-manager paths that are symlinks, including ordinary sops-nix secret paths, must not be passed directly. When null, the daemon atomically generates and reuses stateDir/api-token on first launch. Token bytes never enter the Nix store or argv.";
         };
         allowInsecureHttp = lib.mkOption {
           type = lib.types.bool;
@@ -586,7 +586,8 @@ in {
                   api = {
                     enable = true;
                     port = 7463;
-                    tokenFile = config.sops.secrets.pi-daemon-work.path;
+                    # Omit tokenFile to generate a regular owner-only
+                    # stateDir/api-token. Secret-manager symlinks are refused.
                   };
                 };
               }'';
