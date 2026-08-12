@@ -57,6 +57,7 @@ surfaces—not Cacophony components.
 - [Dash v1 acceptance](dashboard-acceptance) — live embedded/dedicated receipts, browser/security/performance gates, and wall-clock soak status
 - [Dash browser acceptance](dash-e2e) — the Nix shell that supplies audited Playwright browsers, the bounded `@smoke` subset CI runs, version-drift preflight, and opt-in wall-clock budgets
 - [Pi Droid Android client plan](pi-droid-plan) — independent multi-host client, reusable SDK views, canonical freshness, tabs/splits, pairing, Android OS integration, file-sharing gaps, signing, Play internal distribution, and staged delivery
+- [Pi Droid KVM runner qualification](pi-droid-kvm-runner) — Actions-context `/dev/kvm` proof, candidate/capability labels, durable runner configuration, and release gating
 - [Session configuration](session-configuration) — Pi CLI mapping, environment handling, resources, tools, and honest isolation limits
 - [Schedule contract](schedules) — versioned cron/timezone/prompt resources, durable bounded timers, recovery, clock and DST semantics
 - [Scheduler acceptance](scheduler-acceptance) — measured all-IANA DST, restart, overlap, secrecy, and accelerated-soak release gate

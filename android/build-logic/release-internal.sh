@@ -16,9 +16,10 @@ version_name=''
 artifacts_dir=''
 prepare_only='false'
 upload_prepared='false'
+emulator_evidence='true'
 
 usage() {
-  printf '%s\n' 'usage: release-internal.sh --version-code N --version-name NAME --artifacts DIR [--prepare-only|--upload-prepared]' >&2
+  printf '%s\n' 'usage: release-internal.sh --version-code N --version-name NAME --artifacts DIR [--prepare-only|--upload-prepared] [--skip-emulator]' >&2
 }
 
 while [[ $# -gt 0 ]]; do
@@ -43,6 +44,10 @@ while [[ $# -gt 0 ]]; do
       upload_prepared='true'
       shift
       ;;
+    --skip-emulator)
+      emulator_evidence='false'
+      shift
+      ;;
     *)
       usage
       exit 64
@@ -52,6 +57,10 @@ done
 
 if [[ "$prepare_only" == 'true' && "$upload_prepared" == 'true' ]]; then
   printf '%s\n' 'prepare-only and upload-prepared are mutually exclusive' >&2
+  exit 64
+fi
+if [[ "$upload_prepared" == 'true' && "$emulator_evidence" == 'false' ]]; then
+  printf '%s\n' 'upload-prepared reads emulator evidence state from the verified build receipt' >&2
   exit 64
 fi
 if [[ ! "$version_code" =~ ^[1-9][0-9]*$ ]]; then
@@ -68,7 +77,6 @@ if [[ -z "$artifacts_dir" ]]; then
 fi
 artifacts_dir="$(mkdir -p "$artifacts_dir" && cd "$artifacts_dir" && pwd)"
 chmod 700 "$artifacts_dir"
-mkdir -p "$artifacts_dir/screenshots"
 
 private_dir="$(mktemp -d)"
 chmod 700 "$private_dir"
@@ -226,14 +234,20 @@ common_gradle_args=(
 
 if [[ "$upload_prepared" == 'true' ]]; then
   release_aab="$artifacts_dir/pi-droid-release.aab"
-  if [[ ! -f "$release_aab" || ! -f "$artifacts_dir/mapping.txt" || ! -f "$artifacts_dir/sha256sums.txt" ]]; then
-    printf '%s\n' 'upload-prepared requires the verified AAB, mapping, and checksum receipt' >&2
+  build_receipt="$artifacts_dir/release-build-receipt.json"
+  if [[ ! -f "$release_aab" || ! -f "$artifacts_dir/mapping.txt" ||
+        ! -f "$build_receipt" || ! -f "$artifacts_dir/sha256sums.txt" ]]; then
+    printf '%s\n' 'upload-prepared requires the verified AAB, mapping, build receipt, and checksums' >&2
     exit 66
   fi
   (
     cd "$artifacts_dir"
     sha256sum -c sha256sums.txt >/dev/null
   )
+  emulator_evidence="$(jq -er '.emulatorEvidence | if type == "boolean" then tostring else empty end' "$build_receipt")" || {
+    printf '%s\n' 'verified build receipt must declare boolean emulatorEvidence' >&2
+    exit 65
+  }
 else
   "$repo_root/android/gradlew" "${common_gradle_args[@]}" :app:bundleRelease
   source_aab="$repo_root/android/app/build/outputs/bundle/release/app-release.aab"
@@ -277,7 +291,8 @@ if [[ "$bundle_cert" != "$EXPECTED_CERT_SHA256" ]]; then
 fi
 printf 'Pi Droid AAB verified: package=%s versionCode=%s track=%s\n' "$bundle_package" "$bundle_version_code" "$EXPECTED_TRACK"
 
-if [[ "$upload_prepared" != 'true' ]]; then
+if [[ "$upload_prepared" != 'true' && "$emulator_evidence" == 'true' ]]; then
+  mkdir -p "$artifacts_dir/screenshots"
   bundletool build-apks \
     --bundle="$release_aab" \
     --output="$private_dir/pi-droid.apks" \
@@ -411,50 +426,51 @@ cat > "$artifacts_dir/release-build-receipt.json" <<EOF
   "versionName": "$version_name",
   "certificateSha256": "$EXPECTED_CERT_SHA256",
   "internetPermission": $internet_permission,
+  "emulatorEvidence": $emulator_evidence,
   "aab": "pi-droid-release.aab",
   "mapping": "mapping.txt"
 }
 EOF
 
-if [[ "$prepare_only" == 'true' ]]; then
+write_evidence_checksums() {
+  local include_play_receipt="$1"
+  local -a evidence_files=(
+    pi-droid-release.aab
+    mapping.txt
+    release-build-receipt.json
+  )
+  if [[ "$emulator_evidence" == 'true' ]]; then
+    evidence_files+=(
+      emulator-diagnostics.log
+      system-ui-health.log
+      screenshots/pi-droid-phone.png
+      screenshots/pi-droid-tablet.png
+      screenshots/pi-droid-wide.png
+    )
+  fi
+  if [[ "$include_play_receipt" == 'true' ]]; then
+    evidence_files+=(play-internal-receipt.json)
+  fi
   (
     cd "$artifacts_dir"
-    sha256sum \
-      pi-droid-release.aab \
-      mapping.txt \
-      release-build-receipt.json \
-      emulator-diagnostics.log \
-      system-ui-health.log \
-      screenshots/pi-droid-phone.png \
-      screenshots/pi-droid-tablet.png \
-      screenshots/pi-droid-wide.png \
-      > sha256sums.txt
+    sha256sum "${evidence_files[@]}" > sha256sums.txt
   )
+}
+
+if [[ "$prepare_only" == 'true' ]]; then
+  write_evidence_checksums false
   find "$artifacts_dir" -type d -exec chmod 700 {} +
   find "$artifacts_dir" -type f -exec chmod 600 {} +
-  printf 'Pi Droid signed internal release prepared: package=%s versionCode=%s artifacts=%s\n' \
-    "$EXPECTED_PACKAGE" "$version_code" "$artifacts_dir"
+  printf 'Pi Droid signed internal release prepared: package=%s versionCode=%s emulatorEvidence=%s artifacts=%s\n' \
+    "$EXPECTED_PACKAGE" "$version_code" "$emulator_evidence" "$artifacts_dir"
   exit 0
 fi
 
 "$repo_root/android/gradlew" "${common_gradle_args[@]}" :app:publishReleaseBundle
 "$repo_root/android/gradlew" "${common_gradle_args[@]}" :play-receipt:verifyInternalTrackReceipt
 
-(
-  cd "$artifacts_dir"
-  sha256sum \
-    pi-droid-release.aab \
-    mapping.txt \
-    play-internal-receipt.json \
-    release-build-receipt.json \
-    emulator-diagnostics.log \
-    system-ui-health.log \
-    screenshots/pi-droid-phone.png \
-    screenshots/pi-droid-tablet.png \
-    screenshots/pi-droid-wide.png \
-    > sha256sums.txt
-)
+write_evidence_checksums true
 find "$artifacts_dir" -type d -exec chmod 700 {} +
 find "$artifacts_dir" -type f -exec chmod 600 {} +
-printf 'Pi Droid Play internal release complete: package=%s versionCode=%s artifacts=%s\n' \
-  "$EXPECTED_PACKAGE" "$version_code" "$artifacts_dir"
+printf 'Pi Droid Play internal release complete: package=%s versionCode=%s emulatorEvidence=%s artifacts=%s\n' \
+  "$EXPECTED_PACKAGE" "$version_code" "$emulator_evidence" "$artifacts_dir"

@@ -55,22 +55,22 @@ jobs:
       - uses: gradle/actions/setup-gradle@v5
         with:
           cache-read-only: true
-      - name: Verify emulator capability
-        run: test -r /dev/kvm -a -w /dev/kvm
-      - name: Build, verify, and screenshot signed AAB
+      - name: Build and verify signed AAB without an emulator
         run: |
           nix develop .#androidRelease --command \
             android/build-logic/release-internal.sh \
             --version-code '${{ inputs.versionCode }}' \
             --version-name '${{ inputs.versionName }}' \
             --artifacts "$RUNNER_TEMP/pi-droid-release" \
-            --prepare-only
+            --prepare-only \
+            --skip-emulator
       - name: Verify prepared evidence before Play mutation
         run: |
           test -f "$RUNNER_TEMP/pi-droid-release/pi-droid-release.aab"
           test -f "$RUNNER_TEMP/pi-droid-release/mapping.txt"
           test -f "$RUNNER_TEMP/pi-droid-release/sha256sums.txt"
-          test -d "$RUNNER_TEMP/pi-droid-release/screenshots"
+          test -f "$RUNNER_TEMP/pi-droid-release/release-build-receipt.json"
+          jq -e '.emulatorEvidence == false' "$RUNNER_TEMP/pi-droid-release/release-build-receipt.json" >/dev/null
       - name: Publish exact prepared AAB to internal only
         run: |
           nix develop .#androidRelease --command \

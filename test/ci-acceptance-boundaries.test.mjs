@@ -85,6 +85,8 @@ function assertAcceptanceBoundaries({ manifest, flake, ci, macos, scheduled, clo
   assert.match(actionlintConfig, /self-hosted-runner:/);
   assert.match(actionlintConfig, /- nix/);
   assert.match(actionlintConfig, /- x86_64-linux/);
+  assert.match(actionlintConfig, /- android-kvm-candidate/);
+  assert.match(actionlintConfig, /- android-kvm/);
   assert.doesNotMatch(closure, /nixpkgs#attic-client|command -v attic|ATTIC_BIN/);
   assert.doesNotMatch(closure, /\b(?:awk|cat|mapfile)\b/);
   assert.match(closure, /nix store ping --json/);
