@@ -355,6 +355,20 @@ export function createDashboardContractFixtures(): DashboardContractFixtures {
           materializationGeneration: "profile-gen-42",
         },
       },
+      hostToolAdapterQueue: {
+        capacity: { maxConcurrentRequests: 4, maxQueuedRequests: 16 },
+        occupancy: { activeRequests: 2, queuedRequests: 3 },
+        highWater: { activeRequests: 4, queuedRequests: 12 },
+        acceptedRequests: 21,
+        completedRequests: 15,
+        failedRequests: 1,
+        rejectedRequests: 1,
+        cancelledRequests: 1,
+        timedOutRequests: 0,
+        lastRejectionReason: "adapter_queue_capacity",
+        saturation: { active: false, count: 2, totalMs: 35, longestMs: 20 },
+        operations: [],
+      },
     },
   };
   const transcript: TranscriptPage = {

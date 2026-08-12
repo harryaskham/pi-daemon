@@ -153,6 +153,12 @@ class ControlledAdapter {
     this.aborted += 1;
   }
 
+  hostToolQueue;
+
+  hostToolAdapterQueue() {
+    return this.hostToolQueue;
+  }
+
   toolMaterialization() {
     return {
       state: "materialized",
@@ -617,6 +623,36 @@ test("idle sweep evicts only expired inactive sessions and records metrics", asy
   assert.deepEqual(status.adapterReadiness, { ready: true, availableModels: 3 });
   assert.equal(status.uptimeMs, 100);
   assert.ok(status.memory.rss > 0);
+});
+
+test("status projects content-free host tool queue telemetry for the exact resident generation", async () => {
+  const factory = new ControlledFactory();
+  const mux = new Multiplexer({ factory, hostInstanceId: "host-test" });
+  await mux.open(openCommand("queue-status"));
+  factory.adapter("queue-status").hostToolQueue = {
+    capacity: { maxConcurrentRequests: 2, maxQueuedRequests: 16 },
+    occupancy: { activeRequests: 2, queuedRequests: 5 },
+    highWater: { activeRequests: 2, queuedRequests: 12 },
+    acceptedRequests: 19,
+    completedRequests: 12,
+    failedRequests: 0,
+    rejectedRequests: 1,
+    cancelledRequests: 1,
+    timedOutRequests: 0,
+    lastRejectionReason: "adapter_queue_capacity",
+    saturation: { active: false, count: 1, totalMs: 23, longestMs: 23 },
+    operations: [],
+  };
+  const snapshot = mux.status("queue-status");
+  assert.deepEqual(snapshot.hostToolAdapterQueue, factory.adapter("queue-status").hostToolQueue);
+  snapshot.hostToolAdapterQueue.occupancy.queuedRequests = 999;
+  assert.equal(factory.adapter("queue-status").hostToolQueue.occupancy.queuedRequests, 5);
+  assert.deepEqual(
+    mux.sessionHostToolAdapterQueue("queue-status", 1),
+    factory.adapter("queue-status").hostToolQueue,
+  );
+  assert.equal(mux.sessionHostToolAdapterQueue("queue-status", 2), undefined);
+  await mux.dispose(20);
 });
 
 test("status reports the bound model when the adapter exposes it, and omits it otherwise", async () => {

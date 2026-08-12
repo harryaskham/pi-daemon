@@ -1236,6 +1236,19 @@ test("real Pi SDK activates only host-adapter custom tools without a model turn"
   const cwd = await temporaryDirectory();
   const { credentials, modelRuntime, model } = await modelHarness();
   let disposed = 0;
+  const queueStatus = {
+    capacity: { maxConcurrentRequests: 2, maxQueuedRequests: 2 },
+    occupancy: { activeRequests: 0, queuedRequests: 0 },
+    highWater: { activeRequests: 2, queuedRequests: 1 },
+    acceptedRequests: 3,
+    completedRequests: 3,
+    failedRequests: 0,
+    rejectedRequests: 0,
+    cancelledRequests: 0,
+    timedOutRequests: 0,
+    saturation: { active: false, count: 0, totalMs: 0, longestMs: 0 },
+    operations: [],
+  };
   const hostSession = {
     operations: ["fs.read", "fs.write"],
     limits: {
@@ -1253,6 +1266,7 @@ test("real Pi SDK activates only host-adapter custom tools without a model turn"
         ? { content: "fixture", bytesRead: 7, eof: true }
         : { created: true, bytesWritten: 7, digest: "a".repeat(64) };
     },
+    status() { return structuredClone(queueStatus); },
     async dispose() { disposed += 1; },
   };
   const factory = new PiSessionFactory({
@@ -1283,6 +1297,7 @@ test("real Pi SDK activates only host-adapter custom tools without a model turn"
   const adapter = await factory.open(request);
   assert.deepEqual(adapter.rpcSession().getActiveToolNames(), ["fs_read", "fs_write"]);
   assert.equal((await adapter.rpcController()).capabilities.policy.bash, false);
+  assert.deepEqual(adapter.hostToolAdapterQueue(), queueStatus);
   await adapter.dispose();
   assert.equal(disposed, 1);
 });

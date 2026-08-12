@@ -518,6 +518,7 @@ export interface SessionInfoResource extends SessionInventoryRecord {
     warmLeaseCount: number;
     isolation?: "unisolated";
     toolMaterialization?: SessionToolMaterialization;
+    hostToolAdapterQueue?: SessionResource["hostToolAdapterQueue"];
   };
 }
 

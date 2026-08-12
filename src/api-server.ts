@@ -61,6 +61,7 @@ import {
 } from "./protocol.js";
 import {
   DASHBOARD_TUI_SUBPROTOCOL,
+  HOST_TOOL_ADAPTER_QUEUE_CAPABILITY,
   SESSION_API_VERSION,
   SESSION_TOOL_MATERIALIZATION_CAPABILITY,
   type ApiErrorBody,
@@ -341,6 +342,7 @@ export class ApiServer {
             isolationModes: ["unisolated"],
             authentication: "service-bearer",
             toolMaterialization: SESSION_TOOL_MATERIALIZATION_CAPABILITY,
+            hostToolAdapterQueue: HOST_TOOL_ADAPTER_QUEUE_CAPABILITY,
             host: {
               ready: host.ready,
               draining: host.draining,
@@ -388,6 +390,10 @@ export class ApiServer {
             catalogRecordToSessionResource(
               record,
               await this.#multiplexer.sessionToolMaterialization(
+                record.sessionId,
+                record.generation,
+              ),
+              this.#multiplexer.sessionHostToolAdapterQueue(
                 record.sessionId,
                 record.generation,
               ),
@@ -484,6 +490,10 @@ export class ApiServer {
               data: catalogRecordToSessionResource(
                 record,
                 await this.#multiplexer.sessionToolMaterialization(
+                  record.sessionId,
+                  record.generation,
+                ),
+                this.#multiplexer.sessionHostToolAdapterQueue(
                   record.sessionId,
                   record.generation,
                 ),
@@ -1455,6 +1465,7 @@ export class ApiServer {
     return catalogRecordToSessionResource(
       record,
       await this.#multiplexer.sessionToolMaterialization(record.sessionId, record.generation),
+      this.#multiplexer.sessionHostToolAdapterQueue(record.sessionId, record.generation),
     );
   }
 

@@ -761,6 +761,125 @@
       },
       "additionalProperties": false
     },
+    "toolAdapterTimingSummary": {
+      "type": "object",
+      "required": [
+        "count",
+        "sum",
+        "min",
+        "max",
+        "last"
+      ],
+      "properties": {
+        "count": { "type": "integer", "minimum": 0 },
+        "sum": { "type": "number", "minimum": 0 },
+        "min": { "type": "number", "minimum": 0 },
+        "max": { "type": "number", "minimum": 0 },
+        "last": { "type": "number", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "toolAdapterOperationQueue": {
+      "type": "object",
+      "required": [
+        "operation",
+        "activeRequests",
+        "queuedRequests",
+        "acceptedRequests",
+        "completedRequests",
+        "failedRequests",
+        "rejectedRequests",
+        "cancelledRequests",
+        "timedOutRequests",
+        "queueWaitMs",
+        "requestLatencyMs"
+      ],
+      "properties": {
+        "operation": {
+          "enum": ["fs.list", "fs.stat", "fs.read", "fs.search", "fs.write", "fs.edit"]
+        },
+        "activeRequests": { "type": "integer", "minimum": 0 },
+        "queuedRequests": { "type": "integer", "minimum": 0 },
+        "acceptedRequests": { "type": "integer", "minimum": 0 },
+        "completedRequests": { "type": "integer", "minimum": 0 },
+        "failedRequests": { "type": "integer", "minimum": 0 },
+        "rejectedRequests": { "type": "integer", "minimum": 0 },
+        "cancelledRequests": { "type": "integer", "minimum": 0 },
+        "timedOutRequests": { "type": "integer", "minimum": 0 },
+        "queueWaitMs": { "$ref": "#/$defs/toolAdapterTimingSummary" },
+        "requestLatencyMs": { "$ref": "#/$defs/toolAdapterTimingSummary" }
+      },
+      "additionalProperties": false
+    },
+    "toolAdapterQueue": {
+      "type": "object",
+      "required": [
+        "capacity",
+        "occupancy",
+        "highWater",
+        "acceptedRequests",
+        "completedRequests",
+        "failedRequests",
+        "rejectedRequests",
+        "cancelledRequests",
+        "timedOutRequests",
+        "saturation",
+        "operations"
+      ],
+      "properties": {
+        "capacity": {
+          "type": "object",
+          "required": ["maxConcurrentRequests", "maxQueuedRequests"],
+          "properties": {
+            "maxConcurrentRequests": { "type": "integer", "minimum": 1, "maximum": 64 },
+            "maxQueuedRequests": { "type": "integer", "minimum": 0, "maximum": 256 }
+          },
+          "additionalProperties": false
+        },
+        "occupancy": {
+          "type": "object",
+          "required": ["activeRequests", "queuedRequests"],
+          "properties": {
+            "activeRequests": { "type": "integer", "minimum": 0 },
+            "queuedRequests": { "type": "integer", "minimum": 0 }
+          },
+          "additionalProperties": false
+        },
+        "highWater": {
+          "type": "object",
+          "required": ["activeRequests", "queuedRequests"],
+          "properties": {
+            "activeRequests": { "type": "integer", "minimum": 0 },
+            "queuedRequests": { "type": "integer", "minimum": 0 }
+          },
+          "additionalProperties": false
+        },
+        "acceptedRequests": { "type": "integer", "minimum": 0 },
+        "completedRequests": { "type": "integer", "minimum": 0 },
+        "failedRequests": { "type": "integer", "minimum": 0 },
+        "rejectedRequests": { "type": "integer", "minimum": 0 },
+        "cancelledRequests": { "type": "integer", "minimum": 0 },
+        "timedOutRequests": { "type": "integer", "minimum": 0 },
+        "lastRejectionReason": { "const": "adapter_queue_capacity" },
+        "saturation": {
+          "type": "object",
+          "required": ["active", "count", "totalMs", "longestMs"],
+          "properties": {
+            "active": { "type": "boolean" },
+            "count": { "type": "integer", "minimum": 0 },
+            "totalMs": { "type": "number", "minimum": 0 },
+            "longestMs": { "type": "number", "minimum": 0 }
+          },
+          "additionalProperties": false
+        },
+        "operations": {
+          "type": "array",
+          "maxItems": 6,
+          "items": { "$ref": "#/$defs/toolAdapterOperationQueue" }
+        }
+      },
+      "additionalProperties": false
+    },
     "sessionResource": {
       "type": "object",
       "required": [
@@ -826,6 +945,9 @@
         },
         "toolMaterialization": {
           "$ref": "#/$defs/sessionToolMaterialization"
+        },
+        "hostToolAdapterQueue": {
+          "$ref": "#/$defs/toolAdapterQueue"
         },
         "recovery": {
           "$ref": "#/$defs/sessionRecoveryCondition"
@@ -1343,6 +1465,7 @@
         "isolationModes",
         "authentication",
         "toolMaterialization",
+        "hostToolAdapterQueue",
         "host",
         "schedules",
         "blobTransfers"
@@ -1443,6 +1566,38 @@
                 ]
               },
               "uniqueItems": true
+            }
+          },
+          "additionalProperties": false
+        },
+        "hostToolAdapterQueue": {
+          "type": "object",
+          "required": [
+            "contractVersion",
+            "capacity",
+            "occupancy",
+            "highWater",
+            "rejectionReason",
+            "saturation",
+            "perOperationTiming",
+            "recommended"
+          ],
+          "properties": {
+            "contractVersion": { "const": "1.0" },
+            "capacity": { "const": true },
+            "occupancy": { "const": true },
+            "highWater": { "const": true },
+            "rejectionReason": { "const": true },
+            "saturation": { "const": true },
+            "perOperationTiming": { "const": true },
+            "recommended": {
+              "type": "object",
+              "required": ["maxConcurrentRequests", "maxQueuedRequests"],
+              "properties": {
+                "maxConcurrentRequests": { "const": 4 },
+                "maxQueuedRequests": { "const": 16 }
+              },
+              "additionalProperties": false
             }
           },
           "additionalProperties": false

@@ -613,6 +613,7 @@ export class FileSessionCatalog implements SessionCatalogStore {
 export function catalogRecordToSessionResource(
   record: SessionCatalogRecord,
   toolMaterialization?: SessionToolMaterialization,
+  hostToolAdapterQueue?: SessionResource["hostToolAdapterQueue"],
 ): SessionResource {
   const sessionRef = encodeURIComponent(record.sessionId);
   return {
@@ -634,6 +635,9 @@ export function catalogRecordToSessionResource(
           record.residency === "dormant" ? "not-resident" : "unavailable",
         ),
     ),
+    ...(hostToolAdapterQueue === undefined
+      ? {}
+      : { hostToolAdapterQueue: structuredClone(hostToolAdapterQueue) }),
     ...(record.recovery === undefined
       ? {}
       : { recovery: structuredClone(record.recovery) }),

@@ -886,6 +886,9 @@ implementation order. This list is a human-readable crosswalk.
   - [x] `bd-ff2f8f` — bounded runtime registry/client and fixed filesystem-tool
     injection; final server persistence/wiring and cross-session acceptance stay
     with the parent.
+  - [x] `bd-b4be56` — reviewed explicit queue sizing, retry-safe hard-capacity
+    refusal, and content-free live capacity/occupancy/high-water/rejection/
+    saturation/per-operation telemetry across status, Session API, and Dash.
 - [x] `bd-060163` — restart-safe quarantine for lost process-bound tool-adapter
   authority, typed per-session reprovision state, truthful unrelated host
   readiness, and readiness-first external-canary preflight.

@@ -6,6 +6,7 @@ import Ajv2020 from "ajv/dist/2020.js";
 import {
   CONTROL_MODE_EQUIVALENCE,
   DASHBOARD_TUI_SUBPROTOCOL,
+  HOST_TOOL_ADAPTER_QUEUE_CAPABILITY,
   PI_RPC_COMMAND_TYPES,
   SESSION_API_PATHS,
   SESSION_API_VERSION,
@@ -161,6 +162,10 @@ test("Pi RPC compatibility inventory is exact and includes settled-era commands"
   assert.deepEqual(
     capabilities.data.toolMaterialization,
     SESSION_TOOL_MATERIALIZATION_CAPABILITY,
+  );
+  assert.deepEqual(
+    capabilities.data.hostToolAdapterQueue,
+    HOST_TOOL_ADAPTER_QUEUE_CAPABILITY,
   );
   assert.equal(PI_RPC_COMMAND_TYPES.length, 32);
   assert.equal(PI_RPC_COMMAND_TYPES.includes("navigate_tree"), false, "framed Dashboard navigation must not widen stock Pi RPC");

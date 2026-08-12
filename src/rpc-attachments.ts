@@ -425,7 +425,11 @@ class RpcAttachmentHub {
     return {
       boundary,
       snapshot: {
-        session: catalogRecordToSessionResource(record),
+        session: catalogRecordToSessionResource(
+          record,
+          undefined,
+          requestState.hostToolAdapterQueue,
+        ),
         requestState: requestState as unknown as RpcAttachReadyFrame["snapshot"]["requestState"],
         rpcState: rpc.rpcState as RpcAttachReadyFrame["snapshot"]["rpcState"],
         ...(rpc.leafId === null ? { leafId: null } : { leafId: rpc.leafId }),
