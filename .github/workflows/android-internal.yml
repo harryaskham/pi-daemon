@@ -35,7 +35,7 @@ jobs:
         with:
           github_access_token: ${{ secrets.GITHUB_TOKEN }}
       - name: Materialize Play release secrets
-        shell: bash
+        shell: nix develop .#androidRelease --command bash -euo pipefail {0}
         env:
           PI_DROID_RELEASE_KEYSTORE_BASE64: ${{ secrets.PI_DROID_RELEASE_KEYSTORE_BASE64 }}
           PI_DROID_RELEASE_KEY_ALIAS: ${{ secrets.PI_DROID_RELEASE_KEY_ALIAS }}
