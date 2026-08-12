@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 
 const rootDir = fileURLToPath(new URL("../", import.meta.url));
 const script = path.join(rootDir, "android/build-logic/materialize-play-release-secrets.sh");
+const cleanupScript = path.join(rootDir, "android/build-logic/cleanup-play-release-secrets.sh");
 const secretNames = [
   "PI_DROID_RELEASE_KEYSTORE_BASE64",
   "PI_DROID_RELEASE_KEY_ALIAS",
@@ -51,6 +52,21 @@ async function runFixture(environment) {
   };
 }
 
+async function runCleanup(runnerTemp) {
+  const child = spawn("bash", [cleanupScript], {
+    cwd: rootDir,
+    env: { ...process.env, RUNNER_TEMP: runnerTemp },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  const stderr = [];
+  child.stderr.on("data", (chunk) => stderr.push(chunk));
+  const status = await new Promise((resolve, reject) => {
+    child.once("error", reject);
+    child.once("close", resolve);
+  });
+  return { status, stderr: Buffer.concat(stderr).toString("utf8") };
+}
+
 async function exportedEnvironment(githubEnv) {
   const lines = (await readFile(githubEnv, "utf8")).split("\n").filter(Boolean);
   return Object.fromEntries(lines.map((line) => {
@@ -70,6 +86,7 @@ const completeSecrets = {
     project_id: "fixture-project",
     client_email: "fixture@example.invalid",
     private_key: "fixture-private-key",
+    token_uri: "https://oauth2.googleapis.invalid/token",
   }),
 };
 
@@ -111,6 +128,9 @@ test("Play release secret preflight materializes direct content privately", asyn
         JSON.parse(await readFile(exported.PI_DROID_PLAY_SERVICE_ACCOUNT_FILE, "utf8")),
         JSON.parse(completeSecrets.PI_DROID_GOOGLE_PLAY_SERVICE_ACCOUNT_JSON),
       );
+      const cleanup = await runCleanup(fixture.runnerTemp);
+      assert.equal(cleanup.status, 0, cleanup.stderr);
+      await assert.rejects(stat(expectedDirectory), { code: "ENOENT" });
     } finally {
       await fixture.cleanup();
     }
@@ -123,6 +143,35 @@ test("Play release secret preflight materializes direct content privately", asyn
     try {
       assert.equal(fixture.status, 78);
       assert.match(fixture.stderr, /required Play release secret is missing/);
+      assert.equal(await readFile(fixture.githubEnv, "utf8"), "");
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
+  await t.test("malformed service account JSON fails without exporting paths", async () => {
+    const fixture = await runFixture({
+      ...completeSecrets,
+      PI_DROID_GOOGLE_PLAY_SERVICE_ACCOUNT_JSON: "{malformed",
+    });
+    try {
+      assert.equal(fixture.status, 65);
+      assert.match(fixture.stderr, /service account JSON is malformed/);
+      assert.doesNotMatch(fixture.stderr, /\{malformed/);
+      assert.equal(await readFile(fixture.githubEnv, "utf8"), "");
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
+  await t.test("service account missing required fields fails without exporting paths", async () => {
+    const fixture = await runFixture({
+      ...completeSecrets,
+      PI_DROID_GOOGLE_PLAY_SERVICE_ACCOUNT_JSON: JSON.stringify({ type: "service_account" }),
+    });
+    try {
+      assert.equal(fixture.status, 65);
+      assert.match(fixture.stderr, /service account is missing required fields/);
       assert.equal(await readFile(fixture.githubEnv, "utf8"), "");
     } finally {
       await fixture.cleanup();
