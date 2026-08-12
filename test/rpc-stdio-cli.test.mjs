@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PassThrough } from "node:stream";
@@ -72,6 +72,30 @@ test("RPC stdio CLI bearer failures are singular, bounded, and path-redacted", a
   assert.match(permissive.stderr(), /owner-only|failed safely/);
   assert.equal(permissive.stderr().includes(tokenFile), false);
   assert.equal(permissive.stderr().includes(TOKEN), false);
+
+  await chmod(tokenFile, 0o600);
+  const tokenLink = join(root, "private-token-link-name");
+  await symlink(tokenFile, tokenLink);
+  const linked = io();
+  let captured;
+  assert.equal(
+    await runRpcStdioCli(
+      ["--session", "session-a", "--token-file", tokenLink],
+      linked.value,
+      {
+        createBridge(options) {
+          captured = options;
+          return new CompletedBridge();
+        },
+      },
+    ),
+    0,
+  );
+  assert.equal(captured.bearerToken, TOKEN);
+  assert.equal(linked.stdout().includes(TOKEN), false);
+  assert.equal(linked.stderr().includes(TOKEN), false);
+  assert.equal(linked.stderr().includes(tokenFile), false);
+  assert.equal(linked.stderr().includes(tokenLink), false);
 
   const conflicting = io({ PI_DAEMON_BEARER_TOKEN: TOKEN });
   assert.equal(

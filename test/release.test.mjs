@@ -181,6 +181,9 @@ test("flake publishes the collision-safe multi-instance Home Manager service mod
   assert.match(module, /--tls-cert-file/);
   assert.match(module, /--tls-key-file/);
   assert.match(module, /stateDir\/api-token on first launch/);
+  assert.match(module, /config\.sops\.secrets\.pi-daemon-work\.path/);
+  assert.match(module, /A secret-manager symlink is supported/);
+  assert.match(module, /opens the canonical target without following a second link/);
   assert.match(module, /--auth-seed-file/);
   assert.match(module, /mutableRuntime\.enable/);
   assert.match(module, /\.local\/bin\/pi-daemon/);

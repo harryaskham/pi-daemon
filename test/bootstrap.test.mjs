@@ -118,7 +118,7 @@ test("implicit absent auth seeds are nonfatal while explicit absent seeds fail",
   );
 });
 
-test("bootstrap rejects permissive or symlinked seed and bearer files", async (t) => {
+test("bootstrap rejects unsafe auth seeds and accepts a protected bearer symlink", async (t) => {
   const permissive = await harness(t, "pi-daemon-bootstrap-permissive-");
   await chmod(permissive.source, 0o644);
   // The mode is the property under test, so check it rather than assume chmod
@@ -147,9 +147,13 @@ test("bootstrap rejects permissive or symlinked seed and bearer files", async (t
   await mkdir(join(token.root, "token-parent"), { mode: 0o700 });
   const tokenLink = join(token.root, "token-parent", "api-token");
   await symlink(realToken, tokenLink);
-  await assert.rejects(
-    bootstrapServicePaths({ ...token, apiTokenFile: tokenLink }),
-    /non-symlink/,
+  const result = await bootstrapServicePaths({ ...token, apiTokenFile: tokenLink });
+  assert.equal(result.bearerCreated, false);
+  assert.equal(
+    loadServiceBearer({ tokenFile: tokenLink, environment: {} }).authenticator.authenticate(
+      "Bearer fixture-service-bearer-0123456789",
+    ),
+    true,
   );
 });
 

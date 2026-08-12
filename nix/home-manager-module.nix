@@ -194,7 +194,7 @@
           type = lib.types.nullOr lib.types.str;
           default = null;
           example = lib.literalExpression "config.sops.secrets.pi-daemon-api-token.path";
-          description = "Optional owner-only bearer token file. When null, the daemon generates and reuses stateDir/api-token on first launch. Token bytes never enter the Nix store or argv.";
+          description = "Optional bearer token file. A secret-manager symlink is supported: the runtime resolves its chain, opens the canonical target without following a second link, and validates the opened inode is regular, current-user-owned, owner-only, and bounded. When null, the daemon atomically generates and reuses stateDir/api-token on first launch. Token bytes never enter the Nix store or argv.";
         };
         allowInsecureHttp = lib.mkOption {
           type = lib.types.bool;

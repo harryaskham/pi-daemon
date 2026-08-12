@@ -271,9 +271,12 @@ When no bearer source is supplied, first launch atomically generates an
 owner-only bearer at `STATE_DIR/api-token`; later launches validate and reuse it.
 `--api-token-file PATH` selects another generated-or-existing path. An inherited
 secret descriptor (`--api-token-fd FD`) or `PI_DAEMON_BEARER_TOKEN` may be used
-instead, but sources are mutually exclusive. Existing files must be owner-only,
-regular, and non-symlinked and are never overwritten. The default bind is the
-literal loopback address `127.0.0.1`. A non-loopback plaintext bind is refused unless
+instead, but sources are mutually exclusive. Existing regular files and
+secret-manager symlinks are supported. For a symlink, each read resolves the
+chain and opens the canonical final path with no-follow protection against a
+second traversal; the opened inode must still be regular, current-user-owned,
+owner-only, and bounded. Existing targets are never overwritten. The default
+bind is the literal loopback address `127.0.0.1`. A non-loopback plaintext bind is refused unless
 `--api-allow-insecure-http true` explicitly acknowledges trusted-network or TLS
 reverse-proxy handling.
 
@@ -498,8 +501,15 @@ CLI overrides. Instance names are bounded
 alphanumeric/hyphen identifiers. At least one explicit workload root and an API
 port are required when those surfaces are enabled. An optional external
 `tokenFile` contributes only its path to the Nix service definition, never its
-bearer bytes. `extraArgs` may set resource limits but
-cannot override module-managed identity, root, path, or API arguments.
+bearer bytes. A normal sops-nix `secret.path` is supported: Pi Daemon resolves
+that symlink chain, opens the canonical final target with no-follow protection,
+and validates the opened inode is a current-user-owned, owner-only, bounded
+regular file. This makes SOPS generation rotation safe across service restarts
+without admitting a second traversal or weakening final-file checks. Omit
+`tokenFile` only when the generated regular `stateDir/api-token` is sufficient.
+Never copy the bearer through argv, logs, chat, or a world-readable temporary
+path. `extraArgs` may set resource limits but cannot override module-managed
+identity, root, path, or API arguments.
 
 ## Rolling non-launchd test instance
 

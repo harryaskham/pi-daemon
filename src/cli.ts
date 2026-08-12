@@ -726,15 +726,23 @@ async function runServe(
       : configuredAuthSeedFile;
   const logger = new JsonLineLogger(io.stderr, { component: "pi-daemon" });
   const bootstrapStage = beginStartupStage(logger, "path_bootstrap");
-  const bootstrap = await bootstrapServicePaths({
-    stateDir,
-    socketPath,
-    agentDir,
-    ...(apiTokenFile === undefined ? {} : { apiTokenFile }),
-    ...(authSeedFile === undefined ? {} : { authSeedFile }),
-    authSeedRequired: configuredAuthSeedFile !== undefined,
-  });
-  bootstrapStage({ auth: bootstrap.auth, bearerCreated: bootstrap.bearerCreated });
+  const bootstrap = await (async () => {
+    try {
+      const result = await bootstrapServicePaths({
+        stateDir,
+        socketPath,
+        agentDir,
+        ...(apiTokenFile === undefined ? {} : { apiTokenFile }),
+        ...(authSeedFile === undefined ? {} : { authSeedFile }),
+        authSeedRequired: configuredAuthSeedFile !== undefined,
+      });
+      bootstrapStage({ auth: result.auth, bearerCreated: result.bearerCreated });
+      return result;
+    } catch (error) {
+      bootstrapStage({ state: "failed", errorCode: pathBootstrapErrorCode(error) });
+      throw error;
+    }
+  })();
 
   const durability = new FileDurabilityStore({ stateDir });
   const catalog = new FileSessionCatalog({ stateDir });
@@ -1187,6 +1195,36 @@ function beginStartupStage(
       ...fields,
     });
   };
+}
+
+function pathBootstrapErrorCode(error: unknown): string {
+  const message = error instanceof Error ? error.message : "";
+  if (
+    message === "API bearer token symlink chain is invalid" ||
+    message === "API bearer token target changed before it could be opened safely"
+  ) {
+    return "api_bearer_resolution";
+  }
+  if (
+    message === "API bearer token file must be owner-only" ||
+    message === "API bearer token file must be owned by current user"
+  ) {
+    return "api_bearer_permissions";
+  }
+  if (message.startsWith("API bearer token")) return "api_bearer_invalid";
+  if (/^Pi auth (?:file|seed).*non-symlink/.test(message)) return "pi_auth_symlink";
+  if (/^Pi auth (?:file|seed).*(?:owner-only|owned by current user)/.test(message)) {
+    return "pi_auth_permissions";
+  }
+  if (message === "Pi agent directory must not overlap daemon state directory") {
+    return "authority_path_overlap";
+  }
+  if (error !== null && typeof error === "object" && "code" in error) {
+    const code = (error as { code?: unknown }).code;
+    if (code === "EACCES" || code === "EPERM") return "path_permissions";
+    if (code === "ENOENT") return "required_path_missing";
+  }
+  return "path_bootstrap_failed";
 }
 
 function safeCliErrorCode(error: unknown): string {

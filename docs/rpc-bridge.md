@@ -32,7 +32,8 @@ modeling any client application's types.
 
 Exactly one bearer source is required:
 
-- `--token-file PATH`: owner-owned, owner-only, regular non-symlink file;
+- `--token-file PATH`: owner-owned, owner-only regular file or secret-manager
+  symlink whose canonical opened target satisfies those checks;
 - `--token-fd FD`: inherited regular-file descriptor at least 3; or
 - `PI_DAEMON_BEARER_TOKEN`: memory-only environment fallback.
 

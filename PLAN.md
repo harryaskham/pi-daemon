@@ -955,6 +955,9 @@ implementation order. This list is a human-readable crosswalk.
   API bearer, and non-overwriting per-instance Pi auth seeding.
 - [x] `bd-df5f19` — prebuild/cache aarch64-linux packages off-device so
   Nix-on-Droid never falls back to its native npm double-free path.
+- [ ] `bd-68867d` — support SOPS-backed API bearer symlinks by resolving the
+  chain, opening the canonical target with no-follow race protection, and
+  validating the opened inode without exposing bearer paths or values.
 - [x] `bd-23110a` — neutral Dash HTTP routing extracted from the core API server
   behind a small router interface, preserving auth-before-routing, shared
   response bounds, and WebSocket admission.
@@ -1013,13 +1016,13 @@ implementation order. This list is a human-readable crosswalk.
   authoritative.
 - [x] `bd-568050` — the exposure policy adopted at all 40 mode-check call sites,
   leaving no raw permission mask in `src/` outside the predicate.
-- [ ] `bd-a0ba53` — render Bash tool results as bounded rich cards, including
+- [x] `bd-a0ba53` — render Bash tool results as bounded rich cards, including
   pretty JSON, while suppressing only the duplicate live raw-result message.
-  Source is published as PR #80 and awaits canonical landing.
-- [ ] `bd-467201` — accumulate live Pi reasoning deltas into the identity-stable
+  Source landed through PR #80.
+- [x] `bd-467201` — accumulate live Pi reasoning deltas into the identity-stable
   transcript row, keep token usage current, and reconcile exactly with the
   persisted reasoning entry after completion or reload.
-- [ ] `bd-7677ba` — thread the existing transcript expansion settings into rich
+- [x] `bd-7677ba` — thread the existing transcript expansion settings into rich
   cards and preserve their component/measurement state across semantic
   live-to-persisted record replacement.
 - [ ] `bd-4e10da` — future neutral persisted per-session cron/prompt scheduler
