@@ -45,6 +45,26 @@ printf '%s' "$PI_DROID_RELEASE_KEY_PASSWORD" > "$key_password_file"
 printf '%s' "$PI_DROID_GOOGLE_PLAY_SERVICE_ACCOUNT_JSON" > "$service_account_file"
 chmod 600 "$keystore_file" "$alias_file" "$store_password_file" "$key_password_file" "$service_account_file"
 
+python3 - "$service_account_file" <<'PY'
+import json
+import sys
+
+try:
+    with open(sys.argv[1], encoding="utf-8") as source:
+        payload = json.load(source)
+except (OSError, UnicodeError, json.JSONDecodeError):
+    print("the configured Google Play service account JSON is malformed", file=sys.stderr)
+    raise SystemExit(65)
+
+required = ("project_id", "private_key", "client_email", "token_uri")
+if not isinstance(payload, dict) or payload.get("type") != "service_account":
+    print("the configured Google Play credential is not a service account", file=sys.stderr)
+    raise SystemExit(65)
+if any(not isinstance(payload.get(name), str) or not payload[name] for name in required):
+    print("the configured Google Play service account is missing required fields", file=sys.stderr)
+    raise SystemExit(65)
+PY
+
 {
   printf 'PI_DROID_RELEASE_KEYSTORE=%s\n' "$keystore_file"
   printf 'PI_DROID_RELEASE_KEY_ALIAS_FILE=%s\n' "$alias_file"

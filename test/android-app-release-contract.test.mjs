@@ -127,10 +127,11 @@ test("release script materializes secrets privately and verifies fixed identity 
 });
 
 test("manual release workflow is isolated from ordinary CI and retains exact evidence", async () => {
-  const [workflow, fastWorkflow, credentialScript, releaseScript] = await Promise.all([
+  const [workflow, fastWorkflow, credentialScript, cleanupScript, releaseScript] = await Promise.all([
     source(".github/workflows/android-internal.yml"),
     source(".github/workflows/android-fast.yml"),
     source("android/build-logic/materialize-play-release-secrets.sh"),
+    source("android/build-logic/cleanup-play-release-secrets.sh"),
     source("android/build-logic/release-internal.sh"),
   ]);
 
@@ -159,6 +160,9 @@ test("manual release workflow is isolated from ordinary CI and retains exact evi
   assert.match(credentialScript, /chmod 700 "\$secret_dir"/);
   assert.match(credentialScript, /chmod 600 "\$keystore_file"/);
   assert.match(credentialScript, /PI_DROID_GOOGLE_PLAY_SERVICE_ACCOUNT_JSON/);
+  assert.match(credentialScript, /json\.load\(source\)/);
+  assert.match(credentialScript, /payload\.get\("type"\) != "service_account"/);
+  assert.match(credentialScript, /"project_id", "private_key", "client_email", "token_uri"/);
   assert.match(credentialScript, /PI_DROID_PLAY_SERVICE_ACCOUNT_FILE=%s/);
   assert.match(credentialScript, />> "\$GITHUB_ENV"/);
   assert.doesNotMatch(credentialScript, /set -x/);
@@ -184,6 +188,15 @@ test("manual release workflow is isolated from ordinary CI and retains exact evi
   assert.match(releaseScript, /require_private_file PI_DROID_PLAY_SERVICE_ACCOUNT_FILE/);
   assert.match(releaseScript, /PI_DROID_SOPS_AGE_KEY_FILE/);
   assert.match(releaseScript, /PI_DROID_SOPS_SSH_PRIVATE_KEY_FILE/);
+
+  assert.match(cleanupScript, /set -euo pipefail/);
+  assert.match(cleanupScript, /\$RUNNER_TEMP\/pi-droid-play-release-secrets/);
+  assert.match(cleanupScript, /rm -rf -- "\$secret_dir"/);
+  const retainEvidence = workflow.indexOf("name: Retain signed internal release evidence");
+  const cleanup = workflow.indexOf("name: Remove Play release secrets");
+  assert.ok(retainEvidence >= 0 && retainEvidence < cleanup);
+  assert.match(workflow.slice(cleanup), /if: always\(\)/);
+  assert.match(workflow.slice(cleanup), /android\/build-logic\/cleanup-play-release-secrets\.sh/);
 
   const exposeJava = workflow.slice(java, gradle);
   assert.match(exposeJava, /shell: nix develop \.#androidRelease --command bash -euo pipefail \{0\}/);

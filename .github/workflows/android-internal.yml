@@ -89,3 +89,6 @@ jobs:
           path: ${{ runner.temp }}/pi-droid-release
           if-no-files-found: warn
           retention-days: 30
+      - name: Remove Play release secrets
+        if: always()
+        run: android/build-logic/cleanup-play-release-secrets.sh
