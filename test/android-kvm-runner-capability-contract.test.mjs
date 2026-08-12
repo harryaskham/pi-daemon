@@ -89,7 +89,7 @@ test("Pi Droid KVM capability is proven in Actions before label promotion or rel
   assert.match(capabilityWorkflow, /name: Open KVM and record capability receipt/);
   assert.match(capabilityWorkflow, /prove-kvm-runner-capability\.sh/);
   assert.match(capabilityWorkflow, /steps\.kvm\.outputs\.android_kvm_ready/);
-  assert.match(capabilityWorkflow, /Review the receipt before replacing `android-kvm-candidate` with `android-kvm`/);
+  assert.match(capabilityWorkflow, /Review the receipt before replacing android-kvm-candidate with android-kvm/);
   assert.match(capabilityWorkflow, /actions\/upload-artifact@v6/);
   assert.doesNotMatch(capabilityWorkflow, /google-play-internal|PI_DROID_RELEASE_|PI_DROID_GOOGLE_PLAY/);
 

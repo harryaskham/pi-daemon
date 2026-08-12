@@ -29,7 +29,7 @@ jobs:
         run: |
           test "$ANDROID_KVM_READY" = true
           test "$PROVEN_RUNNER_NAME" = "$RUNNER_NAME"
-          printf 'Runner `%s` proved KVM from Runner.Worker context. Review the receipt before replacing `android-kvm-candidate` with `android-kvm`.\n' \
+          printf 'Runner %s proved KVM from Runner.Worker context. Review the receipt before replacing android-kvm-candidate with android-kvm.\n' \
             "$RUNNER_NAME" >> "$GITHUB_STEP_SUMMARY"
       - name: Retain non-secret KVM capability receipt
         if: always()
