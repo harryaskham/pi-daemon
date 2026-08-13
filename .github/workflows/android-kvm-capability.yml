@@ -33,7 +33,7 @@ jobs:
             "$RUNNER_NAME" >> "$GITHUB_STEP_SUMMARY"
       - name: Retain non-secret KVM capability receipt
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: pi-droid-kvm-capability-${{ runner.name }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/pi-droid-kvm-capability/receipt.json

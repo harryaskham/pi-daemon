@@ -74,7 +74,7 @@ test("macOS CI forces a job-unique normal package build before the bounded full-
   assert.match(workflow, /if: inputs\.deliberate_test_failure/);
   assert.match(workflow, /run-nix-ci-phase\.sh deliberately-failing-test/);
   assert.doesNotMatch(workflow, /continue-on-error/);
-  assert.match(workflow, /if: always\(\)[\s\S]*actions\/upload-artifact@v4/);
+  assert.match(workflow, /if: always\(\)[\s\S]*actions\/upload-artifact@v7/);
 
   assert.match(cacheReporter, /nix eval --impure --raw "\$\{package_installable\}\.outPath"/);
   assert.match(cacheReporter, /print_url_config substituters/);

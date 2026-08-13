@@ -90,7 +90,7 @@ test("Pi Droid KVM capability is proven for emulator evidence without blocking A
   assert.match(capabilityWorkflow, /prove-kvm-runner-capability\.sh/);
   assert.match(capabilityWorkflow, /steps\.kvm\.outputs\.android_kvm_ready/);
   assert.match(capabilityWorkflow, /Review the receipt before replacing android-kvm-candidate with android-kvm/);
-  assert.match(capabilityWorkflow, /actions\/upload-artifact@v6/);
+  assert.match(capabilityWorkflow, /actions\/upload-artifact@v7/);
   assert.doesNotMatch(capabilityWorkflow, /google-play-internal|PI_DROID_RELEASE_|PI_DROID_GOOGLE_PLAY/);
 
   assert.match(releaseWorkflow, /runs-on: \[self-hosted, nix, x86_64-linux\]/);
