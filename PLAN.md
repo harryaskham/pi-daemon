@@ -981,8 +981,10 @@ implementation order. This list is a human-readable crosswalk.
 - [ ] `bd-b0b805` — evaluate ACP SDK 1.3 as an independent protocol change.
 - [ ] `bd-d897a6` — evaluate TypeScript 7 and Node 26 types as an independent
   strict compiler/toolchain change.
-- [ ] `bd-5761b3` — refresh Playwright/Vite and browser runtime dependencies in
-  reviewed slices with pinned-driver and UI-behaviour proof.
+- [ ] `bd-5761b3` — refresh Vite and browser runtime dependencies in reviewed
+  slices while retaining the exact Playwright 1.60 Nix-driver contract.
+- [ ] `bd-d0b2a8` — advance Playwright and its pinned Nix browser-driver closure
+  together to 1.62.1 without download or revision drift.
 - [x] `bd-184815` — move load-sensitive consumer process acceptance out of
   continuous package/install gates into scheduled feedback-backed triage, and
   publish the exact emulated aarch64-linux closure through signed private Attic.
