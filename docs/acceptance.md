@@ -88,8 +88,13 @@ logs for 14 days. The package ceiling is based on the measured PR 26 cold tail
 (12m08s install and 29m27s fixup inside a run that exceeded 50 minutes), not the
 former warm-cache range. A manual `deliberate_test_failure` dispatch runs a
 known-failing Node test through the same phase wrapper and must make the workflow
-red; ordinary push and pull-request runs never enable that diagnostic. macOS
-runs are serialized by ref and are not cancelled by later commits.
+red; ordinary main-push and scheduled runs never enable that diagnostic. The
+optional Darwin lane does not run on pull requests: branch protection retains
+Flake readiness as the source gate, while accepted `main` commits receive macOS
+coverage immediately and the daily schedule exercises the latest main again
+when runner capacity returns. Manual dispatch remains available for an exact
+recovery or diagnostic. macOS runs are serialized by ref and are not cancelled
+by later commits.
 
 The service-launch/process-tree consumer proof is deliberately separate because
 it depends on scheduler timing and observing a live descendant tree. Run it
