@@ -1118,7 +1118,15 @@ class LockedResourceLoader implements ResourceLoader {
     return this.#systemPrompt;
   }
 
+  getSystemPromptSource(): ReturnType<ResourceLoader["getSystemPromptSource"]> {
+    return undefined;
+  }
+
   getAppendSystemPrompt(): string[] {
+    return [];
+  }
+
+  getAppendSystemPromptSources(): ReturnType<ResourceLoader["getAppendSystemPromptSources"]> {
     return [];
   }
 

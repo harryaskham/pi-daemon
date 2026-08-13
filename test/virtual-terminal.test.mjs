@@ -16,7 +16,7 @@ import {
   Container,
   CURSOR_MARKER,
   Text,
-  TUI,
+  TuiMainScreen,
   visibleWidth,
 } from "@earendil-works/pi-tui";
 import { DASH_DEFAULT_LIMITS } from "../dist/dashboard-contract.js";
@@ -186,7 +186,7 @@ test("VirtualTerminal bounds fragmented escape sequences and frame output", () =
 test("exported Pi components render through one in-process TUI and preserve extension input", async () => {
   initPinnedTheme();
   const terminal = new VirtualTerminal(88, 64);
-  const tui = new TUI(terminal, true);
+  const tui = new TuiMainScreen(terminal, true);
   tui.setClearOnShrink(false);
   const content = new Container();
   const markdownTheme = getMarkdownTheme();
@@ -287,7 +287,9 @@ test("pinned InteractiveMode audit records the unsupported process and extension
     "utf8",
   );
   const session = await readFile(join(pinnedPiRoot, "dist/core/agent-session.js"), "utf8");
-  assert.match(source, /new TUI\(new ProcessTerminal\(\)/);
+  assert.match(source, /options\.terminal \?\? new ProcessTerminal\(\)/);
+  assert.match(source, /return new TuiMainScreen\(terminal/);
+  assert.match(source, /return new TuiAltScreen\(terminal/);
   assert.match(source, /ensureTool\("fd"\)/);
   assert.match(source, /process\.exit\(/);
   assert.match(source, /await this\.session\.bindExtensions\(/);
@@ -298,7 +300,7 @@ test("pinned InteractiveMode audit records the unsupported process and extension
 
 test("representative Pi TUI full and delta frame work stays within Dash budgets", async (t) => {
   const terminal = new VirtualTerminal(100, 40);
-  const tui = new TUI(terminal);
+  const tui = new TuiMainScreen(terminal);
   tui.setClearOnShrink(false);
   const status = new Text("stream 0000 — responsive", 1, 0);
   const transcript = new Container();

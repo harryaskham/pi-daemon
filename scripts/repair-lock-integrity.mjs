@@ -2,7 +2,7 @@
 /**
  * Restore `integrity` on lockfile entries whose upstream shrinkwrap omitted it.
  *
- * Pi SDK 0.82.1 publishes an `npm-shrinkwrap.json` in which its three sibling
+ * Pi SDK 0.84.1 publishes an `npm-shrinkwrap.json` in which its six sibling
  * `@earendil-works` packages carry a `resolved` tarball URL but no `integrity`.
  * npm faithfully carries that omission into our `package-lock.json`, and a
  * lockfile entry with a registry URL and no integrity panics the Nix npm

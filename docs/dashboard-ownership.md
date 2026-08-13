@@ -31,7 +31,7 @@ Pi Daemon may use two session storage policies:
   session directory inside daemon state.
 
 The cwd-encoded project directory name (`--<encoded cwd>--`) is stock Pi
-behavior. Pi 0.82.1 implements it as `getDefaultSessionDir()` inside its
+behavior. Pi 0.84.1 implements it as `getDefaultSessionDir()` inside its
 internal `core/session-manager` module, which the package root does not
 re-export and the package `exports` map does not expose; the upstream helper
 also creates the directory with ambient permissions. Pi Daemon therefore owns

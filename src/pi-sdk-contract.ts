@@ -10,7 +10,7 @@ import type {
 import { PI_RPC_COMMAND_TYPES } from "./session-api.js";
 
 /** Exact Pi SDK release whose public runtime/RPC contract this build targets. */
-export const PI_SDK_COMPATIBILITY_VERSION = "0.82.1" as const;
+export const PI_SDK_COMPATIBILITY_VERSION = "0.84.1" as const;
 
 /** Session events required by daemon streaming and durable cursor adapters. */
 export const PI_SESSION_EVENT_TYPES = [
@@ -65,7 +65,7 @@ export const PI_SESSIONS_DIRECTORY_NAME = "sessions";
  * Directory name stock Pi derives for a working directory when it stores a
  * session in its own home layout (`<agentDir>/sessions/--<encoded-cwd>--`).
  *
- * Pi 0.82.1 implements this encoding inside its internal `core/session-manager`
+ * Pi 0.84.1 implements this encoding inside its internal `core/session-manager`
  * module as `getDefaultSessionDir()`. That helper is neither re-exported from
  * the package root nor reachable through the package `exports` map, and it
  * creates the directory with ambient permissions as a side effect, so the
@@ -93,7 +93,7 @@ export function piDefaultSessionDirectory(cwd: string, agentDir: string): string
 export type PiDefaultSessionDirHelper = (cwd: string, agentDir?: string) => string;
 
 /**
- * Pinned observation: the Pi 0.82.1 package root does not export
+ * Pinned observation: the Pi 0.84.1 package root does not export
  * `getDefaultSessionDir`. When a supported release exports it, the pinned
  * compatibility test fails until this constant is updated, which is the signal
  * to consume the upstream helper through {@link piSdkDefaultSessionDirHelper}

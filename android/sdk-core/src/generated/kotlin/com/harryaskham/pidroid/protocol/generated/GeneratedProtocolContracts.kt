@@ -2376,7 +2376,7 @@ public object GeneratedProtocolContracts {
       knownFields = setOf("type"),
       requiredFields = setOf("type"),
       enumValues = emptyList(),
-      diagnostics = listOf("session-api.schema.json#/\$defs/piRpcEvent/properties/type: not remains authoritative in JSON Schema and is not flattened into generated object metadata"),
+      diagnostics = listOf("session-api.schema.json#/\$defs/piRpcEvent/allOf/0: if remains authoritative in JSON Schema and is not flattened into generated object metadata", "session-api.schema.json#/\$defs/piRpcEvent/allOf/0: then remains authoritative in JSON Schema and is not flattened into generated object metadata", "session-api.schema.json#/\$defs/piRpcEvent/properties/type: not remains authoritative in JSON Schema and is not flattened into generated object metadata"),
     ),
     SchemaDefinition(
       schemaPath = "session-api.schema.json",
@@ -3332,7 +3332,7 @@ public object GeneratedProtocolContracts {
     ),
     ProtocolInput(
       path = "session-api.schema.json",
-      sha256 = "f80f0e6a1ac4b8a6ab377d1e3dcd32eb83a694049d39f0afcca9dd1be0f6c7b2",
+      sha256 = "a9ae347fc218ad8bc297dce20b47acfb7e3492adf37d5342cc39010ef6e61292",
       kind = ProtocolInputKind.CONTRACT,
     ),
     ProtocolInput(
@@ -3567,7 +3567,7 @@ public object GeneratedProtocolContracts {
     ),
     ProtocolInput(
       path = "fixtures/message.event.json",
-      sha256 = "f09d9491fcde9fcea5981fd4f129628c7eaa937fee8d75040aa9661d4586de97",
+      sha256 = "4e07d76e6c307855172932abf0c50ef6ca770c8ee0b4d083df4bffc2c000d9bf",
       kind = ProtocolInputKind.FIXTURE,
     ),
     ProtocolInput(
@@ -3587,12 +3587,12 @@ public object GeneratedProtocolContracts {
     ),
     ProtocolInput(
       path = "fixtures/pi-rpc-command-types.json",
-      sha256 = "2f0623f355792a1e5771b18b7841c16567da6a64e2e6944bff9991d3351f1c42",
+      sha256 = "bb500c535dabd559526d686820b1c04f2c461949d97e09a40482cad8ce757499",
       kind = ProtocolInputKind.FIXTURE,
     ),
     ProtocolInput(
       path = "fixtures/pi-rpc-conformance.json",
-      sha256 = "109175e70d635a712a123690cbe57f6b42d289978e066fe54426414fc61df382",
+      sha256 = "1bdb21e52bb30d6f46496ddffc361c90527928c712812777ce72649197026a8b",
       kind = ProtocolInputKind.FIXTURE,
     ),
     ProtocolInput(
@@ -3737,7 +3737,7 @@ public object GeneratedProtocolContracts {
     ),
     ProtocolInput(
       path = "fixtures/session-api/rpc.event.frame.json",
-      sha256 = "9ef73ae794056ac68f7273fa23acc00b7869b4072b34f0f572e66cae7f41d109",
+      sha256 = "119b31ab3b646df64b0aa6f2302706848330e14e554121a90850c221af9f90c8",
       kind = ProtocolInputKind.FIXTURE,
     ),
     ProtocolInput(

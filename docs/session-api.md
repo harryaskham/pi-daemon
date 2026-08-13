@@ -39,7 +39,7 @@ listener.
 Bidirectional attachments use WebSocket upgrades because Pi RPC and ACP both
 send requests, responses, events, and UI interactions in both directions.
 Plain REST requests are not used as an unbounded event stream. The in-process
-31-command Pi RPC controller is implemented independently of transport; the
+32-command Pi RPC controller is implemented independently of transport; the
 WebSocket route is advertised only after bounded multi-reader snapshot/replay
 attachment lands. See the [Pi RPC runtime host](pi-rpc-host).
 
@@ -380,7 +380,7 @@ Frames are:
 - `tree_navigate` — controller-only Pi Daemon framed in-place branch request; and
 - `tree_navigate_result` — private non-replayed result or typed error.
 
-The full v1 command inventory matches Pi 0.82.1:
+The full v1 command inventory matches Pi 0.84.1:
 
 ```text
 prompt steer follow_up abort new_session
