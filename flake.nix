@@ -31,8 +31,8 @@
     # block with `npm run nix:deps-hash` after any package-lock.json change; the
     # `npm-deps-lock` marker is a plain staleness signal that lets CI flag a
     # stale pin without needing Nix on the runner.
-    # npm-deps-lock: sha256-spDral3b/Qd202da6LM7gUSWdHmgHohq6dB/uAZeoEk=
-    npmDepsHash = "sha256-nqG2a2FvqDODNW2BoT5/u0FtQv7cWrYDF/zk5UXd4X8=";
+    # npm-deps-lock: sha256-RZQOr8pPQjEvj+t82eSsMhUL5SqH/bYGgOOD7Cr9vl4=
+    npmDepsHash = "sha256-FOKSxsmetVfWvBQWrPuzBRayQgVt82c0KuRLSKP/Elo=";
     # One contract selects the hermetic API 36 image for the flake closure and
     # every diagnostic/physical harness. The pinned nixpkgs catalog has no
     # aosp_atd or google_atd at API 36; keep those assertions so a future pin
