@@ -77,7 +77,7 @@ export const DEFAULT_ACP_ADAPTER_LIMITS: Readonly<AcpAdapterLimits> = {
 export interface AcpAdapterCapabilities {
   protocol: "ACP";
   protocolVersion: number;
-  sdkVersion: "1.2.0";
+  sdkVersion: "1.3.0";
   websocketSubprotocol: typeof ACP_WEBSOCKET_SUBPROTOCOL;
   upstreamAdapter: { name: "pi-acp"; auditCommit: string; license: "MIT" };
   inProcess: true;
@@ -115,7 +115,7 @@ export class AcpAdapterManager {
     return {
       protocol: "ACP",
       protocolVersion: PROTOCOL_VERSION,
-      sdkVersion: "1.2.0",
+      sdkVersion: "1.3.0",
       websocketSubprotocol: ACP_WEBSOCKET_SUBPROTOCOL,
       upstreamAdapter: {
         name: "pi-acp",

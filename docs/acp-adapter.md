@@ -11,8 +11,12 @@ Protocol (ACP)** over JSON-RPC 2.0; Pi Daemon does not define a separate â€œAPCâ
 protocol. WebSocket clients must offer `agent-client-protocol.v1` and the normal
 service bearer.
 
-Pi Daemon uses the pinned `@agentclientprotocol/sdk` and a bounded WebSocket
-stream over the existing resident `PiRpcController`. It never launches the
+Pi Daemon uses pinned `@agentclientprotocol/sdk` 1.3.0 and a bounded WebSocket
+stream over the existing resident `PiRpcController`. The route remains stable
+ACP v1 with `agent-client-protocol.v1`: SDK 1.3's experimental ACP v2 entry point
+is neither imported nor advertised. The stable schema update adds optional tool
+names and preserves extensible-union handling without changing Pi Daemon's
+route, authentication, or session lifecycle. Pi Daemon never launches the
 `pi-acp` binary and never spawns `pi --mode rpc`.
 
 ## Upstream parity source
