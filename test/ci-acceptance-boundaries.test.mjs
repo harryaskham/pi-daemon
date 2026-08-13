@@ -51,7 +51,7 @@ function assertAcceptanceBoundaries({ manifest, flake, ci, macos, scheduled, clo
   assert.match(scheduled, /secrets\.PI_DAEMON_FEEDBACK_WEBHOOK_URL/);
   assert.match(scheduled, /secrets\.PI_DAEMON_FEEDBACK_WEBHOOK_TOKEN/);
   assert.match(scheduled, /\["test-failure", "broken-on-main", "ci", "consumer-acceptance"\]/);
-  assert.match(scheduled, /actions\/upload-artifact@v4/);
+  assert.match(scheduled, /actions\/upload-artifact@v7/);
   assert.match(scheduled, /if: always\(\)/);
 
   assert.match(closure, /runs-on: \$\{\{ matrix\.runner \}\}/);

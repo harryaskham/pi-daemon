@@ -84,7 +84,7 @@ jobs:
         run: test -f "$RUNNER_TEMP/pi-droid-release/play-internal-receipt.json"
       - name: Retain signed internal release evidence
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: pi-droid-internal-${{ inputs.versionCode }}
           path: ${{ runner.temp }}/pi-droid-release
