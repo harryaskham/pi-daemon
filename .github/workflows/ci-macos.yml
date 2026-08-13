@@ -2,15 +2,17 @@ name: CI (macOS)
 
 # Separate from the fast lane on purpose. macOS verification is slow and, when
 # no macOS runner is registered, unschedulable — and a job that cannot be
-# assigned never completes. Holding it inside the main workflow's concurrency
-# group meant every later run waited behind it and dispatched nothing at all
-# (bd-775c57). Here it can queue for as long as it needs without blocking the
-# Linux, Node, and browser jobs that answer in minutes.
+# assigned never completes. Optional queued PR checks also keep GitHub Stacks
+# nonterminal even though branch protection requires only Flake readiness.
+# Run Darwin coverage on accepted main, on a daily recovery cadence, or by
+# explicit dispatch instead; pull requests retain the fast Linux/Node/browser
+# gates and cannot be stranded behind absent hardware (bd-775c57, bd-ec9d00).
 
 on:
   push:
     branches: [main]
-  pull_request:
+  schedule:
+    - cron: "17 4 * * *"
   workflow_dispatch:
     inputs:
       deliberate_test_failure:

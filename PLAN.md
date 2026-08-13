@@ -718,6 +718,9 @@ process appears per wake.
 - [x] `bd-670ce8` Make the forced macOS package output job-unique and absent,
   build it normally under a private result root, and prohibit `--rebuild` or
   deletion of shared/live store roots while retaining every package phase.
+- [ ] `bd-ec9d00` Keep optional Darwin verification off pull requests while
+  retaining accepted-main, daily scheduled, and manual recovery coverage so an
+  absent macOS runner cannot leave GitHub Stacks nonterminal.
 
 ## 18. Completed scaffold board (historical PD identifiers)
 

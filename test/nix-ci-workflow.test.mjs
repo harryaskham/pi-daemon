@@ -58,6 +58,11 @@ test("macOS CI forces a job-unique normal package build before the bounded full-
     run("bash", ["-n", packageRunner]),
   ]);
 
+  assert.match(
+    workflow,
+    /\non:\n\s+push:\n\s+branches: \[main\]\n\s+schedule:\n\s+- cron: "17 4 \* \* \*"\n\s+workflow_dispatch:/,
+  );
+  assert.doesNotMatch(workflow, /^\s+pull_request:/m);
   assert.match(workflow, /cancel-in-progress: false/);
   assert.match(workflow, /runs-on: \[self-hosted, macos\]\n\s+timeout-minutes: 80/);
   assert.match(workflow, /PI_DAEMON_NIX_CI_BUILD_NONCE=github-%s-%s/);
