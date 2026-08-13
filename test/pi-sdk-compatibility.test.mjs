@@ -33,12 +33,18 @@ const json = async (path) => JSON.parse(await readFile(new URL(path, root), "utf
 
 test("pinned Pi SDK exposes the reviewed RPC and session-event contracts", async () => {
   const fixture = await json("fixtures/pi-rpc-command-types.json");
-  assert.equal(PI_SDK_COMPATIBILITY_VERSION, "0.82.1");
+  assert.equal(PI_SDK_COMPATIBILITY_VERSION, "0.84.1");
   assert.equal(fixture.sdkVersion, PI_SDK_COMPATIBILITY_VERSION);
   assert.deepEqual(PI_RPC_COMMAND_TYPES, fixture.commandTypes);
   assert.equal(PI_RPC_COMMAND_TYPES.length, 32);
   assert.ok(PI_SESSION_EVENT_TYPES.includes("agent_settled"));
   assert.ok(PI_SESSION_EVENT_TYPES.includes("entry_appended"));
+
+  const messageUpdate = (await json("fixtures/session-api/rpc.event.frame.json")).event;
+  assert.equal(messageUpdate.type, "message_update");
+  assert.equal("message" in messageUpdate, false);
+  assert.equal("partial" in messageUpdate.assistantMessageEvent, false);
+  assert.equal(messageUpdate.assistantMessageEvent.type, "text_delta");
 });
 
 test("Pi AgentSessionRuntime replaces an in-memory session and rebinds the host", async (t) => {
@@ -229,11 +235,32 @@ test("no root override pretends to replace a package the SDK's shrinkwrap owns",
 });
 
 test("Pi npm shrinkwrap dependencies retain integrity for Nix prefetch", async () => {
-  const lock = await json("package-lock.json");
+  const [manifest, lock] = await Promise.all([json("package.json"), json("package-lock.json")]);
+  assert.equal(manifest.dependencies["@earendil-works/pi-coding-agent"], PI_SDK_COMPATIBILITY_VERSION);
+  assert.equal(manifest.dependencies["@earendil-works/pi-tui"], PI_SDK_COMPATIBILITY_VERSION);
   assert.equal(
     lock.packages["node_modules/@earendil-works/pi-coding-agent"].version,
     PI_SDK_COMPATIBILITY_VERSION,
   );
+  assert.equal(
+    lock.packages["node_modules/@earendil-works/pi-tui"].version,
+    PI_SDK_COMPATIBILITY_VERSION,
+  );
+  const nestedWorkspacePackages = [
+    "@earendil-works/pi-agent-core",
+    "@earendil-works/pi-ai",
+    "@earendil-works/pi-client",
+    "@earendil-works/pi-protocol",
+    "@earendil-works/pi-telemetry",
+    "@earendil-works/pi-tui",
+  ];
+  for (const name of nestedWorkspacePackages) {
+    const entry = lock.packages[
+      `node_modules/@earendil-works/pi-coding-agent/node_modules/${name}`
+    ];
+    assert.equal(entry.version, PI_SDK_COMPATIBILITY_VERSION, `${name} version drifted`);
+    assert.match(entry.integrity, /^sha512-/, `${name} lost its public-registry integrity`);
+  }
   // Select the population, then assert the fields. Selecting on `resolved` and
   // then asserting `integrity` would exempt exactly the entries missing both,
   // which is the shape a regenerated lock produced during the 0.82.1 migration:

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://a.skh.am/pi-daemon/session-api.schema.json",
   "title": "Pi Daemon additive session API v1",
-  "description": "Language-neutral REST session resources, durable mutation tickets, bounded SHA-256 blob/session file transfer, framed Pi RPC attachment messages, and ACP transport messages. Raw Pi RPC uses the upstream Pi 0.82.1 shapes.",
+  "description": "Language-neutral REST session resources, durable mutation tickets, bounded SHA-256 blob/session file transfer, framed Pi RPC attachment messages, and ACP transport messages. Raw Pi RPC uses the upstream Pi 0.84.1 shapes.",
   "oneOf": [
     {
       "$ref": "#/$defs/sessionCreateRequest"
@@ -2039,6 +2039,55 @@
           }
         }
       },
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "type"
+            ],
+            "properties": {
+              "type": {
+                "const": "message_update"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "assistantMessageEvent"
+            ],
+            "properties": {
+              "message": false,
+              "assistantMessageEvent": {
+                "type": "object",
+                "required": [
+                  "type",
+                  "contentIndex"
+                ],
+                "properties": {
+                  "type": {
+                    "enum": [
+                      "text_start",
+                      "text_delta",
+                      "text_end",
+                      "thinking_start",
+                      "thinking_delta",
+                      "thinking_end",
+                      "toolcall_start",
+                      "toolcall_delta",
+                      "toolcall_end"
+                    ]
+                  },
+                  "contentIndex": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "partial": false
+                }
+              }
+            }
+          }
+        }
+      ],
       "additionalProperties": true
     },
     "attachSnapshot": {

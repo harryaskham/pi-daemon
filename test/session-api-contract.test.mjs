@@ -142,6 +142,26 @@ test("session target and framed event invariants reject ambiguous records", asyn
   assert.equal(validateEvent(event), false);
 });
 
+test("Pi 0.84.1 message updates are delta-only", async () => {
+  const { schema, ajv } = await contractValidator();
+  const event = await fixture("rpc.event.frame.json");
+  const validateEvent = ajv.getSchema(`${schema.$id}#/$defs/rpcEventFrame`);
+  assert.ok(validateEvent);
+  assert.equal(validateEvent(event), true);
+
+  const cumulative = structuredClone(event);
+  cumulative.event.message = { role: "assistant", content: [] };
+  assert.equal(validateEvent(cumulative), false);
+
+  const partial = structuredClone(event);
+  partial.event.assistantMessageEvent.partial = { role: "assistant", content: [] };
+  assert.equal(validateEvent(partial), false);
+
+  const unindexed = structuredClone(event);
+  delete unindexed.event.assistantMessageEvent.contentIndex;
+  assert.equal(validateEvent(unindexed), false);
+});
+
 test("explicit RPC hydration fixture remains prompt-free and opt-in", async () => {
   const request = await fixture("rpc.hydrate-query.json");
   assert.equal(request.method, "GET");

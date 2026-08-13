@@ -89,7 +89,7 @@ export const SESSION_TOOL_MATERIALIZATION_CAPABILITY = {
   ],
 } as const;
 
-/** Pi 0.82.1 RPC command names. Additions require compatibility fixtures. */
+/** Pi 0.84.1 RPC command names. Additions require compatibility fixtures. */
 export const PI_RPC_COMMAND_TYPES = [
   "prompt",
   "steer",

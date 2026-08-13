@@ -754,7 +754,7 @@ to “substantial scaffold, full host incomplete.”
    high-level operations, implicitly subscribes connections after successful
    session requests, and returns `wake` only after the model turn. The target
    needs durable CRUD, explicit attach, asynchronous admission, request lookup,
-   and the roughly 31-command Pi RPC surface.
+   and the roughly 32-command Pi RPC surface.
 2. **Conversation recovery is not sound.** `new` manifests recreate a new Pi
    session file after restart and `memory` manifests recreate empty history;
    queued wakes can therefore replay into the wrong context.

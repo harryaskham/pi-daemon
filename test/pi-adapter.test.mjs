@@ -94,7 +94,7 @@ class FakePiSession {
     this.emit({
       type: "message_update",
       message: { role: "assistant", content: [] },
-      assistantMessageEvent: { type: "text_delta", delta: `answer:${text}` },
+      assistantMessageEvent: { type: "text_delta", contentIndex: 0, delta: `answer:${text}` },
     });
     this.lastText = `answer:${text}`;
     this.emit({

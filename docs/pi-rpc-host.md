@@ -5,7 +5,7 @@ title: Pi RPC runtime host
 
 # In-process Pi RPC runtime host
 
-Pi Daemon implements the complete Pi 0.82.1 RPC command union against the
+Pi Daemon implements the complete Pi 0.84.1 RPC command union against the
 resident `AgentSessionRuntime`. It does **not** invoke `runRpcMode()` because that
 helper owns process stdin/stdout, signal handlers, child cleanup, backpressure,
 and `process.exit`. The daemon controller is transport-neutral: authenticated
@@ -13,7 +13,7 @@ WebSocket and stdio bridge layers carry its typed responses and raw events
 without creating another Pi process or session state machine.
 
 The executable contract is [`fixtures/pi-rpc-conformance.json`](../fixtures/pi-rpc-conformance.json).
-It contains all 31 pinned command types, including `max` thinking, durable entry
+It contains all 32 pinned command types, including `max` thinking, durable entry
 cursors, session replacement, and extension UI methods. Compile-time exact-union
 checks prevent an SDK upgrade from silently adding or removing commands/events.
 
@@ -23,15 +23,17 @@ checks prevent an SDK upgrade from silently adding or removing commands/events.
   later completion/failure is represented by raw Pi events.
 - `agent_settled`, `entry_appended`, message/tool lifecycle events, queue changes,
   retry, and compaction events are passed through without translating their Pi
-  payload shape.
+  payload shape. Pi 0.84.1 `message_update` records are delta-only: clients
+  assemble transient state from `assistantMessageEvent` and treat
+  `message_end.message` as authoritative.
 - state, messages, models, thinking, queue modes, compaction/retry controls,
   session statistics, names, entries/tree cursors, fork/clone/new/switch, and
   command discovery follow stock Pi RPC response shapes.
 - new/switch/fork/clone use the hosted runtime replacement seam. Extension/event
   bindings move to `runtime.session`, and the new Pi conversation identity is
   persisted before the command response returns.
-- import remains a supported runtime operation even though Pi 0.82.1 does not
-  define an `import` member in its stock 31-command RPC union.
+- import remains a supported runtime operation even though Pi 0.84.1 does not
+  define an `import` member in its stock 32-command RPC union.
 - in-place branch navigation remains outside that stock union: the controller
   exposes a bounded direct `navigateTree` method only to the authenticated
   `pi-daemon-rpc.v1` tree-navigation frame used by Dash; summary generation
