@@ -81,7 +81,9 @@ export class PiDaemonClient {
     this.socketPath = socketPath;
     this.#decoder = new NdjsonDecoder(maxLineBytes);
     this.#requestTimeoutMs = requestTimeoutMs;
-    socket.on("data", (chunk) => this.#onData(chunk));
+    socket.on("data", (chunk) =>
+      this.#onData(typeof chunk === "string" ? Buffer.from(chunk) : chunk),
+    );
     socket.on("error", (error) => this.#fail(error));
     socket.on("close", () => this.#fail(new Error("pi-daemon connection closed")));
   }
