@@ -164,7 +164,7 @@ test("all JSON routes authenticate before revealing capabilities or route state"
   assert.equal(allowed.value.data.rpc.host.processTransportOwned, false);
   assert.equal(allowed.value.data.rpc.replay, true);
   assert.equal(allowed.value.data.acp.protocol, "ACP");
-  assert.equal(allowed.value.data.acp.sdkVersion, "1.2.0");
+  assert.equal(allowed.value.data.acp.sdkVersion, "1.3.0");
   assert.equal(allowed.value.data.acp.websocketSubprotocol, "agent-client-protocol.v1");
   assert.equal(allowed.value.data.acp.inProcess, true);
   assert.equal(JSON.stringify(allowed.value).includes(TOKEN), false);
