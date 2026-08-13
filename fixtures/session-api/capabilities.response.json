@@ -84,7 +84,7 @@
     "acp": {
       "protocol": "ACP",
       "protocolVersion": 1,
-      "sdkVersion": "1.2.0",
+      "sdkVersion": "1.3.0",
       "websocketSubprotocol": "agent-client-protocol.v1",
       "upstreamAdapter": {
         "name": "pi-acp",
