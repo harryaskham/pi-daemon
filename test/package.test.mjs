@@ -206,9 +206,9 @@ test("root and web use one exact TypeScript 7 compiler with Node 26 declarations
   assert.equal(lock.packages[""].devDependencies.typescript, rootManifest.devDependencies.typescript);
   assert.equal(lock.packages.web.devDependencies.typescript, rootManifest.devDependencies.typescript);
   assert.equal(lock.packages["node_modules/typescript"].version, "7.0.2");
-  assert.equal(rootManifest.devDependencies["@types/node"], "26.1.2");
-  assert.equal(lock.packages[""].devDependencies["@types/node"], "26.1.2");
-  assert.equal(lock.packages["node_modules/@types/node"].version, "26.1.2");
+  assert.equal(rootManifest.devDependencies["@types/node"], "26.2.0");
+  assert.equal(lock.packages[""].devDependencies["@types/node"], "26.2.0");
+  assert.equal(lock.packages["node_modules/@types/node"].version, "26.2.0");
 });
 
 test("package acceptance distinguishes a Nix tarball cache from a public registry", async (t) => {
