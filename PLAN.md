@@ -955,7 +955,7 @@ implementation order. This list is a human-readable crosswalk.
   API bearer, and non-overwriting per-instance Pi auth seeding.
 - [x] `bd-df5f19` — prebuild/cache aarch64-linux packages off-device so
   Nix-on-Droid never falls back to its native npm double-free path.
-- [ ] `bd-68867d` — support SOPS-backed API bearer symlinks by resolving the
+- [x] `bd-68867d` — support SOPS-backed API bearer symlinks by resolving the
   chain, opening the canonical target with no-follow race protection, and
   validating the opened inode without exposing bearer paths or values.
 - [x] `bd-23110a` — neutral Dash HTTP routing extracted from the core API server
@@ -974,6 +974,15 @@ implementation order. This list is a human-readable crosswalk.
   workspace-tool flags and multiword values instead of npm consuming them.
 - [x] `bd-2c6d58` — document the exact-lock refresh/check after dependency-
   changing rebases before stale `node_modules` is called broken main.
+- [ ] `bd-e9f305` — supersede stale grouped dependency PRs with current low-risk
+  ws, postcss, fast-uri, and nanoid patches plus an exact Nix dependency hash.
+- [ ] `bd-302a62` — upgrade Pi SDK/TUI to 0.84.1 with compatibility proof and
+  clear the remaining vulnerable undici/brace-expansion production subtree.
+- [ ] `bd-b0b805` — evaluate ACP SDK 1.3 as an independent protocol change.
+- [ ] `bd-d897a6` — evaluate TypeScript 7 and Node 26 types as an independent
+  strict compiler/toolchain change.
+- [ ] `bd-5761b3` — refresh Playwright/Vite and browser runtime dependencies in
+  reviewed slices with pinned-driver and UI-behaviour proof.
 - [x] `bd-184815` — move load-sensitive consumer process acceptance out of
   continuous package/install gates into scheduled feedback-backed triage, and
   publish the exact emulated aarch64-linux closure through signed private Attic.
