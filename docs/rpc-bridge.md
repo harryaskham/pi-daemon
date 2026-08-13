@@ -17,7 +17,7 @@ does not create or own the daemon session.
 
 ## Streams
 
-- **stdin:** stock Pi 0.82.1 RPC commands and `extension_ui_response` values,
+- **stdin:** stock Pi 0.84.1 RPC commands and `extension_ui_response` values,
   one bounded UTF-8 JSON value per line;
 - **stdout:** only stock Pi RPC responses and raw session/extension events, one
   value per line;

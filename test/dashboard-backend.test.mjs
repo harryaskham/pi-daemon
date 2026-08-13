@@ -377,7 +377,10 @@ test("rich channels coalesce controller events, enforce roles, replay and durabl
   const initialCursor = controller.snapshot.highWaterCursor;
   const controllerEvents = [];
   controller.subscribe((event) => controllerEvents.push(event));
-  factory.controller.emit({ type: "message_update", message: { role: "assistant", content: [] } });
+  factory.controller.emit({
+    type: "message_update",
+    assistantMessageEvent: { type: "text_delta", contentIndex: 0, delta: "working" },
+  });
   assert.equal(controllerEvents[0].kind, "session_event");
 
   const observer = await backend.openSessionChannel({ sessionRef, role: "observer", cursor: initialCursor });

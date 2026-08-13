@@ -7,5 +7,5 @@
   "generation": 1,
   "sequence": 2,
   "requestId": "req-wake-1",
-  "data": { "assistantMessageEvent": { "type": "text_delta", "delta": "pong" } }
+  "data": { "assistantMessageEvent": { "type": "text_delta", "contentIndex": 0, "delta": "pong" } }
 }

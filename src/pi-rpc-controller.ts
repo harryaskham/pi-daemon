@@ -153,7 +153,7 @@ export interface PiRpcControllerCapabilities {
 }
 
 /**
- * Transport-neutral implementation of Pi 0.82.1's stock RPC command semantics.
+ * Transport-neutral implementation of Pi 0.84.1's stock RPC command semantics.
  *
  * It deliberately does not own stdin/stdout, process signals, process.exit, or
  * socket framing. Callers attach outputs and carry responses over any bounded
@@ -234,7 +234,7 @@ export class PiRpcController {
   }
 
   /**
-   * Navigate one existing branch in place without widening Pi's stock 31-command
+   * Navigate one existing branch in place without widening Pi's stock 32-command
    * RPC union. Authenticated framed Dashboard transports own correlation and
    * controller authority around this direct host method.
    */

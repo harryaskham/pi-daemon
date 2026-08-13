@@ -75,7 +75,7 @@ blindly replayed.
 
 ## Framed in-place navigation extension
 
-Pi's stock 31-command RPC union has `get_tree`, `fork`, and `clone`, but does not
+Pi's stock 32-command RPC union has `get_tree`, `fork`, and `clone`, but does not
 expose `AgentSession.navigateTree()`. Pi Daemon therefore keeps raw `pi-rpc.v1`
 exact and adds one capability-gated frame only to `pi-daemon-rpc.v1`:
 

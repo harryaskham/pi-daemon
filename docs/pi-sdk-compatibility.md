@@ -13,15 +13,17 @@ embeddable dispatcher.
 
 ## Supported baseline
 
-The current exact baseline is **Pi 0.82.1**. This is the first audited release
-for the full host because its public SDK provides:
+The current exact baseline is **Pi 0.84.1**. Its public SDK provides the full
+host contract:
 
 - `AgentSessionRuntime` and `createAgentSessionRuntime()` for new, switch, fork,
   clone, import, and runtime replacement;
 - `createAgentSessionServices()` and `createAgentSessionFromServices()` for
   rebuilding cwd-bound per-session services;
 - `AgentSession.isIdle`, `waitForIdle()`, `agent_settled`, and `entry_appended`;
-- the current 31-command `RpcCommand` union and `RpcResponse` types;
+- the current 32-command `RpcCommand` union and `RpcResponse` types;
+- delta-only `message_update` events, with `message_end.message` authoritative;
+- the `TUI` interface plus concrete `TuiMainScreen` and `TuiAltScreen` renderers;
 - the `max` thinking level.
 
 `src/pi-sdk-contract.ts` intentionally compiles the reviewed RPC command and
@@ -40,12 +42,12 @@ host rewriting. This matters when an enterprise npm mirror lags the public Pi
 release: `npm ci` must consume the reviewed lock rather than silently resolving
 an older package from the ambient registry.
 
-Every Pi release so far, including 0.82.1, publishes a shrinkwrap that omits
-integrity fields for three nested Pi workspace packages. npm accepts those
-records, but Nix's `prefetch-npm-deps` correctly rejects non-git dependencies
-without integrity. The checked lock carries the public registry SHA-512 values
-for `pi-agent-core`, `pi-ai`, and `pi-tui`, and the compatibility test prevents a
-later lock regeneration from dropping them.
+Pi 0.84.1 publishes a shrinkwrap that omits integrity fields for six nested Pi
+workspace packages. npm accepts those records, but Nix's `prefetch-npm-deps`
+correctly rejects non-git dependencies without integrity. The checked lock
+carries the public registry SHA-512 values for `pi-agent-core`, `pi-ai`,
+`pi-client`, `pi-protocol`, `pi-telemetry`, and `pi-tui`, and the compatibility
+test prevents a later lock regeneration from dropping them.
 
 `npm run lock:repair-integrity` restores those values from the registry's own
 published `dist.integrity` for the exact name and version the entry already
@@ -86,14 +88,16 @@ The recursive fixed-output hash remains the final byte-for-byte authority.
    ```console
    npm install --package-lock-only --ignore-scripts --save-exact \
      @earendil-works/pi-coding-agent@VERSION \
+     @earendil-works/pi-tui@VERSION \
      --registry=https://registry.npmjs.org
    ```
 
 4. Restore any missing published nested-package integrity fields from each
    package's `npm view ... dist.integrity` output. Run `npm ci --ignore-scripts`;
    the Pi lock-integrity compatibility test must pass.
-5. Update `PI_SDK_COMPATIBILITY_VERSION`, the RPC command fixture, required event
-   mapping, protocol thinking levels, and compatibility assertions together.
+5. Update `PI_SDK_COMPATIBILITY_VERSION`, the RPC command/event fixtures,
+   required event mapping, delta-event contract, protocol thinking levels, and
+   compatibility assertions together.
    Review every union difference; never weaken the exact assertion merely to
    make compilation pass.
 6. Keep `npmDepsFetcherVersion = 2` and refresh the pinned Nix dependency hash

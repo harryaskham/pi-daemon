@@ -106,7 +106,8 @@ These are constraints, not implementation details to wish away.
 ### 3.4 Browser and shadow-TUI rendering
 
 Pi's terminal components are not DOM components, but Pi TUI has a useful seam:
-`TUI` accepts a `Terminal` interface. A memory terminal with mutable rows/columns
+the `TUI` interface and concrete `TuiMainScreen`/`TuiAltScreen` renderers accept
+a `Terminal` interface. A memory terminal with mutable rows/columns
 can receive Pi's ANSI differential output and project it into a virtual cell
 grid. This supports a second per-pane presentation mode:
 
@@ -117,9 +118,10 @@ grid. This supports a second per-pane presentation mode:
 
 There are two current limitations to solve honestly:
 
-- `InteractiveMode` hardcodes `new TUI(new ProcessTerminal())`, installs
-  process-global terminal/signal behavior, and does not accept an injected
-  terminal today.
+- Pi 0.84.1 exports `createInteractiveTui()` with optional terminal injection,
+  but `InteractiveModeOptions` does not expose that input; `InteractiveMode`
+  calls the composition root without it, takes the `ProcessTerminal` fallback,
+  and still installs process-global terminal/signal behavior.
 - An `AgentSession` currently has one extension UI binding. Running an unrelated
   shadow `pi` process would duplicate runtime/extension state and reintroduce
   concurrent session writers.
@@ -872,8 +874,9 @@ changes may resize/reflow the view but do not recreate the agent runtime.
 
 ### 15.3 Required Pi seam and no-PTY rule
 
-Pi TUI itself is injectable, but current `InteractiveMode` hardcodes
-`ProcessTerminal`, process signals, and one extension UI binding. Before full
+Pi TUI itself is injectable, but current `InteractiveMode` does not forward a
+terminal into `createInteractiveTui()`, so it still owns `ProcessTerminal`,
+process signals, and one extension UI binding. Before full
 TUI mode, the project must either land upstream or pin and test a supported seam
 such as:
 

@@ -4,7 +4,7 @@ Pi Daemon can present Pi's terminal UI in a browser without starting a second
 `pi` process. The reusable foundation is `VirtualTerminal`, exported from
 `@harryaskham/pi-daemon/virtual-terminal`.
 
-This document records the Pi 0.80.6 shadow-TUI spike and the implemented
+This document records the Pi 0.84.1 shadow-TUI audit and the implemented
 canonical host/channel substrate. `ShadowTuiHost` and
 `ShadowTuiAttachmentManager` are exported, bounded, and conformance tested, but
 production capability remains unavailable until Pi exposes the host-safe
@@ -14,7 +14,7 @@ used.
 ## Proven rendering path
 
 `VirtualTerminal` implements the public `Terminal` interface from the exact
-pinned `@earendil-works/pi-tui` package. A normal in-process `TUI` writes its
+pinned `@earendil-works/pi-tui` package. A normal in-process `TuiMainScreen` writes its
 ANSI differential stream to this terminal. The terminal:
 
 - has mutable, bounded rows and columns;
@@ -34,7 +34,7 @@ ANSI differential stream to this terminal. The terminal:
 The acceptance fixture renders Pi's exported `UserMessageComponent`,
 `AssistantMessageComponent`, `ToolExecutionComponent` and
 `CustomMessageComponent`, plus an overlay and focused extension-style editor,
-through one `TUI` and one `VirtualTerminal`. Input travels back through the same
+through one `TuiMainScreen` and one `VirtualTerminal`. Input travels back through the same
 TUI focus path. Rapid representative deltas and resizes are measured against
 Dashboard's `frameWorkP95Ms < 16` and `tuiDeltaP95Ms < 50` contracts.
 
@@ -112,19 +112,23 @@ A PTY therefore cannot be the normal compatibility path. Exporting a session
 as a new independent session is an explicit ownership operation, not a
 rendering technique.
 
-## Pi 0.80.6 audit
+## Pi 0.84.1 audit
 
 The pinned SDK already exports the useful pieces:
 
 - `InteractiveMode`, `AgentSessionRuntime`, Pi message/tool components and
   themes from `@earendil-works/pi-coding-agent`;
-- `Terminal`, `TUI`, components, input and ANSI width utilities from
+- `Terminal`, the `TUI` interface, concrete `TuiMainScreen`/`TuiAltScreen`
+  renderers, components, input and ANSI width utilities from
   `@earendil-works/pi-tui`.
 
 The remaining blocker is construction and lifecycle ownership inside
 `InteractiveMode`:
 
-1. Its constructor hardcodes `new TUI(new ProcessTerminal(), ...)`.
+1. Its exported `createInteractiveTui()` composition root accepts an injected
+   terminal, but `InteractiveModeOptions` does not expose that input; the
+   `InteractiveMode` constructor calls it without one and therefore still
+   selects `new ProcessTerminal()`.
 2. `init()` installs process signal and uncaught-exception handlers and invokes
    `ensureTool("fd")`/`ensureTool("rg")`; the latter may create child
    processes. Neither is acceptable on a daemon's initial no-tools path.
@@ -211,8 +215,8 @@ export function createInteractiveSessionView(
 
 Implementation can reuse almost all current `InteractiveMode` code:
 
-- construct `TUI` with `options.host.terminal` instead of a hardcoded
-  `ProcessTerminal`;
+- pass `options.host.terminal` through the existing `createInteractiveTui()`
+  composition root instead of taking its `ProcessTerminal` fallback;
 - move process signal/error/exit/suspend/external-editor behavior into the
   existing CLI host adapter;
 - resolve `fd`/`rg` only through the host in embedded mode (absence disables
