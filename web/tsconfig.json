@@ -13,7 +13,6 @@
     "forceConsistentCasingInFileNames": true,
     "module": "ESNext",
     "moduleResolution": "Bundler",
-    "baseUrl": ".",
     "paths": {
       "@harryaskham/pi-daemon/dashboard-contract": ["../src/dashboard-contract.ts"],
       "@harryaskham/pi-daemon/dashboard-authorization": ["../src/dashboard-authorization.ts"],

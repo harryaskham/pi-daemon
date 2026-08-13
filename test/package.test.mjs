@@ -194,6 +194,23 @@ test("schema conformance uses the audited exact Ajv pin without $data", async ()
   }
 });
 
+test("root and web use one exact TypeScript 7 compiler with Node 26 declarations", async () => {
+  const [rootManifest, webManifest, lock] = await Promise.all([
+    readFile(join(repositoryRoot, "package.json"), "utf8").then(JSON.parse),
+    readFile(join(repositoryRoot, "web/package.json"), "utf8").then(JSON.parse),
+    readFile(join(repositoryRoot, "package-lock.json"), "utf8").then(JSON.parse),
+  ]);
+
+  assert.equal(rootManifest.devDependencies.typescript, "7.0.2");
+  assert.equal(webManifest.devDependencies.typescript, rootManifest.devDependencies.typescript);
+  assert.equal(lock.packages[""].devDependencies.typescript, rootManifest.devDependencies.typescript);
+  assert.equal(lock.packages.web.devDependencies.typescript, rootManifest.devDependencies.typescript);
+  assert.equal(lock.packages["node_modules/typescript"].version, "7.0.2");
+  assert.equal(rootManifest.devDependencies["@types/node"], "26.1.2");
+  assert.equal(lock.packages[""].devDependencies["@types/node"], "26.1.2");
+  assert.equal(lock.packages["node_modules/@types/node"].version, "26.1.2");
+});
+
 test("package acceptance distinguishes a Nix tarball cache from a public registry", async (t) => {
   const temporaryRoot = await mkdtemp(join(tmpdir(), "pi-daemon-npm-lane-"));
   t.after(async () => rm(temporaryRoot, { recursive: true, force: true }));

@@ -276,7 +276,9 @@ export class ProtocolServer {
       closed: false,
     };
     this.#connections.add(connection);
-    socket.on("data", (chunk) => this.#onData(connection, chunk));
+    socket.on("data", (chunk) =>
+      this.#onData(connection, typeof chunk === "string" ? Buffer.from(chunk) : chunk),
+    );
     socket.on("error", () => {});
     socket.on("close", () => {
       connection.closed = true;
