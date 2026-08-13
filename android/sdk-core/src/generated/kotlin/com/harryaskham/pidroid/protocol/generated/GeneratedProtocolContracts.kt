@@ -3332,7 +3332,7 @@ public object GeneratedProtocolContracts {
     ),
     ProtocolInput(
       path = "session-api.schema.json",
-      sha256 = "c11f18ccebcdbd60c52fe90249018564890a4b35eb0b9d4c4ea015c6eefa7a72",
+      sha256 = "f80f0e6a1ac4b8a6ab377d1e3dcd32eb83a694049d39f0afcca9dd1be0f6c7b2",
       kind = ProtocolInputKind.CONTRACT,
     ),
     ProtocolInput(
@@ -3647,7 +3647,7 @@ public object GeneratedProtocolContracts {
     ),
     ProtocolInput(
       path = "fixtures/session-api/capabilities.response.json",
-      sha256 = "30fdc3877460c7d837a052d0459553123cefa7a91dd32ed4adedb865791ad357",
+      sha256 = "b54d84b151d421f2e3ca97b83277f2ca53d6a100e7d277fa0e9811b0ed326a3f",
       kind = ProtocolInputKind.FIXTURE,
     ),
     ProtocolInput(
