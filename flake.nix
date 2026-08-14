@@ -129,7 +129,7 @@
       ciBuildNonce = builtins.getEnv "PI_DAEMON_NIX_CI_BUILD_NONCE";
       packageAttrs = {
         pname = "pi-daemon";
-        version = "0.3.0";
+        version = "0.3.1";
         src = ./.;
 
         nodejs = pkgs.nodejs_24;
@@ -186,8 +186,8 @@
         doInstallCheck = true;
         installCheckPhase = ''
           runHook preInstallCheck
-          "$out/bin/pi-daemon" version | grep -Fx 0.3.0
-          "$out/bin/pi-daemon-rpc" --version | grep -Fx 0.3.0
+          "$out/bin/pi-daemon" version | grep -Fx 0.3.1
+          "$out/bin/pi-daemon-rpc" --version | grep -Fx 0.3.1
           runHook postInstallCheck
         '';
 

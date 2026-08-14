@@ -5,6 +5,9 @@ semantic versioning once a release tag is cut.
 
 ## Unreleased
 
+## 0.3.1 — 2026-08-14
+
+- support SOPS and other protected secret-manager symlinks for Dashboard credentials by resolving the configured chain, opening only the canonical final inode with no-follow race protection, and preserving regular-file, current-owner, owner-only mode, byte-bound, generated-file, and path-free loop-failure checks
 - refresh the exact Node declarations pin from 26.1.2 to 26.2.0 as an isolated root-only patch, preserving TypeScript 7, Playwright 1.60.0, the matching pinned Nix browser driver, Vite/web runtime pins, and all runtime dependencies while regenerating the public-registry lock and fixed-output Nix dependency hash
 - upgrade the exact root and web TypeScript baseline from 5.9.3 to 7.0.2 and Node declarations from 24.10.1 to 26.1.2 without changing Playwright, Vite, React types, or runtime dependencies; remove TypeScript 7's obsolete web `baseUrl`, normalize Node's widened string-or-buffer socket data at the protocol boundary, and refresh the exact lock plus fixed-output Nix dependency hash
 - upgrade the exact Pi SDK and TUI baseline from 0.82.1 to 0.84.1, clearing the packaged `undici` and `brace-expansion` production advisories; retain the exact 32-command/session-event unions, adopt required ResourceLoader prompt-provenance methods, preserve delta-only `message_update` framing with authoritative `message_end`, pin all six nested Pi workspace package integrities for Nix, and refresh compatibility fixtures plus the fixed-output npm dependency hash
