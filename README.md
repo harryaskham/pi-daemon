@@ -47,7 +47,7 @@ or Cacophony credentials.
 > Session flow that performs no Pi runtime/model/tool
 > work until its exactly-once first message.
 > Full credential-free install/CRUD/RPC/ACP/restart/security acceptance is green;
-> the repository is a release candidate, but no release tag is cut yet.
+> v0.3.1 is the current stable release.
 
 **Start here:** [Operator quickstart](docs/quickstart.md) — run collision-free
 Home Manager instances, use the authenticated session API, and attach RPC or

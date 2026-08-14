@@ -485,7 +485,7 @@ process appears per wake.
 
 ## Provisional Beads work board
 
-- [ ] `bd-4cc830` Publish Pi Daemon 0.3.1 from the landed Dashboard SOPS fix,
+- [x] `bd-4cc830` Publish Pi Daemon 0.3.1 from the landed Dashboard SOPS fix,
   with synchronized package/lock/source/flake/changelog versions, portable npm
   release assets, immutable tag verification, and post-publish local install.
 - [x] `bd-17f1f4` Resolve configured Dashboard credential SOPS links to a
