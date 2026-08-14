@@ -23,6 +23,7 @@ project code or tools.
 - JSON listener defaults to literal loopback and refuses implicit remote plaintext
 - exactly one effective service bearer source: when no external file, fd, or environment source is configured, first launch atomically generates `STATE_DIR/api-token`
 - generated bearer files are random, owner-only, complete before publication, stable across restart, and never overwrite an existing path
+- release self-update adopts only the exact two npm-global launcher symlinks produced by `just install`; regular files, arbitrary/mismatched links, and foreign targets remain collisions, while verified release switching manages both CLI launchers atomically
 - configured secret-manager service-bearer and Dashboard-credential symlinks, including relative and nested links, are resolved to a canonical target that is opened with no-follow protection against a second traversal; the opened inode must be regular, current-user-owned, owner-only, and bounded
 - bearer authorization is checked before JSON bodies, route/session disclosure, and RPC/ACP stream upgrades
 - bearer material is reduced to a one-way digest after startup loading and never logged or returned

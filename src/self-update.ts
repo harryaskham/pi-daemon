@@ -106,7 +106,7 @@ export class PiDaemonSelfUpdater {
   }
 
   async status(): Promise<SelfUpdateStatus> {
-    const state = await this.#state();
+    const [state, managedLink] = await Promise.all([this.#state(), this.#areManagedBinLinks()]);
     return {
       currentVersion: PI_DAEMON_VERSION,
       ...(state === undefined ? {} : {
@@ -115,8 +115,8 @@ export class PiDaemonSelfUpdater {
       }),
       installRoot: this.paths.installRoot,
       binPath: this.#binPath(),
-      managedLink: await this.#isManagedBinLink(),
-      localInstallRequired: state === undefined || !(await this.#isManagedBinLink()),
+      managedLink,
+      localInstallRequired: state === undefined || !managedLink,
     };
   }
 
@@ -352,18 +352,28 @@ export class PiDaemonSelfUpdater {
       throw new SelfUpdateError("update_retention_exceeded", "managed update version inventory exceeds its bound");
     }
     await ensureOwnedBinDirectory(this.paths.binDir);
-    await this.#assertBinLinkAvailable();
+    await Promise.all([
+      this.#assertBinLinkAvailable("pi-daemon"),
+      this.#assertBinLinkAvailable("pi-daemon-rpc"),
+    ]);
   }
 
   async #switchVersion(version: string): Promise<void> {
     await this.#validateInstalledVersion(version);
     const current = join(this.paths.installRoot, "current");
     await replaceSymlink(this.#versionDir(version), current, this.#randomId());
-    await replaceSymlink(
-      join(current, "node_modules", ".bin", "pi-daemon"),
-      this.#binPath(),
-      this.#randomId(),
-    );
+    await Promise.all([
+      replaceSymlink(
+        join(current, "node_modules", ".bin", "pi-daemon"),
+        this.#binPath("pi-daemon"),
+        this.#randomId(),
+      ),
+      replaceSymlink(
+        join(current, "node_modules", ".bin", "pi-daemon-rpc"),
+        this.#binPath("pi-daemon-rpc"),
+        this.#randomId(),
+      ),
+    ]);
   }
 
   async #validateInstalledVersion(version: string): Promise<void> {
@@ -381,10 +391,12 @@ export class PiDaemonSelfUpdater {
       throw new SelfUpdateError("update_state_invalid", "managed update version is unavailable");
     }
     await this.#versionMetadata(version);
-    const executable = join(canonicalRoot, "node_modules", ".bin", "pi-daemon");
-    const info = await lstat(executable).catch(() => undefined);
-    if (info === undefined || (!info.isFile() && !info.isSymbolicLink())) {
-      throw new SelfUpdateError("update_state_invalid", "managed update executable is unavailable");
+    for (const name of ["pi-daemon", "pi-daemon-rpc"] as const) {
+      const executable = join(canonicalRoot, "node_modules", ".bin", name);
+      const info = await lstat(executable).catch(() => undefined);
+      if (info === undefined || (!info.isFile() && !info.isSymbolicLink())) {
+        throw new SelfUpdateError("update_state_invalid", "managed update executable is unavailable");
+      }
     }
   }
 
@@ -411,25 +423,49 @@ export class PiDaemonSelfUpdater {
     }));
   }
 
-  async #assertBinLinkAvailable(): Promise<void> {
-    const path = this.#binPath();
+  async #assertBinLinkAvailable(name: "pi-daemon" | "pi-daemon-rpc"): Promise<void> {
+    const path = this.#binPath(name);
     const info = await lstat(path).catch(() => undefined);
     if (info === undefined) return;
     if (!info.isSymbolicLink()) {
-      throw new SelfUpdateError("update_bin_collision", "local pi-daemon path is not a managed symlink");
+      throw new SelfUpdateError("update_bin_collision", `local ${name} path is not a managed symlink`);
     }
     const target = await managedLinkTarget(path);
-    if (target === undefined || !isWithin(this.paths.installRoot, target)) {
-      throw new SelfUpdateError("update_bin_collision", "local pi-daemon symlink is not managed by Pi Daemon");
+    if (
+      target === undefined ||
+      (!isWithin(this.paths.installRoot, target) && target !== this.#npmGlobalBinTarget(name))
+    ) {
+      throw new SelfUpdateError("update_bin_collision", `local ${name} symlink is not managed by Pi Daemon`);
     }
   }
 
-  async #isManagedBinLink(): Promise<boolean> {
-    const path = this.#binPath();
+  async #areManagedBinLinks(): Promise<boolean> {
+    const values = await Promise.all([
+      this.#isManagedBinLink("pi-daemon"),
+      this.#isManagedBinLink("pi-daemon-rpc"),
+    ]);
+    return values.every(Boolean);
+  }
+
+  async #isManagedBinLink(name: "pi-daemon" | "pi-daemon-rpc"): Promise<boolean> {
+    const path = this.#binPath(name);
     const info = await lstat(path).catch(() => undefined);
     if (info?.isSymbolicLink() !== true) return false;
     const target = await managedLinkTarget(path);
     return target !== undefined && isWithin(this.paths.installRoot, target);
+  }
+
+  #npmGlobalBinTarget(name: "pi-daemon" | "pi-daemon-rpc"): string {
+    const file = name === "pi-daemon" ? "cli.js" : "rpc-stdio-cli.js";
+    return resolve(
+      dirname(this.paths.binDir),
+      "lib",
+      "node_modules",
+      "@harryaskham",
+      "pi-daemon",
+      "dist",
+      file,
+    );
   }
 
   async #state(): Promise<SelfUpdateState | undefined> {
@@ -447,8 +483,8 @@ export class PiDaemonSelfUpdater {
     return join(this.paths.installRoot, "versions", version);
   }
 
-  #binPath(): string {
-    return join(this.paths.binDir, "pi-daemon");
+  #binPath(name: "pi-daemon" | "pi-daemon-rpc" = "pi-daemon"): string {
+    return join(this.paths.binDir, name);
   }
 }
 
