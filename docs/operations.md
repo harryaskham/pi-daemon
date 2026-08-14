@@ -272,8 +272,9 @@ owner-only bearer at `STATE_DIR/api-token`; later launches validate and reuse it
 `--api-token-file PATH` selects another generated-or-existing path. An inherited
 secret descriptor (`--api-token-fd FD`) or `PI_DAEMON_BEARER_TOKEN` may be used
 instead, but sources are mutually exclusive. Existing regular files and
-secret-manager symlinks are supported. For a symlink, each read resolves the
-chain and opens the canonical final path with no-follow protection against a
+secret-manager symlinks are supported, including relative and nested links. For
+a symlink, each read resolves the chain and opens the canonical final path with
+no-follow protection against a
 second traversal; the opened inode must still be regular, current-user-owned,
 owner-only, and bounded. Existing targets are never overwritten. The default
 bind is the literal loopback address `127.0.0.1`. A non-loopback plaintext bind is refused unless
@@ -679,8 +680,9 @@ administrator. Every identity requires exactly one unique `credentialFile` or
 `credentialFd`; credentials must be independent high-entropy tokens, not user
 passwords. Literal `credential`, `password`, token, bearer, or secret fields are
 unknown and fail startup. Credential paths are bounded; regular files and
-secret-manager symlinks are supported. Each read resolves a configured symlink
-chain and opens the canonical final target with no-follow protection against a
+secret-manager symlinks are supported, including relative and nested links. Each
+read resolves a configured symlink chain and opens the canonical final target
+with no-follow protection against a
 second traversal; that opened inode must be owner-owned, mode 0600, regular, and
 bounded. Descriptors must be inherited descriptors numbered 3 or higher and
 reference an owner-only regular file; they are consumed and closed

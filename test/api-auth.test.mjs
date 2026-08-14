@@ -62,8 +62,8 @@ test("owner-only regular token files, protected symlinks, and inherited descript
   await chmod(tokenFile, 0o600);
   const tokenLink = join(directory, "token-link");
   const nestedTokenLink = join(directory, "nested-token-link");
-  await symlink(tokenFile, tokenLink);
-  await symlink(tokenLink, nestedTokenLink);
+  await symlink("token", tokenLink);
+  await symlink("token-link", nestedTokenLink);
   for (const linkedFile of [tokenLink, nestedTokenLink]) {
     const linked = loadServiceBearer({ tokenFile: linkedFile, environment: {} });
     assert.equal(linked.source, "file");
@@ -71,6 +71,28 @@ test("owner-only regular token files, protected symlinks, and inherited descript
   }
   await chmod(tokenFile, 0o644);
   assert.throws(() => loadServiceBearer({ tokenFile: tokenLink, environment: {} }), /owner-only/);
+  await chmod(tokenFile, 0o600);
+
+  await chmod(tokenFile, 0o000);
+  assert.throws(
+    () => loadServiceBearer({ tokenFile: nestedTokenLink, environment: {} }),
+    (error) => error instanceof Error && !error.message.includes(TOKEN),
+  );
+  await chmod(tokenFile, 0o600);
+
+  const brokenLink = join(directory, "broken-token-link");
+  await symlink("missing-token", brokenLink);
+  assert.throws(
+    () => loadServiceBearer({ tokenFile: brokenLink, environment: {} }),
+    (error) => error instanceof Error && !error.message.includes(TOKEN),
+  );
+
+  const emptyToken = join(directory, "empty-token");
+  await writeFile(emptyToken, "", { mode: 0o600 });
+  assert.throws(
+    () => loadServiceBearer({ tokenFile: emptyToken, environment: {} }),
+    (error) => error instanceof Error && /between/.test(error.message) && !error.message.includes(TOKEN),
+  );
 
   const loop = join(directory, "token-link-loop-private-name");
   await symlink(loop, loop);
