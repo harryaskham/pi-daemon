@@ -5,6 +5,8 @@ semantic versioning once a release tag is cut.
 
 ## Unreleased
 
+- pin the configured API and embedded Dashboard bind/port pair through end-to-end lifecycle acceptance, retain no-fallback listener receipts, and turn `EADDRINUSE` / `EADDRNOTAVAIL` startup failures into content-free actionable diagnostics instead of a generic command failure
+
 ## 0.3.1 — 2026-08-14
 
 - support SOPS and other protected secret-manager symlinks for Dashboard credentials by resolving the configured chain, opening only the canonical final inode with no-follow race protection, and preserving regular-file, current-owner, owner-only mode, byte-bound, generated-file, and path-free loop-failure checks

@@ -442,6 +442,11 @@ web:
           assert.ok(startupStages.includes(`${stage}:started`), `${stage} must identify its start`);
           assert.ok(startupStages.includes(`${stage}:completed`), `${stage} must identify completion`);
         }
+        assert.deepEqual(ready.api, {
+          enabled: true,
+          host: "127.0.0.1",
+          port: apiPort,
+        });
         assert.deepEqual(ready.dashboard, {
           enabled: true,
           host: "127.0.0.1",
@@ -475,6 +480,7 @@ web:
     blocker.listen({ host: "127.0.0.1", port: webPort }, resolve);
   });
   let admitted = false;
+  const collisionLogs = [];
   const collisionCode = await runCli(
     [
       "serve",
@@ -489,7 +495,7 @@ web:
       "--web-port",
       String(webPort),
     ],
-    { stdout: () => {}, stderr: () => {} },
+    { stdout: () => {}, stderr: (line) => collisionLogs.push(line) },
     {
       factory: new EmptyFactory(),
       waitForShutdown: async () => { admitted = true; },
@@ -497,6 +503,52 @@ web:
   );
   assert.equal(collisionCode, 1);
   assert.equal(admitted, false);
+  const collisionFatal = collisionLogs
+    .map((line) => JSON.parse(line))
+    .find((entry) => entry.event === "pi_daemon_fatal");
+  assert.deepEqual(
+    { errorCode: collisionFatal?.errorCode, message: collisionFatal?.message },
+    {
+      errorCode: "EADDRINUSE",
+      message:
+        "configured TCP listener address and port are already in use; stop the conflicting service or configure an unused port",
+    },
+  );
   await assert.rejects(fetch(`http://127.0.0.1:${apiPort}/v1/capabilities`));
   await new Promise((resolve, reject) => blocker.close((error) => error ? reject(error) : resolve()));
+
+  let unavailableAdmitted = false;
+  const unavailableLogs = [];
+  const unavailableCode = await runCli(
+    [
+      "serve",
+      "--config",
+      configPath,
+      "--instance",
+      "embedded-test",
+      "--api-bind",
+      "192.0.2.1",
+      "--api-allow-insecure-http",
+      "true",
+    ],
+    { stdout: () => {}, stderr: (line) => unavailableLogs.push(line) },
+    {
+      factory: new EmptyFactory(),
+      waitForShutdown: async () => { unavailableAdmitted = true; },
+    },
+  );
+  assert.equal(unavailableCode, 1);
+  assert.equal(unavailableAdmitted, false);
+  const unavailableFatal = unavailableLogs
+    .map((line) => JSON.parse(line))
+    .find((entry) => entry.event === "pi_daemon_fatal");
+  assert.deepEqual(
+    { errorCode: unavailableFatal?.errorCode, message: unavailableFatal?.message },
+    {
+      errorCode: "EADDRNOTAVAIL",
+      message:
+        "configured TCP listener address is unavailable on this host; correct the configured API or Dashboard bind address",
+    },
+  );
+  await assert.rejects(fetch(`http://127.0.0.1:${apiPort}/v1/capabilities`));
 });

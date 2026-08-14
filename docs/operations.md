@@ -314,6 +314,16 @@ exclusion are unchanged: bearer bytes are never accepted on argv, generated API
 and browser tokens remain owner-only regular files, and startup/status output
 reports only listener addresses and safe lifecycle state.
 
+The `pi_daemon_ready` record is the listener receipt: its API and Dashboard
+`host`/`port` values are the addresses returned by the operating system after
+binding, not echoed configuration. A non-default configured port therefore
+cannot silently fall back to `7463`/`7464`; clients should connect only after the
+receipt matches the reviewed deployment. If the configured endpoint is already
+occupied or the bind address does not exist on the host, startup fails without
+publishing a partial API/Dashboard pair and emits `EADDRINUSE` or
+`EADDRNOTAVAIL` with a content-free remediation rather than an unhelpful generic
+command failure.
+
 Consumers should capability-gate these flags by pinning a Pi Daemon source
 revision that contains `bd-b05086`, or a release whose notes advertise embedded
 web CLI overrides. Do not infer support merely from protocol-v2 configured-open
