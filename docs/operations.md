@@ -652,8 +652,10 @@ With no identity provider configured, Dash behaves exactly as before: it creates
 or reuses `STATE_DIR/web-token`, authenticates `local-owner`, and gives that
 principal the implicit administrator role. Multi-user activation is explicit
 and static. Identity metadata may be placed directly in the strict daemon YAML,
-but credentials may only be read from an owner-only regular file or an inherited
-descriptor:
+but credentials may only be read from an owner-only regular final file or an
+inherited descriptor. Configured secret-manager paths such as SOPS symlinks are
+resolved to their canonical final target, which is opened with no-follow
+protection before the same owner, mode, regular-file, and byte-limit checks:
 
 ```yaml
 web:
@@ -676,9 +678,12 @@ The provider is bounded to 128 unique identities and requires at least one globa
 administrator. Every identity requires exactly one unique `credentialFile` or
 `credentialFd`; credentials must be independent high-entropy tokens, not user
 passwords. Literal `credential`, `password`, token, bearer, or secret fields are
-unknown and fail startup. Credential files are bounded, owner-owned, mode 0600,
-regular, and non-symlink. Descriptors must be inherited descriptors numbered 3
-or higher and reference an owner-only regular file; they are consumed and closed
+unknown and fail startup. Credential paths are bounded; regular files and
+secret-manager symlinks are supported. Each read resolves a configured symlink
+chain and opens the canonical final target with no-follow protection against a
+second traversal; that opened inode must be owner-owned, mode 0600, regular, and
+bounded. Descriptors must be inherited descriptors numbered 3 or higher and
+reference an owner-only regular file; they are consumed and closed
 at startup. Credential bytes are hashed at startup and never enter YAML, argv,
 Nix store values, status, logs, cookies, browser storage, or provider metadata.
 

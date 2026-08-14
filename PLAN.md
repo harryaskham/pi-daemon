@@ -485,6 +485,9 @@ process appears per wake.
 
 ## Provisional Beads work board
 
+- [ ] `bd-17f1f4` Resolve configured Dashboard credential SOPS links to a
+  canonical final inode with no-follow race protection while preserving owner,
+  mode, regular-file, byte-bound, and generated-credential safety.
 - [x] `bd-bed0ef` Expose bounded, content-free configured-session tool
   materialization provenance and effective inventory; fail closed before
   residency when caller-required stable tool IDs are unavailable, while keeping
