@@ -1238,6 +1238,12 @@ function safeCliErrorCode(error: unknown): string {
 }
 
 function safeCliErrorMessage(error: unknown, code: string): string {
+  if (code === "EADDRINUSE") {
+    return "configured TCP listener address and port are already in use; stop the conflicting service or configure an unused port";
+  }
+  if (code === "EADDRNOTAVAIL") {
+    return "configured TCP listener address is unavailable on this host; correct the configured API or Dashboard bind address";
+  }
   if (
     error instanceof Error &&
     (error.message.includes("bearer source") ||
