@@ -58,7 +58,9 @@ async function harness(t) {
     await writeFile(join(packageRoot, "package.json"), `${JSON.stringify({ version })}\n`);
     await writeFile(join(packageRoot, "npm-shrinkwrap.json"), `${JSON.stringify({ lockfileVersion: 3, packages: { "": { version } } })}\n`);
     await writeFile(join(packageRoot, "dist", "cli.js"), "#!/usr/bin/env node\n", { mode: 0o755 });
+    await writeFile(join(packageRoot, "dist", "rpc-stdio-cli.js"), "#!/usr/bin/env node\n", { mode: 0o755 });
     await symlink(join("..", "@harryaskham", "pi-daemon", "dist", "cli.js"), join(binRoot, "pi-daemon"));
+    await symlink(join("..", "@harryaskham", "pi-daemon", "dist", "rpc-stdio-cli.js"), join(binRoot, "pi-daemon-rpc"));
   };
   const updater = new PiDaemonSelfUpdater(
     { installRoot, binDir },
@@ -77,6 +79,22 @@ async function harness(t) {
     setVersion(next) { version = next; },
     setChecksum(next) { checksum = next; },
   };
+}
+
+async function installNpmGlobalLinks(h) {
+  const packageRoot = join(h.root, "lib", "node_modules", "@harryaskham", "pi-daemon");
+  await mkdir(join(packageRoot, "dist"), { recursive: true });
+  await mkdir(h.binDir, { recursive: true, mode: 0o755 });
+  await writeFile(join(packageRoot, "dist", "cli.js"), "#!/usr/bin/env node\n", { mode: 0o755 });
+  await writeFile(join(packageRoot, "dist", "rpc-stdio-cli.js"), "#!/usr/bin/env node\n", { mode: 0o755 });
+  await symlink(
+    join("..", "lib", "node_modules", "@harryaskham", "pi-daemon", "dist", "cli.js"),
+    join(h.binDir, "pi-daemon"),
+  );
+  await symlink(
+    join("..", "lib", "node_modules", "@harryaskham", "pi-daemon", "dist", "rpc-stdio-cli.js"),
+    join(h.binDir, "pi-daemon-rpc"),
+  );
 }
 
 test("version comparison is strict semantic ordering", () => {
@@ -108,9 +126,15 @@ test("run verifies checksum, installs exact package and atomically owns the loca
   assert.equal(result.updateAvailable, false);
   assert.equal(h.installs.length, 1);
   const binPath = join(h.binDir, "pi-daemon");
+  const rpcBinPath = join(h.binDir, "pi-daemon-rpc");
   assert.equal((await lstat(binPath)).isSymbolicLink(), true);
+  assert.equal((await lstat(rpcBinPath)).isSymbolicLink(), true);
   assert.equal(
     (await realpath(binPath)).endsWith(join("versions", NEXT_VERSION, "node_modules", "@harryaskham", "pi-daemon", "dist", "cli.js")),
+    true,
+  );
+  assert.equal(
+    (await realpath(rpcBinPath)).endsWith(join("versions", NEXT_VERSION, "node_modules", "@harryaskham", "pi-daemon", "dist", "rpc-stdio-cli.js")),
     true,
   );
   const state = JSON.parse(await readFile(join(h.installRoot, "state.json"), "utf8"));
@@ -119,6 +143,34 @@ test("run verifies checksum, installs exact package and atomically owns the loca
 
   await h.updater.run();
   assert.equal(h.installs.length, 1, "active latest release must be a no-op");
+});
+
+test("run adopts only exact npm-global just-install links and manages both CLIs", async (t) => {
+  const h = await harness(t);
+  await installNpmGlobalLinks(h);
+
+  const before = await h.updater.status();
+  assert.equal(before.managedLink, false);
+  assert.equal(before.localInstallRequired, true);
+
+  const result = await h.updater.run();
+  assert.equal(result.activeVersion, NEXT_VERSION);
+  assert.equal(result.managedLink, true);
+  assert.equal(h.installs.length, 1);
+  assert.equal((await realpath(join(h.binDir, "pi-daemon"))).includes(join("versions", NEXT_VERSION)), true);
+  assert.equal((await realpath(join(h.binDir, "pi-daemon-rpc"))).includes(join("versions", NEXT_VERSION)), true);
+
+  await rm(join(h.binDir, "pi-daemon-rpc"));
+  await symlink(
+    join("..", "lib", "node_modules", "@harryaskham", "pi-daemon", "dist", "rpc-stdio-cli.js"),
+    join(h.binDir, "pi-daemon-rpc"),
+  );
+  const hybrid = await h.updater.status();
+  assert.equal(hybrid.managedLink, false);
+  assert.equal(hybrid.localInstallRequired, true);
+  await h.updater.run();
+  assert.equal(h.installs.length, 2, "a mixed managed/npm-global pair must be repaired at the current release");
+  assert.equal((await realpath(join(h.binDir, "pi-daemon-rpc"))).includes(join("versions", NEXT_VERSION)), true);
 });
 
 test("checksum mismatch and local-bin collision fail without publishing an executable", async (t) => {
@@ -138,6 +190,16 @@ test("checksum mismatch and local-bin collision fail without publishing an execu
     (error) => error instanceof SelfUpdateError && error.code === "update_bin_collision",
   );
   assert.equal(collision.installs.length, 0);
+
+  const unrelatedRpc = await harness(t);
+  await installNpmGlobalLinks(unrelatedRpc);
+  await rm(join(unrelatedRpc.binDir, "pi-daemon-rpc"));
+  await symlink(join("..", "somewhere-else", "pi-daemon-rpc"), join(unrelatedRpc.binDir, "pi-daemon-rpc"));
+  await assert.rejects(
+    unrelatedRpc.updater.run(),
+    (error) => error instanceof SelfUpdateError && error.code === "update_bin_collision",
+  );
+  assert.equal(unrelatedRpc.installs.length, 0);
 });
 
 test("verified releases retain only the active and one rollback target", async (t) => {
@@ -158,6 +220,7 @@ test("verified releases retain only the active and one rollback target", async (
   assert.equal(status.activeVersion, second);
   assert.equal(status.previousVersion, third);
   assert.equal((await realpath(join(h.binDir, "pi-daemon"))).includes(join("versions", second)), true);
+  assert.equal((await realpath(join(h.binDir, "pi-daemon-rpc"))).includes(join("versions", second)), true);
 });
 
 test("the owner-private update lock rejects concurrent installers", async (t) => {

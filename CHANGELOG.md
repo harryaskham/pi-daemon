@@ -5,6 +5,7 @@ semantic versioning once a release tag is cut.
 
 ## Unreleased
 
+- let release self-update safely adopt only the exact npm-global `pi-daemon` and `pi-daemon-rpc` links produced by `just install`, continue refusing arbitrary files/links, atomically manage and roll back both launchers together, and document the explicit public-registry override for stale corporate package mirrors
 - pin the configured API and embedded Dashboard bind/port pair through end-to-end lifecycle acceptance, retain no-fallback listener receipts, and turn `EADDRINUSE` / `EADDRNOTAVAIL` startup failures into content-free actionable diagnostics instead of a generic command failure
 
 ## 0.3.1 — 2026-08-14

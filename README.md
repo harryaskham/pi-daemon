@@ -63,8 +63,10 @@ shell, performs the locked npm build/package flow, and installs the portable npm
 package under `${PI_DAEMON_INSTALL_PREFIX:-$HOME/.local}`. Both `pi-daemon` and
 `pi-daemon-rpc` are verified after installation; neither resolves into the Nix
 store. The command updates the two local CLI links but deliberately does not
-restart any service. A Node runtime satisfying `package.json` must remain on the
-service or interactive `PATH`.
+restart any service. A subsequent `pi-daemon update` safely adopts only those
+exact npm-global links and switches both CLIs into the verified release-managed
+version tree; unrelated files or links remain collisions. A Node runtime
+satisfying `package.json` must remain on the service or interactive `PATH`.
 
 ## Why
 

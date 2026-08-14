@@ -28,9 +28,13 @@ pi-daemon update
 downloads the published npm artifact and SHA-256 sidecar, verifies both the
 release checksum and the artifact's exact `npm-shrinkwrap.json` integrity, and
 runs npm with lifecycle scripts disabled. Versions live under the owner-private
-`~/.local/share/pi-daemon/versions/`; `current` and
-`~/.local/bin/pi-daemon` are switched atomically. Existing non-managed files or
-symlinks at that bin path fail closed. The command never restarts services or
+`~/.local/share/pi-daemon/versions/`; `current`,
+`~/.local/bin/pi-daemon`, and `~/.local/bin/pi-daemon-rpc` are switched
+atomically. As a one-time migration, `update` may adopt the two exact npm-global
+symlinks produced by `just install` under the same prefix. Regular files,
+arbitrary existing links, mismatched CLI targets, and every target outside either
+the managed version root or the exact `@harryaskham/pi-daemon/dist` npm-global
+paths still fail closed before download. The command never restarts services or
 moves daemon state, credentials, sockets, or workspaces.
 
 For Home Manager services, opt into the stable mutable-runtime shim once:
@@ -57,9 +61,14 @@ systemctl --user restart pi-daemon-work                 # Linux
 ```
 
 Use `pi-daemon self-update rollback` and restart to atomically select the one
-retained previous release. `status` is offline; `check` and `run` require public
-GitHub plus `npm` on `PATH`. Custom test/install roots are available through
-`--install-root` and `--bin-dir`; production services should use the defaults.
+retained previous release for both CLIs. `status` is offline; `check` and `run`
+require public GitHub plus `npm` on `PATH`. If a configured corporate npm mirror
+has stale package metadata, an operator may select the canonical public registry
+for that invocation with
+`npm_config_registry=https://registry.npmjs.org pi-daemon update`; never include
+registry credentials in argv or logs. Custom test/install roots are available
+through `--install-root` and `--bin-dir`; production services should use the
+defaults.
 
 ## Serve
 

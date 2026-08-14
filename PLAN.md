@@ -485,6 +485,9 @@ process appears per wake.
 
 ## Provisional Beads work board
 
+- [x] `bd-cbf5d4` Let release self-update safely adopt only the exact npm-global
+  links produced by `just install`, atomically manage both CLI launchers, and
+  retain collision, checksum, shrinkwrap, rollback, and no-restart guards.
 - [x] `bd-ca2687` Prove regular, relative, and nested SOPS token paths across
   service and Dashboard auth, with broken, unreadable, empty, permissive, loop,
   byte-bound, and no-secret-output failure coverage.
