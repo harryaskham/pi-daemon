@@ -31,8 +31,8 @@
     # block with `npm run nix:deps-hash` after any package-lock.json change; the
     # `npm-deps-lock` marker is a plain staleness signal that lets CI flag a
     # stale pin without needing Nix on the runner.
-    # npm-deps-lock: sha256-RZQOr8pPQjEvj+t82eSsMhUL5SqH/bYGgOOD7Cr9vl4=
-    npmDepsHash = "sha256-FOKSxsmetVfWvBQWrPuzBRayQgVt82c0KuRLSKP/Elo=";
+    # npm-deps-lock: sha256-xOMteN/PevQPhNmI0KgrRQhRdVulGdVXPG5W/20RUiQ=
+    npmDepsHash = "sha256-h25M88byS4PRcWxFJg5+cx2PPTJyiWkYKoCHOSwVPRM=";
     # One contract selects the hermetic API 36 image for the flake closure and
     # every diagnostic/physical harness. The pinned nixpkgs catalog has no
     # aosp_atd or google_atd at API 36; keep those assertions so a future pin
@@ -129,7 +129,7 @@
       ciBuildNonce = builtins.getEnv "PI_DAEMON_NIX_CI_BUILD_NONCE";
       packageAttrs = {
         pname = "pi-daemon";
-        version = "0.3.0";
+        version = "0.3.1";
         src = ./.;
 
         nodejs = pkgs.nodejs_24;
@@ -186,8 +186,8 @@
         doInstallCheck = true;
         installCheckPhase = ''
           runHook preInstallCheck
-          "$out/bin/pi-daemon" version | grep -Fx 0.3.0
-          "$out/bin/pi-daemon-rpc" --version | grep -Fx 0.3.0
+          "$out/bin/pi-daemon" version | grep -Fx 0.3.1
+          "$out/bin/pi-daemon-rpc" --version | grep -Fx 0.3.1
           runHook postInstallCheck
         '';
 
