@@ -485,6 +485,9 @@ process appears per wake.
 
 ## Provisional Beads work board
 
+- [x] `bd-ca2687` Prove regular, relative, and nested SOPS token paths across
+  service and Dashboard auth, with broken, unreadable, empty, permissive, loop,
+  byte-bound, and no-secret-output failure coverage.
 - [x] `bd-4cc830` Publish Pi Daemon 0.3.1 from the landed Dashboard SOPS fix,
   with synchronized package/lock/source/flake/changelog versions, portable npm
   release assets, immutable tag verification, and post-publish local install.

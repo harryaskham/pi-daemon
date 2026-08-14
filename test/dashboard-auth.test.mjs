@@ -132,8 +132,8 @@ test("credential files and protected secret-manager symlinks are owner-only, reg
 
   const link = join(root, "web-token-link");
   const nestedLink = join(root, "nested-web-token-link");
-  await symlink(path, link);
-  await symlink(link, nestedLink);
+  await symlink("web-token", link);
+  await symlink("web-token-link", nestedLink);
   for (const protectedLink of [link, nestedLink]) {
     assert.equal(await readPrivateDashboardCredential(protectedLink), CREDENTIAL);
     const linkedAuth = await DashboardBrowserAuth.fromTokenFile(protectedLink, { sessionTtlMs: 30_000 });
