@@ -6,7 +6,7 @@ import {
   timingSafeEqual,
 } from "node:crypto";
 import { constants, fstatSync, readSync } from "node:fs";
-import { link, lstat, mkdir, open, rm } from "node:fs/promises";
+import { link, lstat, mkdir, open, realpath, rm } from "node:fs/promises";
 import { dirname } from "node:path";
 
 import type {
@@ -425,12 +425,25 @@ export function readPrivateDashboardCredentialFd(fd: number): string {
 }
 
 export async function readPrivateDashboardCredential(path: string): Promise<string> {
-  let handle;
+  let canonical: string;
   try {
-    handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+    canonical = await realpath(path);
   } catch (error) {
     if (isNodeError(error) && error.code === "ELOOP") {
-      throw new Error("dashboard credential file must be a regular non-symlink file");
+      throw new Error("dashboard credential symlink chain is invalid");
+    }
+    throw error;
+  }
+
+  let handle;
+  try {
+    // Resolve a configured secret-manager link first, then refuse any second
+    // traversal if the canonical target is swapped to a link before open.
+    // All authority checks apply to the opened final inode below.
+    handle = await open(canonical, constants.O_RDONLY | constants.O_NOFOLLOW);
+  } catch (error) {
+    if (isNodeError(error) && error.code === "ELOOP") {
+      throw new Error("dashboard credential target changed before it could be opened safely");
     }
     throw error;
   }

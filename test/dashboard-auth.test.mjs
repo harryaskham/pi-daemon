@@ -117,7 +117,7 @@ test("first launch atomically creates one stable owner-only web credential", asy
   assert.equal(await readPrivateDashboardCredential(path), credential);
 });
 
-test("credential files are owner-only regular bounded files", async (t) => {
+test("credential files and protected secret-manager symlinks are owner-only, regular, and bounded", async (t) => {
   const root = await mkdtemp(join(tmpdir(), "pi-daemon-web-auth-"));
   t.after(async () => rm(root, { recursive: true, force: true }));
   const path = join(root, "web-token");
@@ -129,9 +129,31 @@ test("credential files are owner-only regular bounded files", async (t) => {
   await chmod(path, 0o644);
   await assert.rejects(readPrivateDashboardCredential(path), /owner-only/);
   await chmod(path, 0o600);
+
   const link = join(root, "web-token-link");
+  const nestedLink = join(root, "nested-web-token-link");
   await symlink(path, link);
-  await assert.rejects(readPrivateDashboardCredential(link), /non-symlink/);
+  await symlink(link, nestedLink);
+  for (const protectedLink of [link, nestedLink]) {
+    assert.equal(await readPrivateDashboardCredential(protectedLink), CREDENTIAL);
+    const linkedAuth = await DashboardBrowserAuth.fromTokenFile(protectedLink, { sessionTtlMs: 30_000 });
+    assert.equal(linkedAuth.login(loginRequest()).session.clientId, "client-browser-01");
+    assert.equal(await ensureDashboardCredentialFile(protectedLink), false);
+  }
+  await chmod(path, 0o644);
+  await assert.rejects(readPrivateDashboardCredential(nestedLink), /owner-only/);
+  await chmod(path, 0o600);
+
+  const loop = join(root, "web-token-link-loop-private-name");
+  await symlink(loop, loop);
+  await assert.rejects(
+    readPrivateDashboardCredential(loop),
+    (error) =>
+      error instanceof Error &&
+      error.message === "dashboard credential symlink chain is invalid" &&
+      !error.message.includes(root),
+  );
+
   const oversized = join(root, "oversized");
   await writeFile(oversized, "x".repeat(5000), { mode: 0o600 });
   await assert.rejects(readPrivateDashboardCredential(oversized), /byte limit/);
