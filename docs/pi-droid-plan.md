@@ -6,13 +6,14 @@ title: Pi Droid Android client plan
 # Pi Droid Android client plan
 
 Status: staged implementation active; encrypted release material, JVM SDK/UI
-foundations, and Pi Droid preview 6 with screenshot-tested adaptive UX plus all
-preview 5 daily-driver multi-host and session lifecycle support are live on Play
-internal. External-canary physical proof remains separate work.
+foundations, and Pi Droid preview 7 with screenshot-tested adaptive UX plus all
+daily-driver multi-host and session lifecycle support are live on Play internal.
+Preview 8 is the next monotonic candidate and refreshes generated Pi SDK/TUI
+0.84.1 protocol contracts. External-canary physical proof remains separate work.
 
 Package/application ID: `com.harryaskham.pidroid`  
 Product name: **Pi Droid**  
-Google Play internal-testing app/track: version 6 completed on `internal`
+Google Play internal-testing app/track: version 7 completed on `internal`
 Pre-registered signing certificate SHA-256:
 `FA:58:80:A7:C9:6D:F8:7B:B4:63:7D:18:58:7E:32:F6:CD:F6:95:06:52:34:FE:54:95:E2:4F:ED:12:1E:CE:4C`
 
@@ -794,6 +795,20 @@ release-notes SHA-256 is
 The shared fixture and full UX contract are documented in
 [`pi-droid-ux.md`](pi-droid-ux.md). External-canary proof was not invoked by
 this release.
+
+The seventh internal release was uploaded on 2026-08-12 as version code 7
+(`0.3.0-internal.7`) by workflow run `31617215266` from exact release checkout
+`df6f416c51ce4385995192d191421235a30f7da1`, tree
+`e72e28b6adae7298d2c972c678039913e52e3624`. It retained preview 6's exact app
+behavior while moving publication onto the direct-secret, generic x86 Nix lane
+with no emulator dependency. Remote verification edit `08282332993544893509`
+confirmed version 7 as highest on `internal`. The AAB SHA-256 is
+`0ca4fc6481db44f82ac47446f6cba87203430e6e41af0803826111bbb13f8222`; R8
+mapping SHA-256 is
+`f2f90f5e25816176d5e8cd26a3ad4b51159de1748b271dbba4b30d3e436acb52`; and
+release-notes SHA-256 is
+`5189d50a08e3386df9d5e0e8c755d9429db89b64f8e3a66548d260dbff7c39bd`. The
+retained workflow artifact is `pi-droid-internal-7` (`9149960914`).
 
 ## 19. Testing and acceptance
 

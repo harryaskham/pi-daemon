@@ -120,9 +120,10 @@ The completed product adds, without removing the existing NDJSON mode:
   distribution, and staged delivery design is in
   [`docs/pi-droid-plan.md`](docs/pi-droid-plan.md). Staged Android implementation
   is active: encrypted signing readiness, JVM SDK/UI foundations, and Pi Droid
-  preview 6 with screenshot-tested adaptive UX plus all daily-driver multi-host
+  preview 7 with screenshot-tested adaptive UX plus all daily-driver multi-host
   and session lifecycle support have landed their Play internal acceptance
-  receipts; later Android surfaces remain separate beads.
+  receipts. Preview 8 is prepared to refresh generated Pi SDK/TUI 0.84.1
+  protocol contracts; later Android surfaces remain separate beads.
 
 ## 5. Runtime architecture
 
@@ -522,12 +523,11 @@ process appears per wake.
 - [x] Operator-directed Pi Droid preview 6 publication from the exact merged UX
   source to Play internal with signed phone/tablet/wide install smoke, immutable
   AAB/mapping/source/notes hashes, and independent pre/post version receipts.
-- [ ] `bd-2cc76d` Keep accelerated emulator evidence honest with an
-  Actions-executed `/dev/kvm` open/ioctl receipt and promotion from
-  `android-kvm-candidate` to `android-kvm`, while keeping signed AAB build,
+- [x] `bd-2cc76d` Keep accelerated emulator evidence honest with a separate
+  Actions-executed `/dev/kvm` capability receipt while keeping signed AAB build,
   validation, Play upload, and readback on the generic x86 Nix lane with no KVM
-  dependency. Preserve the three failed mixed-lane receipts before exactly one
-  new monotonic Internal release.
+  dependency. The terminal workflow run `31617215266` published version 7 and
+  independently verified it as highest on `internal`.
 - [x] `bd-c42fff` Publish Pi Droid preview 5 from the exact reviewed
   daily-driver source to Play internal with signed install smoke, immutable
   AAB/mapping/source/notes hashes, and independent pre/post version receipts.
