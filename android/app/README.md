@@ -6,15 +6,15 @@ Android-Keystore AES-GCM ciphertext under `noBackupFilesDir`, and projects
 authenticated capabilities, multi-host inventory, information and transcript
 state into canonical session surfaces.
 
-Google Play internal currently carries version 6 (`0.3.0-internal.6`). Its
-exact app source base is commit
-`4febafe56440eb57e9366dfe2fc591960dd7d78a`, tree
-`595a139e555b53ee4c43100428d4e0b40abd87f2`; the release checkout added only the
-Play notes, monotonic release identity, source contract assertions, and release
-ledger. Version 6 preserves preview 5's durable editable/forget/re-pair
-crash-safe multi-host management plus a persistent adaptive session catalog that creates from the
-daemon's exact configured defaults, opens an exact retained generation, or
-adopts one eligible existing inventory row.
+Google Play internal currently carries version 7 (`0.3.0-internal.7`). Its
+exact release checkout is commit
+`df6f416c51ce4385995192d191421235a30f7da1`, tree
+`e72e28b6adae7298d2c972c678039913e52e3624`, including preview 6's adaptive UX
+and the later generated SDK contract updates in that checkout. Version 7
+preserves preview 6's durable editable/forget/re-pair crash-safe multi-host management plus a
+persistent adaptive session catalog that creates from the daemon's exact
+configured defaults, opens an exact retained generation, or adopts one eligible
+existing inventory row.
 
 Mobile cannot override the configured cwd, inject a system prompt, or silently
 broaden tools. Every live connection attaches as an observer, explicit control
@@ -32,7 +32,8 @@ host identity on the first reviewed refresh. Automatic request retry remains
 disabled, active WebSockets are not retired, and an indeterminate mutation is
 never replayed during refresh or the separate interactive reconnect.
 
-Version 6 publishes the `bd-8e2c2a` daily-driver UX contract. It adds
+Preview 6 introduced the `bd-8e2c2a` daily-driver UX contract, and version 7
+retains it unchanged. It adds
 secure first-run endpoint assessment, focused host forms, search/filter/recency
 inventory, explicit role/freshness/action state, Transcript/Tree/Terminal/
 Extensions destinations, phone/tablet/wide adaptation, Android dynamic color
@@ -48,8 +49,9 @@ state matrix, and deterministic screenshot command.
 The module is excluded from ordinary Gradle settings and the Android fast lane.
 Enable it only with `-PpiDroidAndroidApp=true` inside the pinned
 `nix develop .#androidRelease` shell. The committed `android/release.properties`
-records the current monotonic Play identity as version code 6 and release name
-`0.3.0-internal.6`; every later AAB must increment the code. The narrow source
+records the next monotonic Play candidate as version code 8 and release name
+`0.3.0-internal.8`; Play internal currently carries version 7, and every later
+AAB must increment the code. The narrow source
 smoke for changes to this conditional module is:
 
 ```console
@@ -129,16 +131,16 @@ Play mutation:
 PI_DROID_SOPS_SSH_PRIVATE_KEY_FILE="$HOME/.ssh/caco" \
   nix develop .#androidRelease --command \
   android/build-logic/release-internal.sh \
-    --version-code 6 \
-    --version-name 0.3.0-internal.6 \
+    --version-code 8 \
+    --version-name 0.3.0-internal.8 \
     --artifacts "$PWD/pi-droid-release" \
     --prepare-only
 
 PI_DROID_SOPS_SSH_PRIVATE_KEY_FILE="$HOME/.ssh/caco" \
   nix develop .#androidRelease --command \
   android/build-logic/release-internal.sh \
-    --version-code 6 \
-    --version-name 0.3.0-internal.6 \
+    --version-code 8 \
+    --version-name 0.3.0-internal.8 \
     --artifacts "$PWD/pi-droid-release" \
     --upload-prepared
 ```
@@ -152,6 +154,20 @@ R8 mapping, and published notes SHA-256 values are
 `5189d50a08e3386df9d5e0e8c755d9429db89b64f8e3a66548d260dbff7c39bd`.
 The single completed internal upload preserved versions 1–5 and did not touch
 production, canary, tokens, or live sessions.
+
+Version 7 was uploaded on 2026-08-12 only to the completed Play `internal`
+track by workflow run `31617215266` from exact release source
+`df6f416c51ce4385995192d191421235a30f7da1`, tree
+`e72e28b6adae7298d2c972c678039913e52e3624`. Remote verification edit
+`08282332993544893509` confirmed version 7 as highest. The exact AAB SHA-256 is
+`0ca4fc6481db44f82ac47446f6cba87203430e6e41af0803826111bbb13f8222`, the R8
+mapping SHA-256 is
+`f2f90f5e25816176d5e8cd26a3ad4b51159de1748b271dbba4b30d3e436acb52`, and the
+published release-notes SHA-256 is
+`5189d50a08e3386df9d5e0e8c755d9429db89b64f8e3a66548d260dbff7c39bd`. The
+retained GitHub artifact is `pi-droid-internal-7` (`9149960914`). Version 7
+preserved the preview 6 app behavior while proving the direct-secret,
+non-emulator release lane end to end.
 
 Preparation validates bundletool structure, package/version, JAR signature and
 the exact release certificate, then installs a universal APK on a dynamically

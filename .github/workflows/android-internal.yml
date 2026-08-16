@@ -6,12 +6,12 @@ on:
       versionCode:
         description: Monotonic Play version code
         required: true
-        default: "2"
+        default: "8"
         type: string
       versionName:
         description: Bounded internal release name
         required: true
-        default: 0.3.0-internal.2
+        default: 0.3.0-internal.8
         type: string
 
 permissions:

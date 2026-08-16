@@ -40,8 +40,8 @@ test("Pi Droid app is conditional, fixed-identity, source-gated, and release sig
   assert.match(build, /targetSdk\s*=\s*36/);
   assert.match(build, /versionCode\s*=\s*providers\.gradleProperty\("piDroidVersionCode"\)/);
   assert.match(build, /versionName\s*=\s*providers\.gradleProperty\("piDroidVersionName"\)/);
-  assert.match(build, /piDroidVersionCode"\)\.getOrElse\("6"\)/);
-  assert.match(build, /piDroidVersionName"\)\.getOrElse\("0\.3\.0-internal\.6"\)/);
+  assert.match(build, /piDroidVersionCode"\)\.getOrElse\("8"\)/);
+  assert.match(build, /piDroidVersionName"\)\.getOrElse\("0\.3\.0-internal\.8"\)/);
   assert.match(build, /resolutionStrategy\.set\(ResolutionStrategy\.IGNORE\)/);
   assert.match(build, /track\.set\("internal"\)/);
   assert.match(build, /serviceAccountCredentials\.set\(file\(/);
@@ -66,8 +66,8 @@ test("Pi Droid app is conditional, fixed-identity, source-gated, and release sig
   assert.match(releaseNotes, /observer, control, wake, and stream lifecycle/);
   assert.match(releaseNotes, /process-death resume that restores accepted work as indeterminate without replay/);
   assert.ok(releaseNotes.length <= 500, "Play internal release notes must remain within the locale limit");
-  assert.match(releaseProperties, /^versionCode=6$/m);
-  assert.match(releaseProperties, /^versionName=0\.3\.0-internal\.6$/m);
+  assert.match(releaseProperties, /^versionCode=8$/m);
+  assert.match(releaseProperties, /^versionName=0\.3\.0-internal\.8$/m);
 });
 
 test("Android shells select the pinned platform-specific Java home", async () => {
