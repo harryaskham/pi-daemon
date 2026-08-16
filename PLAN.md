@@ -120,10 +120,10 @@ The completed product adds, without removing the existing NDJSON mode:
   distribution, and staged delivery design is in
   [`docs/pi-droid-plan.md`](docs/pi-droid-plan.md). Staged Android implementation
   is active: encrypted signing readiness, JVM SDK/UI foundations, and Pi Droid
-  preview 7 with screenshot-tested adaptive UX plus all daily-driver multi-host
+  preview 8 with screenshot-tested adaptive UX plus all daily-driver multi-host
   and session lifecycle support have landed their Play internal acceptance
-  receipts. Preview 8 is prepared to refresh generated Pi SDK/TUI 0.84.1
-  protocol contracts; later Android surfaces remain separate beads.
+  receipts. Preview 8 refreshes generated Pi SDK/TUI 0.84.1 protocol contracts;
+  later Android surfaces remain separate beads.
 
 ## 5. Runtime architecture
 
@@ -528,6 +528,10 @@ process appears per wake.
   validation, Play upload, and readback on the generic x86 Nix lane with no KVM
   dependency. The terminal workflow run `31617215266` published version 7 and
   independently verified it as highest on `internal`.
+- [x] `bd-b4d8d7` Publish Pi Droid preview 8 from exact landed source
+  `e7020fd342f1e4b7f306f6ba88486da085b6f181` through workflow run
+  `31944818396`; remote edit `05782102841058755487` independently verified
+  version 8 as highest on completed Play `internal`.
 - [x] `bd-c42fff` Publish Pi Droid preview 5 from the exact reviewed
   daily-driver source to Play internal with signed install smoke, immutable
   AAB/mapping/source/notes hashes, and independent pre/post version receipts.
