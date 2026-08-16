@@ -6,15 +6,14 @@ Android-Keystore AES-GCM ciphertext under `noBackupFilesDir`, and projects
 authenticated capabilities, multi-host inventory, information and transcript
 state into canonical session surfaces.
 
-Google Play internal currently carries version 7 (`0.3.0-internal.7`). Its
-exact release checkout is commit
-`df6f416c51ce4385995192d191421235a30f7da1`, tree
-`e72e28b6adae7298d2c972c678039913e52e3624`, including preview 6's adaptive UX
-and the later generated SDK contract updates in that checkout. Version 7
-preserves preview 6's durable editable/forget/re-pair crash-safe multi-host management plus a
-persistent adaptive session catalog that creates from the daemon's exact
-configured defaults, opens an exact retained generation, or adopts one eligible
-existing inventory row.
+Google Play internal currently carries version 8 (`0.3.0-internal.8`). Its
+exact release source is commit `e7020fd342f1e4b7f306f6ba88486da085b6f181`,
+tree `f770e30730c1c777486bbc1dbf07e80831e7bedf`, including refreshed generated Pi
+SDK/TUI 0.84.1 protocol contracts. Version 8 preserves the durable
+editable/forget/re-pair crash-safe multi-host management plus a persistent
+adaptive session catalog that creates from the daemon's exact configured
+defaults, opens an exact retained generation, or adopts one eligible existing
+inventory row.
 
 Mobile cannot override the configured cwd, inject a system prompt, or silently
 broaden tools. Every live connection attaches as an observer, explicit control
@@ -32,8 +31,8 @@ host identity on the first reviewed refresh. Automatic request retry remains
 disabled, active WebSockets are not retired, and an indeterminate mutation is
 never replayed during refresh or the separate interactive reconnect.
 
-Preview 6 introduced the `bd-8e2c2a` daily-driver UX contract, and version 7
-retains it unchanged. It adds
+Preview 6 introduced the `bd-8e2c2a` daily-driver UX contract, and versions 7
+and 8 retain it unchanged. It adds
 secure first-run endpoint assessment, focused host forms, search/filter/recency
 inventory, explicit role/freshness/action state, Transcript/Tree/Terminal/
 Extensions destinations, phone/tablet/wide adaptation, Android dynamic color
@@ -49,9 +48,8 @@ state matrix, and deterministic screenshot command.
 The module is excluded from ordinary Gradle settings and the Android fast lane.
 Enable it only with `-PpiDroidAndroidApp=true` inside the pinned
 `nix develop .#androidRelease` shell. The committed `android/release.properties`
-records the next monotonic Play candidate as version code 8 and release name
-`0.3.0-internal.8`; Play internal currently carries version 7, and every later
-AAB must increment the code. The narrow source
+records the current monotonic Play identity as version code 8 and release name
+`0.3.0-internal.8`; every later AAB must increment the code. The narrow source
 smoke for changes to this conditional module is:
 
 ```console
@@ -168,6 +166,20 @@ published release-notes SHA-256 is
 retained GitHub artifact is `pi-droid-internal-7` (`9149960914`). Version 7
 preserved the preview 6 app behavior while proving the direct-secret,
 non-emulator release lane end to end.
+
+Version 8 was uploaded on 2026-08-16 only to the completed Play `internal`
+track by workflow run `31944818396` from exact landed source
+`e7020fd342f1e4b7f306f6ba88486da085b6f181`, tree
+`f770e30730c1c777486bbc1dbf07e80831e7bedf`. Remote verification edit
+`05782102841058755487` confirmed version 8 as highest. The exact AAB SHA-256 is
+`72914d4e2296c476649d5da1b2d06ecc6a14bf9016d968da93d6b3d123532506`, the R8
+mapping SHA-256 is
+`328148f4a65bf3e58f97e85e79b5787a52aa19570707581dc252adddf9cfb571`, and the
+published release-notes SHA-256 is
+`d683fba711ac20769cd212fa50e1ea0e1e45679d64ea283691f7dfc8ab1bbefb`. The
+retained GitHub artifact is `pi-droid-internal-8` (`9263087091`), whose archive
+SHA-256 is
+`f1ac7471ea4cce7ad0d47a0c444ad09db4c3233710d50d062a7e9a9a3adb8d1f`.
 
 Preparation validates bundletool structure, package/version, JAR signature and
 the exact release certificate, then installs a universal APK on a dynamically

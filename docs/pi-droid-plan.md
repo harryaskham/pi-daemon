@@ -6,14 +6,14 @@ title: Pi Droid Android client plan
 # Pi Droid Android client plan
 
 Status: staged implementation active; encrypted release material, JVM SDK/UI
-foundations, and Pi Droid preview 7 with screenshot-tested adaptive UX plus all
+foundations, and Pi Droid preview 8 with screenshot-tested adaptive UX plus all
 daily-driver multi-host and session lifecycle support are live on Play internal.
-Preview 8 is the next monotonic candidate and refreshes generated Pi SDK/TUI
-0.84.1 protocol contracts. External-canary physical proof remains separate work.
+Preview 8 refreshes generated Pi SDK/TUI 0.84.1 protocol contracts.
+External-canary physical proof remains separate work.
 
 Package/application ID: `com.harryaskham.pidroid`  
 Product name: **Pi Droid**  
-Google Play internal-testing app/track: version 7 completed on `internal`
+Google Play internal-testing app/track: version 8 completed on `internal`
 Pre-registered signing certificate SHA-256:
 `FA:58:80:A7:C9:6D:F8:7B:B4:63:7D:18:58:7E:32:F6:CD:F6:95:06:52:34:FE:54:95:E2:4F:ED:12:1E:CE:4C`
 
@@ -809,6 +809,21 @@ mapping SHA-256 is
 release-notes SHA-256 is
 `5189d50a08e3386df9d5e0e8c755d9429db89b64f8e3a66548d260dbff7c39bd`. The
 retained workflow artifact is `pi-droid-internal-7` (`9149960914`).
+
+The eighth internal release was uploaded on 2026-08-16 as version code 8
+(`0.3.0-internal.8`) by workflow run `31944818396` from exact landed source
+`e7020fd342f1e4b7f306f6ba88486da085b6f181`, tree
+`f770e30730c1c777486bbc1dbf07e80831e7bedf`. It refreshes generated Pi SDK/TUI
+0.84.1 protocol contracts while preserving all preview 7 daily-driver behavior.
+Remote verification edit `05782102841058755487` confirmed version 8 as highest
+on `internal`. The AAB SHA-256 is
+`72914d4e2296c476649d5da1b2d06ecc6a14bf9016d968da93d6b3d123532506`; R8
+mapping SHA-256 is
+`328148f4a65bf3e58f97e85e79b5787a52aa19570707581dc252adddf9cfb571`; and
+release-notes SHA-256 is
+`d683fba711ac20769cd212fa50e1ea0e1e45679d64ea283691f7dfc8ab1bbefb`. The
+retained workflow artifact is `pi-droid-internal-8` (`9263087091`), archive
+SHA-256 `f1ac7471ea4cce7ad0d47a0c444ad09db4c3233710d50d062a7e9a9a3adb8d1f`.
 
 ## 19. Testing and acceptance
 
