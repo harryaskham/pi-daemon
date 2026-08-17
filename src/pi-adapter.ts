@@ -85,6 +85,10 @@ export interface PiSessionFactoryOptions {
    */
   externalSessionRoots?: string[];
   allowAuthorityRootOverlap?: boolean;
+  /** Owner-trusted host: skip the explicit-resource authority gate. */
+  trustedHost?: boolean;
+  /** `lenient` downgrades explicit-resource load failures to diagnostics. */
+  resourceLoadPolicy?: "strict" | "lenient";
   credentials?: PiCredentialStore;
   modelRuntime?: ModelRuntime;
   createSession?: (options: CreateAgentSessionOptions) => Promise<CreateAgentSessionResult>;
@@ -133,6 +137,8 @@ export class PiSessionFactory implements SessionFactory {
   readonly #allowedRoots: string[];
   readonly #externalSessionRoots: string[];
   readonly #allowAuthorityRootOverlap: boolean;
+  readonly #trustedHost: boolean;
+  readonly #resourceLoadPolicy: "strict" | "lenient";
   readonly #createSession: (
     options: CreateAgentSessionOptions,
   ) => Promise<CreateAgentSessionResult>;
@@ -152,6 +158,8 @@ export class PiSessionFactory implements SessionFactory {
     );
     this.agentDir = resolve(options.agentDir ?? getAgentDir());
     this.#allowAuthorityRootOverlap = options.allowAuthorityRootOverlap ?? false;
+    this.#trustedHost = options.trustedHost ?? false;
+    this.#resourceLoadPolicy = options.resourceLoadPolicy ?? "strict";
     const authPath = join(this.agentDir, "auth.json");
     if (options.credentials === undefined) validatePrivateAuthFile(authPath);
     this.authPath = authPath;
@@ -458,7 +466,7 @@ export class PiSessionFactory implements SessionFactory {
           "runtime replacement cannot override the configured session agentDir",
         );
       }
-      if (configuredSpec !== undefined) {
+      if (configuredSpec !== undefined && !this.#trustedHost) {
         await validateExplicitResourceAuthority(configuredSpec);
       }
       let installedPackageResources = emptyInstalledPiPackageResources();
@@ -520,6 +528,8 @@ export class PiSessionFactory implements SessionFactory {
           services.resourceLoader,
           installedPackageResources,
           hostToolAdapter !== undefined,
+          this.#resourceLoadPolicy,
+          services.diagnostics,
         );
       }
       const materializedSessionManager = await materializeSessionManager(
@@ -1234,6 +1244,8 @@ function assertExplicitResourcesLoaded(
   loader: ResourceLoader,
   installedPackages: InstalledPiPackageResources,
   forceNoExtensions = false,
+  policy: "strict" | "lenient" = "strict",
+  diagnostics?: { type: "error" | "info" | "warning"; message: string }[],
 ): void {
   const resources = spec.resources;
   const installedExtensionCount = forceNoExtensions || resources?.noExtensions === true
@@ -1261,6 +1273,16 @@ function assertExplicitResourcesLoaded(
       ? loader.getThemes().diagnostics.filter((entry) => entry.type === "error").length
       : 0;
   if (extensionFailures + skillFailures + promptFailures + themeFailures > 0) {
+    if (policy === "lenient") {
+      // An owner-trusted host mirrors `pi`: a resource directory containing
+      // package metadata, lockfiles, or editor artifacts reports diagnostics
+      // instead of refusing the whole session.
+      diagnostics?.push({
+        type: "warning",
+        message: `one or more explicitly configured session resources failed to load (extensions=${extensionFailures}, skills=${skillFailures}, prompts=${promptFailures}, themes=${themeFailures})`,
+      });
+      return;
+    }
     throw new PiAdapterError(
       "resource_policy_unavailable",
       "one or more explicitly configured session resources failed to load",

@@ -43,8 +43,23 @@ export interface PiDaemonLimitConfig {
   maxOutboundBytesPerConnection?: number;
 }
 
+export type PiDaemonResourceLoadPolicy = "strict" | "lenient";
+
 export interface PiDaemonSecurityConfig {
   allowAuthorityRootOverlap?: boolean;
+  /**
+   * Owner-trusted host opt-in. Explicitly declared session resources are
+   * accepted without the symlink/foreign-owner/foreign-writer authority gate,
+   * matching what `pi` itself does with the same operator-owned files.
+   */
+  trustedHost?: boolean;
+  /**
+   * `strict` (default) refuses a session when any explicitly declared resource
+   * fails to load. `lenient` reports those failures as session diagnostics, so
+   * a resource directory containing package metadata, lockfiles, or editor
+   * artifacts behaves exactly as it does under `pi`.
+   */
+  resourceLoadPolicy?: PiDaemonResourceLoadPolicy;
 }
 
 export interface PiDaemonScheduleConfig {
@@ -486,9 +501,22 @@ function parseConfig(value: unknown): PiDaemonConfig {
   }
   if (root.security !== undefined) {
     const security = objectValue(root.security, "security");
-    assertKnownKeys(security, ["allowAuthorityRootOverlap"]);
+    assertKnownKeys(security, [
+      "allowAuthorityRootOverlap",
+      "trustedHost",
+      "resourceLoadPolicy",
+    ]);
     const allowAuthorityRootOverlap = optionalBoolean(security, "allowAuthorityRootOverlap");
-    result.security = allowAuthorityRootOverlap === undefined ? {} : { allowAuthorityRootOverlap };
+    const trustedHost = optionalBoolean(security, "trustedHost");
+    const resourceLoadPolicy = optionalEnum(security, "resourceLoadPolicy", [
+      "strict",
+      "lenient",
+    ] as const);
+    result.security = {
+      ...(allowAuthorityRootOverlap === undefined ? {} : { allowAuthorityRootOverlap }),
+      ...(trustedHost === undefined ? {} : { trustedHost }),
+      ...(resourceLoadPolicy === undefined ? {} : { resourceLoadPolicy }),
+    };
   }
   if (root.limits !== undefined) result.limits = parseLimits(root.limits);
   if (root.api !== undefined) result.api = parseApi(root.api);

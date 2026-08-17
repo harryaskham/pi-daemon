@@ -591,6 +591,8 @@ async function runServe(
       "auth-seed-file",
       "allow-root",
       "allow-authority-root-overlap",
+      "trusted-host",
+      "resource-load-policy",
       "max-sessions",
       "max-concurrent-turns",
       "max-session-queue-depth",
@@ -771,6 +773,14 @@ async function runServe(
             "allow-authority-root-overlap",
             config.security?.allowAuthorityRootOverlap,
           ) ?? false,
+        trustedHost:
+          booleanSetting(options, "trusted-host", config.security?.trustedHost) ?? false,
+        resourceLoadPolicy:
+          options.get("resource-load-policy") === "lenient"
+            ? "lenient"
+            : options.get("resource-load-policy") === "strict"
+              ? "strict"
+              : (config.security?.resourceLoadPolicy ?? "strict"),
       }),
     durability,
     catalog,
@@ -1476,6 +1486,7 @@ Usage:
                   --socket PATH --allow-root PATH [--allow-root PATH ...]
                   [--state-dir PATH] [--agent-dir PATH] [limit options]
                   [--auth-seed-file PATH] [--allow-authority-root-overlap true|false]
+                  [--trusted-host true|false] [--resource-load-policy strict|lenient]
                   [--api-enabled true|false] [--api-port PORT] [--api-bind HOST]
                   [--api-token-file PATH | --api-token-fd FD]
                   [--api-allow-insecure-http true|false]
@@ -1565,6 +1576,8 @@ Service configuration:
   PI_DAEMON_INSTANCE          Instance fallback; CLI --instance takes precedence
   Individual CLI values override YAML; existing flag-only invocation remains supported.
   security.allowAuthorityRootOverlap is a high-trust opt-in for workloads rooted above daemon state/credentials.
+  security.trustedHost accepts owner-declared session resources without the explicit-resource authority gate.
+  security.resourceLoadPolicy=lenient reports explicit-resource load failures as diagnostics instead of refusing the session.
   An enabled web.mode=embedded block serves the packaged Dash at /dash/ on web.port.
   The web command uses web.mode=dedicated and defaults to API 7463 / Dash 7465.
   Native TLS requires an exact HTTPS public origin plus one cert and key source.

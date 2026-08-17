@@ -131,19 +131,15 @@ cancels superseded runs; `ci-macos.yml` has its own concurrency group and lets a
 push to `main` queue, so the slowest verification keeps its verdict instead of
 being killed by the next landing. The load-sensitive service/process-tree proof
 lives in scheduled/manual `consumer-acceptance.yml`, not any push or install
-gate. The supported-system Attic publisher lives in `closure-cache.yml`; each
-target has its own non-cancelling concurrency group, because a half-built run
-leaves that platform's consumers with no closure to substitute while unrelated
-platform publishers must continue independently. Every Attic call runs through
-`nix develop .#closurePublisher --command attic`; do not restore a runner PATH
-check or ad-hoc package bootstrap. Run
+gate. There is deliberately no dedicated closure publisher: any fleet system
+that builds this flake already pushes the resulting closure to the shared signed
+cache, so a separate credentialed publisher added CI surface and cache-name
+pinning without adding availability. Run
 `nix build .#checks.<system>.workflow-syntax` when editing workflows; the pinned
 actionlint check catches invalid GitHub expression contexts before a workflow can
-fail with zero jobs. The shared Linux publisher must prove it remains untrusted,
-and its Nix setup action must explicitly retain `set_as_trusted_user: false`;
-exact Attic endpoint/signing keys are host-declared, `attic use` is forbidden,
-and the push token is step-scoped after build. Exact signed rehydration—not a
-client config dump or successful local build—is the substitution receipt.
+fail with zero jobs. Workflows must retain `set_as_trusted_user: false`, and
+substituters/signing keys remain host-declared fleet state rather than values
+this repository pins.
 
 They are separate because the first attempt at this put both in one workflow and
 merely scoped `cancel-in-progress` to pull requests. That deadlocked CI
