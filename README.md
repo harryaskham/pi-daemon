@@ -302,10 +302,9 @@ An opt-in stable service shim can prefer verified atomic releases from
 `~/.local/bin/pi-daemon` while retaining the immutable Nix package as fallback,
 so subsequent `pi-daemon update` runs do not require a full system rebuild; see
 [User-local release updates](docs/operations.md#user-local-release-updates).
-A separate non-cancelling Attic publisher builds, executes, and pushes the exact
-package closure for all four supported Linux/Darwin architectures, with
-per-target runner-capability checks and signed-substituter preservation; see
-[Supported-system closure cache](docs/operations.md#supported-system-closure-cache-and-nix-on-droid-bootstrap).
+Prebuilt closures come from the shared signed cache that every fleet builder
+already populates; see
+[Closure availability](docs/operations.md#closure-availability-and-nix-on-droid-bootstrap).
 
 ## Documentation
 
