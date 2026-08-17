@@ -165,6 +165,8 @@ sessionStorage:
   mode: pi-session-root
 security:
   allowAuthorityRootOverlap: true
+  trustedHost: true
+  resourceLoadPolicy: lenient
 limits:
   maxSessions: 32
   idleSessionTtlMs: 0
@@ -229,6 +231,8 @@ web:
   assert.equal(loaded.present, true);
   assert.equal(loaded.config.limits.maxSessions, 32);
   assert.equal(loaded.config.security.allowAuthorityRootOverlap, true);
+  assert.equal(loaded.config.security.trustedHost, true);
+  assert.equal(loaded.config.security.resourceLoadPolicy, "lenient");
   assert.equal(loaded.config.web.tui.defaultPresentation, "rich");
   assert.equal(loaded.config.web.publicOrigin, "https://dash.example.test");
   assert.equal(loaded.config.web.allowInsecureHttp, false);

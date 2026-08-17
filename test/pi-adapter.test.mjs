@@ -546,6 +546,79 @@ test("configured factory applies scoped model auth, settings, resources, and too
   }
 });
 
+test("an owner-trusted lenient host tolerates unloadable declared resources", async () => {
+  const stateDir = await temporaryDirectory();
+  const agentDir = await temporaryDirectory();
+  const scopedAgentDir = await temporaryDirectory();
+  const cwd = await temporaryDirectory();
+  // A real reviewed Pi home also contains package metadata and lockfiles that
+  // `pi` itself simply ignores while scanning its resource directories.
+  const metadataPath = join(cwd, "package.json");
+  await writeFile(metadataPath, "{}\n");
+
+  const seed = await ModelRuntime.create({ credentials: inMemoryCredentials(), modelsPath: null });
+  const model = seed.getModels().find((candidate) => candidate.provider === "openai");
+  assert.ok(model, "Pi built-in registry must expose an OpenAI model");
+  const credentials = inMemoryCredentials({
+    [model.provider]: { type: "api_key", key: "shared-key" },
+  });
+  const modelRuntime = await ModelRuntime.create({ credentials, modelsPath: null });
+
+  const strictFactory = new PiSessionFactory({
+    stateDir,
+    agentDir,
+    allowedRoots: [cwd],
+    credentials,
+    modelRuntime,
+    async createSession(options) {
+      return {
+        session: new FakePiSession("strict", options.model, options.sessionManager),
+        extensionsResult: options.resourceLoader.getExtensions(),
+      };
+    },
+  });
+  const configuration = () =>
+    parseSessionConfiguration({
+      cwd,
+      agentDir: scopedAgentDir,
+      target: { mode: "memory" },
+      model: { provider: model.provider, id: model.id },
+      tools: { mode: "none" },
+      resources: { extensions: [metadataPath], noContextFiles: true },
+      env: { OPENAI_API_KEY: "session-key" },
+    });
+  await assert.rejects(
+    strictFactory.open({
+      sessionId: "strict-metadata-resource",
+      generation: 1,
+      ...configuration().openRequest,
+    }),
+    (error) => error instanceof PiAdapterError && error.code === "resource_policy_unavailable",
+  );
+
+  const lenientFactory = new PiSessionFactory({
+    stateDir,
+    agentDir,
+    allowedRoots: [cwd],
+    credentials,
+    modelRuntime,
+    trustedHost: true,
+    resourceLoadPolicy: "lenient",
+    async createSession(options) {
+      return {
+        session: new FakePiSession("lenient", options.model, options.sessionManager),
+        extensionsResult: options.resourceLoader.getExtensions(),
+      };
+    },
+  });
+  const adapter = await lenientFactory.open({
+    sessionId: "lenient-metadata-resource",
+    generation: 1,
+    ...configuration().openRequest,
+  });
+  await adapter.dispose();
+});
+
 test("adapter maps Pi events, prompt result, queue controls, abort, and preflight rejection", async () => {
   const { model } = await modelHarness();
   const sessionRoot = await temporaryDirectory();
