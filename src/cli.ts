@@ -591,6 +591,8 @@ async function runServe(
       "auth-seed-file",
       "allow-root",
       "allow-authority-root-overlap",
+      "trusted-host",
+      "resource-load-policy",
       "max-sessions",
       "max-concurrent-turns",
       "max-session-queue-depth",
@@ -773,7 +775,12 @@ async function runServe(
           ) ?? false,
         trustedHost:
           booleanSetting(options, "trusted-host", config.security?.trustedHost) ?? false,
-        resourceLoadPolicy: config.security?.resourceLoadPolicy ?? "strict",
+        resourceLoadPolicy:
+          options.get("resource-load-policy") === "lenient"
+            ? "lenient"
+            : options.get("resource-load-policy") === "strict"
+              ? "strict"
+              : (config.security?.resourceLoadPolicy ?? "strict"),
       }),
     durability,
     catalog,
@@ -1479,6 +1486,7 @@ Usage:
                   --socket PATH --allow-root PATH [--allow-root PATH ...]
                   [--state-dir PATH] [--agent-dir PATH] [limit options]
                   [--auth-seed-file PATH] [--allow-authority-root-overlap true|false]
+                  [--trusted-host true|false] [--resource-load-policy strict|lenient]
                   [--api-enabled true|false] [--api-port PORT] [--api-bind HOST]
                   [--api-token-file PATH | --api-token-fd FD]
                   [--api-allow-insecure-http true|false]
