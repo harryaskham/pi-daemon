@@ -78,7 +78,7 @@ export function parseSessionTree(
   overrides: Partial<SessionTreeLimits> = {},
 ): SessionTreeModel {
   const limits = resolveLimits(overrides);
-  const response = record(value, "$", ["tree", "leafId"]);
+  const response = record(value, "$", ["tree", "leafId", "type", "id", "command", "success"]);
   if (!Array.isArray(response.tree)) invalid("$.tree", "must be an array");
   const leafId = response.leafId === null ? null : identifier(response.leafId, "$.leafId");
   const entries: MutableTreeEntry[] = [];
