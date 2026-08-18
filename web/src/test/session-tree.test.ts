@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  type SessionTreeModel,
   SessionTreeValidationError,
   adjacentSessionTreeEntry,
   compareSessionTreeEntries,
@@ -8,40 +9,63 @@ import {
 } from "../session-tree";
 import { reportPerformanceBudget } from "./performance-budget";
 
-const message = (id: string, parentId: string | null, text: string, timestamp = "2026-07-22T12:00:00.000Z") => ({
-  type: "message",
-  id,
-  parentId,
-  timestamp,
-  message: { role: "user", content: [{ type: "text", text }] },
-});
+function message(id: string, parentId: string | null, text: string, role = "user") {
+  return {
+    id,
+    parentId,
+    type: "message",
+    timestamp: "2026-04-18T12:00:00.000Z",
+    message: { role, content: text },
+  };
+}
 
-const fixture = () => ({
-  leafId: "right-leaf",
-  tree: [{
-    entry: message("root", null, "root message"),
-    children: [
+function fixture() {
+  return {
+    leafId: "right-leaf",
+    tree: [
       {
-        entry: message("left", "root", "abandoned branch"),
-        label: "experiment",
-        labelTimestamp: "2026-07-22T12:01:00.000Z",
-        children: [{
-          entry: { type: "branch_summary", id: "left-summary", parentId: "left", timestamp: "2026-07-22T12:02:00.000Z", fromId: "left", summary: "left summary" },
-          children: [],
-        }],
-      },
-      {
-        entry: message("right", "root", "active branch"),
-        children: [{
-          entry: { type: "model_change", id: "right-leaf", parentId: "right", timestamp: "2026-07-22T12:03:00.000Z", provider: "github-copilot", modelId: "gpt-5.6" },
-          children: [],
-        }],
+        entry: message("root", null, "start session"),
+        label: "base",
+        children: [
+          {
+            entry: message("left", "root", "abandoned branch"),
+            label: "experiment",
+            children: [
+              {
+                entry: {
+                  id: "left-summary",
+                  parentId: "left",
+                  type: "branch_summary",
+                  timestamp: "2026-04-18T12:05:00.000Z",
+                  summary: "explored alternative",
+                },
+                children: [],
+              },
+            ],
+          },
+          {
+            entry: message("right", "root", "continue session"),
+            children: [
+              {
+                entry: {
+                  id: "right-leaf",
+                  parentId: "right",
+                  type: "model_change",
+                  timestamp: "2026-04-18T12:06:00.000Z",
+                  provider: "github-copilot",
+                  modelId: "gpt-5.6",
+                },
+                children: [],
+              },
+            ],
+          },
+        ],
       },
     ],
-  }],
-});
+  };
+}
 
-describe("session tree projection", () => {
+describe("session tree model", () => {
   it("preserves branches and marks only the authoritative active-leaf path", () => {
     const model = parseSessionTree(fixture());
     expect(model.entries.map((entry) => entry.id)).toEqual(["root", "left", "left-summary", "right", "right-leaf"]);
@@ -73,6 +97,19 @@ describe("session tree projection", () => {
     const missingLeaf = fixture();
     missingLeaf.leafId = "missing";
     expect(() => parseSessionTree(missingLeaf)).toThrow(/active leaf is not present/);
+  });
+
+  it("accepts RPC response envelopes with extra fields like type and id (bd-cfa914)", () => {
+    const rpcPayload = {
+      id: "tree-load-1",
+      type: "response",
+      command: "get_tree",
+      success: true,
+      ...fixture(),
+    };
+    const model = parseSessionTree(rpcPayload);
+    expect(model.entries).toHaveLength(5);
+    expect(model.activePathIds).toEqual(["root", "right", "right-leaf"]);
   });
 
   it("projects a 10k-wide tree within a bounded virtual-list preparation budget", () => {
