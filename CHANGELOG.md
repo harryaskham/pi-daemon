@@ -5,6 +5,14 @@ semantic versioning once a release tag is cut.
 
 ## Unreleased
 
+## 0.3.2 — 2026-08-18
+
+- prove Android client and SDK against live real Pi Daemon instances via end-to-end integration suite (`PiDaemonLiveIntegrationTest`) covering registration, observer attach, TUI WebSocket streaming, control request/release, prompt dispatch and receipt verification
+- add RFC 4122 v4 compliant UUID generator with `crypto.getRandomValues` and `Math.random` fallbacks for plain-HTTP or older Android WebViews where `crypto.randomUUID` is undefined (bd-e167cf)
+- permit extra envelope fields in web session tree parser to prevent strict deserialization errors on RPC response envelopes (bd-cfa914)
+- expose trusted-host and lenient resource policy so hosted sessions behave like pi (bd-71cacd)
+- publish Pi Droid preview 9 to Play internal with live e2e integration proof, verified network diagnostics, cleartext policy audit, and zero-replay indeterminate recovery
+
 - remove the dedicated supported-system Attic closure publisher and its readiness cache pin; every fleet builder already populates the shared signed cache, so the workflow only added credentialed CI surface plus a hard-coded cache name that went stale and failed readiness on a healthy runner (bd-71cacd)
 - let release self-update safely adopt only the exact npm-global `pi-daemon` and `pi-daemon-rpc` links produced by `just install`, continue refusing arbitrary files/links, atomically manage and roll back both launchers together, and document the explicit public-registry override for stale corporate package mirrors
 - pin the configured API and embedded Dashboard bind/port pair through end-to-end lifecycle acceptance, retain no-fallback listener receipts, and turn `EADDRINUSE` / `EADDRNOTAVAIL` startup failures into content-free actionable diagnostics instead of a generic command failure

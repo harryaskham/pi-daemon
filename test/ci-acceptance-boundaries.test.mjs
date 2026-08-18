@@ -30,8 +30,8 @@ function assertAcceptanceBoundaries({ manifest, flake, ci, macos, scheduled, wor
   );
 
   const installCheck = installCheckPhase(flake);
-  assert.match(installCheck, /pi-daemon" version \| grep -Fx 0\.3\.1/);
-  assert.match(installCheck, /pi-daemon-rpc" --version \| grep -Fx 0\.3\.1/);
+  assert.match(installCheck, /pi-daemon" version \| grep -Fx 0\.3\.2/);
+  assert.match(installCheck, /pi-daemon-rpc" --version \| grep -Fx 0\.3\.2/);
   assert.doesNotMatch(installCheck, /consumer-acceptance|node --test/);
   assert.doesNotMatch(`${ci}\n${macos}`, /consumer-acceptance/);
 
@@ -97,8 +97,8 @@ test("CI boundary checks reject regressions in every asserted direction", async 
       value: {
         ...actual,
         flake: actual.flake.replace(
-          '"$out/bin/pi-daemon-rpc" --version | grep -Fx 0.3.1',
-          '"$out/bin/pi-daemon-rpc" --version | grep -Fx 0.3.1\n          node --test test/acceptance/consumer-acceptance.test.mjs',
+          '"$out/bin/pi-daemon-rpc" --version | grep -Fx 0.3.2',
+          '"$out/bin/pi-daemon-rpc" --version | grep -Fx 0.3.2\n          node --test test/acceptance/consumer-acceptance.test.mjs',
         ),
       },
     },
