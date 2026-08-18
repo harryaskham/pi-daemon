@@ -1,3 +1,4 @@
+import { generateUUID } from "../uuid";
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import type {
   DashboardAuthorizationAuditResource,
@@ -115,7 +116,7 @@ export function AuthorizationPanel({
   function submitGrant(event: FormEvent): void {
     event.preventDefault();
     if (resourceId === undefined || policyResource === undefined || identityId.length === 0) return;
-    const requestId = `grant-${crypto.randomUUID()}`;
+    const requestId = `grant-${generateUUID()}`;
     void mutate(
       () => client.setAuthorizationGrant(kind, resourceId, identityId, policyResource.policy, {
         requestId,
@@ -129,7 +130,7 @@ export function AuthorizationPanel({
 
   function revoke(identity: string): void {
     if (resourceId === undefined || policyResource === undefined) return;
-    const requestId = `revoke-${crypto.randomUUID()}`;
+    const requestId = `revoke-${generateUUID()}`;
     void mutate(
       () => client.revokeAuthorizationGrant(kind, resourceId, identity, policyResource.policy, {
         requestId,
@@ -143,7 +144,7 @@ export function AuthorizationPanel({
   function transferOwnership(event: FormEvent): void {
     event.preventDefault();
     if (resourceId === undefined || policyResource === undefined || newOwnerIdentityId.length === 0) return;
-    const requestId = `owner-${crypto.randomUUID()}`;
+    const requestId = `owner-${generateUUID()}`;
     void mutate(
       () => client.transferAuthorizationOwnership(kind, resourceId, policyResource.policy, {
         requestId,
@@ -158,7 +159,7 @@ export function AuthorizationPanel({
 
   function transferController(identity: string, participantId: string): void {
     if (resourceId === undefined || policyResource === undefined || controller === undefined) return;
-    const requestId = `controller-${crypto.randomUUID()}`;
+    const requestId = `controller-${generateUUID()}`;
     void mutate(
       () => client.transferController(kind, resourceId, policyResource.policy.resource, {
         requestId,

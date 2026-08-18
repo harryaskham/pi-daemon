@@ -1,3 +1,4 @@
+import { generateUUID } from "../uuid";
 import { lazy, Suspense, useMemo, useState } from "react";
 import type {
   DashboardSessionDraftResource,
@@ -92,7 +93,7 @@ export function NewSessionPane({
     if (validation.spec === undefined) throw new Error("Fix the highlighted draft fields first");
     const draftId = draftIdForLocalTarget(targetId) ?? targetId.slice(0, 128);
     const created = await backend.createSessionDraft({
-      requestId: `draft-create-${crypto.randomUUID()}`,
+      requestId: `draft-create-${generateUUID()}`,
       idempotencyKey: `draft-create-${draftId}`,
       draftId,
       spec: validation.spec,
@@ -122,7 +123,7 @@ export function NewSessionPane({
     try {
       if (resource !== undefined && resource.state === "draft") {
         await backend.cancelSessionDraft(resource.draftId, {
-          requestId: `draft-cancel-${crypto.randomUUID()}`,
+          requestId: `draft-cancel-${generateUUID()}`,
           idempotencyKey: `draft-cancel-${resource.draftId}-${resource.revision}`,
           expectedRevision: resource.revision,
         });
@@ -142,8 +143,8 @@ export function NewSessionPane({
     try {
       currentDraft = await createDraft(false);
       let current = await backend.sendSessionDraft(currentDraft.draftId, {
-        requestId: `draft-send-${crypto.randomUUID()}`,
-        idempotencyKey: `draft-send-${currentDraft.draftId}-${crypto.randomUUID()}`,
+        requestId: `draft-send-${generateUUID()}`,
+        idempotencyKey: `draft-send-${currentDraft.draftId}-${generateUUID()}`,
         expectedRevision: currentDraft.revision,
         message,
       });

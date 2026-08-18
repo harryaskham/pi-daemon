@@ -1,3 +1,4 @@
+import { generateUUID } from "./uuid";
 import {
   DASH_API_VERSION,
   DASH_DEFAULT_LIMITS,
@@ -404,7 +405,7 @@ class FixtureRichHub {
   get controllerId(): string | undefined { return this.#controllerId; }
 
   open(options: SessionChannelOptions): DashboardChannel {
-    const id = crypto.randomUUID();
+    const id = generateUUID();
     const granted = options.role === "controller" && this.#controllerId === undefined;
     if (granted) this.#controllerId = id;
     const role = granted ? "controller" : "observer";

@@ -1,3 +1,4 @@
+import { generateUUID } from "./uuid";
 import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import type {
   DashboardCursor,
@@ -43,7 +44,7 @@ export function useDashboardWorkspace(
   const revisionRef = useRef(initial.revision);
   const savedKeyRef = useRef(workspaceKey(layout, selectedPaneId, seenCursors));
   const sequenceRef = useRef(0);
-  const mutationScopeRef = useRef(crypto.randomUUID());
+  const mutationScopeRef = useRef(generateUUID());
   const tailRef = useRef<Promise<void>>(Promise.resolve());
 
   useEffect(() => {
@@ -108,7 +109,7 @@ export function useDashboardSettings(
   const [syncState, setSyncState] = useState<PreferenceSyncState>("synced");
   const revisionRef = useRef(initial.revision);
   const sequenceRef = useRef(0);
-  const mutationScopeRef = useRef(crypto.randomUUID());
+  const mutationScopeRef = useRef(generateUUID());
   const tailRef = useRef<Promise<void>>(Promise.resolve());
 
   const recover = useCallback(async (error: unknown) => {

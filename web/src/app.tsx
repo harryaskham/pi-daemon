@@ -1,3 +1,4 @@
+import { generateUUID } from "./uuid";
 import { startTransition, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import {
   DASH_API_VERSION,
@@ -379,7 +380,7 @@ function DashWorkspace({
 
   const openNewSession = useCallback(() => {
     if (!capabilities.resources.sessionDrafts) return;
-    const localId = crypto.randomUUID();
+    const localId = generateUUID();
     const targetId = `draft-local:${localId}`;
     const selected = sessions.find((session) => session.inventoryId === selectedInventoryId);
     const configuredCwd = capabilities.sessionDefaults?.spec.cwd;
