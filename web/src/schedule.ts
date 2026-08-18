@@ -1,3 +1,4 @@
+import { generateUUID } from "./uuid";
 import type {
   DashboardBackend,
   DashboardScheduleMutationRequest,
@@ -65,7 +66,7 @@ export function draftFromSchedule(resource: DashboardScheduleResource): Schedule
 export function newScheduleDraft(sessionRef: string): ScheduleDraft {
   const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
   return {
-    scheduleId: `schedule-${crypto.randomUUID()}`,
+    scheduleId: `schedule-${generateUUID()}`,
     sessionRef,
     enabled: true,
     cron: "0 9 * * 1-5",
@@ -84,7 +85,7 @@ export function newScheduleDraft(sessionRef: string): ScheduleDraft {
 }
 
 export function scheduleMutation(draft: ScheduleDraft, expectedRevision?: number): DashboardScheduleMutationRequest {
-  const idempotencyKey = `dash-schedule-${draft.scheduleId}-${crypto.randomUUID()}`;
+  const idempotencyKey = `dash-schedule-${draft.scheduleId}-${generateUUID()}`;
   return {
     requestId: idempotencyKey,
     idempotencyKey,

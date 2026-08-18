@@ -1,3 +1,4 @@
+import { generateUUID } from "../uuid";
 import { useCallback, useEffect, useState } from "react";
 import type { DashboardBackend, DashboardTuiChannel, DashboardTuiChannelEvent, DashboardTuiInput, TuiDimensions } from "@harryaskham/pi-daemon/dashboard-contract";
 import type { SessionFixture } from "../model";
@@ -84,7 +85,7 @@ export function ConnectedTuiPane({ backend, session, selected, active, onPresent
         setChannel(undefined);
         await connect();
       })().catch((reason: unknown) => setError(reason instanceof Error ? reason.message : "TUI reconnect failed"))}
-      onRequestControl={() => void channel?.requestControl(`tui-control-${crypto.randomUUID()}`)}
+      onRequestControl={() => void channel?.requestControl(`tui-control-${generateUUID()}`)}
     />
   );
 }

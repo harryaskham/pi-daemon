@@ -1,3 +1,4 @@
+import { generateUUID } from "./uuid";
 import type {
   ActivationMode,
   ActivationTicket,
@@ -341,7 +342,7 @@ export class DashboardLiveSessionController {
       error: undefined,
     });
     try {
-      const operationId = crypto.randomUUID();
+      const operationId = generateUUID();
       let ticket = await this.backend.activateSession(this.inventoryId, {
         requestId: `dash-activation-${operationId}`,
         idempotencyKey: `dash-activation-${this.inventoryId}-${mode}-${operationId}`,
@@ -386,7 +387,7 @@ export class DashboardLiveSessionController {
     const sessionRef = this.#state.managedSession?.sessionId ?? this.#state.identity?.sessionId;
     if (sessionRef === undefined) throw new Error("Session is not managed");
     try {
-      const operationId = crypto.randomUUID();
+      const operationId = generateUUID();
       let ticket = await this.backend.exportSession(sessionRef, {
         requestId: `dash-export-${operationId}`,
         idempotencyKey: `dash-export-${sessionRef}-${mode}-${operationId}`,
@@ -675,7 +676,7 @@ export class DashboardLiveSessionController {
       return rejected(`tree-fork-${++this.#commandSequence}`, "tree_entry_not_found", "Tree entry does not exist", false);
     }
     this.#patch({ treePhase: "mutating", treeError: undefined });
-    const result = await this.command("fork", { entryId }, `tree-fork-${crypto.randomUUID()}`);
+    const result = await this.command("fork", { entryId }, `tree-fork-${generateUUID()}`);
     if (result.state === "completed") {
       const data = isJsonObject(result.data) ? result.data : undefined;
       const cancelled = data?.cancelled === true;
@@ -709,7 +710,7 @@ export class DashboardLiveSessionController {
       ...(options.summarize === undefined ? {} : { summarize: options.summarize }),
       ...(options.customInstructions === undefined || options.customInstructions.trim().length === 0 ? {} : { customInstructions: options.customInstructions }),
       ...(options.label === undefined || options.label.trim().length === 0 ? {} : { label: options.label }),
-    }, `tree-navigate-${crypto.randomUUID()}`);
+    }, `tree-navigate-${generateUUID()}`);
     if (result.state === "completed") {
       const data = isJsonObject(result.data) ? result.data : undefined;
       const cancelled = data?.cancelled === true;
@@ -732,7 +733,7 @@ export class DashboardLiveSessionController {
 
   async cloneTree(): Promise<DashboardCommandResult> {
     this.#patch({ treePhase: "mutating", treeError: undefined });
-    const result = await this.command("clone", {}, `tree-clone-${crypto.randomUUID()}`);
+    const result = await this.command("clone", {}, `tree-clone-${generateUUID()}`);
     if (result.state === "completed") {
       const cancelled = isJsonObject(result.data) && result.data.cancelled === true;
       if (!cancelled) {
@@ -1045,7 +1046,7 @@ export class DashboardLiveSessionController {
     if (message.length === 0) {
       return rejected(correlationId, "invalid_prompt", "Steering message must not be empty", false);
     }
-    const idempotencyKey = requestedIdempotencyKey ?? `dash-steering-${crypto.randomUUID()}`;
+    const idempotencyKey = requestedIdempotencyKey ?? `dash-steering-${generateUUID()}`;
     const prior = this.#steeringReceipts.get(idempotencyKey);
     if (prior !== undefined) {
       if (prior.message !== message) {
@@ -1079,7 +1080,7 @@ export class DashboardLiveSessionController {
         true,
       );
     }
-    const queueId = crypto.randomUUID();
+    const queueId = generateUUID();
     const entry: SteeringQueueEntry = {
       queueId,
       message,

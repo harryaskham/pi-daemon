@@ -1,3 +1,4 @@
+import { generateUUID } from "../uuid";
 import { useCallback, useEffect } from "react";
 import type { DashboardBackend, DashboardCommandOperation, DashboardCursor } from "@harryaskham/pi-daemon/dashboard-contract";
 import type { JsonObject } from "@harryaskham/pi-daemon/session-api";
@@ -88,7 +89,7 @@ export function ConnectedChatPane({
         const result = await live.controller.submit(
           parsed.operation,
           parsed.payload,
-          `${parsed.operation}-${session.sessionId}-${crypto.randomUUID()}`,
+          `${parsed.operation}-${session.sessionId}-${generateUUID()}`,
         );
         const accepted = result.state === "completed" || result.state === "streaming";
         if (accepted) onSubmitted(value);
