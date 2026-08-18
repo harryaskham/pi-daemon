@@ -1,3 +1,4 @@
+import { generateUUID } from "./uuid";
 import {
   DASH_API_BASE_PATH,
   DASH_API_VERSION,
@@ -872,7 +873,7 @@ export class BrowserDashboardClient implements DashboardBackend, DashboardPrefer
 
   #nextSubscriptionId(prefix: string): string {
     this.#subscriptionSequence += 1;
-    return `${prefix}-${this.#subscriptionSequence.toString(36)}-${crypto.randomUUID()}`;
+    return `${prefix}-${this.#subscriptionSequence.toString(36)}-${generateUUID()}`;
   }
 
   async #request<T>(
@@ -1162,7 +1163,7 @@ function authorizationPath(kind: "session" | "workspace", resourceId: string): s
 }
 
 function browserClientId(): string {
-  return `browser-${crypto.randomUUID()}`;
+  return `browser-${generateUUID()}`;
 }
 
 function workspaceEtag(workspaceId: string, revision: number): string {

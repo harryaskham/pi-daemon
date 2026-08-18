@@ -1,3 +1,4 @@
+import { generateUUID } from "../uuid";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { AlertCircle, Clock3, Sparkles } from "../icons";
 import {
@@ -104,7 +105,7 @@ export function ScheduleEditor({ backend, sessionRef }: ScheduleEditorProps) {
     }
     setSaving(true);
     try {
-      const idempotencyKey = `dash-schedule-delete-${selected.scheduleId}-${crypto.randomUUID()}`;
+      const idempotencyKey = `dash-schedule-delete-${selected.scheduleId}-${generateUUID()}`;
       await backend.deleteSchedule(selected.scheduleId, { requestId: idempotencyKey, idempotencyKey, expectedRevision: selected.revision });
       const remaining = schedules.filter((item) => item.scheduleId !== selected.scheduleId);
       const next = remaining[0];
