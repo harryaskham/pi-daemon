@@ -797,7 +797,11 @@ in {
             Unit = {
               Description = "Pi Daemon instance ${name}";
               Documentation = "https://github.com/harryaskham/pi-daemon";
-              After = ["default.target"];
+              # Never order after a target this unit is WantedBy: systemd would
+              # resolve main.start -> default.target.start -> web.start ->
+              # main.start and delete the main start job as a cyclic
+              # transaction (bd-178619). basic.target is the correct floor.
+              After = ["basic.target"];
             };
             Service = {
               Type = "simple";
