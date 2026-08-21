@@ -2767,6 +2767,15 @@ public object GeneratedProtocolContracts {
     ),
     SchemaDefinition(
       schemaPath = "session-api.schema.json",
+      name = "ticketError",
+      kind = SchemaKind.OBJECT,
+      knownFields = setOf("code", "details", "message", "retryable"),
+      requiredFields = setOf("code", "message", "retryable"),
+      enumValues = emptyList(),
+      diagnostics = listOf("session-api.schema.json#/\$defs/ticketError/allOf/0: if remains authoritative in JSON Schema and is not flattened into generated object metadata", "session-api.schema.json#/\$defs/ticketError/allOf/0: then remains authoritative in JSON Schema and is not flattened into generated object metadata"),
+    ),
+    SchemaDefinition(
+      schemaPath = "session-api.schema.json",
       name = "ticketLinks",
       kind = SchemaKind.OBJECT,
       knownFields = setOf("self", "session"),
@@ -3332,7 +3341,7 @@ public object GeneratedProtocolContracts {
     ),
     ProtocolInput(
       path = "session-api.schema.json",
-      sha256 = "a9ae347fc218ad8bc297dce20b47acfb7e3492adf37d5342cc39010ef6e61292",
+      sha256 = "bea1eebc8a093dbac06f5123ddd96272d39590e41091a19100ca09f3bb6a9e9f",
       kind = ProtocolInputKind.CONTRACT,
     ),
     ProtocolInput(
@@ -3807,7 +3816,7 @@ public object GeneratedProtocolContracts {
     ),
     ProtocolInput(
       path = "fixtures/session-api/ticket.response.json",
-      sha256 = "7d9edd5448f8d8750cbc9660a7e0e367a4eaddb6f66f204b371526afe531acb4",
+      sha256 = "41fefec885cf06fc233143ef7d5db72c31fbee682fd3f6d6a33392eb625e2529",
       kind = ProtocolInputKind.FIXTURE,
     ),
     ProtocolInput(
