@@ -106,6 +106,63 @@ test("mutation tickets durably deduplicate, execute once, and retain safe termin
   );
 });
 
+test("failed tickets retain only bounded missing-tool diagnostics across restart", async () => {
+  const stateDir = await temporaryState();
+  const controller = new MutationTicketController(new FileMutationTicketStore({ stateDir }));
+  await controller.recover(async () => {
+    const error = new Error("required tools unavailable");
+    error.code = "required_tools_unavailable";
+    error.retryable = false;
+    error.details = {
+      missingToolIds: [
+        "read",
+        "caco_msg_send",
+        "read",
+        "../unsafe-path",
+        "x".repeat(129),
+      ],
+      cwd: "/secret/worktree",
+      environment: { PROVIDER_TOKEN: "must-not-persist" },
+      prompt: "must-not-persist",
+    };
+    throw error;
+  });
+
+  const admitted = await controller.submit(createInput("missing-tools"));
+  const failed = await controller.wait(admitted.ticketId);
+  assert.equal(failed.state, "failed");
+  assert.deepEqual(failed.error, {
+    code: "required_tools_unavailable",
+    message: "required tools unavailable",
+    retryable: false,
+    details: { missingToolIds: ["caco_msg_send", "read"] },
+  });
+
+  const persisted = await readFile(join(stateDir, "tickets", `${failed.ticketId}.json`), "utf8");
+  assert.equal(persisted.includes("unsafe-path"), false);
+  assert.equal(persisted.includes("secret/worktree"), false);
+  assert.equal(persisted.includes("PROVIDER_TOKEN"), false);
+  assert.equal(persisted.includes("must-not-persist"), false);
+
+  const restarted = new FileMutationTicketStore({ stateDir });
+  const recovery = await restarted.recover();
+  assert.deepEqual(recovery.terminal[0].error, failed.error);
+  assert.deepEqual(mutationTicketResource(recovery.terminal[0]).error, failed.error);
+
+  const unrelated = await restarted.begin(createInput("unknown-details"));
+  const sanitized = await restarted.markFailed(unrelated.ticketId, {
+    code: "other_failure",
+    message: "safe failure",
+    retryable: false,
+    details: { missingToolIds: ["read"], path: "/secret" },
+  });
+  assert.deepEqual(sanitized.error, {
+    code: "other_failure",
+    message: "safe failure",
+    retryable: false,
+  });
+});
+
 test("blob reserve and daemon-owned materialization commands use durable POST tickets", async () => {
   const stateDir = await temporaryState();
   const commands = [];

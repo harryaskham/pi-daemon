@@ -23,6 +23,10 @@ export const DEFAULT_MAX_TICKETS = 4096;
 export const DEFAULT_MAX_TICKET_RECORD_BYTES = 1024 * 1024;
 export const DEFAULT_TICKET_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 export const DEFAULT_MAX_TICKET_RECOVERY_BYTES = 256 * 1024 * 1024;
+export const MAX_TICKET_MISSING_TOOL_IDS = 128;
+export const MAX_TICKET_TOOL_ID_BYTES = 128;
+
+const TOOL_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]*$/u;
 
 export type MutationTicketState =
   | "queued"
@@ -416,7 +420,7 @@ export class FileMutationTicketStore implements MutationTicketStore {
     delete next.result;
     delete next.error;
     if ("result" in patch) next.result = structuredClone(patch.result);
-    if (patch.error !== undefined) next.error = structuredClone(patch.error);
+    if (patch.error !== undefined) next.error = sanitizeTicketError(patch.error);
     await this.#write(next);
     this.#tickets.set(next.ticketId, next);
     return cloneRecord(next);
@@ -922,12 +926,29 @@ function isEnvironmentSummary(value: unknown): value is SessionEnvironmentSummar
 }
 
 function isApiError(value: unknown): value is ApiErrorBody {
+  if (
+    !isRecord(value) ||
+    Object.keys(value).some((key) => !["code", "message", "retryable", "details"].includes(key)) ||
+    typeof value.code !== "string" ||
+    value.code.length === 0 ||
+    typeof value.message !== "string" ||
+    typeof value.retryable !== "boolean"
+  ) {
+    return false;
+  }
+  if (value.details === undefined) return true;
+  if (value.code !== "required_tools_unavailable" || !isRecord(value.details)) return false;
+  if (Object.keys(value.details).some((key) => key !== "missingToolIds")) return false;
+  const missingToolIds = value.details.missingToolIds;
   return (
-    isRecord(value) &&
-    typeof value.code === "string" &&
-    value.code.length > 0 &&
-    typeof value.message === "string" &&
-    typeof value.retryable === "boolean"
+    Array.isArray(missingToolIds) &&
+    missingToolIds.length > 0 &&
+    missingToolIds.length <= MAX_TICKET_MISSING_TOOL_IDS &&
+    missingToolIds.every(isSafeTicketToolId) &&
+    new Set(missingToolIds).size === missingToolIds.length &&
+    [...missingToolIds].sort((left, right) => left.localeCompare(right)).every(
+      (toolId, index) => toolId === missingToolIds[index],
+    )
   );
 }
 
@@ -998,11 +1019,12 @@ function safeTicketError(error: unknown): ApiErrorBody {
     const code = typeof error.code === "string" && error.code.length > 0 ? error.code : undefined;
     const retryable = typeof error.retryable === "boolean" ? error.retryable : false;
     if (code !== undefined) {
-      return {
+      return sanitizeTicketError({
         code,
         message: error instanceof Error ? error.message : "mutation failed",
         retryable,
-      };
+        ...(isRecord(error.details) ? { details: error.details } : {}),
+      });
     }
   }
   return {
@@ -1010,6 +1032,37 @@ function safeTicketError(error: unknown): ApiErrorBody {
     message: error instanceof Error ? error.message : "mutation failed",
     retryable: false,
   };
+}
+
+/** Retains only code-specific, content-free diagnostics suitable for durable tickets. */
+function sanitizeTicketError(error: {
+  code: string;
+  message: string;
+  retryable: boolean;
+  details?: unknown;
+}): ApiErrorBody {
+  const base: ApiErrorBody = {
+    code: error.code,
+    message: error.message,
+    retryable: error.retryable,
+  };
+  if (error.code !== "required_tools_unavailable" || !isRecord(error.details)) return base;
+  const candidates = error.details.missingToolIds;
+  if (!Array.isArray(candidates)) return base;
+  const missingToolIds = [...new Set(candidates.filter(isSafeTicketToolId))]
+    .sort((left, right) => left.localeCompare(right))
+    .slice(0, MAX_TICKET_MISSING_TOOL_IDS);
+  return missingToolIds.length === 0
+    ? base
+    : { ...base, details: { missingToolIds } };
+}
+
+function isSafeTicketToolId(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    Buffer.byteLength(value, "utf8") <= MAX_TICKET_TOOL_ID_BYTES &&
+    TOOL_ID.test(value)
+  );
 }
 
 function ticketMissing(ticketId: string): TicketStoreError {

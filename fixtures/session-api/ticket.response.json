@@ -8,11 +8,22 @@
     "requestId": "req-create-agent-a",
     "idempotencyKey": "create-agent-a-once",
     "operation": "create",
-    "state": "queued",
+    "state": "failed",
     "submittedAt": "2026-07-14T08:00:00.000Z",
-    "updatedAt": "2026-07-14T08:00:00.000Z",
+    "updatedAt": "2026-07-14T08:00:01.000Z",
     "sessionId": "agent-a",
     "generation": 1,
+    "error": {
+      "code": "required_tools_unavailable",
+      "message": "one or more required tools were not active after session materialization",
+      "retryable": false,
+      "details": {
+        "missingToolIds": [
+          "caco_msg_send",
+          "read"
+        ]
+      }
+    },
     "links": {
       "self": "/v1/ticket/ticket-create-agent-a",
       "session": "/v1/session/agent-a"

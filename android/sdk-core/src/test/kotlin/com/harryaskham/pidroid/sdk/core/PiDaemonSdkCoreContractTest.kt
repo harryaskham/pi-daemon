@@ -7,7 +7,9 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotNull
@@ -141,9 +143,18 @@ class PiDaemonSdkCoreContractTest {
     val ticket = result.requireSuccess()
     assertEquals("ticket-create-agent-a", ticket.ticketId)
     assertEquals("create-agent-a-once", ticket.idempotencyKey)
-    assertEquals(TicketState.QUEUED, ticket.state)
+    assertEquals(TicketState.FAILED, ticket.state)
     assertEquals("agent-a", ticket.sessionId)
     assertEquals(1, ticket.generation)
+    assertEquals("required_tools_unavailable", ticket.error?.code)
+    assertEquals(
+      listOf("caco_msg_send", "read"),
+      ticket.error
+        ?.details
+        ?.get("missingToolIds")
+        ?.jsonArray
+        ?.map { it.jsonPrimitive.content },
+    )
     assertEquals("/v1/ticket/ticket-create-agent-a", ticket.links.getValue("self"))
   }
 
