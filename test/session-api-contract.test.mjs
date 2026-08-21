@@ -88,6 +88,32 @@ test("session API fixtures validate against their published definitions", async 
   }
 });
 
+test("ticket errors expose only bounded missing-tool details", async () => {
+  const { schema, ajv } = await contractValidator();
+  const response = await fixture("ticket.response.json");
+  const validate = ajv.getSchema(`${schema.$id}#/$defs/ticketEnvelope`);
+  assert.ok(validate);
+  assert.equal(validate(response), true);
+  assert.deepEqual(response.data.error.details, {
+    missingToolIds: ["caco_msg_send", "read"],
+  });
+
+  const sensitive = structuredClone(response);
+  sensitive.data.error.details.path = "/secret/worktree";
+  assert.equal(validate(sensitive), false);
+
+  const wrongCode = structuredClone(response);
+  wrongCode.data.error.code = "other_failure";
+  assert.equal(validate(wrongCode), false);
+
+  const oversized = structuredClone(response);
+  oversized.data.error.details.missingToolIds = Array.from(
+    { length: 129 },
+    (_, index) => `tool-${index}`,
+  );
+  assert.equal(validate(oversized), false);
+});
+
 test("invalid blob transfer fixtures reject client paths and incomplete quarantine state", async () => {
   const { schema, ajv } = await contractValidator();
   for (const [name, definition] of [

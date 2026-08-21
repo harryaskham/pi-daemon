@@ -486,6 +486,8 @@ process appears per wake.
 
 ## Provisional Beads work board
 
+- [x] `bd-0bbc09` Preserve bounded, sorted missing-tool IDs on failed session
+  tickets across restart while dropping every unknown or sensitive error detail.
 - [x] `bd-cbf5d4` Let release self-update safely adopt only the exact npm-global
   links produced by `just install`, atomically manage both CLI launchers, and
   retain collision, checksum, shrinkwrap, rollback, and no-restart guards.

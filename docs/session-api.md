@@ -338,8 +338,13 @@ only those IDs and a safe outcome summary, never client-supplied result content
 or error text. It does not claim provider-transaction proof when Pi lacks one.
 Otherwise the client
 chooses a fresh idempotency key only after reconciliation. Ticket count, bytes,
-and retention age are bounded. A pruned ticket returns `404 ticket_not_found`;
-pruning never changes session state.
+and retention age are bounded. Failed create/update tickets retain only a
+code-specific, content-free detail allowlist. In particular,
+`required_tools_unavailable` retains up to 128 unique, sorted stable tool IDs in
+`details.missingToolIds`; unknown detail keys, paths, environment data, prompts,
+and malformed or oversized IDs are discarded before persistence and API return.
+A pruned ticket returns `404 ticket_not_found`; pruning never changes session
+state.
 
 Legacy NDJSON `wake` retains its wait-for-terminal default. Setting
 `payload.waitForTerminal` to `false` instead returns a durable `prompt` ticket
