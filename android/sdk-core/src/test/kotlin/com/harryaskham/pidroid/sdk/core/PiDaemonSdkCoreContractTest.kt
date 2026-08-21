@@ -149,7 +149,11 @@ class PiDaemonSdkCoreContractTest {
     assertEquals("required_tools_unavailable", ticket.error?.code)
     assertEquals(
       listOf("caco_msg_send", "read"),
-      ticket.error?.details?.get("missingToolIds")?.jsonArray?.map { it.jsonPrimitive.content },
+      ticket.error
+        ?.details
+        ?.get("missingToolIds")
+        ?.jsonArray
+        ?.map { it.jsonPrimitive.content },
     )
     assertEquals("/v1/ticket/ticket-create-agent-a", ticket.links.getValue("self"))
   }
