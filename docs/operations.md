@@ -936,6 +936,14 @@ nonsecret adapter policy can explicitly reprovision the generation and clear the
 condition. Recovery never silently enables no-tools, invents adapter authority,
 deletes evidence, or replays indeterminate work.
 
+A retained configured session whose volatile environment cannot be reconstructed
+has the same host-scoped admission property. Recovery records
+`credentials_required` in the bounded failure counters and leaves that session
+dormant for explicit re-provisioning, but this failure alone does not make an
+otherwise settled, authenticated host globally unready. Pending or indeterminate
+requests, mutation recovery failures, adapter unreadiness, and every other
+recovery failure continue to fail host readiness closed.
+
 A missing/corrupt Pi file, a legacy `new`/`continue` manifest without resolved
 identity, or a generation mismatch blocks replay and is reported as a recovery
 failure. Corrupt, permissive, mismatched, oversized, or symlinked state fails

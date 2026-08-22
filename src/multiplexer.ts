@@ -1809,7 +1809,7 @@ export class Multiplexer {
       ready:
         this.#ready &&
         !this.#draining &&
-        recovery.phase === "ready" &&
+        recoveryAllowsAdmission(recovery) &&
         adapterReadinessReady(readiness),
       durable: this.#durability !== undefined || this.#catalog !== undefined,
       draining: this.#draining,
@@ -2565,6 +2565,22 @@ function adapterReadinessReady(value: unknown): boolean {
     return (value as { ready?: unknown }).ready !== false;
   }
   return true;
+}
+
+function recoveryAllowsAdmission(recovery: RecoveryHealthSnapshot): boolean {
+  if (recovery.phase === "ready") return true;
+  if (recovery.phase !== "degraded") return false;
+  if (
+    recovery.pendingReplays > 0 ||
+    recovery.pendingMutationTickets > 0 ||
+    recovery.indeterminateRequests > 0 ||
+    recovery.indeterminateMutationTickets > 0 ||
+    recovery.mutationRecoveryFailures > 0 ||
+    recovery.failureCount === 0
+  ) {
+    return false;
+  }
+  return Object.keys(recovery.failureCodes).every((code) => code === "credentials_required");
 }
 
 function throwIfAborted(signal: AbortSignal | undefined): void {

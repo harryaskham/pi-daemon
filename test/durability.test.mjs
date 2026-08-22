@@ -472,6 +472,24 @@ class HangingOpenFactory extends ImmediateFactory {
   }
 }
 
+class CredentialsRequiredRecoveryFactory extends ImmediateFactory {
+  readiness() {
+    return { ready: true, authenticatedModels: 1, authErrorCount: 0, authErrorCodes: [] };
+  }
+
+  async open(request) {
+    if (request.sessionId === "agent/a") {
+      this.requests.push(structuredClone(request));
+      throw new MultiplexerError(
+        "credentials_required",
+        "session environment must be re-provisioned after restart",
+        { retryable: true },
+      );
+    }
+    return super.open(request);
+  }
+}
+
 class MemoryFactory extends ImmediateFactory {
   async open(request) {
     const adapter = await super.open(request);
@@ -659,6 +677,33 @@ test("lost tool adapter quarantine keeps accepted wakes indeterminate and host-d
   assert.equal(mux.status().recovery.phase, "degraded");
   assert.equal(mux.status().recovery.indeterminateRequests, 1);
   assert.equal(mux.status().recovery.quarantinedSessions[0].sessionId, "agent/a");
+});
+
+test("credential-dependent recovery failures preserve diagnostics without blocking fresh admission", async () => {
+  const stateDir = await temporaryState();
+  const first = new FileDurabilityStore({ stateDir });
+  await first.recover();
+  await first.saveManifest(persistentOpenCommand(), conversationIdentity());
+
+  const factory = new CredentialsRequiredRecoveryFactory();
+  const mux = new Multiplexer({
+    factory,
+    durability: new FileDurabilityStore({ stateDir }),
+  });
+  const report = await mux.recover();
+
+  assert.deepEqual(report.failures, [{
+    sessionId: "agent/a",
+    code: "credentials_required",
+    message: "session environment must be re-provisioned after restart",
+  }]);
+  assert.equal(mux.status().recovery.phase, "degraded");
+  assert.equal(mux.status().recovery.failureCount, 1);
+  assert.deepEqual(mux.status().recovery.failureCodes, { credentials_required: 1 });
+  assert.equal(mux.status().ready, true);
+
+  await mux.open(persistentOpenCommand("fresh"));
+  assert.equal(mux.status("fresh").state, "idle");
 });
 
 test("session recovery open is per-open deadline bounded and records degraded health", async () => {
