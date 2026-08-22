@@ -1450,49 +1450,49 @@ export function fileCredentialStore(authPath: string): PiCredentialStore {
 }
 
 /**
- * Overlay the runtime environment onto one provider's credential, replacing
- * the pre-0.82 scoped `AuthStorage` clone. Returns undefined when no overlay
- * applies, so the caller can keep sharing the factory-wide runtime.
+ * Overlay one explicit, recognized provider API key without replacing the
+ * host instance's native OAuth store for ordinary managed environment values.
  */
-function scopedCredentialStore(
+export function scopedCredentialStore(
   base: PiCredentialStore,
   runtimeOptions: PreparedSessionRuntimeOptions | undefined,
 ): PiCredentialStore | undefined {
-  if (runtimeOptions === undefined || Object.keys(runtimeOptions.environmentOverlay).length === 0) {
-    return undefined;
-  }
+  if (runtimeOptions === undefined) return undefined;
   const provider = runtimeOptions.persistedSpec.model?.provider;
-  if (provider === undefined) return base;
-  const environment = { ...runtimeOptions.environmentOverlay };
+  if (provider === undefined) return undefined;
   const apiKey = providerApiKeyFromEnvironment(provider, runtimeOptions.environmentOverlay);
-  const overlay = async (
-    current: PiStoredCredential | undefined,
-  ): Promise<PiStoredCredential | undefined> => {
-    if (apiKey !== undefined) return { type: "api_key", key: apiKey, env: environment };
-    if (current?.type === "api_key") {
-      return { ...current, env: { ...(current.env ?? {}), ...environment } };
-    }
-    return current;
-  };
-  return sessionCredentialStore({
+  // CACO_ identity, editor, PATH, and similar values belong to bash policy.
+  // Without an explicit provider API key, reuse the instance ModelRuntime so
+  // GitHub Copilot OAuth refresh uses Pi SDK's native lock-backed auth.json.
+  if (apiKey === undefined) return undefined;
+  const environment = { ...runtimeOptions.environmentOverlay };
+  return {
     async read(providerId) {
-      const current = await base.read(providerId);
-      return providerId === provider ? await overlay(current) : current;
+      if (providerId === provider) return { type: "api_key", key: apiKey, env: environment };
+      return base.read(providerId);
     },
     async list() {
       const entries = await base.list();
-      if (apiKey === undefined || entries.some((entry) => entry.providerId === provider)) {
-        return entries;
+      if (entries.some((entry) => entry.providerId === provider)) {
+        return entries.map((entry) =>
+          entry.providerId === provider ? { providerId: provider, type: "api_key" as const } : entry,
+        );
       }
       return [...entries, { providerId: provider, type: "api_key" as const }];
     },
     async modify() {
-      throw new PiAdapterError("credential_store_read_only", "persistent credentials are read-only");
+      throw new PiAdapterError(
+        "credential_store_read_only",
+        "session API-key overlays never write provider credentials",
+      );
     },
     async delete() {
-      throw new PiAdapterError("credential_store_read_only", "persistent credentials are read-only");
+      throw new PiAdapterError(
+        "credential_store_read_only",
+        "session API-key overlays never delete provider credentials",
+      );
     },
-  });
+  };
 }
 
 function configuredRpcControllerOptions(
