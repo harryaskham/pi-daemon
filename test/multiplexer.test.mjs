@@ -355,6 +355,15 @@ test("maxSessions is bounded and closing releases capacity", async () => {
   const factory = new ControlledFactory();
   const mux = new Multiplexer({ factory, limits: { maxSessions: 1 } });
   await mux.open(openCommand("a"));
+  assert.deepEqual(mux.sessionRuntimeSummary("a", 1), {
+    state: "idle",
+    pendingTurns: 0,
+    queuedTurns: 0,
+    activeTurn: false,
+    holdsAdmissionSlot: true,
+    closeDisposition: "closable",
+  });
+  assert.equal(mux.sessionRuntimeSummary("a", 2), undefined);
   await assert.rejects(
     mux.open(openCommand("b")),
     (error) => error instanceof MultiplexerError && error.code === "session_capacity",
@@ -378,6 +387,14 @@ test("turns serialize per session and preserve monotonic event sequence", async 
   const second = mux.wake(wakeCommand("a", "two"));
   await waitFor(() => adapter.calls.length === 1, "first serialized prompt");
   assert.equal(adapter.maxActive, 1);
+  assert.deepEqual(mux.sessionRuntimeSummary("a", 1), {
+    state: "running",
+    pendingTurns: 2,
+    queuedTurns: 1,
+    activeTurn: true,
+    holdsAdmissionSlot: true,
+    closeDisposition: "interrupt_required",
+  });
   adapter.calls[0].request.onEvent({ event: "messageUpdate", data: { delta: "1" } });
   adapter.calls[0].completion.resolve("result-one");
   assert.equal((await first).result, "result-one");

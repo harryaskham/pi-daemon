@@ -63,6 +63,7 @@ import {
   DASHBOARD_TUI_SUBPROTOCOL,
   HOST_TOOL_ADAPTER_QUEUE_CAPABILITY,
   SESSION_API_VERSION,
+  SESSION_RUNTIME_SUMMARY_CAPABILITY,
   SESSION_TOOL_MATERIALIZATION_CAPABILITY,
   type ApiErrorBody,
   type SessionEnvironmentSummary,
@@ -342,6 +343,7 @@ export class ApiServer {
             isolationModes: ["unisolated"],
             authentication: "service-bearer",
             toolMaterialization: SESSION_TOOL_MATERIALIZATION_CAPABILITY,
+            sessionRuntime: SESSION_RUNTIME_SUMMARY_CAPABILITY,
             hostToolAdapterQueue: HOST_TOOL_ADAPTER_QUEUE_CAPABILITY,
             host: {
               ready: host.ready,
@@ -394,6 +396,10 @@ export class ApiServer {
                 record.generation,
               ),
               this.#multiplexer.sessionHostToolAdapterQueue(
+                record.sessionId,
+                record.generation,
+              ),
+              this.#multiplexer.sessionRuntimeSummary(
                 record.sessionId,
                 record.generation,
               ),
@@ -494,6 +500,10 @@ export class ApiServer {
                   record.generation,
                 ),
                 this.#multiplexer.sessionHostToolAdapterQueue(
+                  record.sessionId,
+                  record.generation,
+                ),
+                this.#multiplexer.sessionRuntimeSummary(
                   record.sessionId,
                   record.generation,
                 ),
@@ -1466,6 +1476,7 @@ export class ApiServer {
       record,
       await this.#multiplexer.sessionToolMaterialization(record.sessionId, record.generation),
       this.#multiplexer.sessionHostToolAdapterQueue(record.sessionId, record.generation),
+      this.#multiplexer.sessionRuntimeSummary(record.sessionId, record.generation),
     );
   }
 

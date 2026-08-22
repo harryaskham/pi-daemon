@@ -60,12 +60,23 @@ test("catalog persists secret-free records with exact ID/name resolution and opt
     saturation: { active: false, count: 1, totalMs: 4, longestMs: 4 },
     operations: [],
   };
-  const resource = catalogRecordToSessionResource(created, undefined, queue);
+  const runtime = {
+    state: "running",
+    pendingTurns: 2,
+    queuedTurns: 1,
+    activeTurn: true,
+    holdsAdmissionSlot: true,
+    closeDisposition: "interrupt_required",
+  };
+  const resource = catalogRecordToSessionResource(created, undefined, queue, runtime);
   assert.equal(resource.residency, "resident");
   assert.equal(resource.toolMaterialization.state, "unavailable");
   assert.deepEqual(resource.hostToolAdapterQueue, queue);
+  assert.deepEqual(resource.runtime, runtime);
   resource.hostToolAdapterQueue.occupancy.queuedRequests = 999;
+  resource.runtime.pendingTurns = 999;
   assert.equal(queue.occupancy.queuedRequests, 3);
+  assert.equal(runtime.pendingTurns, 2);
   assert.equal(resource.links.self, "/v1/session/session%2F%CE%B1");
   assert.notEqual(
     sessionSpecDigest(spec("/work/a", {

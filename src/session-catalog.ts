@@ -614,6 +614,7 @@ export function catalogRecordToSessionResource(
   record: SessionCatalogRecord,
   toolMaterialization?: SessionToolMaterialization,
   hostToolAdapterQueue?: SessionResource["hostToolAdapterQueue"],
+  runtime?: SessionResource["runtime"],
 ): SessionResource {
   const sessionRef = encodeURIComponent(record.sessionId);
   return {
@@ -635,6 +636,7 @@ export function catalogRecordToSessionResource(
           record.residency === "dormant" ? "not-resident" : "unavailable",
         ),
     ),
+    ...(runtime === undefined ? {} : { runtime: structuredClone(runtime) }),
     ...(hostToolAdapterQueue === undefined
       ? {}
       : { hostToolAdapterQueue: structuredClone(hostToolAdapterQueue) }),

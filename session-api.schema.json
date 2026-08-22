@@ -880,6 +880,30 @@
       },
       "additionalProperties": false
     },
+    "sessionRuntimeSummary": {
+      "type": "object",
+      "required": [
+        "state",
+        "pendingTurns",
+        "queuedTurns",
+        "activeTurn",
+        "holdsAdmissionSlot",
+        "closeDisposition"
+      ],
+      "properties": {
+        "state": {
+          "enum": ["opening", "idle", "running", "failed", "closing"]
+        },
+        "pendingTurns": { "type": "integer", "minimum": 0 },
+        "queuedTurns": { "type": "integer", "minimum": 0 },
+        "activeTurn": { "type": "boolean" },
+        "holdsAdmissionSlot": { "const": true },
+        "closeDisposition": {
+          "enum": ["closable", "interrupt_required"]
+        }
+      },
+      "additionalProperties": false
+    },
     "sessionResource": {
       "type": "object",
       "required": [
@@ -945,6 +969,9 @@
         },
         "toolMaterialization": {
           "$ref": "#/$defs/sessionToolMaterialization"
+        },
+        "runtime": {
+          "$ref": "#/$defs/sessionRuntimeSummary"
         },
         "hostToolAdapterQueue": {
           "$ref": "#/$defs/toolAdapterQueue"
@@ -1529,6 +1556,7 @@
         "isolationModes",
         "authentication",
         "toolMaterialization",
+        "sessionRuntime",
         "hostToolAdapterQueue",
         "host",
         "schedules",
@@ -1631,6 +1659,24 @@
               },
               "uniqueItems": true
             }
+          },
+          "additionalProperties": false
+        },
+        "sessionRuntime": {
+          "type": "object",
+          "required": [
+            "contractVersion",
+            "generationFenced",
+            "pendingTurnCounts",
+            "admissionSlotOccupancy",
+            "closeDisposition"
+          ],
+          "properties": {
+            "contractVersion": { "const": "1.0" },
+            "generationFenced": { "const": true },
+            "pendingTurnCounts": { "const": true },
+            "admissionSlotOccupancy": { "const": true },
+            "closeDisposition": { "const": true }
           },
           "additionalProperties": false
         },
