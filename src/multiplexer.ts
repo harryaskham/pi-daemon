@@ -1182,6 +1182,11 @@ export class Multiplexer {
         }
         adapter = await this.#factory.open(request);
         throwIfAborted(options.signal);
+        // Install the headless RPC extension bindings before any turn can run.
+        // Dialog methods then either have an attached controller transport or
+        // fail promptly with extension_ui_unavailable instead of waiting invisibly.
+        await adapter.rpcController?.();
+        throwIfAborted(options.signal);
         conversation = validateOpenedConversation(
           adapter.identity?.(),
           runtimeOptionsForOpen?.persistedSpec.target.mode ?? command.payload.session.mode,

@@ -5,6 +5,7 @@ import test from "node:test";
 import {
   PI_RPC_HOST_CAPABILITIES,
   PiRpcController,
+  PiRpcUiUnavailableError,
   projectPiRpcSessionStats,
 } from "../dist/pi-rpc-controller.js";
 import { PI_RPC_COMMAND_TYPES } from "../dist/session-api.js";
@@ -465,6 +466,25 @@ test("prompt responds at preflight and raw session events remain transport neutr
   host.emit({ type: "agent_settled" });
   assert.deepEqual(outputs, [{ type: "agent_settled" }]);
   host.session.finishPrompt();
+  controller.dispose();
+});
+
+test("interactive extension UI fails promptly when no controller transport is attached", async () => {
+  const host = new FakeRpcHost();
+  const controller = await PiRpcController.create(host);
+
+  await assert.rejects(
+    host.bindings.uiContext.select("Invisible choice", ["a", "b"]),
+    (error) =>
+      error instanceof PiRpcUiUnavailableError &&
+      error.code === "extension_ui_unavailable" &&
+      error.retryable === true,
+  );
+  assert.equal(controller.respondToExtensionUi({
+    type: "extension_ui_response",
+    id: "missing",
+    cancelled: true,
+  }), false);
   controller.dispose();
 });
 

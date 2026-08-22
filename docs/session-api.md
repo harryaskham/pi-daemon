@@ -456,11 +456,17 @@ controller status with `role=controller` during upgrade or a framed
 `409 controller_busy`; framed mode may attach as observer and emit
 `control_denied`. Release/disconnect permits a later explicit request.
 
-Extension UI requests are visible to observers but only the current controller
-may answer. The first valid controller response resolves the request. Observer,
-duplicate, stale-generation, or unknown IDs are rejected. If the controller
-disconnects, pending dialogs resolve to their fail-safe timeout/cancel default;
-they are not transferred silently.
+Extension UI bindings are installed before a configured session can run its
+first turn. If no RPC/Dashboard transport is attached when an extension requests
+an interactive dialog, the request fails promptly with
+`extension_ui_unavailable` rather than entering an invisible wait. This makes
+unsupported headless clients explicit and leaves the turn recoverable.
+
+With an attached transport, extension UI requests are visible to observers but
+only the current controller may answer. The first valid controller response
+resolves the request. Observer, duplicate, stale-generation, or unknown IDs are
+rejected. If the controller disconnects, pending dialogs resolve to their
+fail-safe timeout/cancel default; they are not transferred silently.
 
 ### Atomic snapshot, replay, and reconnect
 
