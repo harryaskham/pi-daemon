@@ -275,7 +275,7 @@ export interface SessionEnvironmentSummary {
 /** Safe, nonsecret reason why a retained generation cannot currently become resident. */
 export interface SessionRecoveryCondition {
   state: "reprovision_required";
-  code: "tool_adapter_reprovision_required";
+  code: "tool_adapter_reprovision_required" | "credentials_required";
   retryable: true;
 }
 

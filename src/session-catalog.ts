@@ -776,7 +776,7 @@ function validateRecoveryCondition(
   if (
     !isRecord(value) ||
     value.state !== "reprovision_required" ||
-    value.code !== "tool_adapter_reprovision_required" ||
+    !["tool_adapter_reprovision_required", "credentials_required"].includes(value.code as string) ||
     value.retryable !== true ||
     Object.keys(value).some((key) => !["state", "code", "retryable"].includes(key))
   ) {

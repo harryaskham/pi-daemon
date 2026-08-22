@@ -752,6 +752,17 @@ export class Multiplexer {
           "restore_open_failed",
           "failed to restore configured logical session",
         );
+        if (normalized.code === "credentials_required") {
+          report.quarantined.push(
+            await this.#quarantineRecoverySession(
+              record.sessionId,
+              record.generation,
+              "credentials_required",
+              record,
+            ),
+          );
+          continue;
+        }
         report.failures.push({
           sessionId: record.sessionId,
           code: normalized.code,
@@ -899,11 +910,25 @@ export class Multiplexer {
     generation: number,
     record?: SessionCatalogRecord,
   ): Promise<RecoverySessionCondition> {
+    return this.#quarantineRecoverySession(
+      sessionId,
+      generation,
+      "tool_adapter_reprovision_required",
+      record,
+    );
+  }
+
+  async #quarantineRecoverySession(
+    sessionId: string,
+    generation: number,
+    code: RecoverySessionCondition["code"],
+    record?: SessionCatalogRecord,
+  ): Promise<RecoverySessionCondition> {
     const condition: RecoverySessionCondition = {
       sessionId,
       generation,
       state: "reprovision_required",
-      code: "tool_adapter_reprovision_required",
+      code,
       retryable: true,
     };
     this.#recoverySessionConditions.set(sessionId, condition);

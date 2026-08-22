@@ -406,6 +406,62 @@ test("multiplexer catalogs open, terminal state, eviction, dormant reopen, updat
   assert.ok(events.includes("sessionDeleted"));
 });
 
+test("credential-degraded retained sessions do not block unrelated configured admission", async () => {
+  const stateDir = await temporaryState();
+  const stale = parseSessionConfiguration({
+    cwd: "/work/stale-credentials",
+    target: { mode: "new" },
+    env: { OPENAI_API_KEY: "memory-only-fixture" },
+    isolation: { mode: "unisolated" },
+  });
+  const first = new Multiplexer({
+    factory: new CatalogFactory(),
+    durability: new FileDurabilityStore({ stateDir }),
+    catalog: new FileSessionCatalog({ stateDir }),
+  });
+  await first.recover();
+  await first.open(openCommand("stale-credentials"), {
+    runtimeOptions: stale.runtimeOptions,
+    environmentSummary: stale.environmentSummary,
+    catalogSpec: stale.persistedSpec,
+  });
+  await first.dispose(1_000);
+
+  const factory = new CatalogFactory();
+  const restarted = new Multiplexer({
+    factory,
+    durability: new FileDurabilityStore({ stateDir }),
+    catalog: new FileSessionCatalog({ stateDir }),
+  });
+  const report = await restarted.recover();
+  assert.deepEqual(report.failures, []);
+  assert.deepEqual(report.quarantined, [{
+    sessionId: "stale-credentials",
+    generation: 1,
+    state: "reprovision_required",
+    code: "credentials_required",
+    retryable: true,
+  }]);
+  assert.equal(restarted.status().recovery.phase, "ready");
+  assert.equal(restarted.status().ready, true);
+
+  const healthy = parseSessionConfiguration({
+    cwd: "/work/healthy",
+    target: { mode: "new" },
+    isolation: { mode: "unisolated" },
+  });
+  const opened = await restarted.open(openCommand("healthy"), {
+    runtimeOptions: healthy.runtimeOptions,
+    environmentSummary: healthy.environmentSummary,
+    catalogSpec: healthy.persistedSpec,
+  });
+  assert.equal(opened.session.sessionId, "healthy");
+  assert.equal(factory.requests.length, 1);
+  const retained = await restarted.retainedSession("stale-credentials");
+  assert.equal(retained.residency, "dormant");
+  assert.equal(retained.recovery.code, "credentials_required");
+});
+
 test("configured sessions recover full persisted runtime options without environment secrets", async () => {
   const stateDir = await temporaryState();
   const configuration = parseSessionConfiguration({
