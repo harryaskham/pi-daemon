@@ -17,9 +17,11 @@ interface LiveSessionControlsProps {
 function ExtensionRequest({
   request,
   controller,
+  disabled,
 }: {
   request: LiveExtensionRequest;
   controller: DashboardLiveSessionController;
+  disabled: boolean;
 }) {
   const [value, setValue] = useState("");
   const title = typeof request.payload.title === "string" ? request.payload.title : "Extension request";
@@ -34,15 +36,15 @@ function ExtensionRequest({
 
   return (
     <section className="extension-ui-card" role="dialog" aria-label={title}>
-      <header><div><p className="eyebrow">Extension UI</p><h3>{title}</h3></div><button type="button" onClick={() => answer({ cancelled: true })} aria-label="Dismiss extension request"><X size={15} /></button></header>
+      <header><div><p className="eyebrow">Extension UI</p><h3>{title}</h3></div><button type="button" disabled={disabled} onClick={() => answer({ cancelled: true })} aria-label="Dismiss extension request"><X size={15} /></button></header>
       <p>{message}</p>
-      {options.length > 0 ? <div className="extension-ui-options">{options.map((option) => <button type="button" key={option} onClick={() => answer({ value: option })}>{option}</button>)}</div> : null}
+      {options.length > 0 ? <div className="extension-ui-options">{options.map((option) => <button type="button" disabled={disabled} key={option} onClick={() => answer({ value: option })}>{option}</button>)}</div> : null}
       {request.method === "input" || request.method === "editor" ? (
-        <label><span className="sr-only">Extension response</span><textarea value={value} onChange={(event) => setValue(event.target.value)} rows={request.method === "editor" ? 5 : 2} /></label>
+        <label><span className="sr-only">Extension response</span><textarea disabled={disabled} value={value} onChange={(event) => setValue(event.target.value)} rows={request.method === "editor" ? 5 : 2} /></label>
       ) : null}
       <footer>
-        <button type="button" className="secondary-button" onClick={() => answer({ confirmed: false, cancelled: true })}>Cancel</button>
-        <button type="button" className="primary-button" onClick={() => answer(request.method === "input" || request.method === "editor" ? { value } : { confirmed: true })}><Check size={13} /> Continue</button>
+        <button type="button" disabled={disabled} className="secondary-button" onClick={() => answer({ confirmed: false, cancelled: true })}>Cancel</button>
+        <button type="button" disabled={disabled} className="primary-button" onClick={() => answer(request.method === "input" || request.method === "editor" ? { value } : { confirmed: true })}><Check size={13} /> Continue</button>
       </footer>
     </section>
   );
@@ -75,7 +77,7 @@ export function LiveSessionControls({ state, controller }: LiveSessionControlsPr
         {state.extensionNotifications.map((notification) => <div className={`extension-notification extension-notification--${notification.type}`} key={notification.requestId}>{notification.message}</div>)}
       </div>
       <div className="extension-ui-stack">
-        {state.extensionRequests.map((request) => <ExtensionRequest key={request.requestId} request={request} controller={controller} />)}
+        {state.extensionRequests.map((request) => <ExtensionRequest key={request.requestId} request={request} controller={controller} disabled={state.role !== "controller"} />)}
         {state.extensionViews.map((event) => (
           <DeclarativeExtensionView
             key={event.requestId}

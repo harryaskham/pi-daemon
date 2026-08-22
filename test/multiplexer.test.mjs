@@ -124,6 +124,12 @@ class ControlledAdapter {
   aborted = 0;
   steering = [];
   followUps = [];
+  rpcControllerOpens = 0;
+
+  async rpcController() {
+    this.rpcControllerOpens += 1;
+    return {};
+  }
 
   prompt(request) {
     const completion = deferred();
@@ -355,6 +361,7 @@ test("maxSessions is bounded and closing releases capacity", async () => {
   const factory = new ControlledFactory();
   const mux = new Multiplexer({ factory, limits: { maxSessions: 1 } });
   await mux.open(openCommand("a"));
+  assert.equal(factory.adapter("a").rpcControllerOpens, 1);
   assert.deepEqual(mux.sessionRuntimeSummary("a", 1), {
     state: "idle",
     pendingTurns: 0,

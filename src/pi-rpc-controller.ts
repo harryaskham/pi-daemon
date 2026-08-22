@@ -662,6 +662,9 @@ export class PiRpcController {
     if (options?.signal?.aborted || this.#pendingUi.size >= this.#maxPendingUiRequests) {
       return Promise.resolve(fallback);
     }
+    if (this.#listeners.size === 0) {
+      return Promise.reject(new PiRpcUiUnavailableError());
+    }
     const id = randomUUID();
     return new Promise<T>((resolve) => {
       let timer: ReturnType<typeof setTimeout> | undefined;
@@ -702,6 +705,17 @@ export class PiRpcController {
 
   #assertOpen(): void {
     if (this.#disposed) throw new Error("Pi RPC controller is disposed");
+  }
+}
+
+export class PiRpcUiUnavailableError extends Error {
+  readonly code = "extension_ui_unavailable";
+  readonly retryable = true;
+  readonly protocolSafe = true;
+
+  constructor() {
+    super("interactive extension UI requires an attached controller client");
+    this.name = "PiRpcUiUnavailableError";
   }
 }
 

@@ -72,6 +72,7 @@ async function renderLiveControls(
   await act(async () => root.render(<LiveSessionControls state={state} controller={controller} />));
   return {
     container,
+    controller,
     async unmount() {
       await act(async () => root.unmount());
       container.remove();
@@ -93,6 +94,56 @@ describe("live session controls in a DOM environment", () => {
       expect(container.querySelector('[role="status"]')?.textContent).toContain("observer");
       expect(container.querySelector(".live-state-card")).toBeNull();
       expect(container.querySelector('[aria-label="Session action required"]')).toBeNull();
+    } finally {
+      await unmount();
+    }
+  });
+
+  it("renders bounded choices but prevents observers from answering them", async () => {
+    const { container, controller, unmount } = await renderLiveControls(previewState({
+      phase: "live",
+      role: "observer",
+      extensionRequests: [{
+        requestId: "choice-1",
+        method: "select",
+        payload: { title: "Choose safely", options: ["alpha", "beta"] },
+      }],
+    }));
+    try {
+      expect(container.querySelector('[role="dialog"]')?.textContent).toContain("Choose safely");
+      const option = [...container.querySelectorAll("button")].find(
+        (candidate) => candidate.textContent === "alpha",
+      );
+      expect(option).toBeDefined();
+      expect(option?.disabled).toBe(true);
+      await act(async () => option?.click());
+      expect(controller.answerExtensionUi).not.toHaveBeenCalled();
+    } finally {
+      await unmount();
+    }
+  });
+
+  it("lets the attached controller answer an exact rendered choice", async () => {
+    const answerExtensionUi = vi.fn().mockResolvedValue(undefined);
+    const { container, unmount } = await renderLiveControls(
+      previewState({
+        phase: "live",
+        role: "controller",
+        extensionRequests: [{
+          requestId: "choice-2",
+          method: "select",
+          payload: { title: "Choose safely", options: ["alpha", "beta"] },
+        }],
+      }),
+      { answerExtensionUi },
+    );
+    try {
+      const option = [...container.querySelectorAll("button")].find(
+        (candidate) => candidate.textContent === "beta",
+      );
+      expect(option?.disabled).toBe(false);
+      await act(async () => option?.click());
+      expect(answerExtensionUi).toHaveBeenCalledWith("choice-2", { value: "beta" });
     } finally {
       await unmount();
     }
