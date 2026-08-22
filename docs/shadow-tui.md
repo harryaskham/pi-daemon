@@ -94,6 +94,14 @@ must not each call `bindExtensions()` or create another extension runtime. A
 controlling pane owns input and extension dialogs; observer panes receive the
 same frames. Rich transcript peers remain independent read-only projections.
 
+The controlling TUI pane exposes an explicit **Interrupt** action. It sends the
+terminal's Ctrl-C input through the already-authorized, generation-bound TUI
+channel, so an active modal interaction or turn does not have to wait behind a
+normal prompt/follow-up queue. Observer panes cannot invoke it. This action only
+interrupts Pi session work: persistent-agent Stop, discard, and declaration
+lifecycle remain client responsibilities and are intentionally not modeled by
+the standalone Pi Daemon.
+
 This follows Pi's existing replacement semantics: when `AgentSessionRuntime`
 replaces a session, the old view/broker generation is invalidated, the new
 session is bound once, and peers must attach to the new generation.
