@@ -5,6 +5,15 @@ semantic versioning once a release tag is cut.
 
 ## Unreleased
 
+## 0.3.3 — 2026-08-22
+
+- keep configured GitHub Copilot sessions on the Pi Daemon instance's native lock-backed credential store so OAuth refresh persists safely, while explicit provider API-key overrides remain session-scoped and read-only
+- quarantine retained sessions that need credential or tool-adapter reprovisioning without making healthy new configured-session admission globally unavailable
+- reconcile late successful configured-session opens after bounded client timeouts instead of creating failed rows for resident idle sessions
+- materialize trusted configured-session resources and optional tools without treating every profile-declared tool as an admission requirement
+- document configured sessions' stable cwd, policy-enabled bash/tools and trusted resource authority separately from legacy no-tools and the narrow filesystem adapter
+- harden Pi Droid emulator proof infrastructure, Android transport-loss handling, and exact-main CI/runtime provisioning across Linux, macOS and JVM lanes
+
 ## 0.3.2 — 2026-08-18
 
 - prove Android client and SDK against live real Pi Daemon instances via end-to-end integration suite (`PiDaemonLiveIntegrationTest`) covering registration, observer attach, TUI WebSocket streaming, control request/release, prompt dispatch and receipt verification
