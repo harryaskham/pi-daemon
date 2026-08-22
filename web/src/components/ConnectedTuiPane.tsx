@@ -86,6 +86,7 @@ export function ConnectedTuiPane({ backend, session, selected, active, onPresent
         await connect();
       })().catch((reason: unknown) => setError(reason instanceof Error ? reason.message : "TUI reconnect failed"))}
       onRequestControl={() => void channel?.requestControl(`tui-control-${generateUUID()}`)}
+      onAbort={() => channel?.sendInput({ type: "key", key: "c", modifiers: ["ctrl"] })}
     />
   );
 }

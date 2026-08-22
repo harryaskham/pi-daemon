@@ -16,6 +16,7 @@ export interface TuiPaneProps {
   onResize?(dimensions: TuiDimensions): void | Promise<void>;
   onRequestSnapshot?(): void;
   onRequestControl?(): void;
+  onAbort?(): void | Promise<void>;
 }
 
 export function TuiPane({
@@ -30,6 +31,7 @@ export function TuiPane({
   onResize,
   onRequestSnapshot,
   onRequestControl,
+  onAbort,
 }: TuiPaneProps) {
   return (
     <div className="tui-pane" data-tui-session-store={`${session.sessionId}:${session.generation}`}>
@@ -41,6 +43,14 @@ export function TuiPane({
         <div className="tui-pane__presentation" role="group" aria-label="Pane presentation">
           <button type="button" aria-pressed="false" onClick={() => onPresentationChange("rich")}><MessageSquareText size={13} /> Rich</button>
           <button type="button" aria-pressed="true"><TerminalSquare size={13} /> TUI</button>
+          <button
+            type="button"
+            aria-label="Interrupt active TUI interaction"
+            disabled={state.role !== "controller" || onAbort === undefined}
+            onClick={() => void onAbort?.()}
+          >
+            Interrupt
+          </button>
         </div>
       </header>
       <div className="session-ribbon" role="status">
