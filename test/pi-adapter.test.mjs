@@ -7,7 +7,12 @@ import test from "node:test";
 import { ModelRuntime, createAgentSession } from "@earendil-works/pi-coding-agent";
 
 import { inMemoryCredentials, modelHarness } from "./model-harness.mjs";
-import { PiAdapterError, PiSessionAdapter, PiSessionFactory } from "../dist/pi-adapter.js";
+import {
+  PiAdapterError,
+  PiSessionAdapter,
+  PiSessionFactory,
+  fileCredentialStore,
+} from "../dist/pi-adapter.js";
 import { parseSessionConfiguration } from "../dist/session-config.js";
 
 const temporaryDirectory = async () =>
@@ -835,6 +840,40 @@ test("runtime replacement fails closed when durable identity persistence fails",
     (error) => error instanceof PiAdapterError && error.code === "session_invalidated",
   );
   await adapter.dispose();
+});
+
+test("configured-session GitHub Copilot refresh stays memory-only", async () => {
+  const agentDir = await temporaryDirectory();
+  const authPath = join(agentDir, "auth.json");
+  const persisted = {
+    type: "oauth",
+    access: "expired-access",
+    refresh: "refresh-token",
+    expires: 1,
+  };
+  await writeFile(authPath, `${JSON.stringify({ "github-copilot": persisted }, null, 2)}\n`, {
+    mode: 0o600,
+  });
+  const credentials = fileCredentialStore(authPath);
+
+  const refreshed = await credentials.modify("github-copilot", async (current) => ({
+    ...current,
+    access: "refreshed-access",
+    expires: 4_000_000_000_000,
+  }));
+
+  assert.equal(refreshed.access, "refreshed-access");
+  assert.equal((await credentials.read("github-copilot")).access, "refreshed-access");
+  assert.deepEqual(JSON.parse(await readFile(authPath, "utf8")), {
+    "github-copilot": persisted,
+  });
+
+  await credentials.delete("github-copilot");
+  assert.equal(await credentials.read("github-copilot"), undefined);
+  assert.deepEqual(await credentials.list(), []);
+  assert.deepEqual(JSON.parse(await readFile(authPath, "utf8")), {
+    "github-copilot": persisted,
+  });
 });
 
 test("factory refuses permissive default auth storage", async () => {
