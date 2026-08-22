@@ -86,6 +86,9 @@ A session resource has:
 - `residency` — `resident` while an SDK runtime is loaded or `dormant` while
   only durable catalog/session artifacts remain; and
 - `state` — `opening`, `idle`, `running`, `failed`, or `closing`;
+- optional `runtime` — live, generation-fenced, content-free resident state with
+  pending/queued turn counts, active-turn presence, admission-slot occupancy,
+  and `closable` versus `interrupt_required` close disposition;
 - optional `recovery` — a typed nonsecret reason the retained generation needs
   explicit recovery, currently `tool_adapter_reprovision_required`; and
 - optional `lastTerminal` — safe succeeded/failed/indeterminate outcome,
@@ -167,6 +170,20 @@ source/scope/`ownershipGeneration` are nonsecret provenance; all three generatio
 names remain explicit rather than overloaded. They participate in the retained policy
 digest, so a changed upstream generation cannot silently reuse an old desired
 policy.
+
+Clients must first negotiate `capabilities.sessionRuntime.contractVersion ==
+"1.0"` before depending on live close-readiness fields. Resident session
+resources return `runtime` for the exact catalog `generation`. It is absent for
+dormant or generation-mismatched runtimes and
+contains no prompt, output, request ID, path, credential, or environment value.
+`holdsAdmissionSlot` tells a controller that the resident session contributes to
+bounded host capacity. `closeDisposition: "closable"` means there is no active or
+queued turn at the instant of the snapshot; `interrupt_required` means the
+controller must reconcile/interrupt the exact current turn before submitting the
+existing generation/revision-fenced DELETE. This is observation, not authority:
+Pi Daemon does not know whether an upstream owner record is orphaned, and callers
+must provide that evidence under their own authorization policy. A stale snapshot
+never authorizes deletion.
 
 Every session resource returns `toolMaterialization`. Resident runtimes report a
 bounded content-free inventory with stable name, source class, policy

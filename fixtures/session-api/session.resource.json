@@ -130,6 +130,14 @@
     },
     "truncated": false
   },
+  "runtime": {
+    "state": "idle",
+    "pendingTurns": 0,
+    "queuedTurns": 0,
+    "activeTurn": false,
+    "holdsAdmissionSlot": true,
+    "closeDisposition": "closable"
+  },
   "hostToolAdapterQueue": {
     "capacity": {
       "maxConcurrentRequests": 4,

@@ -14,6 +14,7 @@ import {
 import type {
   SessionEnvironmentSummary,
   SessionRecoveryCondition,
+  SessionRuntimeSummary,
   SessionToolMaterialization,
   TicketResource,
 } from "./session-api.js";
@@ -1667,6 +1668,26 @@ export class Multiplexer {
     } catch (error) {
       throw asMultiplexerError(error, "catalog_read_failed", "failed to read retained session");
     }
+  }
+
+  sessionRuntimeSummary(
+    sessionId: string,
+    generation?: number,
+  ): SessionRuntimeSummary | undefined {
+    const slot = this.#sessions.get(sessionId);
+    if (slot === undefined) return undefined;
+    if (generation !== undefined && generation !== slot.generation) return undefined;
+    const pendingTurns = Math.max(0, slot.pendingTurns);
+    const activeTurn = slot.state === "running" || slot.activeAbort !== undefined;
+    return {
+      state: slot.state,
+      pendingTurns,
+      queuedTurns: Math.max(0, pendingTurns - (activeTurn ? 1 : 0)),
+      activeTurn,
+      holdsAdmissionSlot: true,
+      closeDisposition:
+        pendingTurns > 0 || activeTurn ? "interrupt_required" : "closable",
+    };
   }
 
   async sessionToolMaterialization(

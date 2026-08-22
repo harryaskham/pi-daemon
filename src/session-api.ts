@@ -64,6 +64,14 @@ export const HOST_TOOL_ADAPTER_QUEUE_CAPABILITY = {
   recommended: { ...HOST_TOOL_ADAPTER_RECOMMENDED_QUEUE_LIMITS },
 } as const;
 
+export const SESSION_RUNTIME_SUMMARY_CAPABILITY = {
+  contractVersion: "1.0",
+  generationFenced: true,
+  pendingTurnCounts: true,
+  admissionSlotOccupancy: true,
+  closeDisposition: true,
+} as const;
+
 export const SESSION_TOOL_MATERIALIZATION_CAPABILITY = {
   contractVersion: "1.0",
   requiredToolAdmission: true,
@@ -279,6 +287,16 @@ export interface SessionRecoveryCondition {
   retryable: true;
 }
 
+export interface SessionRuntimeSummary {
+  /** Live state for this exact resident generation. Absent for dormant sessions. */
+  state: SessionApiState;
+  pendingTurns: number;
+  queuedTurns: number;
+  activeTurn: boolean;
+  holdsAdmissionSlot: true;
+  closeDisposition: "closable" | "interrupt_required";
+}
+
 export interface SessionResource {
   sessionId: string;
   name?: string;
@@ -292,6 +310,8 @@ export interface SessionResource {
   spec: Omit<SessionSpec, "env">;
   environment: SessionEnvironmentSummary;
   toolMaterialization: SessionToolMaterialization;
+  /** Present only while this exact generation is resident. Contains no prompt or request content. */
+  runtime?: SessionRuntimeSummary;
   /** Present only for a resident generation using the host tool adapter. */
   hostToolAdapterQueue?: HostToolAdapterQueueSnapshot;
   recovery?: SessionRecoveryCondition;

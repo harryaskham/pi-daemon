@@ -129,6 +129,13 @@
         "runtime_inventory_unavailable"
       ]
     },
+    "sessionRuntime": {
+      "contractVersion": "1.0",
+      "generationFenced": true,
+      "pendingTurnCounts": true,
+      "admissionSlotOccupancy": true,
+      "closeDisposition": true
+    },
     "hostToolAdapterQueue": {
       "contractVersion": "1.0",
       "capacity": true,

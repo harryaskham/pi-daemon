@@ -54,6 +54,14 @@
         ],
         "truncated": false
       },
+      "runtime": {
+        "state": "running",
+        "pendingTurns": 2,
+        "queuedTurns": 1,
+        "activeTurn": true,
+        "holdsAdmissionSlot": true,
+        "closeDisposition": "interrupt_required"
+      },
       "links": {
         "self": "/v1/session/agent-a",
         "rpc": "/v1/session/agent-a/rpc",

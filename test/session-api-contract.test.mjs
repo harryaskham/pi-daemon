@@ -11,6 +11,7 @@ import {
   SESSION_API_PATHS,
   SESSION_API_VERSION,
   SESSION_RPC_SUBPROTOCOLS,
+  SESSION_RUNTIME_SUMMARY_CAPABILITY,
   SESSION_TOOL_MATERIALIZATION_CAPABILITY,
 } from "../dist/session-api.js";
 
@@ -208,6 +209,10 @@ test("Pi RPC compatibility inventory is exact and includes settled-era commands"
   assert.deepEqual(
     capabilities.data.toolMaterialization,
     SESSION_TOOL_MATERIALIZATION_CAPABILITY,
+  );
+  assert.deepEqual(
+    capabilities.data.sessionRuntime,
+    SESSION_RUNTIME_SUMMARY_CAPABILITY,
   );
   assert.deepEqual(
     capabilities.data.hostToolAdapterQueue,

@@ -348,6 +348,14 @@ test("authenticated CRUD mutations return durable deduplicated tickets and termi
     queuedRequests: 2,
   });
   assert.equal(createTerminal.result.hostToolAdapterQueue.rejectedRequests, 1);
+  assert.deepEqual(createTerminal.result.runtime, {
+    state: "idle",
+    pendingTurns: 0,
+    queuedTurns: 0,
+    activeTurn: false,
+    holdsAdmissionSlot: true,
+    closeDisposition: "closable",
+  });
 
   const duplicate = await requestJson(harness.address, {
     method: "POST",
