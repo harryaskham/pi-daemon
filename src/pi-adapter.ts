@@ -178,9 +178,13 @@ export class PiSessionFactory implements SessionFactory {
     const pending =
       injected === undefined
         ? ModelRuntime.create({
-            ...(this.#credentials === undefined
-              ? { authPath: this.authPath }
-              : { credentials: this.#credentials }),
+            // The shared host registry may cache provider refreshes in memory,
+            // but hosted operation never grants Pi authority to rewrite the
+            // owner-managed auth file.
+            credentials:
+              this.#credentials === undefined
+                ? fileCredentialStore(this.authPath)
+                : sessionCredentialStore(this.#credentials),
             modelsPath: this.#modelsPath,
           })
         : Promise.resolve(injected);
@@ -1345,11 +1349,76 @@ function resourceLoaderOptions(
 }
 
 /**
- * File-backed credential store for an agent directory's `auth.json`, in the
- * shape `ModelRuntime` accepts. Reads are one-off and synchronous underneath,
- * so a rewritten file is observed without holding stale state.
+ * Add a session-local mutable layer over a read-only credential source.
+ *
+ * OAuth providers such as GitHub Copilot refresh credentials through
+ * `CredentialStore.modify`. Hosted sessions must permit that refresh without
+ * writing the agent's shared `auth.json`. Each configured session receives its
+ * own overlay, and provider mutations are serialized so concurrent refreshes
+ * retain the store's atomic modify contract. Deletes are memory-only
+ * tombstones; neither operation delegates to the persistent source.
  */
-function fileCredentialStore(authPath: string): PiCredentialStore {
+export function sessionCredentialStore(base: PiCredentialStore): PiCredentialStore {
+  const overrides = new Map<string, PiStoredCredential>();
+  const deleted = new Set<string>();
+  const modifications = new Map<string, Promise<void>>();
+
+  const read = async (providerId: string): Promise<PiStoredCredential | undefined> => {
+    if (deleted.has(providerId)) return undefined;
+    return overrides.get(providerId) ?? base.read(providerId);
+  };
+  const afterPriorModification = async <T>(providerId: string, operation: () => Promise<T>) => {
+    const prior = modifications.get(providerId) ?? Promise.resolve();
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const tail = prior.catch(() => undefined).then(() => gate);
+    modifications.set(providerId, tail);
+    await prior.catch(() => undefined);
+    try {
+      return await operation();
+    } finally {
+      release();
+      if (modifications.get(providerId) === tail) modifications.delete(providerId);
+    }
+  };
+
+  return {
+    read,
+    async list() {
+      const entries = new Map((await base.list()).map((entry) => [entry.providerId, entry]));
+      for (const providerId of deleted) entries.delete(providerId);
+      for (const [providerId, credential] of overrides) {
+        entries.set(providerId, { providerId, type: credential.type });
+      }
+      return [...entries.values()];
+    },
+    async modify(providerId, change) {
+      return afterPriorModification(providerId, async () => {
+        const current = await read(providerId);
+        const next = await change(current);
+        if (next === undefined) return current;
+        deleted.delete(providerId);
+        overrides.set(providerId, next);
+        return next;
+      });
+    },
+    async delete(providerId) {
+      await afterPriorModification(providerId, async () => {
+        overrides.delete(providerId);
+        deleted.add(providerId);
+      });
+    },
+  };
+}
+
+/**
+ * File-backed credential reader for an agent directory's `auth.json`, in the
+ * shape `ModelRuntime` accepts. The file remains strictly read-only; provider
+ * refreshes are retained only in this configured session's memory overlay.
+ */
+export function fileCredentialStore(authPath: string): PiCredentialStore {
   const readAll = (): Record<string, PiStoredCredential> => {
     try {
       const raw = readFileSync(authPath, "utf8");
@@ -1360,7 +1429,7 @@ function fileCredentialStore(authPath: string): PiCredentialStore {
       return {};
     }
   };
-  return {
+  return sessionCredentialStore({
     async read(providerId) {
       return readAll()[providerId];
     },
@@ -1372,18 +1441,12 @@ function fileCredentialStore(authPath: string): PiCredentialStore {
       });
     },
     async modify() {
-      throw new PiAdapterError(
-        "credential_store_read_only",
-        "hosted sessions never write provider credentials",
-      );
+      throw new PiAdapterError("credential_store_read_only", "persistent credentials are read-only");
     },
     async delete() {
-      throw new PiAdapterError(
-        "credential_store_read_only",
-        "hosted sessions never delete provider credentials",
-      );
+      throw new PiAdapterError("credential_store_read_only", "persistent credentials are read-only");
     },
-  };
+  });
 }
 
 /**
@@ -1411,7 +1474,7 @@ function scopedCredentialStore(
     }
     return current;
   };
-  return {
+  return sessionCredentialStore({
     async read(providerId) {
       const current = await base.read(providerId);
       return providerId === provider ? await overlay(current) : current;
@@ -1424,18 +1487,12 @@ function scopedCredentialStore(
       return [...entries, { providerId: provider, type: "api_key" as const }];
     },
     async modify() {
-      throw new PiAdapterError(
-        "credential_store_read_only",
-        "hosted sessions never write provider credentials",
-      );
+      throw new PiAdapterError("credential_store_read_only", "persistent credentials are read-only");
     },
     async delete() {
-      throw new PiAdapterError(
-        "credential_store_read_only",
-        "hosted sessions never delete provider credentials",
-      );
+      throw new PiAdapterError("credential_store_read_only", "persistent credentials are read-only");
     },
-  };
+  });
 }
 
 function configuredRpcControllerOptions(
