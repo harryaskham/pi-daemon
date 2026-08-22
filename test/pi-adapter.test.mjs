@@ -12,6 +12,7 @@ import {
   PiSessionAdapter,
   PiSessionFactory,
   fileCredentialStore,
+  scopedCredentialStore,
 } from "../dist/pi-adapter.js";
 import { parseSessionConfiguration } from "../dist/session-config.js";
 
@@ -341,6 +342,91 @@ test("factory injects only descriptor-granted host tools and revokes them with t
     (error) => error instanceof PiAdapterError && error.code === "tool_adapter_binding_mismatch",
   );
   assert.equal(registryCalls.length, 1);
+});
+
+test("configured GitHub Copilot refresh keeps the host native credential store", async () => {
+  const original = {
+    type: "oauth",
+    access: "expired-access",
+    refresh: "host-refresh",
+    expires: 1,
+  };
+  let current = { ...original };
+  let baseModifyCalls = 0;
+  const base = {
+    async read(providerId) {
+      return providerId === "github-copilot" ? { ...current } : undefined;
+    },
+    async list() {
+      return [{ providerId: "github-copilot", type: "oauth" }];
+    },
+    async modify(providerId, fn) {
+      baseModifyCalls += 1;
+      current = await fn(await this.read(providerId));
+      return current;
+    },
+    async delete() {
+      current = undefined;
+    },
+  };
+  const options = {
+    persistedSpec: { model: { provider: "github-copilot" } },
+    environmentOverlay: Object.freeze({
+      CACO_AGENT_ID: "configured-agent",
+      CACO_PROJECT: "cacophony",
+    }),
+  };
+
+  // Managed identity/environment values are bash policy, not auth overrides.
+  // Returning undefined makes PiSessionFactory reuse its instance ModelRuntime,
+  // whose native auth.json store serializes and persists Copilot refreshes.
+  assert.equal(scopedCredentialStore(base, options), undefined);
+  const refreshed = await base.modify("github-copilot", async (credential) => ({
+    ...credential,
+    access: "refreshed-access",
+    refresh: "rotated-refresh",
+    expires: 9_999_999,
+  }));
+  assert.equal(refreshed.access, "refreshed-access");
+  assert.equal((await base.read("github-copilot")).access, "refreshed-access");
+  assert.equal(baseModifyCalls, 1);
+
+  const stateDir = await temporaryDirectory();
+  const agentDir = await temporaryDirectory();
+  const cwd = await temporaryDirectory();
+  const credentials = inMemoryCredentials({ "github-copilot": original });
+  const sharedRuntime = await ModelRuntime.create({ credentials, modelsPath: null });
+  const model = sharedRuntime.getModels().find((candidate) => candidate.provider === "github-copilot");
+  assert.ok(model);
+  const captures = [];
+  const factory = new PiSessionFactory({
+    stateDir,
+    agentDir,
+    allowedRoots: [cwd],
+    credentials,
+    modelRuntime: sharedRuntime,
+    async createSession(factoryOptions) {
+      captures.push(factoryOptions);
+      return {
+        session: new FakePiSession("copilot-configured", factoryOptions.model, factoryOptions.sessionManager),
+        extensionsResult: factoryOptions.resourceLoader.getExtensions(),
+      };
+    },
+  });
+  const prepared = parseSessionConfiguration({
+    cwd,
+    target: { mode: "memory" },
+    model: { provider: "github-copilot", id: model.id },
+    env: { CACO_AGENT_ID: "configured-agent", CACO_PROJECT: "cacophony" },
+    isolation: { mode: "unisolated" },
+  });
+  const adapter = await factory.open({
+    sessionId: "copilot-configured",
+    generation: 1,
+    ...prepared.openRequest,
+  });
+  assert.equal(captures[0].modelRuntime, sharedRuntime);
+  await adapter.dispose();
 });
 
 test("configured factory applies scoped model auth, settings, resources, and tool environment", async () => {
@@ -842,7 +928,7 @@ test("runtime replacement fails closed when durable identity persistence fails",
   await adapter.dispose();
 });
 
-test("configured-session GitHub Copilot refresh stays memory-only", async () => {
+test("explicit isolated credential readers keep refresh memory-only", async () => {
   const agentDir = await temporaryDirectory();
   const authPath = join(agentDir, "auth.json");
   const persisted = {
